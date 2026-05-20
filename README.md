@@ -88,12 +88,3 @@ PowerShell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 Error Error Code: 1046. No database selected en Workbench
 Asegúrate de dar doble clic sobre el esquema rc_tractoparts en la barra lateral izquierda de MySQL Workbench para marcarlo en negrita antes de ejecutar el script init.sql.
-
-
-###  Súbelo de una vez a GitHub:
-Una vez que reemplaces el texto en tu archivo `README.md`, abre una pestaña de terminal libre y ejecuta las tres líneas mágicas:
-
-```bash
-git add README.md
-git commit -m "Enhance README with full troubleshooting and setups"
-git push
