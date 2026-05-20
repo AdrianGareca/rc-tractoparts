@@ -7,6 +7,8 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+CREATE DATABASE IF NOT EXISTS rc_tractoparts;
+USE rc_tractoparts;
 -- ---------------------------------------------------------------------------
 -- 1. ROLES — Strong entity; catalog of system profiles
 -- ---------------------------------------------------------------------------
