@@ -1,0 +1,27 @@
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.production
+
+# Node dependencies
+node_modules/
+
+# Uploaded PDFs (runtime data, not source code)
+uploads/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Test coverage reports
+coverage/
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
