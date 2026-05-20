@@ -3,14 +3,14 @@
 
 Este repositorio contiene la API REST core para el **Sistema de Gestión de Cotizaciones y Proformas de RC Tractoparts**, estructurado bajo el patrón arquitectónico **Modelo-Vista-Controlador (MVC)** utilizando Node.js, Express y MySQL.
 
-## 🛠️ Tecnologías Utilizadas
+## Tecnologías Utilizadas
 * **Entorno de Ejecución:** Node.js
 * **Framework Web:** Express.js
 * **Base de Datos:** MySQL (Gestión mediante Pool de conexiones relacionales)
 * **Seguridad:** JSON Web Tokens (JWT) & Encriptación con Bcryptjs
 * **Pruebas:** Jest / Supertest
 
-## 📂 Estructura del Proyecto (Sprint 1)
+## Estructura del Proyecto (Sprint 1)
 ```text
 rc-tractoparts/
 ├── sql/
@@ -28,7 +28,7 @@ rc-tractoparts/
 
 ```
 
-## 🚀 Requisitos Previos e Instalación
+## Requisitos Previos e Instalación
 
 ### 1. Clonar el repositorio e instalar dependencias
 
@@ -57,7 +57,7 @@ Importa y ejecuta el archivo `sql/init.sql` en tu servidor local de MySQL para d
 
 ---
 
-## 🏃 Enclavar y Ejecutar el Servidor
+## Enclavar y Ejecutar el Servidor
 
 * **Modo Desarrollo (con recarga automática):**
 ```bash
@@ -74,13 +74,9 @@ npm run test:unit
 
 
 
-## 🔒 Características Clave Implementadas (Sprint 1)
+## Características Clave Implementadas (Sprint 1)
 
 * **HU01 - Autenticación Segura:** Control de acceso mediante JWT con expiración y revocación de tokens en memoria para cierres de sesión efectivos.
 * **HU03 - Generador de Correlativos Atómicos:** Implementación de `SELECT ... FOR UPDATE` dentro de una transacción aislada de MySQL. Esto previene la duplicidad de números de cotización bajo ráfagas de peticiones concurrentes (Garantiza el RNF10).
 * **Matriz de Permisos Rígida:** Middleware interceptor basado en roles (`Ejecutivo`, `Administracion`, `Jefe`) que valida el acceso por endpoint según las especificaciones técnicas del negocio.
 * **Validación de Archivos:** Carga segura de PDFs para soporte de cotizaciones utilizando filtros Multer por tamaño y tipo MIME.
-
-```
-
-```
