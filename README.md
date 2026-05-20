@@ -1,37 +1,86 @@
-Markdown
-# RC Tractoparts - Quotation Management System (Backend)
+```markdown
+# RC Tractoparts - Sistema de Gestión de Cotizaciones (Backend)
 
-Core REST API for the Quotation and Proforma Management System developed for **RC Tractoparts**, based on software engineering technical specifications.
+Este repositorio contiene la API REST core para el **Sistema de Gestión de Cotizaciones y Proformas de RC Tractoparts**, estructurado bajo el patrón arquitectónico **Modelo-Vista-Controlador (MVC)** utilizando Node.js, Express y MySQL.
 
-## 🚀 Tech Stack
-* **Runtime Environment:** Node.js
-* **Framework:** Express.js
-* **Database:** MySQL (using connection pooling)
-* **Architecture:** Model-View-Controller (MVC) Pattern
+## 🛠️ Tecnologías Utilizadas
+* **Entorno de Ejecución:** Node.js
+* **Framework Web:** Express.js
+* **Base de Datos:** MySQL (Gestión mediante Pool de conexiones relacionales)
+* **Seguridad:** JSON Web Tokens (JWT) & Encriptación con Bcryptjs
+* **Pruebas:** Jest / Supertest
 
-## 🛠️ Project Setup & Installation
+## 📂 Estructura del Proyecto (Sprint 1)
+```text
+rc-tractoparts/
+├── sql/
+│   └── init.sql                        # Script de inicialización de las 8 tablas base
+├── src/
+│   ├── config/db.js                    # Configuración del pool de conexiones a MySQL
+│   ├── controllers/                    # Controladores de la lógica de negocio (Auth, Cotizaciones, Usuarios)
+│   ├── middlewares/                    # Middlewares de autenticación JWT y control de roles (RBAC)
+│   ├── models/                         # Modelos con consultas SQL optimizadas (Transacciones y bloqueos)
+│   ├── routes/                         # Definición de rutas y endpoints de la API
+│   ├── utils/auditLog.js               # Registro asíncrono de logs de auditoría
+│   ├── app.js                          # Configuración de Express, CORS, Helmet y Morgan
+│   └── server.js                       # Inicialización del servidor y apagado controlado (Graceful Shutdown)
+└── tests/                              # Pruebas unitarias e integración (Concurrencia del correlativo)
 
-1. **Install dependencies:**
-   ```bash
-   npm install
-Database Initialization:
+```
 
-Import the SQL schema execution script located in sql/init.sql inside your MySQL Workbench.
+## 🚀 Requisitos Previos e Instalación
 
-Environment Variables:
+### 1. Clonar el repositorio e instalar dependencias
 
-Create a .env file in the root directory based on .env.example.
+```bash
+npm install
 
-🏃 Run the Application
-Development mode: npm run dev
+```
 
-Run unit tests: npm run test:unit
+### 2. Configurar Variables de Entorno
 
-🔒 Sprint 1 Features
-HU01: Secure Authentication with JWT & Bcrypt.
+Crea un archivo `.env` en la raíz del proyecto basándote en el archivo `.env.example`:
 
-HU03: Atomic Serial Number Generator (SELECT ... FOR UPDATE) to prevent concurrency duplicates (RNF10).
+```env
+PORT=3000
+DB_HOST=localhost
+DB_USER=tu_usuario
+DB_PASSWORD=tu_contraseña
+DB_NAME=rc_tractoparts
+JWT_SECRET=tu_clave_secreta_jwt
 
-Guarda el archivo con `Ctrl + S`.
+```
+
+### 3. Base de Datos
+
+Importa y ejecuta el archivo `sql/init.sql` en tu servidor local de MySQL para desplegar el esquema de base de datos requerido.
 
 ---
+
+## 🏃 Enclavar y Ejecutar el Servidor
+
+* **Modo Desarrollo (con recarga automática):**
+```bash
+npm run dev
+
+```
+
+
+* **Ejecutar Pruebas Unitarias:**
+```bash
+npm run test:unit
+
+```
+
+
+
+## 🔒 Características Clave Implementadas (Sprint 1)
+
+* **HU01 - Autenticación Segura:** Control de acceso mediante JWT con expiración y revocación de tokens en memoria para cierres de sesión efectivos.
+* **HU03 - Generador de Correlativos Atómicos:** Implementación de `SELECT ... FOR UPDATE` dentro de una transacción aislada de MySQL. Esto previene la duplicidad de números de cotización bajo ráfagas de peticiones concurrentes (Garantiza el RNF10).
+* **Matriz de Permisos Rígida:** Middleware interceptor basado en roles (`Ejecutivo`, `Administracion`, `Jefe`) que valida el acceso por endpoint según las especificaciones técnicas del negocio.
+* **Validación de Archivos:** Carga segura de PDFs para soporte de cotizaciones utilizando filtros Multer por tamaño y tipo MIME.
+
+```
+
+```
