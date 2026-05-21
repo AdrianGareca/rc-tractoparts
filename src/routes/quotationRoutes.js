@@ -3,15 +3,19 @@
 // Quotation Routes — /api/cotizaciones
 // (Section 3.10 — API Contract + Section 3.7.4 — Permission Matrix)
 //
-// Multer is configured here to handle PDF file uploads.
-// Only .pdf MIME type is accepted; files exceeding MAX_PDF_SIZE_MB are rejected.
-// The file is renamed to include the quotation's correlativo for traceability.
+// ROUTE ORDER MATTERS: fixed-path routes (/resumen, /pendientes-aprobacion)
+// must be registered BEFORE parametric routes (/:id) or Express will interpret
+// the literal path segments as ID values and route to the wrong handler.
+//
+// Sprint 1: POST /, GET /:id, PUT /:id/estado, POST /:id/aprobar,
+//           POST /:id/pdf, GET /:id/pdf
+// Sprint 2: GET / (paginated+filtered), GET /resumen, GET /pendientes-aprobacion
 // =============================================================================
 
 'use strict';
 
 const express  = require('express');
-const multer   = require('multer'); // Multipart form-data parser for file uploads
+const multer   = require('multer');
 const path     = require('path');
 const fs       = require('fs');
 
@@ -22,35 +26,28 @@ const authorize           = require('../middlewares/roleMiddleware');
 const router = express.Router();
 
 // ---------------------------------------------------------------------------
-// Multer storage engine — files are saved to UPLOAD_DIR with a structured name
+// Multer — PDF upload storage and validation
 // ---------------------------------------------------------------------------
 const uploadDir = path.resolve(
   process.cwd(),
   process.env.UPLOAD_DIR || 'uploads/cotizaciones'
 );
 
-// Ensure the upload directory exists at startup (create recursively if absent)
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir); // Save all uploads to the configured directory
-  },
-  filename: (req, file, cb) => {
-    // Use quotation ID and timestamp to build a unique, traceable filename
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename:    (req, file, cb) => {
     const quotationId = req.params.id || 'draft';
-    const timestamp   = Date.now();
-    const safeName    = `COT-${quotationId}-${timestamp}.pdf`; // e.g. COT-42-1716000000000.pdf
-    cb(null, safeName);
+    cb(null, `COT-${quotationId}-${Date.now()}.pdf`);
   },
 });
 
-// File filter — reject anything that is not application/pdf
 function pdfFilter(req, file, cb) {
   if (file.mimetype === 'application/pdf') {
-    cb(null, true); // Accept the file
+    cb(null, true);
   } else {
     cb(new Error('Only PDF files are accepted. Received: ' + file.mimetype), false);
   }
@@ -58,108 +55,109 @@ function pdfFilter(req, file, cb) {
 
 const maxPdfBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024;
 
-const upload = multer({
-  storage,
-  fileFilter: pdfFilter,
-  limits: {
-    fileSize: maxPdfBytes,      // Reject files exceeding the configured limit
-    files:    1,                // Only one file per request
-  },
-});
+const upload = multer({ storage, fileFilter: pdfFilter, limits: { fileSize: maxPdfBytes, files: 1 } });
 
 // ---------------------------------------------------------------------------
-// Route definitions
-// Middleware chain: authenticate → authorize(roles) → controller method
-// (Section 3.7.4 — Permission Matrix)
+// Shorthand middleware stacks for each role combination
+// ---------------------------------------------------------------------------
+const allRoles     = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe'])];
+const execAndAdmin = [authenticate, authorize(['Ejecutivo', 'Administracion'])];
+const execOnly     = [authenticate, authorize(['Ejecutivo'])];
+const jefeOnly     = [authenticate, authorize(['Jefe'])];
+
+// ---------------------------------------------------------------------------
+// SPRINT 2 — Fixed-path routes (must come before /:id parametric routes)
 // ---------------------------------------------------------------------------
 
-// POST /api/cotizaciones
-// Create a new quotation with atomic serial number generation (HU03 / RNF10)
-router.post(
-  '/',
-  authenticate,
-  authorize(['Ejecutivo', 'Administracion', 'Jefe']),
-  QuotationController.createQuotation
+// GET /api/cotizaciones/resumen
+// Quotation counts grouped by estado. Ejecutivos see only their own counts.
+router.get('/resumen',
+  ...allRoles,
+  QuotationController.getStateSummary
 );
 
+// GET /api/cotizaciones/pendientes-aprobacion
+// All "En revision" quotations ordered oldest-first — the Jefe's approval queue.
+router.get('/pendientes-aprobacion',
+  ...jefeOnly,
+  QuotationController.getPendingApproval
+);
+
+// ---------------------------------------------------------------------------
+// SPRINT 2 — Main listing (rebuilt with pagination, filters, sort)
+// ---------------------------------------------------------------------------
+
 // GET /api/cotizaciones
-// List quotations with optional filters (all roles)
-router.get(
-  '/',
-  authenticate,
-  authorize(['Ejecutivo', 'Administracion', 'Jefe']),
+// Full query parameter support: q, razon_social, nit, estado, id_cliente,
+// id_ejecutivo, fecha_desde, fecha_hasta, moneda, tiene_pdf,
+// page, limit, sort_by, sort_order
+router.get('/',
+  ...allRoles,
   QuotationController.getQuotations
 );
 
+// ---------------------------------------------------------------------------
+// SPRINT 1 — Write routes (unchanged)
+// ---------------------------------------------------------------------------
+
+// POST /api/cotizaciones
+// Create a new quotation with atomic serial number generation (HU03)
+router.post('/',
+  ...execAndAdmin,
+  QuotationController.createQuotation
+);
+
+// ---------------------------------------------------------------------------
+// SPRINT 1 — Parametric routes (must come after fixed-path routes above)
+// ---------------------------------------------------------------------------
+
 // GET /api/cotizaciones/:id
-// Retrieve a single quotation with line items (all roles)
-router.get(
-  '/:id',
-  authenticate,
-  authorize(['Ejecutivo', 'Administracion', 'Jefe']),
+// Full quotation detail including line items and approval history (all roles)
+router.get('/:id',
+  ...allRoles,
   QuotationController.getQuotationById
 );
 
 // PUT /api/cotizaciones/:id/estado
-// Update commercial status — transition validated by state machine (Section 3.6.2)
-router.put(
-  '/:id/estado',
-  authenticate,
-  authorize(['Ejecutivo', 'Administracion', 'Jefe']),
+// State machine transition — transition rules enforced by model (all roles)
+router.put('/:id/estado',
+  ...allRoles,
   QuotationController.updateStatus
 );
 
 // POST /api/cotizaciones/:id/aprobar
-// Approve or reject (Jefe only — HU08)
-router.post(
-  '/:id/aprobar',
-  authenticate,
-  authorize(['Jefe']),
+// Approve or reject — Jefe only (HU08)
+router.post('/:id/aprobar',
+  ...jefeOnly,
   QuotationController.approveQuotation
 );
 
 // POST /api/cotizaciones/:id/pdf
-// Upload PDF — Ejecutivo only; multer validates type and size before controller runs
-router.post(
-  '/:id/pdf',
-  authenticate,
-  authorize(['Ejecutivo']),
-  upload.single('archivo'), // Field name must be "archivo" in the multipart form
+// Upload PDF — Ejecutivo only; multer validates MIME type and size first
+router.post('/:id/pdf',
+  ...execOnly,
+  upload.single('archivo'),
   QuotationController.uploadPdf
 );
 
 // GET /api/cotizaciones/:id/pdf
-// Download the PDF attached to a quotation (all roles)
-router.get(
-  '/:id/pdf',
-  authenticate,
-  authorize(['Ejecutivo', 'Administracion', 'Jefe']),
+// Download the stored PDF (all roles; logged to audit)
+router.get('/:id/pdf',
+  ...allRoles,
   QuotationController.downloadPdf
 );
 
 // ---------------------------------------------------------------------------
-// Multer error handler — catches file size and type rejection errors
-// Must be defined as a 4-argument error middleware after the routes
+// Multer error handler — must be a 4-argument middleware after all routes
 // ---------------------------------------------------------------------------
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
-    // Multer-specific errors (e.g. LIMIT_FILE_SIZE)
-    return res.status(422).json({
-      success: false,
-      message: `File upload error: ${err.message}`,
-    });
+    return res.status(422).json({ success: false, message: `File upload error: ${err.message}` });
   }
-
-  if (err && err.message && err.message.startsWith('Only PDF')) {
-    // Custom fileFilter rejection
-    return res.status(422).json({
-      success: false,
-      message: err.message,
-    });
+  if (err?.message?.startsWith('Only PDF')) {
+    return res.status(422).json({ success: false, message: err.message });
   }
-
-  // Propagate other errors to the global error handler in app.js
-  next(err);
+  next(err); // Propagate anything else to app.js global handler
 });
 
 module.exports = router;
