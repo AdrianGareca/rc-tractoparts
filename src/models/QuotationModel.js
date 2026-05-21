@@ -1,20 +1,22 @@
 // =============================================================================
 // src/models/QuotationModel.js
 // Data Access Layer — cotizaciones, cotizacion_detalles, cotizaciones_correlativo
-// (Section 3.5.2 — Data Dictionary + Section 3.6.1 — Sequence Diagram)
 //
-// CRITICAL — Atomic Serial Number Generation (HU03 / RNF10):
-//   generateCorrelativo() wraps the counter increment inside a database
-//   transaction with SELECT ... FOR UPDATE. This row-level lock serializes
-//   concurrent requests, guaranteeing that no two quotations ever receive the
-//   same serial number, even under high concurrency. See Section 3.11.3.
+// Sprint 1: generateCorrelativo, create, createDetalles, findById,
+//           updateStatus, approve, updatePdfPath, checkDuplicate
+// Sprint 2: findAll (paginated + sorted), countAll, findSummaryByState
+//           All read methods share _buildWhereClause to keep filter logic DRY.
 // =============================================================================
 
 'use strict';
 
-const { pool } = require('../config/db'); // Shared MySQL connection pool
+const { pool } = require('../config/db');
 
-// Valid quotation states as defined in the state machine (Section 3.6.2)
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+// All valid quotation states (Section 3.6.2 — state machine)
 const VALID_STATES = [
   'Pendiente',
   'En revision',
@@ -25,8 +27,7 @@ const VALID_STATES = [
   'Archivada',
 ];
 
-// State-transition matrix: maps each current state to the states it can move to.
-// The service layer consults this before executing any status change.
+// State-transition matrix: maps each state to the states reachable from it
 const STATE_TRANSITIONS = {
   'Pendiente':             ['En revision', 'Archivada'],
   'En revision':           ['Aprobada internamente', 'Rechazada', 'Pendiente', 'Archivada'],
@@ -34,47 +35,152 @@ const STATE_TRANSITIONS = {
   'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],
   'Aceptada':              ['Archivada'],
   'Rechazada':             ['Pendiente', 'Archivada'],
-  'Archivada':             [], // Terminal state — no further transitions
+  'Archivada':             [],
 };
 
+// Columns that are safe to use in ORDER BY — prevents SQL injection via sort param
+const SORTABLE_COLUMNS = {
+  numero_correlativo: 'c.numero_correlativo',
+  fecha_emision:      'c.fecha_emision',
+  monto_total:        'c.monto_total',
+  estado:             'c.estado',
+  creado_en:          'c.creado_en',
+  cliente_nombre:     'cl.razon_social',
+  ejecutivo_nombre:   'u.nombre_completo',
+};
+
+// ---------------------------------------------------------------------------
+// _buildWhereClause (private helper)
+// Constructs the WHERE clause string and bound-values array from a filters
+// object. Used by both findAll and countAll so the logic never diverges.
+//
+// Accepted filter keys:
+//   q            {string}  - Full-text search: correlativo, razon_social, NIT
+//   razon_social {string}  - Partial match on cl.razon_social only
+//   nit          {string}  - Partial match on cl.nit only
+//   estado       {string}  - Exact match against VALID_STATES
+//   id_cliente   {number}  - Exact client ID
+//   id_ejecutivo {number}  - Exact executive user ID
+//   fecha_desde  {string}  - Lower bound on fecha_emision (YYYY-MM-DD inclusive)
+//   fecha_hasta  {string}  - Upper bound on fecha_emision (YYYY-MM-DD inclusive)
+//   moneda       {string}  - 'USD' or 'BOB'
+//   tiene_pdf    {boolean} - true = only records with pdf_ruta; false = only without
+//
+// @param   {Object} filters
+// @returns {{ clause: string, values: Array }}
+// ---------------------------------------------------------------------------
+function _buildWhereClause(filters = {}) {
+  const conditions = []; // SQL fragment strings, each with "?" placeholders
+  const values     = []; // Bound parameters in the same order as placeholders
+
+  // Full-text search across correlativo, client name, and client NIT
+  if (filters.q && filters.q.trim()) {
+    const like = `%${filters.q.trim()}%`;
+    conditions.push('(c.numero_correlativo LIKE ? OR cl.razon_social LIKE ? OR cl.nit LIKE ?)');
+    values.push(like, like, like); // Three binds for three columns
+  }
+
+  // Partial match on client name only (used by the autocomplete endpoint)
+  if (filters.razon_social && filters.razon_social.trim()) {
+    conditions.push('cl.razon_social LIKE ?');
+    values.push(`%${filters.razon_social.trim()}%`);
+  }
+
+  // Partial match on NIT only (useful when the user knows the tax ID)
+  if (filters.nit && filters.nit.trim()) {
+    conditions.push('cl.nit LIKE ?');
+    values.push(`%${filters.nit.trim()}%`);
+  }
+
+  // Exact state match (controller validates against VALID_STATES before reaching here)
+  if (filters.estado) {
+    conditions.push('c.estado = ?');
+    values.push(filters.estado);
+  }
+
+  // Filter by specific client ID (used from the client detail view)
+  if (filters.id_cliente) {
+    conditions.push('c.id_cliente = ?');
+    values.push(parseInt(filters.id_cliente, 10));
+  }
+
+  // Filter by executive (Jefe can see all; Ejecutivo sees own records — enforced in controller)
+  if (filters.id_ejecutivo) {
+    conditions.push('c.id_ejecutivo = ?');
+    values.push(parseInt(filters.id_ejecutivo, 10));
+  }
+
+  // Date range — both bounds are inclusive
+  if (filters.fecha_desde) {
+    conditions.push('c.fecha_emision >= ?');
+    values.push(filters.fecha_desde); // YYYY-MM-DD string; MySQL DATE comparison
+  }
+
+  if (filters.fecha_hasta) {
+    conditions.push('c.fecha_emision <= ?');
+    values.push(filters.fecha_hasta);
+  }
+
+  // Currency filter
+  if (filters.moneda) {
+    conditions.push('c.moneda = ?');
+    values.push(filters.moneda.toUpperCase());
+  }
+
+  // PDF attachment presence filter
+  if (filters.tiene_pdf === true) {
+    conditions.push('c.pdf_ruta IS NOT NULL'); // Has a linked PDF
+  } else if (filters.tiene_pdf === false) {
+    conditions.push('c.pdf_ruta IS NULL');    // Missing PDF — useful for admin review
+  }
+
+  const clause = conditions.length > 0
+    ? `WHERE ${conditions.join(' AND ')}`
+    : '';
+
+  return { clause, values };
+}
+
+// ---------------------------------------------------------------------------
+// The JOIN fragment reused in both findAll and countAll
+// ---------------------------------------------------------------------------
+const BASE_JOINS = `
+  INNER JOIN clientes cl ON cl.id = c.id_cliente
+  INNER JOIN usuarios u  ON u.id  = c.id_ejecutivo
+  LEFT  JOIN usuarios ap ON ap.id = c.aprobado_por
+`;
+
+// ---------------------------------------------------------------------------
+// QuotationModel
+// ---------------------------------------------------------------------------
 const QuotationModel = {
+
+  // ==========================================================================
+  // SPRINT 1 — Write operations (unchanged)
+  // ==========================================================================
 
   // ---------------------------------------------------------------------------
   // generateCorrelativo
-  // ATOMIC OPERATION — must be called inside a managed transaction.
-  //
-  // Acquires an exclusive row lock on the current year's counter row
-  // (SELECT ... FOR UPDATE), increments ultimo_nro by 1, releases the lock
-  // on COMMIT, and returns the formatted serial string COT-YYYY-NNNN.
-  //
-  // If no row exists for the current year, one is inserted with ultimo_nro=1
-  // and the serial COT-YYYY-0001 is returned.
-  //
-  // @param   {PoolConnection} connection - An active pool connection (in transaction)
-  // @returns {string}                    - Formatted serial, e.g. "COT-2026-0042"
+  // ATOMIC: SELECT ... FOR UPDATE inside a caller-managed transaction.
+  // Returns the next formatted serial, e.g. "COT-2026-0042".
   // ---------------------------------------------------------------------------
   async generateCorrelativo(connection) {
-    const currentYear = new Date().getFullYear(); // e.g. 2026
+    const currentYear = new Date().getFullYear();
 
-    // Attempt to lock the existing row for this year.
-    // FOR UPDATE acquires an exclusive row lock; concurrent callers block here
-    // until the lock is released by COMMIT or ROLLBACK.
     const [rows] = await connection.execute(
       'SELECT ultimo_nro FROM cotizaciones_correlativo WHERE anio = ? FOR UPDATE',
       [currentYear]
     );
 
-    let nextNumber; // The new sequential number to assign
+    let nextNumber;
 
     if (rows.length === 0) {
-      // First quotation of this calendar year — insert the counter row
       await connection.execute(
         'INSERT INTO cotizaciones_correlativo (anio, ultimo_nro) VALUES (?, 1)',
         [currentYear]
       );
-      nextNumber = 1; // First serial of the year
+      nextNumber = 1;
     } else {
-      // Increment the existing counter atomically
       nextNumber = rows[0].ultimo_nro + 1;
       await connection.execute(
         'UPDATE cotizaciones_correlativo SET ultimo_nro = ? WHERE anio = ?',
@@ -82,18 +188,11 @@ const QuotationModel = {
       );
     }
 
-    // Format: COT-YYYY-NNNN (zero-padded to 4 digits; supports up to 9999/year)
-    const serial = `COT-${currentYear}-${String(nextNumber).padStart(4, '0')}`;
-    return serial;
+    return `COT-${currentYear}-${String(nextNumber).padStart(4, '0')}`;
   },
 
   // ---------------------------------------------------------------------------
-  // create
-  // Insert the parent cotizaciones record. Must be called inside a transaction.
-  //
-  // @param   {PoolConnection} connection - Active transactional connection
-  // @param   {Object}         data       - Quotation fields
-  // @returns {number}                    - insertId of the new quotation
+  // create — Insert quotation header inside a transaction
   // ---------------------------------------------------------------------------
   async create(connection, data) {
     const sql = `
@@ -105,82 +204,63 @@ const QuotationModel = {
     `;
 
     const [result] = await connection.execute(sql, [
-      data.numero_correlativo, // COT-YYYY-NNNN generated by generateCorrelativo
+      data.numero_correlativo,
       data.id_cliente,
       data.id_ejecutivo,
       data.descripcion,
-      data.monto_total    || null,
-      data.moneda         || 'USD',
-      data.observaciones  || null,
+      data.monto_total   || null,
+      data.moneda        || 'USD',
+      data.observaciones || null,
       data.fecha_emision,
-      data.fecha_validez  || null,
+      data.fecha_validez || null,
     ]);
 
-    return result.insertId; // Primary key of the newly created quotation
+    return result.insertId;
   },
 
   // ---------------------------------------------------------------------------
-  // createDetalles
-  // Insert multiple line-item rows (cotizacion_detalles) for a quotation.
-  // Uses a single multi-value INSERT for efficiency.
-  //
-  // @param   {PoolConnection} connection    - Active transactional connection
-  // @param   {number}         id_cotizacion - Parent quotation ID
-  // @param   {Array<Object>}  detalles      - Array of line items
+  // createDetalles — Bulk-insert line items inside a transaction
   // ---------------------------------------------------------------------------
   async createDetalles(connection, id_cotizacion, detalles) {
-    if (!detalles || detalles.length === 0) {
-      return; // No line items to insert; the quotation header was already saved
-    }
+    if (!detalles || detalles.length === 0) return;
 
-    // Build parameterized placeholders: (?, ?, ?, ?, ?, ?) for each row
     const placeholders = detalles.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
 
-    // Flatten the values array: [id_cot, id_prod, desc, qty, price, subtotal, id_cot, ...]
     const values = detalles.flatMap((item) => {
       const subtotal = parseFloat(
         (parseFloat(item.cantidad) * parseFloat(item.precio_unitario)).toFixed(2)
       );
-
       return [
         id_cotizacion,
-        item.id_producto     || null,       // optional catalog reference
+        item.id_producto    || null,
         item.descripcion_item,
         parseFloat(item.cantidad),
         parseFloat(item.precio_unitario),
-        subtotal,                           // persisted computed value
+        subtotal,
       ];
     });
 
-    const sql = `
-      INSERT INTO cotizacion_detalles
-        (id_cotizacion, id_producto, descripcion_item, cantidad, precio_unitario, subtotal)
-      VALUES
-        ${placeholders}
-    `;
-
-    await connection.execute(sql, values);
+    await connection.execute(
+      `INSERT INTO cotizacion_detalles
+         (id_cotizacion, id_producto, descripcion_item, cantidad, precio_unitario, subtotal)
+       VALUES ${placeholders}`,
+      values
+    );
   },
 
   // ---------------------------------------------------------------------------
-  // findById
-  // Retrieve a complete quotation with client and executive info.
-  // Uses a regular pool connection (no transaction needed for reads).
-  //
-  // @param   {number}       id - Quotation primary key
-  // @returns {Object|null}
+  // findById — Full quotation detail with line items
   // ---------------------------------------------------------------------------
   async findById(id) {
-    // Fetch the parent quotation row with JOIN data
     const sqlHeader = `
       SELECT
         c.id,
         c.numero_correlativo,
         c.id_cliente,
-        cl.razon_social  AS cliente_nombre,
-        cl.nit           AS cliente_nit,
+        cl.razon_social   AS cliente_nombre,
+        cl.nit            AS cliente_nit,
         c.id_ejecutivo,
-        u.nombre_completo AS ejecutivo_nombre,
+        u.nombre_completo  AS ejecutivo_nombre,
         c.descripcion,
         c.monto_total,
         c.moneda,
@@ -196,27 +276,21 @@ const QuotationModel = {
         c.creado_en,
         c.actualizado_en
       FROM cotizaciones c
-      INNER JOIN clientes  cl ON cl.id = c.id_cliente
-      INNER JOIN usuarios  u  ON u.id  = c.id_ejecutivo
-      LEFT  JOIN usuarios  ap ON ap.id = c.aprobado_por   -- Jefe who approved/rejected
+      ${BASE_JOINS}
       WHERE c.id = ?
       LIMIT 1
     `;
 
     const [headerRows] = await pool.execute(sqlHeader, [id]);
-
-    if (!headerRows[0]) {
-      return null; // Quotation not found
-    }
+    if (!headerRows[0]) return null;
 
     const quotation = headerRows[0];
 
-    // Fetch associated line items
     const sqlDetalles = `
       SELECT
         d.id,
         d.id_producto,
-        p.codigo         AS producto_codigo,
+        p.codigo          AS producto_codigo,
         d.descripcion_item,
         d.cantidad,
         d.precio_unitario,
@@ -228,75 +302,207 @@ const QuotationModel = {
     `;
 
     const [detallesRows] = await pool.execute(sqlDetalles, [id]);
-
-    quotation.detalles = detallesRows; // Attach line items to the parent object
+    quotation.detalles = detallesRows;
 
     return quotation;
   },
 
   // ---------------------------------------------------------------------------
-  // findAll
-  // List quotations with optional filters (Section 3.10 — GET /api/cotizaciones).
-  //
-  // @param   {Object}       filters - { estado, id_cliente, id_ejecutivo, desde, hasta, q }
-  // @returns {Array<Object>}
+  // updateStatus — State machine transition with optimistic concurrency check
   // ---------------------------------------------------------------------------
-  async findAll(filters = {}) {
-    const conditions = []; // WHERE clauses built dynamically
-    const values     = []; // Bound parameters corresponding to each "?"
+  async updateStatus(id, nuevoEstado, estadoActual) {
+    const allowedTransitions = STATE_TRANSITIONS[estadoActual] || [];
 
-    if (filters.estado) {
-      conditions.push('c.estado = ?');
-      values.push(filters.estado);
+    if (!allowedTransitions.includes(nuevoEstado)) {
+      throw new Error(
+        `Invalid state transition: '${estadoActual}' → '${nuevoEstado}'. ` +
+        `Allowed from '${estadoActual}': [${allowedTransitions.join(', ')}]`
+      );
     }
 
-    if (filters.id_cliente) {
-      conditions.push('c.id_cliente = ?');
-      values.push(parseInt(filters.id_cliente, 10));
-    }
+    const [result] = await pool.execute(
+      'UPDATE cotizaciones SET estado = ? WHERE id = ? AND estado = ?',
+      [nuevoEstado, id, estadoActual]
+    );
 
-    if (filters.id_ejecutivo) {
-      conditions.push('c.id_ejecutivo = ?');
-      values.push(parseInt(filters.id_ejecutivo, 10));
-    }
+    return result.affectedRows > 0;
+  },
 
-    if (filters.desde) {
-      conditions.push('c.fecha_emision >= ?');
-      values.push(filters.desde); // Expected format: YYYY-MM-DD
-    }
+  // ---------------------------------------------------------------------------
+  // approve — Jefe approval/rejection of a quotation in "En revision"
+  // ---------------------------------------------------------------------------
+  async approve(id, aprobadoPor, decision, obsAprobacion) {
+    const nuevoEstado = decision === 'aprobada'
+      ? 'Aprobada internamente'
+      : 'Rechazada';
 
-    if (filters.hasta) {
-      conditions.push('c.fecha_emision <= ?');
-      values.push(filters.hasta);
-    }
+    const [result] = await pool.execute(
+      `UPDATE cotizaciones
+       SET estado = ?, aprobado_por = ?, fecha_aprobacion = NOW(), obs_aprobacion = ?
+       WHERE id = ? AND estado = 'En revision'`,
+      [nuevoEstado, aprobadoPor, obsAprobacion || null, id]
+    );
 
-    if (filters.q) {
-      // Partial match on correlativo or client name (case-insensitive via utf8mb4)
-      conditions.push('(c.numero_correlativo LIKE ? OR cl.razon_social LIKE ?)');
-      const likeValue = `%${filters.q}%`;
-      values.push(likeValue, likeValue);
-    }
+    return result.affectedRows > 0;
+  },
 
-    const whereClause = conditions.length > 0
-      ? `WHERE ${conditions.join(' AND ')}`
-      : '';
+  // ---------------------------------------------------------------------------
+  // updatePdfPath — Persist the stored PDF's relative path
+  // ---------------------------------------------------------------------------
+  async updatePdfPath(id, pdfRuta) {
+    const [result] = await pool.execute(
+      'UPDATE cotizaciones SET pdf_ruta = ? WHERE id = ?',
+      [pdfRuta, id]
+    );
+    return result.affectedRows > 0;
+  },
+
+  // ---------------------------------------------------------------------------
+  // checkDuplicate — Detect similar quotations within 30 days (RF06)
+  // ---------------------------------------------------------------------------
+  async checkDuplicate(id_cliente, descripcion) {
+    const descSnippet = descripcion.substring(0, 50);
+
+    const [rows] = await pool.execute(
+      `SELECT id, numero_correlativo, fecha_emision, estado
+       FROM cotizaciones
+       WHERE id_cliente = ?
+         AND descripcion  LIKE ?
+         AND fecha_emision >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+       LIMIT 5`,
+      [id_cliente, `%${descSnippet}%`]
+    );
+
+    return rows;
+  },
+
+  // ==========================================================================
+  // SPRINT 2 — Advanced read operations
+  // ==========================================================================
+
+  // ---------------------------------------------------------------------------
+  // findAll (Sprint 2 — paginated, filtered, sorted)
+  //
+  // Returns one page of quotation summary rows. Does NOT return line items —
+  // those are fetched on demand via findById to keep list queries fast.
+  //
+  // @param {Object} filters   - Filter criteria (see _buildWhereClause above)
+  // @param {Object} pagination
+  //   @param {number} pagination.page    - 1-based page number (default 1)
+  //   @param {number} pagination.limit   - Rows per page (default 20, max 100)
+  // @param {Object} sort
+  //   @param {string} sort.by    - Column key from SORTABLE_COLUMNS (default 'creado_en')
+  //   @param {string} sort.order - 'ASC' | 'DESC' (default 'DESC')
+  //
+  // @returns {Array<Object>} - Summary row array for the requested page
+  // ---------------------------------------------------------------------------
+  async findAll(filters = {}, pagination = {}, sort = {}) {
+    // --- Resolve pagination parameters ---
+    const page  = Math.max(1, parseInt(pagination.page,  10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(pagination.limit, 10) || 20));
+    const offset = (page - 1) * limit; // 0-based row offset for MySQL LIMIT ? OFFSET ?
+
+    // --- Resolve sort parameters ---
+    // Default: most recently created quotations appear first
+    const sortColumn = SORTABLE_COLUMNS[sort.by] || 'c.creado_en';
+    const sortOrder  = sort.order === 'ASC' ? 'ASC' : 'DESC';
+
+    // --- Build the shared WHERE clause ---
+    const { clause: whereClause, values: whereValues } = _buildWhereClause(filters);
 
     const sql = `
       SELECT
         c.id,
         c.numero_correlativo,
-        cl.razon_social  AS cliente_nombre,
-        u.nombre_completo AS ejecutivo_nombre,
+        c.id_cliente,
+        cl.razon_social    AS cliente_nombre,
+        cl.nit             AS cliente_nit,
+        c.id_ejecutivo,
+        u.nombre_completo   AS ejecutivo_nombre,
         c.monto_total,
         c.moneda,
         c.estado,
+        c.pdf_ruta         IS NOT NULL AS tiene_pdf,
         c.fecha_emision,
-        c.creado_en
+        c.fecha_validez,
+        c.aprobado_por,
+        ap.nombre_completo  AS aprobador_nombre,
+        c.fecha_aprobacion,
+        c.creado_en,
+        c.actualizado_en
       FROM cotizaciones c
-      INNER JOIN clientes cl ON cl.id = c.id_cliente
-      INNER JOIN usuarios u  ON u.id  = c.id_ejecutivo
+      ${BASE_JOINS}
       ${whereClause}
-      ORDER BY c.creado_en DESC
+      ORDER BY ${sortColumn} ${sortOrder}
+      LIMIT ? OFFSET ?
+    `;
+
+    // Append LIMIT and OFFSET at the end of the values array
+    const queryValues = [...whereValues, limit, offset];
+
+    const [rows] = await pool.execute(sql, queryValues);
+    return rows;
+  },
+
+  // ---------------------------------------------------------------------------
+  // countAll (Sprint 2)
+  // Runs an identical WHERE clause to findAll but only counts matching rows.
+  // Used by the controller to calculate total pages and totalRecords.
+  //
+  // IMPORTANT: always call this in parallel with findAll via Promise.all — never
+  // sequentially — to avoid doubling the query latency on every list request.
+  //
+  // @param   {Object} filters - Same filter object passed to findAll
+  // @returns {number}         - Total number of matching rows (ignoring pagination)
+  // ---------------------------------------------------------------------------
+  async countAll(filters = {}) {
+    const { clause: whereClause, values: whereValues } = _buildWhereClause(filters);
+
+    const sql = `
+      SELECT COUNT(*) AS total
+      FROM cotizaciones c
+      ${BASE_JOINS}
+      ${whereClause}
+    `;
+
+    const [rows] = await pool.execute(sql, whereValues);
+    return rows[0].total; // Single integer
+  },
+
+  // ---------------------------------------------------------------------------
+  // findSummaryByState (Sprint 2)
+  // Returns a count of quotations grouped by estado.
+  // Used by the Jefe dashboard (HU10) and by the list page's sidebar counters.
+  //
+  // @param   {number|null} id_ejecutivo - If provided, scopes the count to one executive
+  // @returns {Array<{ estado: string, total: number }>}
+  // ---------------------------------------------------------------------------
+  async findSummaryByState(id_ejecutivo = null) {
+    const values = [];
+    let whereClause = '';
+
+    if (id_ejecutivo) {
+      whereClause = 'WHERE c.id_ejecutivo = ?';
+      values.push(parseInt(id_ejecutivo, 10));
+    }
+
+    const sql = `
+      SELECT
+        c.estado,
+        COUNT(*) AS total
+      FROM cotizaciones c
+      ${whereClause}
+      GROUP BY c.estado
+      ORDER BY FIELD(
+        c.estado,
+        'Pendiente',
+        'En revision',
+        'Aprobada internamente',
+        'Enviada al cliente',
+        'Aceptada',
+        'Rechazada',
+        'Archivada'
+      )
     `;
 
     const [rows] = await pool.execute(sql, values);
@@ -304,114 +510,39 @@ const QuotationModel = {
   },
 
   // ---------------------------------------------------------------------------
-  // updateStatus
-  // Change the estado field of a quotation. Validates the transition first.
+  // findPendingApproval (Sprint 2)
+  // Returns all quotations currently in "En revision" — the Jefe's approval queue.
+  // Ordered oldest-first so the Jefe clears the backlog chronologically.
   //
-  // @param   {number}  id          - Quotation primary key
-  // @param   {string}  nuevoEstado - Target state string
-  // @param   {string}  estadoActual - Current state (for transition validation)
-  // @returns {boolean}             - true if the row was updated
+  // @returns {Array<Object>}
   // ---------------------------------------------------------------------------
-  async updateStatus(id, nuevoEstado, estadoActual) {
-    // Validate that the requested transition is legal
-    const allowedTransitions = STATE_TRANSITIONS[estadoActual] || [];
-
-    if (!allowedTransitions.includes(nuevoEstado)) {
-      throw new Error(
-        `Invalid state transition: '${estadoActual}' → '${nuevoEstado}'. ` +
-        `Allowed transitions from '${estadoActual}': [${allowedTransitions.join(', ')}]`
-      );
-    }
-
+  async findPendingApproval() {
     const sql = `
-      UPDATE cotizaciones SET estado = ? WHERE id = ? AND estado = ?
+      SELECT
+        c.id,
+        c.numero_correlativo,
+        cl.razon_social   AS cliente_nombre,
+        u.nombre_completo  AS ejecutivo_nombre,
+        c.monto_total,
+        c.moneda,
+        c.fecha_emision,
+        c.creado_en
+      FROM cotizaciones c
+      INNER JOIN clientes cl ON cl.id = c.id_cliente
+      INNER JOIN usuarios u  ON u.id  = c.id_ejecutivo
+      WHERE c.estado = 'En revision'
+      ORDER BY c.creado_en ASC
     `;
 
-    // The AND estado = ? prevents race conditions where another request already changed the state
-    const [result] = await pool.execute(sql, [nuevoEstado, id, estadoActual]);
-    return result.affectedRows > 0;
-  },
-
-  // ---------------------------------------------------------------------------
-  // approve
-  // Record the Jefe's approval or rejection decision.
-  // Enforces that the quotation is currently in "En revision" before accepting.
-  //
-  // @param   {number}  id            - Quotation primary key
-  // @param   {number}  aprobadoPor   - User ID of the Jefe
-  // @param   {string}  decision      - 'aprobada' | 'rechazada'
-  // @param   {string}  obsAprobacion - Mandatory justification text
-  // @returns {boolean}
-  // ---------------------------------------------------------------------------
-  async approve(id, aprobadoPor, decision, obsAprobacion) {
-    // Map decision string to the corresponding state name
-    const nuevoEstado = decision === 'aprobada'
-      ? 'Aprobada internamente'
-      : 'Rechazada';
-
-    const sql = `
-      UPDATE cotizaciones
-      SET
-        estado           = ?,
-        aprobado_por     = ?,
-        fecha_aprobacion = NOW(),
-        obs_aprobacion   = ?
-      WHERE id = ? AND estado = 'En revision'
-    `;
-
-    const [result] = await pool.execute(sql, [
-      nuevoEstado,
-      aprobadoPor,
-      obsAprobacion || null,
-      id,
-    ]);
-
-    return result.affectedRows > 0;
-  },
-
-  // ---------------------------------------------------------------------------
-  // updatePdfPath
-  // Persist the relative file path of the uploaded PDF document.
-  //
-  // @param {number} id      - Quotation primary key
-  // @param {string} pdfRuta - Relative path from the project root
-  // ---------------------------------------------------------------------------
-  async updatePdfPath(id, pdfRuta) {
-    const sql = `UPDATE cotizaciones SET pdf_ruta = ? WHERE id = ?`;
-    const [result] = await pool.execute(sql, [pdfRuta, id]);
-    return result.affectedRows > 0;
-  },
-
-  // ---------------------------------------------------------------------------
-  // checkDuplicate
-  // Detect potential duplicate quotations within the last 30 days for the same
-  // client and a similar description (RF06 — duplicate detection).
-  //
-  // @param   {number}  id_cliente  - Client ID to search against
-  // @param   {string}  descripcion - Description text for partial matching
-  // @returns {Array<Object>}       - Potentially matching quotations (may be empty)
-  // ---------------------------------------------------------------------------
-  async checkDuplicate(id_cliente, descripcion) {
-    // Extract first 50 characters of description as a rough similarity key
-    const descSnippet = descripcion.substring(0, 50);
-
-    const sql = `
-      SELECT id, numero_correlativo, fecha_emision, estado
-      FROM cotizaciones
-      WHERE
-        id_cliente   = ?
-        AND descripcion  LIKE ?
-        AND fecha_emision >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-      LIMIT 5
-    `;
-
-    const [rows] = await pool.execute(sql, [id_cliente, `%${descSnippet}%`]);
+    const [rows] = await pool.execute(sql);
     return rows;
   },
 
-  // Export constants for use in services
+  // Export constants so controllers and tests can reference them without
+  // importing from a separate constants file
   VALID_STATES,
   STATE_TRANSITIONS,
+  SORTABLE_COLUMNS,
 };
 
 module.exports = QuotationModel;
