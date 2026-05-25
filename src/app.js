@@ -24,6 +24,8 @@ const express = require('express');
 const helmet  = require('helmet');  // HTTP security headers (XSS, clickjacking, CSP…)
 const cors    = require('cors');    // Cross-Origin Resource Sharing
 const morgan  = require('morgan'); // HTTP request logger
+const swaggerUi = require('swagger-ui-express');
+const swaggerJsdoc = require('swagger-jsdoc');
 
 // Route modules
 const authRoutes      = require('./routes/authRoutes');
@@ -81,6 +83,48 @@ app.use(morgan(morganFormat));
 // ---------------------------------------------------------------------------
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+
+// ---------------------------------------------------------------------------
+// CONFIGURACIÓN DE SWAGGER (OPENAPI)
+// ---------------------------------------------------------------------------
+const swaggerOptions = {
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'API de Gestión de Cotizaciones — RC Tractoparts',
+      version: '1.0.0',
+      description: 'Documentación interactiva de la API para el control de cotizaciones, usuarios y auditorías (XP-SCRUM).',
+    },
+    servers: [
+      {
+        url: 'http://localhost:3000',
+        description: 'Servidor Local de Desarrollo',
+      },
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Introduce tu token JWT en el formato: Bearer <token>',
+        },
+      },
+    },
+  },
+  // Le dice a Swagger que escanee todos los archivos de la carpeta routes
+  apis: ['./src/routes/*.js'], 
+};
+
+const swaggerDocs = swaggerJsdoc(swaggerOptions);
+
+// Servir la interfaz interactiva en http://localhost:3000/api-docs
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+
+// Si quieres que al entrar a la raíz (http://localhost:3000/) te redirija automáticamente a Swagger:
+app.get('/', (req, res) => {
+  res.redirect('/api-docs');
+});
 
 // ---------------------------------------------------------------------------
 // 5. Application Routes

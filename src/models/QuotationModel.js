@@ -538,6 +538,59 @@ const QuotationModel = {
     return rows;
   },
 
+  // ===========================================================================
+  // SPRINT 2 EXTENSION — STATE MACHINE & APPROVAL PERSISTENCE
+  // ===========================================================================
+
+  /**
+   * Obtiene el estado actual y los datos mínimos de control de una cotización.
+   * @param {number} id - ID de la cotización
+   * @returns {Promise<Object|null>}
+   */
+  async getStateInfo(id) {
+    const query = `
+      SELECT id, numero_correlativo, estado, id_ejecutivo, monto_total 
+      FROM cotizaciones 
+      WHERE id = ?
+    `;
+    const [rows] = await pool.execute(query, [id]);
+    return rows.length > 0 ? rows[0] : null;
+  },
+
+  /**
+   * Actualiza el estado de una cotización de forma directa dentro de una conexión/transacción.
+   * @param {Object} connection - Conexión del pool (para asegurar transacciones atómicas)
+   * @param {number} id - ID de la cotización
+   * @param {string} nuevoEstado - El nuevo estado de la máquina de estados
+   */
+  async updateStatusInTransaction(connection, id, nuevoEstado) {
+    const query = 'UPDATE cotizaciones SET estado = ?, actualizado_en = NOW() WHERE id = ?';
+    await connection.execute(query, [nuevoEstado, id]);
+  },
+
+  /**
+   * Inserta un registro inmutable en la tabla de historial de aprobaciones (HU08).
+   * @param {Object} connection - Conexión activa para asegurar atomicidad
+   * @param {Object} data - Datos del flujo de aprobación
+   */
+  async insertApprovalHistory(connection, { id_cotizacion, id_jefe, accion, observaciones }) {
+    const query = `
+      INSERT INTO historial_aprobaciones (
+        id_cotizacion, 
+        id_jefe, 
+        accion, 
+        fecha_aprobacion, 
+        observaciones
+      ) VALUES (?, ?, ?, NOW(), ?)
+    `;
+    await connection.execute(query, [
+      id_cotizacion,
+      id_jefe,
+      accion,
+      observaciones || null
+    ]);
+  },
+
   // Export constants so controllers and tests can reference them without
   // importing from a separate constants file
   VALID_STATES,

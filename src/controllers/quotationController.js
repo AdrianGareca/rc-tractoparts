@@ -290,15 +290,16 @@ const QuotationController = {
     }
   },
 
-  // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
   // updateStatus
-  // PUT /api/cotizaciones/:id/estado  (All roles; transitions validated by model)
-  // Change the commercial state of a quotation according to the state machine.
+  // PUT /api/cotizaciones/:id/estado  (Todos los roles; validación por máquina de estados)
+  // Cambia el estado comercial de una cotización controlando flujos y roles.
   // ---------------------------------------------------------------------------
   async updateStatus(req, res) {
-    const id          = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id, 10);
     const { nuevo_estado, observacion } = req.body;
-    const clientIp    = req.ip || req.socket?.remoteAddress || null;
+    const clientIp = req.ip || req.socket?.remoteAddress || null;
+    const userRole = req.user.rol; // 'Ejecutivo', 'Administrador', 'Jefe'
 
     if (isNaN(id) || id < 1) {
       return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
@@ -309,8 +310,8 @@ const QuotationController = {
     }
 
     try {
-      // Fetch current state before attempting the transition
-      const quotation = await QuotationModel.findById(id);
+      // Usar el helper del modelo para capturar los datos de control del registro
+      const quotation = await QuotationModel.getStateInfo(id);
 
       if (!quotation) {
         return res.status(404).json({
@@ -319,10 +320,43 @@ const QuotationController = {
         });
       }
 
-      const estadoAnterior = quotation.estado;
+      const estadoActual = quotation.estado;
 
-      // updateStatus validates the transition matrix internally; throws on invalid transition
-      const updated = await QuotationModel.updateStatus(id, nuevo_estado, estadoAnterior);
+      // --- VALIDACIONES DE MÁQUINA DE ESTADOS & ROLES (Sección 3.7.4) ---
+
+      // Desviar resoluciones definitivas al endpoint dedicado de aprobaciones si no es el Jefe
+      if ((nuevo_estado === 'Aprobada internamente' || nuevo_estado === 'Rechazada') && userRole !== 'Jefe') {
+        return res.status(403).json({
+          success: false,
+          message: 'Transición denegada. Solo el rol de Jefe puede resolver o dictaminar una cotización.'
+        });
+      }
+
+      // Evitar saltos de flujo directos desde Pendiente a estados finales
+      if (estadoActual === 'Pendiente' && (nuevo_estado === 'Aprobada internamente' || nuevo_estado === 'Rechazada')) {
+        return res.status(422).json({
+          success: false,
+          message: 'Violación de flujo: No se puede aprobar o rechazar una cotización que está Pendiente sin antes pasar por En revision.'
+        });
+      }
+
+      // Restricción para Ejecutivos: Solo pueden promover su borrador hacia revisión
+      if (userRole === 'Ejecutivo') {
+        if (estadoActual !== 'Pendiente' || nuevo_estado !== 'En revision') {
+          return res.status(403).json({
+            success: false,
+            message: 'Permiso denegado. Un Ejecutivo solo puede promover una cotización de Pendiente a En revision.'
+          });
+        }
+      }
+
+      // Si se intenta setear el mismo estado actual, retornar éxito para ahorrar I/O en la BD
+      if (estadoActual === nuevo_estado) {
+        return res.status(200).json({ success: true, message: 'No state changes required.', data: { id, estado: estadoActual } });
+      }
+
+      // Ejecutar la transición estándar validando la matriz del modelo
+      const updated = await QuotationModel.updateStatus(id, nuevo_estado, estadoActual);
 
       if (!updated) {
         return res.status(409).json({
@@ -332,29 +366,27 @@ const QuotationController = {
       }
 
       await logEvent({
-        id_usuario:    req.user.id,
+        id_usuario:     req.user.id,
         nombre_usuario: req.user.nombre_usuario,
-        accion:        AuditActions.CAMBIAR_ESTADO,
-        entidad:       'cotizaciones',
-        id_entidad:    id,
-        detalle:       { estado_anterior: estadoAnterior, nuevo_estado, observacion: observacion || null },
-        ip_origen:     clientIp,
-        resultado:     'exito',
+        accion:         AuditActions.CAMBIAR_ESTADO,
+        entidad:        'cotizaciones',
+        id_entidad:     id,
+        detalle:        { estado_anterior: estadoActual, nuevo_estado, observacion: observacion || null },
+        ip_origen:      clientIp,
+        resultado:      'exito',
       });
 
       return res.status(200).json({
         success: true,
-        message: `Quotation status updated: '${estadoAnterior}' → '${nuevo_estado}'.`,
-        data:    { id, estado_anterior: estadoAnterior, nuevo_estado },
+        message: `Quotation status updated: '${estadoActual}' → '${nuevo_estado}'.`,
+        data:    { id, estado_anterior: estadoActual, nuevo_estado },
       });
     } catch (error) {
-      // If QuotationModel threw an invalid-transition error, surface it as 409 Conflict
       if (error.message.startsWith('Invalid state transition')) {
         return res.status(409).json({ success: false, message: error.message });
       }
 
       console.error('[QuotationController.updateStatus] Error:', error.message);
-
       return res.status(500).json({
         success: false,
         message: 'Failed to update quotation status.',
@@ -364,29 +396,44 @@ const QuotationController = {
 
   // ---------------------------------------------------------------------------
   // approveQuotation
-  // POST /api/cotizaciones/:id/aprobar  (Role: Jefe only)
-  // HU08 — Approve or reject a quotation that is in "En revision" state.
+  // POST /api/cotizaciones/:id/aprobar  (Exclusivo rol: Jefe - HU08)
+  // Procesa la aprobación o rechazo de una cotización bajo transacciones atómicas
   // ---------------------------------------------------------------------------
   async approveQuotation(req, res) {
-    const id                  = parseInt(req.params.id, 10);
-    const { decision, obs_aprobacion } = req.body;
-    const clientIp            = req.ip || req.socket?.remoteAddress || null;
+    const id = parseInt(req.params.id, 10);
+    const { decision, obs_aprobacion } = req.body; // decision: 'aprobada' | 'rechazada'
+    const clientIp = req.ip || req.socket?.remoteAddress || null;
 
     if (isNaN(id) || id < 1) {
       return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
     }
 
-    // Validate decision value
-    if (!decision || !['aprobada', 'rechazada'].includes(decision)) {
-      return res.status(422).json({
+    // Doble verificación programática de seguridad
+    if (req.user.rol !== 'Jefe') {
+      return res.status(403).json({
         success: false,
-        message: "Field 'decision' must be either 'aprobada' or 'rechazada'.",
+        message: 'Acceso Denegado. Esta operación es de uso exclusivo para el Jefe de Área (HU08).'
       });
     }
 
+    if (!decision || !['aprobada', 'rechazada'].includes(decision)) {
+      return res.status(422).json({
+        success: false,
+        errors: [{ field: 'decision', message: "Field 'decision' must be either 'aprobada' or 'rechazada'." }],
+      });
+    }
+
+    // Exigencia del motivo técnico en caso de rechazos
+    if (decision === 'rechazada' && (!obs_aprobacion || obs_aprobacion.trim().length === 0)) {
+      return res.status(422).json({
+        success: false,
+        errors: [{ field: 'obs_aprobacion', message: 'Debe especificar de forma obligatoria las observaciones o el motivo del rechazo.' }]
+      });
+    }
+
+    let connection;
     try {
-      // Check that the quotation exists and is in "En revision"
-      const quotation = await QuotationModel.findById(id);
+      const quotation = await QuotationModel.getStateInfo(id);
 
       if (!quotation) {
         return res.status(404).json({
@@ -398,54 +445,61 @@ const QuotationController = {
       if (quotation.estado !== 'En revision') {
         return res.status(409).json({
           success: false,
-          message: `Only quotations in 'En revision' state can be approved or rejected. ` +
-                   `Current state: '${quotation.estado}'.`,
+          message: `Only quotations in 'En revision' state can be approved or rejected. Current state: '${quotation.estado}'.`,
         });
       }
 
-      const approved = await QuotationModel.approve(
-        id,
-        req.user.id,       // Jefe's user ID
-        decision,
-        obs_aprobacion || null
-      );
+      const determinanteEstado = decision === 'aprobada' ? 'Aprobada internamente' : 'Rechazada';
+      const accionHistorial = decision === 'aprobada' ? 'APROBADA' : 'RECHAZADA';
 
-      if (!approved) {
-        return res.status(409).json({
-          success: false,
-          message: 'Approval could not be recorded. The quotation state may have changed concurrently.',
-        });
-      }
+      // --- EJECUCIÓN DEL FLUJO ATÓMICO (ACID) ---
+      connection = await pool.getConnection();
+      await connection.beginTransaction();
 
-      const auditAction = decision === 'aprobada'
-        ? AuditActions.APROBAR
-        : AuditActions.RECHAZAR;
+      // 1. Modificar encabezado principal
+      await QuotationModel.updateStatusInTransaction(connection, id, determinanteEstado);
 
-      await logEvent({
-        id_usuario:    req.user.id,
-        nombre_usuario: req.user.nombre_usuario,
-        accion:        auditAction,
-        entidad:       'cotizaciones',
-        id_entidad:    id,
-        detalle:       { decision, obs_aprobacion: obs_aprobacion || null },
-        ip_origen:     clientIp,
-        resultado:     'exito',
+      // 2. Persistir registro en la tabla histórica de aprobaciones (HU08)
+      await QuotationModel.insertApprovalHistory(connection, {
+        id_cotizacion: id,
+        id_jefe: req.user.id,
+        accion: accionHistorial,
+        observaciones: obs_aprobacion ? obs_aprobacion.trim() : null
       });
 
-      const nuevoEstado = decision === 'aprobada' ? 'Aprobada internamente' : 'Rechazada';
+      await connection.commit();
+
+      // 3. Registrar auditoría global inmutable
+      const auditAction = decision === 'aprobada' ? AuditActions.APROBAR : AuditActions.RECHAZAR;
+      await logEvent({
+        id_usuario:     req.user.id,
+        nombre_usuario: req.user.nombre_usuario,
+        accion:         auditAction,
+        entidad:        'cotizaciones',
+        id_entidad:     id,
+        detalle:        { decision, obs_aprobacion: obs_aprobacion || null },
+        ip_origen:      clientIp,
+        resultado:      'exito',
+      });
 
       return res.status(200).json({
         success: true,
         message: `Quotation ${decision === 'aprobada' ? 'approved' : 'rejected'} successfully.`,
-        data:    { id, nuevo_estado: nuevoEstado },
+        data:    { id, nuevo_estado: determinanteEstado },
       });
     } catch (error) {
+      if (connection) {
+        try { await connection.rollback(); } catch (rbErr) { console.error('Rollback failed:', rbErr.message); }
+      }
       console.error('[QuotationController.approveQuotation] Error:', error.message);
-
       return res.status(500).json({
         success: false,
-        message: 'Failed to process approval.',
+        message: 'Failed to process approval due to an internal isolation error.',
       });
+    } finally {
+      if (connection) {
+        connection.release();
+      }
     }
   },
 
@@ -574,7 +628,63 @@ const QuotationController = {
 
       return res.status(500).json({
         success: false,
-        message: 'Failed to retrieve the PDF document.',
+        message: 'Failed to create or retrieve the PDF document.',
+      });
+    }
+  },
+
+  // ===========================================================================
+  // MÉTODOS COMPLEMENTARIOS ADICIONALES (SPRINT 2)
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // getStateSummary
+  // GET /api/cotizaciones/resumen  (Todos los roles)
+  // Retorna el conteo de cotizaciones agrupadas por estado.
+  // ---------------------------------------------------------------------------
+  async getStateSummary(req, res) {
+    try {
+      // Si el rol es Ejecutivo, se restringe para que solo vea el conteo de sus registros
+      const idEjecutivo = req.user.rol === 'Ejecutivo' ? req.user.id : null;
+      
+      const summary = await QuotationModel.findSummaryByState(idEjecutivo);
+      
+      return res.status(200).json({
+        success: true,
+        data: summary
+      });
+    } catch (error) {
+      console.error('[QuotationController.getStateSummary] Error:', error.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve states summary.'
+      });
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // getPendingApproval
+  // GET /api/cotizaciones/pendientes-aprobacion  (Exclusivo: Jefe)
+  // Devuelve la cola ordenada cronológicamente de cotizaciones "En revision".
+  // ---------------------------------------------------------------------------
+  async getPendingApproval(req, res) {
+    try {
+      if (req.user.rol !== 'Jefe') {
+        return res.status(403).json({ success: false, message: 'Access denied. Area Chief role required.' });
+      }
+
+      const pending = await QuotationModel.findPendingApproval();
+      
+      return res.status(200).json({
+        success: true,
+        total: pending.length,
+        data: pending
+      });
+    } catch (error) {
+      console.error('[QuotationController.getPendingApproval] Error:', error.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve the pending approvals queue.'
       });
     }
   },

@@ -87,10 +87,22 @@ router.get('/pendientes-aprobacion',
 // SPRINT 2 — Main listing (rebuilt with pagination, filters, sort)
 // ---------------------------------------------------------------------------
 
-// GET /api/cotizaciones
-// Full query parameter support: q, razon_social, nit, estado, id_cliente,
-// id_ejecutivo, fecha_desde, fecha_hasta, moneda, tiene_pdf,
-// page, limit, sort_by, sort_order
+/**
+ * @openapi
+ * /api/cotizaciones:
+ * get:
+ * summary: Obtener lista paginada y filtrada de cotizaciones
+ * description: Retorna un listado completo de cotizaciones soportando parámetros de búsqueda y filtros avanzados.
+ * tags:
+ * - Cotizaciones
+ * security:
+ * - bearerAuth: []
+ * responses:
+ * 200:
+ * description: Lista devuelta con éxito.
+ * 500:
+ * description: Error interno del servidor.
+ */
 router.get('/',
   ...allRoles,
   QuotationController.getQuotations
