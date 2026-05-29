@@ -45,34 +45,37 @@ app.use(helmet());
 app.set('trust proxy', 1);
 
 // ---------------------------------------------------------------------------
-// 2. CORS — allow requests from the configured frontend origin(s)
-//    Multiple origins can be provided as a comma-separated list in .env
+// 2. CORS — OPTIMIZADO PARA DESARROLLO Y SWAGGER UI
 // ---------------------------------------------------------------------------
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .split(',')
   .map((o) => o.trim())
-  .filter(Boolean); // Remove empty strings
+  .filter(Boolean);
+
+// Añadimos explícitamente el puerto local de Swagger para evitar bloqueos en local
+if (process.env.NODE_ENV !== 'production' || allowedOrigins.length === 0) {
+  if (!allowedOrigins.includes('http://localhost:3000')) {
+    allowedOrigins.push('http://localhost:3000');
+  }
+}
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (e.g. Postman, curl, server-to-server)
-    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS: Origin '${origin}' is not allowed.`));
+    // Permite peticiones sin origen (Postman/curl) o si está en la lista blanca extendida
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
     }
+    callback(new Error(`CORS: Origin '${origin}' is not allowed.`));
   },
-  methods:          ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders:   ['Content-Type', 'Authorization'],
-  exposedHeaders:   ['Content-Disposition'], // Needed for file downloads
-  credentials:      true,
-  optionsSuccessStatus: 204, // Some legacy browsers (IE11) choke on 204
+  methods:         ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders:  ['Content-Type', 'Authorization'],
+  exposedHeaders:  ['Content-Disposition'], // Necesario para descargas de PDFs
+  credentials:     true,
+  optionsSuccessStatus: 204,
 }));
 
 // ---------------------------------------------------------------------------
 // 3. HTTP Request Logging — morgan
-//    "combined" format in production (includes IP, date, status, response time)
-//    "dev"      format in development (colored, concise)
 // ---------------------------------------------------------------------------
 const morganFormat = process.env.NODE_ENV === 'production' ? 'combined' : 'dev';
 app.use(morgan(morganFormat));
@@ -112,7 +115,6 @@ const swaggerOptions = {
       },
     },
   },
-  // Le dice a Swagger que escanee todos los archivos de la carpeta routes
   apis: ['./src/routes/*.js'], 
 };
 
@@ -121,20 +123,19 @@ const swaggerDocs = swaggerJsdoc(swaggerOptions);
 // Servir la interfaz interactiva en http://localhost:3000/api-docs
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
-// Si quieres que al entrar a la raíz (http://localhost:3000/) te redirija automáticamente a Swagger:
+// Redirección de la raíz a la documentación de Swagger
 app.get('/', (req, res) => {
   res.redirect('/api-docs');
 });
 
 // ---------------------------------------------------------------------------
 // 5. Application Routes
-//    All API routes are prefixed with /api (RESTful convention)
 // ---------------------------------------------------------------------------
 app.use('/api/auth',         authRoutes);       // POST /api/auth/login|logout
 app.use('/api/cotizaciones', quotationRoutes);  // CRUD /api/cotizaciones
-app.use('/api/usuarios',     userRoutes);       // CRUD /api/usuarios (Jefe only)
+app.use('/api/usuarios',      userRoutes);       // CRUD /api/usuarios (Jefe only)
 
-// Health-check endpoint — used by monitoring tools and deployment pipelines
+// Health-check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({
     status:    'ok',
@@ -154,24 +155,22 @@ app.use((req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// 7. Global Error Handler — Express identifies error handlers by their 4 args
-//    Catches errors thrown by route handlers, middleware, and multer
+// 7. Global Error Handler — OPTIMIZADO CONTRA CRASHES SILENCIOSOS
 // ---------------------------------------------------------------------------
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
-  // Log the full stack trace for debugging (avoid leaking to the client)
-  console.error('[GlobalErrorHandler]', err.stack || err.message);
+  console.error('[GlobalErrorHandler]', err.stack || err.message || err);
 
-  // CORS errors thrown from the cors() middleware
-  if (err.message && err.message.startsWith('CORS:')) {
+  // Manejo de errores de CORS seguro con encadenamiento opcional
+  if (err?.message?.startsWith('CORS:')) {
     return res.status(403).json({ success: false, message: err.message });
   }
 
-  // Fallback: generic 500 with a safe, non-revealing message
+  // Fallback seguro 500
   res.status(err.status || 500).json({
     success: false,
     message: err.status
-      ? err.message  // Known HTTP error with a safe message
+      ? err.message  
       : 'An unexpected internal server error occurred.',
   });
 });

@@ -86,27 +86,37 @@ router.get('/pendientes-aprobacion',
 // ---------------------------------------------------------------------------
 // SPRINT 2 — Main listing (rebuilt with pagination, filters, sort)
 // ---------------------------------------------------------------------------
-
 /**
  * @openapi
- * /api/cotizaciones:
- * get:
- * summary: Obtener lista paginada y filtrada de cotizaciones
- * description: Retorna un listado completo de cotizaciones soportando parámetros de búsqueda y filtros avanzados.
- * tags:
- * - Cotizaciones
- * security:
- * - bearerAuth: []
- * responses:
- * 200:
- * description: Lista devuelta con éxito.
- * 500:
- * description: Error interno del servidor.
+ * {
+ * "/api/auth/login": {
+ * "post": {
+ * "summary": "Iniciar sesión en el sistema (Obtener Token JWT)",
+ * "description": "Envía las credenciales de usuario para recibir un token de acceso válido.",
+ * "tags": ["Autenticación"],
+ * "requestBody": {
+ * "required": true,
+ * "content": {
+ * "application/json": {
+ * "schema": {
+ * "type": "object",
+ * "required": ["nombre_usuario", "password"],
+ * "properties": {
+ * "nombre_usuario": { "type": "string", "example": "adrian_admin" },
+ * "password": { "type": "string", "example": "Password123!" }
+ * }
+ * }
+ * }
+ * }
+ * },
+ * "responses": {
+ * "200": { "description": "Autenticación exitosa. Retorna el token JWT." },
+ * "401": { "description": "Credenciales inválidas." }
+ * }
+ * }
+ * }
+ * }
  */
-router.get('/',
-  ...allRoles,
-  QuotationController.getQuotations
-);
 
 // ---------------------------------------------------------------------------
 // SPRINT 1 — Write routes (unchanged)

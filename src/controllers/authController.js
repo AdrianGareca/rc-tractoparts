@@ -1,41 +1,39 @@
 // =============================================================================
 // src/controllers/authController.js
 // Authentication Controller — HU01: Login and Logout
-// (Section 3.10 — POST /api/auth/login, POST /api/auth/logout)
 //
-// Responsibilities:
-//   - Validate request payload
-//   - Delegate business logic to UserModel
-//   - Issue or invalidate JWT tokens
-//   - Return structured JSON responses per the API contract (Section 3.10)
+// Sprint 2 hardening: added explicit hash.trim() as a defensive measure
+// against any database driver that might pad fixed-width columns, even though
+// our schema declares password_hash as VARCHAR(255). The trim costs nothing
+// and makes the comparison resilient to column-type regressions.
 // =============================================================================
 
 'use strict';
 
-const bcrypt    = require('bcryptjs');           // Password hash comparison
-const jwt       = require('jsonwebtoken');        // JWT signing
-const UserModel = require('../models/UserModel'); // Data access layer
-const { revokeToken } = require('../middlewares/authMiddleware'); // Token revocation store
-const { logEvent, AuditActions } = require('../utils/auditLog'); // Audit logger
+const bcrypt    = require('bcryptjs');
+const jwt       = require('jsonwebtoken');
+const UserModel = require('../models/UserModel');
+const { revokeToken }             = require('../middlewares/authMiddleware');
+const { logEvent, AuditActions }  = require('../utils/auditLog');
 
 const AuthController = {
 
   // ---------------------------------------------------------------------------
-  // login
-  // POST /api/auth/login
+  // login — POST /api/auth/login
   //
   // Steps:
-  //   1. Validate required fields in the request body
-  //   2. Look up the user by username
-  //   3. Check if the account is active and not locked
-  //   4. Compare the provided password against the stored bcrypt hash
-  //   5. On success: reset failed-attempt counter, issue JWT, log the event
-  //   6. On failure: increment failed-attempt counter, log the failed attempt
+  //   1. Validate required fields
+  //   2. Look up the user by username (INNER JOIN with roles)
+  //   3. Reject inactive accounts
+  //   4. Reject locked accounts (brute-force protection)
+  //   5. Compare the submitted password against the stored bcrypt hash
+  //   6. On success: reset failed-attempt counter, issue JWT, log event
+  //   7. On failure: increment failed-attempt counter, log event
   // ---------------------------------------------------------------------------
   async login(req, res) {
     const { nombre_usuario, password } = req.body;
 
-    // --- 1. Input validation ---
+    // ── 1. Field presence check ───────────────────────────────────────────────
     if (!nombre_usuario || !password) {
       return res.status(422).json({
         success: false,
@@ -43,23 +41,20 @@ const AuthController = {
       });
     }
 
-    // Trim whitespace to tolerate accidental spaces (common on mobile keyboards)
+    // Trim whitespace to tolerate accidental spaces (common on mobile / Swagger UI)
     const trimmedUsername = String(nombre_usuario).trim();
     const clientIp        = req.ip || req.socket?.remoteAddress || null;
 
     try {
-      // --- 2. Look up user ---
+      // ── 2. User lookup ────────────────────────────────────────────────────────
       const user = await UserModel.findByUsername(trimmedUsername);
 
+      // Generic 401 — never reveal whether the username exists or not
       if (!user) {
-        // Do not reveal whether the username exists — generic error per HU01 acceptance criteria
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid credentials.',
-        });
+        return res.status(401).json({ success: false, message: 'Invalid credentials.' });
       }
 
-      // --- 3a. Check if the account is active ---
+      // ── 3. Active account check ───────────────────────────────────────────────
       if (!user.activo) {
         await logEvent({
           id_usuario:    user.id,
@@ -72,13 +67,11 @@ const AuthController = {
           resultado:     'fallo',
         });
 
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid credentials.', // Generic — do not expose inactive status
-        });
+        // Return the same generic message to prevent username enumeration
+        return res.status(401).json({ success: false, message: 'Invalid credentials.' });
       }
 
-      // --- 3b. Check if the account is temporarily locked ---
+      // ── 4. Brute-force lockout check ──────────────────────────────────────────
       if (user.bloqueado_hasta && new Date(user.bloqueado_hasta) > new Date()) {
         const unlockTime = new Date(user.bloqueado_hasta).toISOString();
 
@@ -95,16 +88,20 @@ const AuthController = {
 
         return res.status(401).json({
           success: false,
-          message: `Account temporarily locked due to repeated failed attempts. ` +
+          message: `Account temporarily locked due to repeated failed login attempts. ` +
                    `Try again after ${unlockTime}.`,
         });
       }
 
-      // --- 4. Compare password against stored bcrypt hash ---
-      const passwordMatches = await bcrypt.compare(password, user.password_hash);
+      // ── 5. Password comparison ────────────────────────────────────────────────
+      // .trim() on the stored hash is a defensive measure: if the database column
+      // were ever misconfigured as CHAR (fixed-width, space-padded), MySQL would
+      // return trailing spaces that silently break bcrypt's internal string checks.
+      // VARCHAR(255) is correct and should never pad, but this costs nothing.
+      const storedHash      = String(user.password_hash).trim();
+      const passwordMatches = await bcrypt.compare(password, storedHash);
 
       if (!passwordMatches) {
-        // Increment the failed-attempt counter (may trigger account lock)
         await UserModel.incrementFailedAttempts(user.id);
 
         await logEvent({
@@ -113,36 +110,32 @@ const AuthController = {
           accion:        AuditActions.LOGIN_FAILED,
           entidad:       'usuarios',
           id_entidad:    user.id,
-          detalle:       { reason: 'wrong_password', attempts: user.intentos_fallidos + 1 },
+          detalle:       { reason: 'wrong_password', attempts: (user.intentos_fallidos || 0) + 1 },
           ip_origen:     clientIp,
           resultado:     'fallo',
         });
 
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid credentials.', // Generic — never specify which field failed
-        });
+        return res.status(401).json({ success: false, message: 'Invalid credentials.' });
       }
 
-      // --- 5. Authentication successful ---
+      // ── 6. Authentication successful ──────────────────────────────────────────
 
-      // Reset failed attempts and update last-access timestamp
+      // Reset failed-attempt counter and record last-access timestamp
       await UserModel.updateLoginSuccess(user.id);
 
-      // Build the JWT payload — only include data needed by downstream middleware
+      // Build the JWT payload — include only what downstream middleware needs.
+      // user.rol is the role NAME string (e.g. 'Jefe') from the JOIN with roles.
       const tokenPayload = {
         id:             user.id,
         nombre_usuario: user.nombre_usuario,
-        rol:            user.rol, // e.g. "Ejecutivo", "Administracion", "Jefe"
+        rol:            user.rol,   // Always the string name from the roles table JOIN
       };
 
-      // Sign the token with the application secret; lifetime from .env
       const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
-        expiresIn:  process.env.JWT_EXPIRES_IN || '8h',
-        algorithm:  'HS256', // Symmetric signature — secret stays on the server
+        expiresIn: process.env.JWT_EXPIRES_IN || '8h',
+        algorithm: 'HS256',
       });
 
-      // Log the successful login event
       await logEvent({
         id_usuario:    user.id,
         nombre_usuario: user.nombre_usuario,
@@ -153,7 +146,6 @@ const AuthController = {
         resultado:     'exito',
       });
 
-      // Return the token and minimal profile data; never return password_hash
       return res.status(200).json({
         success: true,
         message: 'Authentication successful.',
@@ -168,8 +160,7 @@ const AuthController = {
         },
       });
     } catch (error) {
-      // Unexpected database or runtime error
-      console.error('[AuthController.login] Error:', error.message);
+      console.error('[AuthController.login] Unexpected error:', error.message);
 
       return res.status(500).json({
         success: false,
@@ -179,18 +170,14 @@ const AuthController = {
   },
 
   // ---------------------------------------------------------------------------
-  // logout
-  // POST /api/auth/logout
-  //
-  // Adds the current request's JWT to the in-memory revoked set.
-  // The authenticate middleware attaches req.token; it is guaranteed to exist here
-  // because this route is protected by that middleware.
+  // logout — POST /api/auth/logout
+  // Adds the current JWT to the in-memory revoked set. The authenticate
+  // middleware has already verified the token and attached req.token.
   // ---------------------------------------------------------------------------
   async logout(req, res) {
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
     try {
-      // Revoke the token so it cannot be reused before expiry
       revokeToken(req.token);
 
       await logEvent({
