@@ -10,6 +10,9 @@
     "test:unit": "jest tests/unit --runInBand",
     "test:integration": "jest tests/integration --runInBand --forceExit",
     "db:init": "node -e \"require('./sql/init').run()\"",
+    "db:migrate": "echo 'Run manually: mysql -u <user> -p rc_tractoparts < sql/migrate_sprint2_estados.sql'",
+    "seed": "node scripts/seed-users.js",
+    "seed:execute": "node scripts/seed-users.js --execute",
     "lint": "eslint src/**/*.js"
   },
   "dependencies": {
@@ -22,9 +25,7 @@
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "mysql2": "^3.9.7",
-    "pdfkit": "^0.18.0",
-    "swagger-jsdoc": "^6.3.0",
-    "swagger-ui-express": "^5.0.1"
+    "pdfkit": "^0.18.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",

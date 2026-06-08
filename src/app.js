@@ -20,6 +20,7 @@
 
 require('dotenv').config(); // Load .env before any module reads process.env
 
+const path = require('path');
 const express = require('express');
 const helmet  = require('helmet');  // HTTP security headers (XSS, clickjacking, CSP…)
 const cors    = require('cors');    // Cross-Origin Resource Sharing
@@ -115,7 +116,10 @@ const swaggerOptions = {
       },
     },
   },
-  apis: ['./src/routes/*.js'], 
+  apis: [
+    path.join(__dirname, 'routes', '*.js').replace(/\\/g, '/'),
+    path.join(__dirname, 'controllers', '*.js').replace(/\\/g, '/')
+  ], 
 };
 
 const swaggerDocs = swaggerJsdoc(swaggerOptions);

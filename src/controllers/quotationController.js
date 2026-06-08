@@ -1,41 +1,38 @@
 // =============================================================================
 // src/controllers/quotationController.js
-// Quotation Controller — HU03 through HU08
-// (Section 3.10 — /api/cotizaciones endpoints)
+// Quotation Controller — All Sprints
 //
-// Responsibilities:
-//   - Receive HTTP requests and validate input
-//   - Delegate business operations to QuotationModel
-//   - Return structured JSON responses per the API contract
-//
-// CRITICAL (HU03 / RNF10):
-//   createQuotation acquires a pool connection and wraps the correlativo
-//   generation + INSERT inside a database transaction to guarantee atomicity.
-//   The connection is released in the finally block — always.
+// Sprint 1:  createQuotation (atomic tx + auto-PDF), getQuotationById,
+//            uploadPdf, downloadPdf
+// Sprint 2 Step 1: getQuotations (paginated+filtered), getPendingApproval,
+//                  getStateSummary
+// Sprint 2 Step 2: updateStatus (role-based state machine + 'En revision'
+//                  mandatory-field pre-check), approveQuotation (HU08 with
+//                  boolean aprobado + mandatory observaciones on rejection +
+//                  PDF regeneration on approval), getStateHistory
 // =============================================================================
 
 'use strict';
 
-const path    = require('path'); // Node.js path utilities for PDF filename building
-const { pool } = require('../config/db');
+const path                        = require('path');
+const { pool }                    = require('../config/db');
 const QuotationModel              = require('../models/QuotationModel');
 const { logEvent, AuditActions }  = require('../utils/auditLog');
-const pdfService                  = require('../services/pdfService'); // Sprint 2: auto PDF generation
+const pdfService                  = require('../services/pdfService');
+
+// Valid sort column keys exposed to GET /api/cotizaciones callers
+const VALID_SORT_KEYS = Object.keys(QuotationModel.SORTABLE_COLUMNS);
 
 const QuotationController = {
 
+  // ===========================================================================
+  // SPRINT 1 — Write operations
+  // ===========================================================================
+
   // ---------------------------------------------------------------------------
-  // createQuotation
-  // POST /api/cotizaciones  (Roles: Ejecutivo, Administracion)
-  //
-  // Transaction flow (Section 3.6.1 — Sequence Diagram):
-  //   BEGIN TRANSACTION
-  //     1. Generate correlativo with SELECT ... FOR UPDATE (atomic)
-  //     2. INSERT cotizaciones header row
-  //     3. INSERT cotizacion_detalles line items (if any)
-  //   COMMIT
-  //
-  // Any error triggers ROLLBACK and returns an appropriate HTTP error code.
+  // createQuotation — POST /api/cotizaciones  (Roles: Ejecutivo, Administracion)
+  // Atomic flow: BEGIN → generateCorrelativo (FOR UPDATE) → INSERT header
+  //              → INSERT detalles → COMMIT → auto-generate PDF → persist path
   // ---------------------------------------------------------------------------
   async createQuotation(req, res) {
     const {
@@ -46,78 +43,67 @@ const QuotationController = {
       moneda,
       observaciones,
       fecha_validez,
-      detalles = [], // Array of line-item objects; optional for the header-only use case
+      detalles = [],
     } = req.body;
 
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    // --- Input validation ---
+    // ── Input validation ──────────────────────────────────────────────────────
     const validationErrors = [];
-
     if (!id_cliente)    validationErrors.push({ field: 'id_cliente',    message: 'Client ID is required.' });
     if (!descripcion)   validationErrors.push({ field: 'descripcion',   message: 'Description is required.' });
     if (!fecha_emision) validationErrors.push({ field: 'fecha_emision', message: 'Emission date is required.' });
 
-    // Validate each line item if provided
-    detalles.forEach((item, index) => {
+    detalles.forEach((item, idx) => {
       if (!item.descripcion_item) {
-        validationErrors.push({ field: `detalles[${index}].descripcion_item`, message: 'Item description is required.' });
+        validationErrors.push({ field: `detalles[${idx}].descripcion_item`, message: 'Item description is required.' });
       }
       if (item.cantidad == null || parseFloat(item.cantidad) <= 0) {
-        validationErrors.push({ field: `detalles[${index}].cantidad`, message: 'Quantity must be greater than 0.' });
+        validationErrors.push({ field: `detalles[${idx}].cantidad`, message: 'Quantity must be greater than 0.' });
       }
       if (item.precio_unitario == null || parseFloat(item.precio_unitario) < 0) {
-        validationErrors.push({ field: `detalles[${index}].precio_unitario`, message: 'Unit price must be 0 or greater.' });
+        validationErrors.push({ field: `detalles[${idx}].precio_unitario`, message: 'Unit price must be 0 or greater.' });
       }
     });
 
     if (validationErrors.length > 0) {
       return res.status(422).json({
         success: false,
-        message:  'Validation failed. Please review the following fields.',
-        errors:   validationErrors,
+        message: 'Validation failed.',
+        errors:  validationErrors,
       });
     }
 
-    // --- Duplicate detection (RF06 — Section 3.1) ---
-    // This check runs before the transaction to avoid holding locks unnecessarily.
+    // ── Duplicate detection (RF06 — non-blocking) ─────────────────────────────
     let duplicateWarning = null;
-
     try {
       const potentialDuplicates = await QuotationModel.checkDuplicate(
         parseInt(id_cliente, 10),
         descripcion
       );
-
       if (potentialDuplicates.length > 0) {
-        // Build a non-blocking warning; the client decides whether to proceed
         duplicateWarning = {
           message:    'A similar quotation may already exist for this client within the last 30 days.',
           candidates: potentialDuplicates,
         };
       }
-    } catch (dupError) {
-      // Duplicate check failure should not block quotation creation
-      console.warn('[QuotationController] Duplicate check failed (non-fatal):', dupError.message);
+    } catch (dupErr) {
+      console.warn('[QuotationController] Duplicate check failed (non-fatal):', dupErr.message);
     }
 
-    // --- Atomic transaction: correlativo + INSERT ---
-    let connection; // Declared outside try so finally can always release it
+    // ── Atomic transaction ────────────────────────────────────────────────────
+    let connection;
 
     try {
-      // Acquire a dedicated connection from the pool for the transaction
       connection = await pool.getConnection();
+      await connection.beginTransaction();
 
-      await connection.beginTransaction(); // START TRANSACTION
-
-      // Step 1 — Generate the serial number with exclusive row lock
       const numeroCorrelativo = await QuotationModel.generateCorrelativo(connection);
 
-      // Step 2 — Insert the quotation header (cotizaciones table)
       const quotationId = await QuotationModel.create(connection, {
         numero_correlativo: numeroCorrelativo,
         id_cliente:         parseInt(id_cliente, 10),
-        id_ejecutivo:       req.user.id, // Set from the authenticated JWT payload
+        id_ejecutivo:       req.user.id,
         descripcion:        String(descripcion).trim(),
         monto_total:        monto_total != null ? parseFloat(monto_total) : null,
         moneda:             moneda || 'USD',
@@ -126,141 +112,87 @@ const QuotationController = {
         fecha_validez:      fecha_validez || null,
       });
 
-      // Step 3 — Insert line items (cotizacion_detalles table), if any
       if (detalles.length > 0) {
         await QuotationModel.createDetalles(connection, quotationId, detalles);
       }
 
-      await connection.commit(); // COMMIT — releases all locks
+      await connection.commit();
 
-      // --- Post-transaction: fetch the full record, auto-generate PDF, write audit log ---
-      // These run on the shared pool (not the transaction connection) after commit.
+      // ── Post-commit: fetch full record, generate PDF, write audit ───────────
       const createdQuotation = await QuotationModel.findById(quotationId);
 
-      // -----------------------------------------------------------------------
-      // Sprint 2: Automatic PDF generation
-      // The PDF is generated from the fully-populated quotation object (including
-      // the detalles[] already joined by findById) and the resulting file path
-      // is persisted back to the database before the 201 response is sent.
-      //
-      // NON-FATAL: a PDF generation failure does not roll back the committed
-      // quotation record. The quotation is saved; the executive can upload the
-      // PDF manually via POST /api/cotizaciones/:id/pdf if auto-generation fails.
-      // -----------------------------------------------------------------------
+      // Auto-generate PDF — non-fatal: the quotation is saved regardless
       try {
         const pdfRelativePath = await pdfService.generateQuotationPdf(createdQuotation);
         await QuotationModel.updatePdfPath(quotationId, pdfRelativePath);
-        createdQuotation.pdf_ruta = pdfRelativePath; // Reflect the new path in the response
-      } catch (pdfError) {
+        createdQuotation.pdf_ruta = pdfRelativePath;
+      } catch (pdfErr) {
         console.error(
           `[QuotationController] Auto PDF generation failed for ${numeroCorrelativo}:`,
-          pdfError.message
+          pdfErr.message
         );
-        // pdf_ruta remains null; the quotation is still returned with pdf_ruta: null
       }
 
-      await logEvent({
-        id_usuario:    req.user.id,
+      // Initial history record (Borrador is the first state)
+      await QuotationModel.logStateHistory({
+        id_cotizacion:  quotationId,
+        estado_anterior: null,
+        estado_nuevo:   'Borrador',
+        id_usuario:     req.user.id,
         nombre_usuario: req.user.nombre_usuario,
-        accion:        AuditActions.CREAR_COTIZACION,
-        entidad:       'cotizaciones',
-        id_entidad:    quotationId,
-        detalle:       {
-          numero_correlativo: numeroCorrelativo,
-          id_cliente:         parseInt(id_cliente, 10),
-          monto_total:        monto_total || null,
-        },
-        ip_origen:     clientIp,
-        resultado:     'exito',
+        rol_usuario:    req.user.rol,
+        observacion:    'Quotation created.',
+        ip_origen:      clientIp,
       });
 
-      // Return 201 Created with the full quotation record
+      await logEvent({
+        id_usuario:     req.user.id,
+        nombre_usuario: req.user.nombre_usuario,
+        accion:         AuditActions.CREAR_COTIZACION,
+        entidad:        'cotizaciones',
+        id_entidad:     quotationId,
+        detalle:        { numero_correlativo: numeroCorrelativo, id_cliente, monto_total: monto_total || null },
+        ip_origen:      clientIp,
+        resultado:      'exito',
+      });
+
       return res.status(201).json({
         success:          true,
         message:          `Quotation created successfully with serial ${numeroCorrelativo}.`,
-        duplicateWarning, // null if no potential duplicate was found
+        duplicateWarning,
         data:             createdQuotation,
       });
     } catch (error) {
-      // Roll back all changes if anything inside the transaction failed
       if (connection) {
-        try {
-          await connection.rollback(); // Release locks and discard changes
-        } catch (rollbackError) {
-          console.error('[QuotationController] Rollback error:', rollbackError.message);
+        try { await connection.rollback(); } catch (rbErr) {
+          console.error('[QuotationController] Rollback error:', rbErr.message);
         }
       }
 
-      // Log the failed creation attempt for audit purposes
       await logEvent({
-        id_usuario:    req.user?.id    || null,
+        id_usuario:     req.user?.id    || null,
         nombre_usuario: req.user?.nombre_usuario || null,
-        accion:        AuditActions.CREAR_COTIZACION,
-        entidad:       'cotizaciones',
-        id_entidad:    null,
-        detalle:       { error: error.message },
-        ip_origen:     clientIp,
-        resultado:     'fallo',
+        accion:         AuditActions.CREAR_COTIZACION,
+        entidad:        'cotizaciones',
+        id_entidad:     null,
+        detalle:        { error: error.message },
+        ip_origen:      clientIp,
+        resultado:      'fallo',
       });
 
-      console.error('[QuotationController.createQuotation] Transaction error:', error.message);
+      console.error('[QuotationController.createQuotation] Error:', error.message);
 
       return res.status(500).json({
         success: false,
         message: 'Failed to create quotation due to an internal error. Please try again.',
       });
     } finally {
-      // Always release the connection back to the pool — even on error
-      if (connection) {
-        connection.release();
-      }
+      if (connection) connection.release();
     }
   },
 
   // ---------------------------------------------------------------------------
-  // getQuotations
-  // GET /api/cotizaciones  (All roles)
-  // Returns a paginated, filterable list of quotations.
-  // ---------------------------------------------------------------------------
-  async getQuotations(req, res) {
-    try {
-      const filters = {
-        estado:       req.query.estado       || null,
-        id_cliente:   req.query.id_cliente   || null,
-        id_ejecutivo: req.query.id_ejecutivo || null,
-        desde:        req.query.desde        || null,
-        hasta:        req.query.hasta        || null,
-        q:            req.query.q            || null,
-      };
-
-      // Remove null values so QuotationModel only builds clauses for provided filters
-      Object.keys(filters).forEach((key) => {
-        if (filters[key] === null || filters[key] === '') {
-          delete filters[key];
-        }
-      });
-
-      const quotations = await QuotationModel.findAll(filters);
-
-      return res.status(200).json({
-        success: true,
-        total:   quotations.length,
-        data:    quotations,
-      });
-    } catch (error) {
-      console.error('[QuotationController.getQuotations] Error:', error.message);
-
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve quotations.',
-      });
-    }
-  },
-
-  // ---------------------------------------------------------------------------
-  // getQuotationById
-  // GET /api/cotizaciones/:id  (All roles)
-  // Returns the complete quotation including line items and approval data.
+  // getQuotationById — GET /api/cotizaciones/:id  (All roles)
   // ---------------------------------------------------------------------------
   async getQuotationById(req, res) {
     const id = parseInt(req.params.id, 10);
@@ -282,232 +214,12 @@ const QuotationController = {
       return res.status(200).json({ success: true, data: quotation });
     } catch (error) {
       console.error('[QuotationController.getQuotationById] Error:', error.message);
-
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve quotation.',
-      });
-    }
-  },
-
-// ---------------------------------------------------------------------------
-  // updateStatus
-  // PUT /api/cotizaciones/:id/estado  (Todos los roles; validación por máquina de estados)
-  // Cambia el estado comercial de una cotización controlando flujos y roles.
-  // ---------------------------------------------------------------------------
-  async updateStatus(req, res) {
-    const id = parseInt(req.params.id, 10);
-    const { nuevo_estado, observacion } = req.body;
-    const clientIp = req.ip || req.socket?.remoteAddress || null;
-    const userRole = req.user.rol; // 'Ejecutivo', 'Administrador', 'Jefe'
-
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
-
-    if (!nuevo_estado) {
-      return res.status(422).json({ success: false, message: 'nuevo_estado is required.' });
-    }
-
-    try {
-      // Usar el helper del modelo para capturar los datos de control del registro
-      const quotation = await QuotationModel.getStateInfo(id);
-
-      if (!quotation) {
-        return res.status(404).json({
-          success: false,
-          message: `Quotation with ID ${id} was not found.`,
-        });
-      }
-
-      const estadoActual = quotation.estado;
-
-      // --- VALIDACIONES DE MÁQUINA DE ESTADOS & ROLES (Sección 3.7.4) ---
-
-      // Desviar resoluciones definitivas al endpoint dedicado de aprobaciones si no es el Jefe
-      if ((nuevo_estado === 'Aprobada internamente' || nuevo_estado === 'Rechazada') && userRole !== 'Jefe') {
-        return res.status(403).json({
-          success: false,
-          message: 'Transición denegada. Solo el rol de Jefe puede resolver o dictaminar una cotización.'
-        });
-      }
-
-      // Evitar saltos de flujo directos desde Pendiente a estados finales
-      if (estadoActual === 'Pendiente' && (nuevo_estado === 'Aprobada internamente' || nuevo_estado === 'Rechazada')) {
-        return res.status(422).json({
-          success: false,
-          message: 'Violación de flujo: No se puede aprobar o rechazar una cotización que está Pendiente sin antes pasar por En revision.'
-        });
-      }
-
-      // Restricción para Ejecutivos: Solo pueden promover su borrador hacia revisión
-      if (userRole === 'Ejecutivo') {
-        if (estadoActual !== 'Pendiente' || nuevo_estado !== 'En revision') {
-          return res.status(403).json({
-            success: false,
-            message: 'Permiso denegado. Un Ejecutivo solo puede promover una cotización de Pendiente a En revision.'
-          });
-        }
-      }
-
-      // Si se intenta setear el mismo estado actual, retornar éxito para ahorrar I/O en la BD
-      if (estadoActual === nuevo_estado) {
-        return res.status(200).json({ success: true, message: 'No state changes required.', data: { id, estado: estadoActual } });
-      }
-
-      // Ejecutar la transición estándar validando la matriz del modelo
-      const updated = await QuotationModel.updateStatus(id, nuevo_estado, estadoActual);
-
-      if (!updated) {
-        return res.status(409).json({
-          success: false,
-          message: 'State could not be updated. The quotation may have been modified concurrently.',
-        });
-      }
-
-      await logEvent({
-        id_usuario:     req.user.id,
-        nombre_usuario: req.user.nombre_usuario,
-        accion:         AuditActions.CAMBIAR_ESTADO,
-        entidad:        'cotizaciones',
-        id_entidad:     id,
-        detalle:        { estado_anterior: estadoActual, nuevo_estado, observacion: observacion || null },
-        ip_origen:      clientIp,
-        resultado:      'exito',
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: `Quotation status updated: '${estadoActual}' → '${nuevo_estado}'.`,
-        data:    { id, estado_anterior: estadoActual, nuevo_estado },
-      });
-    } catch (error) {
-      if (error.message.startsWith('Invalid state transition')) {
-        return res.status(409).json({ success: false, message: error.message });
-      }
-
-      console.error('[QuotationController.updateStatus] Error:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to update quotation status.',
-      });
+      return res.status(500).json({ success: false, message: 'Failed to retrieve quotation.' });
     }
   },
 
   // ---------------------------------------------------------------------------
-  // approveQuotation
-  // POST /api/cotizaciones/:id/aprobar  (Exclusivo rol: Jefe - HU08)
-  // Procesa la aprobación o rechazo de una cotización bajo transacciones atómicas
-  // ---------------------------------------------------------------------------
-  async approveQuotation(req, res) {
-    const id = parseInt(req.params.id, 10);
-    const { decision, obs_aprobacion } = req.body; // decision: 'aprobada' | 'rechazada'
-    const clientIp = req.ip || req.socket?.remoteAddress || null;
-
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
-
-    // Doble verificación programática de seguridad
-    if (req.user.rol !== 'Jefe') {
-      return res.status(403).json({
-        success: false,
-        message: 'Acceso Denegado. Esta operación es de uso exclusivo para el Jefe de Área (HU08).'
-      });
-    }
-
-    if (!decision || !['aprobada', 'rechazada'].includes(decision)) {
-      return res.status(422).json({
-        success: false,
-        errors: [{ field: 'decision', message: "Field 'decision' must be either 'aprobada' or 'rechazada'." }],
-      });
-    }
-
-    // Exigencia del motivo técnico en caso de rechazos
-    if (decision === 'rechazada' && (!obs_aprobacion || obs_aprobacion.trim().length === 0)) {
-      return res.status(422).json({
-        success: false,
-        errors: [{ field: 'obs_aprobacion', message: 'Debe especificar de forma obligatoria las observaciones o el motivo del rechazo.' }]
-      });
-    }
-
-    let connection;
-    try {
-      const quotation = await QuotationModel.getStateInfo(id);
-
-      if (!quotation) {
-        return res.status(404).json({
-          success: false,
-          message: `Quotation with ID ${id} was not found.`,
-        });
-      }
-
-      if (quotation.estado !== 'En revision') {
-        return res.status(409).json({
-          success: false,
-          message: `Only quotations in 'En revision' state can be approved or rejected. Current state: '${quotation.estado}'.`,
-        });
-      }
-
-      const determinanteEstado = decision === 'aprobada' ? 'Aprobada internamente' : 'Rechazada';
-      const accionHistorial = decision === 'aprobada' ? 'APROBADA' : 'RECHAZADA';
-
-      // --- EJECUCIÓN DEL FLUJO ATÓMICO (ACID) ---
-      connection = await pool.getConnection();
-      await connection.beginTransaction();
-
-      // 1. Modificar encabezado principal
-      await QuotationModel.updateStatusInTransaction(connection, id, determinanteEstado);
-
-      // 2. Persistir registro en la tabla histórica de aprobaciones (HU08)
-      await QuotationModel.insertApprovalHistory(connection, {
-        id_cotizacion: id,
-        id_jefe: req.user.id,
-        accion: accionHistorial,
-        observaciones: obs_aprobacion ? obs_aprobacion.trim() : null
-      });
-
-      await connection.commit();
-
-      // 3. Registrar auditoría global inmutable
-      const auditAction = decision === 'aprobada' ? AuditActions.APROBAR : AuditActions.RECHAZAR;
-      await logEvent({
-        id_usuario:     req.user.id,
-        nombre_usuario: req.user.nombre_usuario,
-        accion:         auditAction,
-        entidad:        'cotizaciones',
-        id_entidad:     id,
-        detalle:        { decision, obs_aprobacion: obs_aprobacion || null },
-        ip_origen:      clientIp,
-        resultado:      'exito',
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: `Quotation ${decision === 'aprobada' ? 'approved' : 'rejected'} successfully.`,
-        data:    { id, nuevo_estado: determinanteEstado },
-      });
-    } catch (error) {
-      if (connection) {
-        try { await connection.rollback(); } catch (rbErr) { console.error('Rollback failed:', rbErr.message); }
-      }
-      console.error('[QuotationController.approveQuotation] Error:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to process approval due to an internal isolation error.',
-      });
-    } finally {
-      if (connection) {
-        connection.release();
-      }
-    }
-  },
-
-  // ---------------------------------------------------------------------------
-  // uploadPdf
-  // POST /api/cotizaciones/:id/pdf  (Role: Ejecutivo only)
-  // Multer middleware (configured in routes) handles file validation and storage.
-  // This controller only persists the path to the database.
+  // uploadPdf — POST /api/cotizaciones/:id/pdf  (Role: Ejecutivo)
   // ---------------------------------------------------------------------------
   async uploadPdf(req, res) {
     const id       = parseInt(req.params.id, 10);
@@ -520,21 +232,16 @@ const QuotationController = {
     if (!req.file) {
       return res.status(422).json({
         success: false,
-        message: 'No PDF file was received. Ensure the field name is "archivo" and the file is a valid PDF.',
+        message: 'No PDF file received. Ensure the field name is "archivo" and the file is a valid PDF.',
       });
     }
 
     try {
       const quotation = await QuotationModel.findById(id);
-
       if (!quotation) {
-        return res.status(404).json({
-          success: false,
-          message: `Quotation with ID ${id} was not found.`,
-        });
+        return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
       }
 
-      // Build a relative path that matches the uploads directory structure
       const relativePath = path.join(
         process.env.UPLOAD_DIR || 'uploads/cotizaciones',
         req.file.filename
@@ -543,14 +250,14 @@ const QuotationController = {
       await QuotationModel.updatePdfPath(id, relativePath);
 
       await logEvent({
-        id_usuario:    req.user.id,
+        id_usuario:     req.user.id,
         nombre_usuario: req.user.nombre_usuario,
-        accion:        AuditActions.SUBIR_PDF,
-        entidad:       'cotizaciones',
-        id_entidad:    id,
-        detalle:       { archivo: req.file.filename, size_bytes: req.file.size },
-        ip_origen:     clientIp,
-        resultado:     'exito',
+        accion:         AuditActions.SUBIR_PDF,
+        entidad:        'cotizaciones',
+        id_entidad:     id,
+        detalle:        { archivo: req.file.filename, size_bytes: req.file.size },
+        ip_origen:      clientIp,
+        resultado:      'exito',
       });
 
       return res.status(200).json({
@@ -560,18 +267,12 @@ const QuotationController = {
       });
     } catch (error) {
       console.error('[QuotationController.uploadPdf] Error:', error.message);
-
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to link the uploaded PDF to the quotation.',
-      });
+      return res.status(500).json({ success: false, message: 'Failed to link the uploaded PDF.' });
     }
   },
 
   // ---------------------------------------------------------------------------
-  // downloadPdf
-  // GET /api/cotizaciones/:id/pdf  (All roles)
-  // Stream the stored PDF file to the client with the correct Content-Disposition.
+  // downloadPdf — GET /api/cotizaciones/:id/pdf  (All roles)
   // ---------------------------------------------------------------------------
   async downloadPdf(req, res) {
     const id       = parseInt(req.params.id, 10);
@@ -585,35 +286,26 @@ const QuotationController = {
       const quotation = await QuotationModel.findById(id);
 
       if (!quotation) {
-        return res.status(404).json({
-          success: false,
-          message: `Quotation with ID ${id} was not found.`,
-        });
+        return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
       }
 
       if (!quotation.pdf_ruta) {
-        return res.status(404).json({
-          success: false,
-          message: 'No PDF document is attached to this quotation.',
-        });
+        return res.status(404).json({ success: false, message: 'No PDF document is attached to this quotation.' });
       }
 
-      // Resolve the absolute file path relative to the project root
       const absolutePath = path.resolve(process.cwd(), quotation.pdf_ruta);
 
-      // Log the download event before streaming the file
       await logEvent({
-        id_usuario:    req.user.id,
+        id_usuario:     req.user.id,
         nombre_usuario: req.user.nombre_usuario,
-        accion:        AuditActions.DESCARGAR_PDF,
-        entidad:       'cotizaciones',
-        id_entidad:    id,
-        detalle:       { pdf_ruta: quotation.pdf_ruta },
-        ip_origen:     clientIp,
-        resultado:     'exito',
+        accion:         AuditActions.DESCARGAR_PDF,
+        entidad:        'cotizaciones',
+        id_entidad:     id,
+        detalle:        { pdf_ruta: quotation.pdf_ruta },
+        ip_origen:      clientIp,
+        resultado:      'exito',
       });
 
-      // res.download streams the file and sets the Content-Disposition header
       const downloadFilename = `${quotation.numero_correlativo}.pdf`;
       res.download(absolutePath, downloadFilename, (err) => {
         if (err) {
@@ -625,67 +317,531 @@ const QuotationController = {
       });
     } catch (error) {
       console.error('[QuotationController.downloadPdf] Error:', error.message);
-
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to create or retrieve the PDF document.',
-      });
+      return res.status(500).json({ success: false, message: 'Failed to retrieve the PDF document.' });
     }
   },
 
   // ===========================================================================
-  // MÉTODOS COMPLEMENTARIOS ADICIONALES (SPRINT 2)
+  // SPRINT 2 STEP 1 — Advanced read operations
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // getStateSummary
-  // GET /api/cotizaciones/resumen  (Todos los roles)
-  // Retorna el conteo de cotizaciones agrupadas por estado.
+  // getQuotations — GET /api/cotizaciones  (All roles)
+  // Full filter set + pagination + sort. See QuotationModel._buildWhereClause
+  // for the complete list of accepted query parameters.
   // ---------------------------------------------------------------------------
-  async getStateSummary(req, res) {
+  async getQuotations(req, res) {
     try {
-      // Si el rol es Ejecutivo, se restringe para que solo vea el conteo de sus registros
-      const idEjecutivo = req.user.rol === 'Ejecutivo' ? req.user.id : null;
-      
-      const summary = await QuotationModel.findSummaryByState(idEjecutivo);
-      
+      const filters  = {};
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+      if (req.query.q)            filters.q            = String(req.query.q);
+      if (req.query.razon_social) filters.razon_social = String(req.query.razon_social);
+      if (req.query.nit)          filters.nit          = String(req.query.nit);
+
+      if (req.query.estado) {
+        if (!QuotationModel.VALID_STATES.includes(req.query.estado)) {
+          return res.status(422).json({
+            success: false,
+            message: `Invalid estado '${req.query.estado}'. Valid values: [${QuotationModel.VALID_STATES.join(', ')}]`,
+          });
+        }
+        filters.estado = req.query.estado;
+      }
+
+      if (req.query.id_cliente) {
+        const parsed = parseInt(req.query.id_cliente, 10);
+        if (isNaN(parsed) || parsed < 1) {
+          return res.status(422).json({ success: false, message: 'id_cliente must be a positive integer.' });
+        }
+        filters.id_cliente = parsed;
+      }
+
+      if (req.query.id_ejecutivo) {
+        const parsed = parseInt(req.query.id_ejecutivo, 10);
+        if (isNaN(parsed) || parsed < 1) {
+          return res.status(422).json({ success: false, message: 'id_ejecutivo must be a positive integer.' });
+        }
+        filters.id_ejecutivo = parsed;
+      }
+
+      if (req.query.fecha_desde) {
+        if (!dateRegex.test(req.query.fecha_desde)) {
+          return res.status(422).json({ success: false, message: 'fecha_desde must be in YYYY-MM-DD format.' });
+        }
+        filters.fecha_desde = req.query.fecha_desde;
+      }
+
+      if (req.query.fecha_hasta) {
+        if (!dateRegex.test(req.query.fecha_hasta)) {
+          return res.status(422).json({ success: false, message: 'fecha_hasta must be in YYYY-MM-DD format.' });
+        }
+        filters.fecha_hasta = req.query.fecha_hasta;
+      }
+
+      if (filters.fecha_desde && filters.fecha_hasta && filters.fecha_desde > filters.fecha_hasta) {
+        return res.status(422).json({ success: false, message: 'fecha_desde cannot be later than fecha_hasta.' });
+      }
+
+      if (req.query.moneda) {
+        const moneda = String(req.query.moneda).toUpperCase();
+        if (!['USD', 'BOB'].includes(moneda)) {
+          return res.status(422).json({ success: false, message: "moneda must be 'USD' or 'BOB'." });
+        }
+        filters.moneda = moneda;
+      }
+
+      if (req.query.tiene_pdf !== undefined) {
+        if      (req.query.tiene_pdf === 'true')  filters.tiene_pdf = true;
+        else if (req.query.tiene_pdf === 'false') filters.tiene_pdf = false;
+        else return res.status(422).json({ success: false, message: "tiene_pdf must be 'true' or 'false'." });
+      }
+
+      const page      = Math.max(1, parseInt(req.query.page,  10) || 1);
+      const limit     = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+      const sortBy    = req.query.sort_by || 'creado_en';
+      const sortOrder = (req.query.sort_order || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+      if (!VALID_SORT_KEYS.includes(sortBy)) {
+        return res.status(422).json({
+          success: false,
+          message: `Invalid sort_by '${sortBy}'. Valid keys: [${VALID_SORT_KEYS.join(', ')}]`,
+        });
+      }
+
+      // Fire data query and count query in parallel to halve round-trip latency
+      const [rows, totalRecords] = await Promise.all([
+        QuotationModel.findAll(filters, { page, limit }, { by: sortBy, order: sortOrder }),
+        QuotationModel.countAll(filters),
+      ]);
+
+      const totalPages = Math.ceil(totalRecords / limit) || 1;
+
       return res.status(200).json({
         success: true,
-        data: summary
+        data:    rows,
+        pagination: {
+          page,
+          limit,
+          totalRecords,
+          totalPages,
+          hasNext: page < totalPages,
+          hasPrev: page > 1,
+        },
       });
     } catch (error) {
-      console.error('[QuotationController.getStateSummary] Error:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to retrieve states summary.'
-      });
+      console.error('[QuotationController.getQuotations] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to retrieve quotations.' });
     }
   },
 
   // ---------------------------------------------------------------------------
-  // getPendingApproval
-  // GET /api/cotizaciones/pendientes-aprobacion  (Exclusivo: Jefe)
-  // Devuelve la cola ordenada cronológicamente de cotizaciones "En revision".
+  // getPendingApproval — GET /api/cotizaciones/pendientes-aprobacion  (Jefe)
+  // The Jefe's approval queue: all 'En revision' quotations, oldest-first.
   // ---------------------------------------------------------------------------
   async getPendingApproval(req, res) {
     try {
-      if (req.user.rol !== 'Jefe') {
-        return res.status(403).json({ success: false, message: 'Access denied. Area Chief role required.' });
-      }
-
-      const pending = await QuotationModel.findPendingApproval();
-      
-      return res.status(200).json({
-        success: true,
-        total: pending.length,
-        data: pending
-      });
+      const rows = await QuotationModel.findPendingApproval();
+      return res.status(200).json({ success: true, total: rows.length, data: rows });
     } catch (error) {
       console.error('[QuotationController.getPendingApproval] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to retrieve approval queue.' });
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // getStateSummary — GET /api/cotizaciones/resumen  (All roles)
+  // Ejecutivos see only their own counts; Jefe/Admin see all (or scoped by param).
+  // ---------------------------------------------------------------------------
+  async getStateSummary(req, res) {
+    try {
+      let id_ejecutivo = null;
+
+      if (req.user.rol === 'Ejecutivo') {
+        id_ejecutivo = req.user.id;  // Always scoped to self for Ejecutivo
+      } else if (req.query.id_ejecutivo) {
+        const parsed = parseInt(req.query.id_ejecutivo, 10);
+        if (!isNaN(parsed) && parsed > 0) id_ejecutivo = parsed;
+      }
+
+      const summary = await QuotationModel.findSummaryByState(id_ejecutivo);
+
+      // Always return all 8 states so the frontend never has to handle missing keys
+      const totals = Object.fromEntries(
+        QuotationModel.VALID_STATES.map((s) => [s, 0])
+      );
+
+      summary.forEach((row) => { totals[row.estado] = row.total; });
+
+      const grandTotal = Object.values(totals).reduce((a, b) => a + b, 0);
+
+      return res.status(200).json({ success: true, data: totals, grandTotal });
+    } catch (error) {
+      console.error('[QuotationController.getStateSummary] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to retrieve state summary.' });
+    }
+  },
+
+  // ===========================================================================
+  // SPRINT 2 STEP 2 — State machine enforcement and HU08 approval workflow
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // updateStatus — PUT /api/cotizaciones/:id/estado  (All roles, role-restricted)
+  //
+  // Enforces the formal state machine (Section 3.7.4 — ROLE_TRANSITIONS):
+  //   • Each role has a limited set of legal transitions per source state.
+  //   • Only Jefe can transition from 'En revision' to approval/rejection states.
+  //   • Transitioning to 'En revision' triggers a mandatory pre-flight check:
+  //     the quotation must have ≥1 line item, monto_total set, and fecha_validez set.
+  //   • Optimistic concurrency (AND estado = estadoActual) prevents races.
+  //
+  // Request body: { nuevo_estado: string, observacion?: string }
+  // ---------------------------------------------------------------------------
+  async updateStatus(req, res) {
+    const id                              = parseInt(req.params.id, 10);
+    const { nuevo_estado, observacion }   = req.body;
+    const userRol                         = req.user.rol;
+    const clientIp                        = req.ip || req.socket?.remoteAddress || null;
+
+    // ── Basic validation ──────────────────────────────────────────────────────
+    if (isNaN(id) || id < 1) {
+      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
+    }
+
+    if (!nuevo_estado || typeof nuevo_estado !== 'string') {
+      return res.status(422).json({ success: false, message: 'nuevo_estado is required and must be a string.' });
+    }
+
+    if (!QuotationModel.VALID_STATES.includes(nuevo_estado)) {
+      return res.status(422).json({
+        success: false,
+        message: `Invalid target state '${nuevo_estado}'. Valid states: [${QuotationModel.VALID_STATES.join(', ')}]`,
+      });
+    }
+
+    try {
+      // ── Fetch current state ────────────────────────────────────────────────
+      const quotation = await QuotationModel.findById(id);
+
+      if (!quotation) {
+        return res.status(404).json({
+          success: false,
+          message: `Quotation with ID ${id} was not found.`,
+        });
+      }
+
+      const estadoActual = quotation.estado;
+
+      if (estadoActual === nuevo_estado) {
+        return res.status(422).json({
+          success: false,
+          message: `The quotation is already in the '${estadoActual}' state. No change needed.`,
+        });
+      }
+
+      // ── Role-based transition guard ────────────────────────────────────────
+      // Returns { valid, reason, allowedTransitions } — no DB call needed.
+      const transitionCheck = QuotationModel.validateTransitionByRole(
+        estadoActual,
+        nuevo_estado,
+        userRol
+      );
+
+      if (!transitionCheck.valid) {
+        return res.status(403).json({
+          success:             false,
+          message:             transitionCheck.reason,
+          allowed_transitions: transitionCheck.allowedTransitions || [],
+        });
+      }
+
+      // ── Special pre-flight check for 'En revision' transition ─────────────
+      // The quotation must be complete before it can enter the approval queue.
+      if (nuevo_estado === 'En revision') {
+        const reviewErrors = await QuotationModel.validateForReview(id);
+
+        if (reviewErrors.length > 0) {
+          return res.status(422).json({
+            success: false,
+            message: 'The quotation does not meet all requirements for submission to review. ' +
+                     'Resolve the following issues and try again.',
+            errors:  reviewErrors,
+          });
+        }
+      }
+
+      // ── Execute the transition (optimistic concurrency) ───────────────────
+      const updated = await QuotationModel.updateStatus(
+        id,
+        nuevo_estado,
+        estadoActual,
+        userRol
+      );
+
+      if (!updated) {
+        // affectedRows = 0 means the state changed between our read and this write
+        return res.status(409).json({
+          success: false,
+          message: 'State could not be updated. The quotation was modified concurrently. ' +
+                   'Refresh and try again.',
+        });
+      }
+
+      // ── Persist in the dedicated state history table ──────────────────────
+      await QuotationModel.logStateHistory({
+        id_cotizacion:  id,
+        estado_anterior: estadoActual,
+        estado_nuevo:   nuevo_estado,
+        id_usuario:     req.user.id,
+        nombre_usuario: req.user.nombre_usuario,
+        rol_usuario:    userRol,
+        observacion:    observacion || null,
+        ip_origen:      clientIp,
+      });
+
+      // ── Write the generic audit event ─────────────────────────────────────
+      await logEvent({
+        id_usuario:     req.user.id,
+        nombre_usuario: req.user.nombre_usuario,
+        accion:         AuditActions.CAMBIAR_ESTADO,
+        entidad:        'cotizaciones',
+        id_entidad:     id,
+        detalle: {
+          estado_anterior: estadoActual,
+          nuevo_estado,
+          observacion:     observacion || null,
+        },
+        ip_origen:  clientIp,
+        resultado:  'exito',
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `Quotation state updated: '${estadoActual}' → '${nuevo_estado}'.`,
+        data:    {
+          id,
+          estado_anterior:     estadoActual,
+          nuevo_estado,
+          allowed_transitions: transitionCheck.allowedTransitions,
+        },
+      });
+    } catch (error) {
+      // FORBIDDEN_TRANSITION is thrown by model's defense-in-depth re-validation.
+      // We already handled it above via validateTransitionByRole; this catches
+      // any edge case where the controller check was somehow bypassed.
+      if (error.code === 'FORBIDDEN_TRANSITION') {
+        return res.status(403).json({
+          success:             false,
+          message:             error.message,
+          allowed_transitions: error.allowedTransitions || [],
+        });
+      }
+
+      console.error('[QuotationController.updateStatus] Error:', error.message);
+
       return res.status(500).json({
         success: false,
-        message: 'Failed to retrieve the pending approvals queue.'
+        message: 'Failed to update quotation status.',
       });
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // approveQuotation — POST /api/cotizaciones/:id/aprobar  (Role: Jefe ONLY — HU08)
+  //
+  // Dedicated approval/rejection endpoint. Distinct from updateStatus because:
+  //   1. It writes approval metadata (aprobado_por, fecha_aprobacion, obs_aprobacion).
+  //   2. It receives a boolean `aprobado` instead of a state string.
+  //   3. It mandates `observaciones` when rejecting (business rule).
+  //   4. It regenerates the PDF to reflect the updated approval status.
+  //
+  // Request body:
+  //   {
+  //     "aprobado":      true | false,   (required)
+  //     "observaciones": "text"          (required when aprobado = false)
+  //   }
+  //
+  // The middleware authorize(['Jefe']) already enforces the role before this
+  // method is called. The controller asserts it again as defense-in-depth.
+  // ---------------------------------------------------------------------------
+  async approveQuotation(req, res) {
+    const id       = parseInt(req.params.id, 10);
+    const clientIp = req.ip || req.socket?.remoteAddress || null;
+
+    // ── Basic validation ──────────────────────────────────────────────────────
+    if (isNaN(id) || id < 1) {
+      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
+    }
+
+    const { aprobado, observaciones } = req.body;
+
+    // aprobado must be explicitly provided and must be a boolean
+    if (aprobado === undefined || aprobado === null) {
+      return res.status(422).json({
+        success: false,
+        message: "Field 'aprobado' is required. Send true to approve or false to reject.",
+      });
+    }
+
+    if (typeof aprobado !== 'boolean') {
+      return res.status(422).json({
+        success: false,
+        message: "Field 'aprobado' must be a boolean (true or false), not a string.",
+      });
+    }
+
+    // Rejection without justification is not permitted (Section 4.3 — business rule)
+    if (aprobado === false && (!observaciones || !String(observaciones).trim())) {
+      return res.status(422).json({
+        success: false,
+        message: "Field 'observaciones' is required and must not be empty when rejecting a quotation. " +
+                 "The Ejecutivo must understand why the quotation was rejected.",
+      });
+    }
+
+    // ── Controller-level Jefe assertion (defense-in-depth after middleware) ──
+    // If the middleware is misconfigured, this line catches the gap before any
+    // approval data reaches the database.
+    if (req.user.rol !== 'Jefe') {
+      return res.status(403).json({
+        success: false,
+        message: `Access denied. Only the 'Jefe' role can approve or reject quotations. ` +
+                 `Your role is '${req.user.rol}'.`,
+      });
+    }
+
+    try {
+      // ── Verify quotation exists and is in 'En revision' ───────────────────
+      const quotation = await QuotationModel.findById(id);
+
+      if (!quotation) {
+        return res.status(404).json({
+          success: false,
+          message: `Quotation with ID ${id} was not found.`,
+        });
+      }
+
+      if (quotation.estado !== 'En revision') {
+        return res.status(409).json({
+          success: false,
+          message: `Only quotations in 'En revision' state can be approved or rejected. ` +
+                   `Current state: '${quotation.estado}'.`,
+        });
+      }
+
+      const estadoAnterior = quotation.estado; // 'En revision'
+      const nuevoEstado    = aprobado ? 'Aprobada internamente' : 'Rechazada';
+      const obsText        = observaciones ? String(observaciones).trim() : null;
+
+      // ── Execute the approval write (also enforces estado = 'En revision' in DB) ─
+      const approved = await QuotationModel.approve(id, req.user.id, aprobado, obsText);
+
+      if (!approved) {
+        // Another request changed the state between our findById and the UPDATE
+        return res.status(409).json({
+          success: false,
+          message: 'Approval could not be recorded. The quotation state changed concurrently. Refresh and try again.',
+        });
+      }
+
+      // ── Write to the state history table ──────────────────────────────────
+      await QuotationModel.logStateHistory({
+        id_cotizacion:  id,
+        estado_anterior: estadoAnterior,
+        estado_nuevo:   nuevoEstado,
+        id_usuario:     req.user.id,
+        nombre_usuario: req.user.nombre_usuario,
+        rol_usuario:    req.user.rol,
+        observacion:    obsText,
+        ip_origen:      clientIp,
+      });
+
+      // ── Write the audit event ─────────────────────────────────────────────
+      const auditAction = aprobado ? AuditActions.APROBAR : AuditActions.RECHAZAR;
+
+      await logEvent({
+        id_usuario:     req.user.id,
+        nombre_usuario: req.user.nombre_usuario,
+        accion:         auditAction,
+        entidad:        'cotizaciones',
+        id_entidad:     id,
+        detalle:        { aprobado, observaciones: obsText },
+        ip_origen:      clientIp,
+        resultado:      'exito',
+      });
+
+      // ── PDF regeneration — reflect the new status in the document ─────────
+      // Non-fatal: the approval is committed regardless of PDF outcome.
+      try {
+        const updatedQuotation = await QuotationModel.findById(id);
+        const newPdfPath       = await pdfService.generateQuotationPdf(updatedQuotation);
+        await QuotationModel.updatePdfPath(id, newPdfPath);
+      } catch (pdfErr) {
+        console.warn(
+          `[QuotationController] PDF regeneration after ${aprobado ? 'approval' : 'rejection'} failed (non-fatal):`,
+          pdfErr.message
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: aprobado
+          ? `Quotation COT#${id} approved successfully. State is now 'Aprobada internamente'.`
+          : `Quotation COT#${id} rejected. State is now 'Rechazada'.`,
+        data: {
+          id,
+          estado_anterior: estadoAnterior,
+          nuevo_estado:    nuevoEstado,
+          aprobado_por:    req.user.nombre_usuario,
+          observaciones:   obsText,
+        },
+      });
+    } catch (error) {
+      console.error('[QuotationController.approveQuotation] Error:', error.message);
+
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to process the approval decision.',
+      });
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // getStateHistory — GET /api/cotizaciones/:id/historial  (All roles)
+  // Returns the full ordered state-change timeline for a quotation, combining
+  // the creation event (from bitacora_auditoria) with all subsequent transitions
+  // (from cotizacion_historial_estados). Section 4.3.
+  // ---------------------------------------------------------------------------
+  async getStateHistory(req, res) {
+    const id = parseInt(req.params.id, 10);
+
+    if (isNaN(id) || id < 1) {
+      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
+    }
+
+    try {
+      // Verify the quotation exists before querying history
+      const quotation = await QuotationModel.findById(id);
+
+      if (!quotation) {
+        return res.status(404).json({
+          success: false,
+          message: `Quotation with ID ${id} was not found.`,
+        });
+      }
+
+      const history = await QuotationModel.findStateHistory(id);
+
+      return res.status(200).json({
+        success:             true,
+        quotation_reference: quotation.numero_correlativo,
+        total:               history.length,
+        data:                history,
+      });
+    } catch (error) {
+      console.error('[QuotationController.getStateHistory] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to retrieve state history.' });
     }
   },
 };
