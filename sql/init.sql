@@ -141,7 +141,27 @@ CREATE TABLE IF NOT EXISTS cotizacion_detalles (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
--- 8. BITACORA_AUDITORIA — Weak entity; immutable audit log
+-- 8. AUDITORIA — Sprint 2 HU11: simplified audit trail (structural log)
+--    Captures the table affected, action code, record ID, client IP, and an
+--    optional JSON detail blob. Complements bitacora_auditoria (legacy).
+--    No UPDATE/DELETE is permitted on this table by any application role.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS auditoria (
+  id_auditoria          INT            NOT NULL AUTO_INCREMENT,
+  id_usuario            INT            NULL,
+  tabla_afectada        VARCHAR(50)    NOT NULL,
+  accion                VARCHAR(20)    NOT NULL,
+  id_registro_afectado  INT            NULL,
+  detalles              TEXT           NULL,
+  ip_cliente            VARCHAR(45)    NOT NULL DEFAULT '0.0.0.0',
+  fecha_hora            TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id_auditoria),
+  CONSTRAINT fk_auditoria_usuario
+    FOREIGN KEY (id_usuario) REFERENCES usuarios (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------------
+-- 9. BITACORA_AUDITORIA — Weak entity; immutable audit log (extended / legacy)
 --    No UPDATE/DELETE is permitted on this table by any application role.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS bitacora_auditoria (

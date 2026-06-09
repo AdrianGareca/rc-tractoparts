@@ -7,10 +7,30 @@
 'use strict';
 
 const express        = require('express');
+const rateLimit      = require('express-rate-limit');
 const AuthController = require('../controllers/authController');
 const { authenticate } = require('../middlewares/authMiddleware');
+const { validate }     = require('../validators/validate');
+const { loginSchema }  = require('../validators/authValidator');
 
 const router = express.Router();
+
+// ---------------------------------------------------------------------------
+// Strict Rate Limiter — POST /api/auth/login only
+// 5 attempts per 15 minutes per IP.
+// Prevents credential-stuffing and brute-force attacks on the login endpoint.
+// ---------------------------------------------------------------------------
+const loginLimiter = rateLimit({
+  windowMs:        15 * 60 * 1000, // 15-minute sliding window
+  max:             5,               // maximum 5 login attempts per window per IP
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message: {
+    success: false,
+    message: 'Too many login attempts from this IP. Please try again in 15 minutes.',
+  },
+  skip: () => process.env.NODE_ENV === 'test',
+});
 
 /**
  * @swagger
@@ -79,8 +99,10 @@ const router = express.Router();
  */
 
 // POST /api/auth/login
-// Public — no authentication middleware required; this IS the authentication step
-router.post('/login', AuthController.login);
+// Public — no authentication required; this IS the authentication step.
+// loginLimiter:  blocks brute-force after 5 failed attempts in 15 min.
+// validate():    sanitizes and validates the body before hitting the controller.
+router.post('/login', loginLimiter, validate(loginSchema), AuthController.login);
 
 /**
  * @swagger

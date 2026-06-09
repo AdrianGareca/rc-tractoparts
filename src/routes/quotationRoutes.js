@@ -37,6 +37,12 @@ const fs      = require('fs');
 const QuotationController = require('../controllers/quotationController');
 const { authenticate }    = require('../middlewares/authMiddleware');
 const authorize           = require('../middlewares/roleMiddleware');
+const { validate }        = require('../validators/validate');
+const {
+  createQuotationSchema,
+  updateStatusSchema,
+  approveQuotationSchema,
+} = require('../validators/quotationValidator');
 
 const router = express.Router();
 
@@ -345,9 +351,11 @@ router.get(
 // Create a new quotation. Atomically generates the correlativo serial,
 // inserts the header + line items in a single transaction, and
 // auto-generates the PDF document. (HU03 / RNF10)
+// validate(): sanitizes body and rejects malformed/malicious payloads at boundary.
 router.post(
   '/',
   ...writeRoles,
+  validate(createQuotationSchema),
   QuotationController.createQuotation
 );
 
@@ -487,9 +495,11 @@ router.get(
 // Role-restricted state machine transition.
 // Body: { nuevo_estado: string, observacion?: string }
 // Role matrix enforced: only Jefe can approve/reject (En revision → resolved).
+// validate(): blocks invalid/malicious nuevo_estado values before controller.
 router.put(
   '/:id/estado',
   ...allRoles,
+  validate(updateStatusSchema),
   QuotationController.updateStatus
 );
 
@@ -544,11 +554,13 @@ router.put(
  */
 // POST /api/cotizaciones/:id/aprobar
 // HU08 — Dedicated Jefe approval / rejection endpoint.
-// Body: { aprobado: boolean, observaciones: string }
+// Body: { aprobado: boolean, obs_aprobacion?: string }
 // Writes approval metadata, logs audit event, and regenerates the PDF.
+// validate(): ensures aprobado is strictly boolean before controller logic.
 router.post(
   '/:id/aprobar',
   ...jefeOnly,
+  validate(approveQuotationSchema),
   QuotationController.approveQuotation
 );
 
