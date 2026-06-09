@@ -9,11 +9,14 @@
 // Middleware registration order (important):
 //   1. Security headers (helmet)
 //   2. CORS
-//   3. Request logging (morgan)
-//   4. JSON body parsing
-//   5. Application routes
-//   6. 404 handler
-//   7. Global error handler
+//   3. Rate limiting (global)
+//   4. Request logging (morgan)
+//   5. Body parsing
+//   6. Static files  (public/)
+//   7. Swagger UI    (/api-docs)
+//   8. API routes
+//   9. 404 handler
+//  10. Global error handler
 // =============================================================================
 
 'use strict';
@@ -146,13 +149,19 @@ const swaggerOptions = {
 
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 
-// Servir la interfaz interactiva en http://localhost:3000/api-docs
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+// ---------------------------------------------------------------------------
+// 6. Static Files — public/ directory
+// Serves the login page (index.html), dashboard, global stylesheet, and all
+// ES module scripts. Mounted before Swagger so "/" resolves to the login SPA
+// rather than the API docs. express.static silently falls through for paths
+// that have no matching file, so /api/* requests reach the route handlers.
+// ---------------------------------------------------------------------------
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Redirección de la raíz a la documentación de Swagger
-app.get('/', (req, res) => {
-  res.redirect('/api-docs');
-});
+// ---------------------------------------------------------------------------
+// 7. Swagger UI — interactive API documentation at /api-docs
+// ---------------------------------------------------------------------------
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // ---------------------------------------------------------------------------
 // 6. Application Routes

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RC Tractoparts — Dashboard</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body class="dashboard-page">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       PAGE SHELL — 2-column: sidebar (fixed) + content area
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="page-shell">
+
+    <!-- Sidebar — navigation populated by dashboardView.js -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">⚙</div>
+        <div class="sidebar-logo-text">
+          <strong>RC Tractoparts</strong>
+          <span>Cotizaciones v2.0</span>
+        </div>
+      </div>
+
+      <!-- Nav links injected by _renderSidebar() -->
+      <nav class="sidebar-nav" id="sidebar-nav" role="navigation" aria-label="Menú principal">
+      </nav>
+
+      <!-- User info at the bottom of sidebar -->
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="sidebar-avatar" id="sidebar-avatar">?</div>
+          <div class="sidebar-user-info">
+            <strong id="sidebar-username">—</strong>
+            <small  id="sidebar-role">—</small>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Content shell — top bar + scrollable main area -->
+    <div class="content-shell">
+
+      <!-- Top Bar -->
+      <header class="topbar" id="topbar">
+        <button class="topbar-menu-btn" id="sidebar-toggle" aria-label="Abrir menú">☰</button>
+        <span class="topbar-title" id="topbar-title">Dashboard</span>
+        <div class="topbar-actions">
+          <span class="topbar-username" id="topbar-username"></span>
+          <span class="badge" id="topbar-role-badge"></span>
+          <button class="btn btn-ghost btn-sm" id="btn-logout">Cerrar sesión</button>
+        </div>
+      </header>
+
+      <!-- Main Content — rendered by the active Strategy -->
+      <main class="page-content" id="page-content" role="main">
+        <div class="page-loading" id="initial-loading">
+          <div class="spinner spinner-lg"></div>
+          <span>Cargando panel de control…</span>
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       MODAL — used by quotation form, confirmations, and create-user panel
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="modal-overlay" id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-dialog" id="modal-dialog">
+      <div class="modal-header">
+        <h3 id="modal-title">…</h3>
+        <button class="btn-icon" id="modal-close" aria-label="Cerrar">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Toast notification stack -->
+  <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+  <!-- Dashboard view controller -->
+  <script type="module" src="/js/views/dashboardView.js"></script>
+</body>
+</html>

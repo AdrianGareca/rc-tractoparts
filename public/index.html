@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RC Tractoparts — Iniciar sesión</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body class="auth-page">
+
+  <div class="auth-card">
+
+    <!-- Branding -->
+    <div class="auth-logo">
+      <div class="auth-logo-icon">⚙</div>
+      <h1>RC Tractoparts</h1>
+      <p>Sistema de Gestión de Cotizaciones</p>
+    </div>
+
+    <!-- Login form -->
+    <form id="login-form" novalidate autocomplete="on">
+
+      <!-- Username field -->
+      <div class="form-group" id="fg-username">
+        <label class="form-label" for="username">Usuario</label>
+        <input
+          class="form-control"
+          type="text"
+          id="username"
+          name="nombre_usuario"
+          autocomplete="username"
+          placeholder="Ingrese su usuario"
+          spellcheck="false"
+          autocapitalize="none"
+        />
+        <span class="field-error" id="err-username" role="alert"></span>
+      </div>
+
+      <!-- Password field -->
+      <div class="form-group" id="fg-password">
+        <label class="form-label" for="password">Contraseña</label>
+        <input
+          class="form-control"
+          type="password"
+          id="password"
+          name="password"
+          autocomplete="current-password"
+          placeholder="Ingrese su contraseña"
+        />
+        <span class="field-error" id="err-password" role="alert"></span>
+      </div>
+
+      <!-- General alert (401 / 429 / network errors) -->
+      <div class="form-alert" id="form-alert" role="alert"></div>
+
+      <!-- Submit -->
+      <button type="submit" id="btn-login" class="btn btn-primary btn-full btn-lg">
+        <span class="btn-label" id="btn-label">Iniciar sesión</span>
+        <span class="spinner hidden" id="btn-spinner" aria-hidden="true"></span>
+      </button>
+
+    </form>
+
+    <p class="auth-footer">RC Tractoparts &copy; 2026 &mdash; v2.0</p>
+  </div>
+
+  <!-- View controller — type="module" defers execution until DOM is ready -->
+  <script type="module" src="/js/views/authView.js"></script>
+</body>
+</html>
