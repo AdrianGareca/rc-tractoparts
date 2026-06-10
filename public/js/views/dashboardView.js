@@ -608,6 +608,19 @@ class ManagerStrategy extends DashboardStrategy {
       const data = await api.get('/api/cotizaciones?limit=25&sort_by=creado_en&sort_order=DESC');
       const rows = data.data ?? [];
 
+      if (rows.length === 0) {
+        panel.innerHTML = `
+          <div class="card">
+            <div class="card-header"><h3>Todas las Cotizaciones</h3></div>
+            <div class="empty-state">
+              <div class="empty-state-icon">📋</div>
+              <h4>Sin cotizaciones registradas</h4>
+              <p>No hay cotizaciones pendientes en el sistema.</p>
+            </div>
+          </div>`;
+        return;
+      }
+
       panel.innerHTML = `
         <div class="card">
           <div class="card-header">
@@ -623,17 +636,15 @@ class ManagerStrategy extends DashboardStrategy {
                 </tr>
               </thead>
               <tbody>
-                ${rows.length === 0
-                  ? `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted);">Sin registros.</td></tr>`
-                  : rows.map(r => `
-                    <tr>
-                      <td class="fw-600">${r.numero_correlativo}</td>
-                      <td>${r.ejecutivo_nombre ?? '—'}</td>
-                      <td>${r.cliente_nombre ?? r.id_cliente}</td>
-                      <td>${fmtAmount(r.monto_total, r.moneda)}</td>
-                      <td>${badgeHtml(r.estado)}</td>
-                      <td>${fmtDate(r.fecha_emision)}</td>
-                    </tr>`).join('')
+                ${rows.map(r => `
+                  <tr>
+                    <td class="fw-600">${r.numero_correlativo}</td>
+                    <td>${r.ejecutivo_nombre ?? '—'}</td>
+                    <td>${r.cliente_nombre ?? r.id_cliente}</td>
+                    <td>${fmtAmount(r.monto_total, r.moneda)}</td>
+                    <td>${badgeHtml(r.estado)}</td>
+                    <td>${fmtDate(r.fecha_emision)}</td>
+                  </tr>`).join('')
                 }
               </tbody>
             </table>
@@ -1021,6 +1032,10 @@ class DashboardController {
         </button>
         <button class="sidebar-link" data-section="audit">
           <span class="link-icon">🔍</span> Registros de Auditoría
+        </button>
+        <span class="sidebar-section-label">Cuenta</span>
+        <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
+          <span class="link-icon">🚪</span> Cerrar Sesión
         </button>`;
     } else {
       links = `
@@ -1030,10 +1045,20 @@ class DashboardController {
         </button>
         <button class="sidebar-link btn-new-cot" data-section="new">
           <span class="link-icon">➕</span> Nueva Cotización
+        </button>
+        <span class="sidebar-section-label">Cuenta</span>
+        <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
+          <span class="link-icon">🚪</span> Cerrar Sesión
         </button>`;
     }
 
     nav.innerHTML = links;
+
+    // Wire sidebar logout button (present for both roles)
+    nav.querySelector('#btn-logout-sidebar')?.addEventListener('click', () => {
+      AuthSession.clearSession();
+      window.location.href = '/';
+    });
 
     // Sidebar link click → update topbar title + call strategy section
     nav.querySelectorAll('.sidebar-link[data-section]').forEach(btn => {

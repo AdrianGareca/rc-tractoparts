@@ -169,6 +169,7 @@ class AuthViewController {
   #btnLogin;
   #btnLabel;
   #btnSpinner;
+  #toggleBtn;  // Password visibility toggle
   #chain; // Head of the validation chain
 
   constructor() {
@@ -181,6 +182,7 @@ class AuthViewController {
     this.#btnLogin     = document.getElementById('btn-login');
     this.#btnLabel     = document.getElementById('btn-label');
     this.#btnSpinner   = document.getElementById('btn-spinner');
+    this.#toggleBtn    = document.getElementById('btn-toggle-password');
   }
 
   /** Build the Chain of Responsibility and wire the form submit listener. */
@@ -206,6 +208,15 @@ class AuthViewController {
     // Clear field errors on input
     this.#usernameInput.addEventListener('input', () => this._clearFieldError('username'));
     this.#passwordInput.addEventListener('input', () => this._clearFieldError('password'));
+
+    // Password visibility toggle
+    this.#toggleBtn?.addEventListener('click', () => {
+      const isPassword = this.#passwordInput.type === 'password';
+      this.#passwordInput.type = isPassword ? 'text' : 'password';
+      document.getElementById('eye-icon')?.classList.toggle('hidden', isPassword);
+      document.getElementById('eye-off-icon')?.classList.toggle('hidden', !isPassword);
+      this.#toggleBtn.setAttribute('aria-label', isPassword ? 'Ocultar contraseña' : 'Mostrar contraseña');
+    });
 
     // Focus the first field
     this.#usernameInput.focus();
