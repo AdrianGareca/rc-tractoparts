@@ -457,7 +457,8 @@ const QuotationController = {
 
   // ---------------------------------------------------------------------------
   // getPendingApproval — GET /api/cotizaciones/pendientes-aprobacion  (Jefe)
-  // The Jefe's approval queue: all 'En revision' quotations, oldest-first.
+  // The Jefe's approval queue: all quotations in 'Pendiente', 'En revision',
+  // or 'En espera' states, ordered oldest-first (HU08 — all active states).
   // ---------------------------------------------------------------------------
   async getPendingApproval(req, res) {
     try {
@@ -676,7 +677,7 @@ const QuotationController = {
   },
 
   // ---------------------------------------------------------------------------
-  // approveQuotation — POST /api/cotizaciones/:id/aprobar  (Role: Jefe ONLY — HU08)
+  // approveQuotation — POST /api/cotizaciones/:id/aprobar  (Roles: Jefe, SysAdmin — HU08)
   //
   // Dedicated approval/rejection endpoint. Distinct from updateStatus because:
   //   1. It writes approval metadata (aprobado_por, fecha_aprobacion, obs_aprobacion).
@@ -684,14 +685,18 @@ const QuotationController = {
   //   3. It mandates `observaciones` when rejecting (business rule).
   //   4. It regenerates the PDF to reflect the updated approval status.
   //
+  // Source-state constraint: NONE. Jefe and SysAdmin can approve or reject
+  // from ANY active state — 'Pendiente', 'En revision', or 'En espera'.
+  // This matches the updated HU08 approval-queue logic and ROLE_TRANSITIONS matrix.
+  //
   // Request body:
   //   {
   //     "aprobado":      true | false,   (required)
   //     "observaciones": "text"          (required when aprobado = false)
   //   }
   //
-  // The middleware authorize(['Jefe']) already enforces the role before this
-  // method is called. The controller asserts it again as defense-in-depth.
+  // The middleware authorize(['Jefe', 'SysAdmin']) already enforces the role
+  // before this method is called. The controller asserts it again as defense-in-depth.
   // ---------------------------------------------------------------------------
   async approveQuotation(req, res) {
     const id       = parseInt(req.params.id, 10);
