@@ -64,26 +64,43 @@ const ROLE_TRANSITIONS = {
   },
 
   Administracion: {
-    Pendiente:               ['En revision', 'Archivada'],
-    'En revision':           ['Pendiente', 'Archivada'],            // Can cancel a submission
-    'En espera':             ['Pendiente', 'Archivada'],            // Can cancel a hold
-    'Aprobada internamente': ['Enviada al cliente', 'Archivada'],
-    'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],
-    Rechazada:               ['Pendiente', 'Archivada'],
+    // Administracion can submit, place on hold, or cancel — but NOT approve or reject.
+    // Approval authority belongs exclusively to the Jefe (business rule: role hierarchy).
+    Pendiente:               ['En revision', 'En espera', 'Archivada'],
+    'En revision':           ['En espera', 'Pendiente', 'Archivada'],   // Can hold or retract
+    'En espera':             ['En revision', 'Pendiente', 'Archivada'], // Can resume or retract
+    'Aprobada internamente': ['Archivada'],     // Read-only; can only archive
+    'Enviada al cliente':    ['Archivada'],     // Read-only; can only archive
+    Rechazada:               ['Pendiente', 'Archivada'],               // Allow rework cycle
     Aceptada:                ['Archivada'],
     Archivada:               [],
   },
 
   Jefe: {
-    // Full authority — exclusive access to internal approval, rejection, and hold
-    Pendiente:               ['En revision', 'Archivada'],
+    // Absolute commercial authority — can approve, reject, or hold from ANY state.
+    // Pendiente can now be directly approved/rejected without requiring the
+    // 'En revision' intermediate step (HU08 override fix).
+    Pendiente:               ['En revision', 'En espera', 'Aprobada internamente', 'Rechazada', 'Archivada'],
     'En revision':           ['Aprobada internamente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
-    'En espera':             ['Aprobada internamente', 'Rechazada', 'Pendiente', 'Archivada'],
-    'Aprobada internamente': ['Enviada al cliente', 'Archivada'],
+    'En espera':             ['Aprobada internamente', 'Rechazada', 'Pendiente', 'En revision', 'Archivada'],
+    'Aprobada internamente': ['Aceptada', 'Enviada al cliente', 'Rechazada', 'Archivada'],
     'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],
-    Rechazada:               ['Pendiente', 'Archivada'],
+    Rechazada:               ['Pendiente', 'Aprobada internamente', 'Archivada'],
     Aceptada:                ['Archivada'],
     Archivada:               [],
+  },
+
+  // SysAdmin — absolute system-wide authority, mirrors Jefe transitions and
+  // additionally can fully reset any non-Archivada state back to Pendiente.
+  SysAdmin: {
+    Pendiente:               ['En revision', 'En espera', 'Aprobada internamente', 'Rechazada', 'Archivada'],
+    'En revision':           ['Aprobada internamente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
+    'En espera':             ['Aprobada internamente', 'Rechazada', 'Pendiente', 'En revision', 'Archivada'],
+    'Aprobada internamente': ['Aceptada', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'Archivada'],
+    'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Pendiente', 'Archivada'],
+    Rechazada:               ['Pendiente', 'Aprobada internamente', 'Archivada'],
+    Aceptada:                ['Archivada', 'Pendiente'],
+    Archivada:               [],    // Terminal — even SysAdmin cannot un-archive
   },
 };
 
@@ -334,6 +351,7 @@ const QuotationModel = {
         ap.nombre_completo  AS aprobador_nombre,
         c.fecha_aprobacion,
         c.obs_aprobacion,
+        c.comentarios_admin,
         c.creado_en,
         c.actualizado_en
       FROM cotizaciones c
@@ -375,6 +393,21 @@ const QuotationModel = {
     const [result] = await pool.execute(
       'UPDATE cotizaciones SET pdf_ruta = ? WHERE id = ?',
       [pdfRuta, id]
+    );
+    return result.affectedRows > 0;
+  },
+
+  // ---------------------------------------------------------------------------
+  // updateComentarioAdmin — Persist the Administracion supervisor review comment.
+  // Called both standalone (PATCH endpoint) and together with a state transition.
+  // @param {number} id        - Quotation primary key
+  // @param {string} comment   - Comment text (null to clear)
+  // @returns {boolean}        - true if the row was updated
+  // ---------------------------------------------------------------------------
+  async updateComentarioAdmin(id, comment) {
+    const [result] = await pool.execute(
+      'UPDATE cotizaciones SET comentarios_admin = ? WHERE id = ?',
+      [comment || null, id]
     );
     return result.affectedRows > 0;
   },
@@ -503,24 +536,27 @@ const QuotationModel = {
   },
 
   // ---------------------------------------------------------------------------
-  // findPendingApproval — Jefe's approval queue: all 'En revision' quotations,
-  // ordered oldest-first so the backlog is cleared chronologically.
+  // findPendingApproval — Jefe's approval queue: all quotations that require a
+  // decision ('Pendiente', 'En revision', 'En espera'), ordered oldest-first so
+  // the backlog is cleared chronologically.
   // ---------------------------------------------------------------------------
   async findPendingApproval() {
     const sql = `
       SELECT
         c.id,
         c.numero_correlativo,
+        c.estado,
         cl.razon_social    AS cliente_nombre,
         u.nombre_completo   AS ejecutivo_nombre,
         c.monto_total,
         c.moneda,
         c.fecha_emision,
+        c.fecha_validez,
         c.creado_en
       FROM cotizaciones c
       INNER JOIN clientes cl ON cl.id = c.id_cliente
       INNER JOIN usuarios u  ON u.id  = c.id_ejecutivo
-      WHERE c.estado = 'En revision'
+      WHERE c.estado IN ('Pendiente', 'En revision', 'En espera')
       ORDER BY c.creado_en ASC
     `;
 
@@ -641,13 +677,14 @@ const QuotationModel = {
   // error response. This method validates again as defense-in-depth and uses
   // optimistic concurrency (AND estado = estadoActual) to prevent race conditions.
   //
-  // @param {number} id           - Quotation primary key
-  // @param {string} nuevoEstado  - Validated target state
-  // @param {string} estadoActual - Current state (optimistic concurrency lock)
-  // @param {string} rol          - Calling user's role (for re-validation)
-  // @returns {boolean}           - true if the row was updated
+  // @param {number}  id              - Quotation primary key
+  // @param {string}  nuevoEstado     - Validated target state
+  // @param {string}  estadoActual    - Current state (optimistic concurrency lock)
+  // @param {string}  rol             - Calling user's role (for re-validation)
+  // @param {string|null} comentarioAdmin - Optional admin comment to persist alongside the transition
+  // @returns {boolean}               - true if the row was updated
   // ---------------------------------------------------------------------------
-  async updateStatus(id, nuevoEstado, estadoActual, rol) {
+  async updateStatus(id, nuevoEstado, estadoActual, rol, comentarioAdmin = null) {
     // Defense-in-depth: re-validate the role-based transition inside the model
     const check = this.validateTransitionByRole(estadoActual, nuevoEstado, rol);
 
@@ -661,34 +698,46 @@ const QuotationModel = {
     // Optimistic concurrency: the WHERE clause includes the expected current state.
     // If another request changed the state between our findById and this UPDATE,
     // affectedRows = 0 and the controller returns a 409 Conflict.
-    const [result] = await pool.execute(
-      'UPDATE cotizaciones SET estado = ? WHERE id = ? AND estado = ?',
-      [nuevoEstado, id, estadoActual]
-    );
+    //
+    // If comentarioAdmin is provided, persist it in the same atomic UPDATE so
+    // the comment and the state change are never split across two writes.
+    let sql, params;
+    if (comentarioAdmin !== null && comentarioAdmin !== undefined) {
+      sql    = 'UPDATE cotizaciones SET estado = ?, comentarios_admin = ? WHERE id = ? AND estado = ?';
+      params = [nuevoEstado, String(comentarioAdmin).trim() || null, id, estadoActual];
+    } else {
+      sql    = 'UPDATE cotizaciones SET estado = ? WHERE id = ? AND estado = ?';
+      params = [nuevoEstado, id, estadoActual];
+    }
 
+    const [result] = await pool.execute(sql, params);
     return result.affectedRows > 0;
   },
 
   // ---------------------------------------------------------------------------
-  // approve (HU08 — Jefe approval/rejection)
+  // approve (HU08 — Jefe / SysAdmin approval/rejection)
   // Dedicated method for the approval workflow. Records the decision, the
   // approver's identity, the timestamp, and the mandatory observation text.
   //
-  // The WHERE clause enforces that the quotation is currently 'En revision'
-  // as a final database-level guard (the controller validates this too, but
-  // this prevents any race where two requests compete for the same approval).
+  // Jefe and SysAdmin hold ABSOLUTE authority: they can approve or reject from
+  // ANY non-terminal state. The WHERE clause uses the caller-supplied
+  // `currentState` for optimistic concurrency — it guarantees that two
+  // concurrent requests for the same quotation cannot both succeed.
   //
   // @param {number}  id            - Quotation primary key
-  // @param {number}  aprobadoPor   - User ID of the Jefe (from req.user.id)
+  // @param {number}  aprobadoPor   - User ID of the approver (from req.user.id)
   // @param {boolean} aprobado      - true = Aprobada internamente; false = Rechazada
   // @param {string}  observaciones - Justification text (mandatory on rejection)
+  // @param {string}  currentState  - State read by the controller (optimistic lock)
   // @returns {boolean}             - true if the row was updated
   // ---------------------------------------------------------------------------
-  async approve(id, aprobadoPor, aprobado, observaciones) {
+  async approve(id, aprobadoPor, aprobado, observaciones, currentState) {
     const nuevoEstado = aprobado
       ? 'Aprobada internamente'
       : 'Rechazada';
 
+    // Use the caller-supplied currentState as the concurrency guard so that
+    // any state (not only 'En revision') can be the source of an approval.
     const sql = `
       UPDATE cotizaciones
       SET
@@ -696,7 +745,7 @@ const QuotationModel = {
         aprobado_por     = ?,
         fecha_aprobacion = NOW(),
         obs_aprobacion   = ?
-      WHERE id = ? AND estado = 'En revision'
+      WHERE id = ? AND estado = ?
     `;
 
     const [result] = await pool.execute(sql, [
@@ -704,6 +753,7 @@ const QuotationModel = {
       aprobadoPor,
       observaciones || null,
       id,
+      currentState,
     ]);
 
     return result.affectedRows > 0;

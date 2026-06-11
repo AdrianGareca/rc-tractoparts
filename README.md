@@ -1,17 +1,18 @@
-<div align="center">
+﻿<div align="center">
 
-# 🚜 RC Tractoparts
-### Sistema de Gestión de Cotizaciones y Proformas
+# ðŸšœ RC Tractoparts
+### Sistema de GestiÃ³n de Cotizaciones y Proformas
 
-**API REST empresarial para la gestión integral del ciclo de vida de cotizaciones comerciales**
+**Plataforma full-stack empresarial para la gestiÃ³n integral del ciclo de vida de cotizaciones comerciales**
 
 ---
 
-![Node.js](https://img.shields.io/badge/Node.js-≥18.0.0-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-â‰¥18.0.0-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-4.x-000000?style=for-the-badge&logo=express&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0+-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
 ![JWT](https://img.shields.io/badge/JWT-Auth-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white)
-![Jest](https://img.shields.io/badge/Jest-Tests_12%2F12_✓-C21325?style=for-the-badge&logo=jest&logoColor=white)
+![Jest](https://img.shields.io/badge/Jest-Tests_12%2F12_âœ“-C21325?style=for-the-badge&logo=jest&logoColor=white)
+![Swagger](https://img.shields.io/badge/Swagger-UI_/api--docs-85EA2D?style=for-the-badge&logo=swagger&logoColor=black)
 ![Sprint](https://img.shields.io/badge/Sprint-2_Completado-1B2B4B?style=for-the-badge)
 ![License](https://img.shields.io/badge/Licencia-UNLICENSED-red?style=for-the-badge)
 
@@ -19,236 +20,435 @@
 
 ---
 
-## 📋 Tabla de Contenidos
+## ðŸ“‹ Tabla de Contenidos
 
-1. [Descripción General](#-descripción-general)
+1. [DescripciÃ³n General](#-descripciÃ³n-general)
 2. [Arquitectura del Sistema](#-arquitectura-del-sistema)
-3. [Stack Tecnológico](#-stack-tecnológico)
-4. [Estructura de Archivos](#-estructura-de-archivos)
-5. [Instalación y Configuración](#-instalación-y-configuración)
-6. [Variables de Entorno](#-variables-de-entorno)
-7. [Base de Datos](#-base-de-datos)
-8. [Ejecución del Proyecto](#-ejecución-del-proyecto)
-9. [Documentación Interactiva (Swagger)](#-documentación-interactiva-swagger)
-10. [Mapa Completo de Endpoints](#-mapa-completo-de-endpoints)
-11. [Máquina de Estados — Ciclo de Vida de Cotizaciones](#-máquina-de-estados)
-12. [Matriz de Roles y Permisos](#-matriz-de-roles-y-permisos)
-13. [Pruebas Automatizadas](#-pruebas-automatizadas)
-14. [Solución de Problemas](#-solución-de-problemas)
+3. [Matriz JerÃ¡rquica de Roles](#-matriz-jerÃ¡rquica-de-roles)
+4. [MÃ¡quina de Estados â€” Ciclo de Vida de Cotizaciones](#-mÃ¡quina-de-estados)
+5. [Capa de Seguridad y ValidaciÃ³n](#-capa-de-seguridad-y-validaciÃ³n)
+6. [Stack TecnolÃ³gico](#-stack-tecnolÃ³gico)
+7. [Estructura de Archivos](#-estructura-de-archivos)
+8. [InstalaciÃ³n y ConfiguraciÃ³n](#-instalaciÃ³n-y-configuraciÃ³n)
+9. [Variables de Entorno](#-variables-de-entorno)
+10. [Base de Datos](#-base-de-datos)
+11. [EjecuciÃ³n del Proyecto](#-ejecuciÃ³n-del-proyecto)
+12. [DocumentaciÃ³n Interactiva (Swagger)](#-documentaciÃ³n-interactiva-swagger)
+13. [Mapa Completo de Endpoints](#-mapa-completo-de-endpoints)
+14. [Pruebas Automatizadas](#-pruebas-automatizadas)
+15. [SoluciÃ³n de Problemas](#-soluciÃ³n-de-problemas)
 
 ---
 
-## 📖 Descripción General
+## ðŸ“– DescripciÃ³n General
 
-RC Tractoparts es una empresa boliviana de importación de maquinaria pesada y repuestos con sede en **Santa Cruz de la Sierra, Bolivia**. Este repositorio contiene la **API REST backend** del Sistema de Gestión de Cotizaciones y Proformas, desarrollado bajo metodología **XP/SCRUM** en dos sprints productivos.
+RC Tractoparts es una empresa boliviana de importaciÃ³n de maquinaria pesada y repuestos con sede en **Santa Cruz de la Sierra, Bolivia**. Este repositorio contiene la **plataforma full-stack** del Sistema de GestiÃ³n de Cotizaciones y Proformas, desarrollado bajo metodologÃ­a **XP/SCRUM** en dos sprints productivos.
 
-El sistema automatiza el ciclo completo de una cotización comercial: desde su creación como borrador, pasando por la revisión y aprobación interna del Jefe, hasta el envío formal al cliente y el registro de la respuesta final.
+El sistema automatiza el ciclo completo de una cotizaciÃ³n comercial: desde su creaciÃ³n por el Ejecutivo de ventas, pasando por la revisiÃ³n tÃ©cnica del Administrador (con comentarios de supervisiÃ³n), la aprobaciÃ³n definitiva del Jefe, el envÃ­o formal al cliente y el cierre de venta como `Aceptada`.
 
 ### Funcionalidades clave implementadas
 
-| Característica | Descripción |
+| CaracterÃ­stica | DescripciÃ³n |
 |---|---|
-| 🔐 **Autenticación JWT** | Tokens firmados con expiración configurable y revocación en memoria al cerrar sesión |
-| 🔒 **RBAC estricto** | Middleware de roles que restringe cada endpoint según el perfil del usuario |
-| 🔢 **Correlativo atómico** | `SELECT … FOR UPDATE` garantiza seriales únicos bajo concurrencia máxima (RNF10) |
-| 📄 **PDF automático** | Generación de proformas con marca corporativa en el momento de creación y aprobación |
-| ⚙️ **Máquina de estados** | Flujo formal `Borrador → En revisión → Aprobada/Rechazada → Enviada → Aceptada` |
-| 🛡️ **Flujo de aprobación HU08** | Solo el Jefe puede aprobar o rechazar cotizaciones, con registro histórico completo |
-| 📊 **Consultas avanzadas** | Listado paginado con 10 filtros combinables, ordenamiento dinámico y conteo paralelo |
-| 📝 **Auditoría completa** | Cada acción relevante se registra en `bitacora_auditoria` con IP, usuario y metadatos |
+| ðŸ” **AutenticaciÃ³n JWT** | Tokens firmados con expiraciÃ³n configurable y revocaciÃ³n en memoria al cerrar sesiÃ³n |
+| ðŸ”’ **RBAC jerÃ¡rquico** | SysAdmin â€º Jefe â€º Administrador â€º Ejecutivo â€” cada endpoint valida el rol antes de ejecutar |
+| ðŸ”¢ **Correlativo atÃ³mico** | `SELECT â€¦ FOR UPDATE` garantiza seriales Ãºnicos bajo concurrencia mÃ¡xima (RNF10) |
+| ðŸ“„ **PDF automÃ¡tico** | GeneraciÃ³n de proformas con marca corporativa en el momento de creaciÃ³n y aprobaciÃ³n |
+| âš™ï¸ **MÃ¡quina de estados** | Flujo formal `Pendiente â†’ En revision â†’ Aprobada internamente â†’ Aceptada` con cierre de venta |
+| ðŸ’¬ **Comentarios del Administrador** | Campo `comentarios_admin` para observaciones de supervisiÃ³n visibles solo por el Jefe |
+| â¸ **Estado En Espera** | El Administrador puede suspender la revisiÃ³n mientras verifica stock con proveedores |
+| ðŸ›¡ï¸ **Flujo de aprobaciÃ³n HU08** | Solo Jefe/SysAdmin pueden aprobar, rechazar o cerrar una venta |
+| ðŸ“Š **Consultas avanzadas** | Listado paginado con 10 filtros combinables, ordenamiento dinÃ¡mico y conteo paralelo |
+| ðŸ“ **AuditorÃ­a completa** | Cada acciÃ³n se registra en `bitacora_auditoria` con IP, usuario, rol y metadatos |
+| ðŸŒ **Dashboard SPA** | Interfaz web con patrones Strategy, Command, Observer y Mediator â€” sin frameworks externos |
 
 ---
 
-## 🏗 Arquitectura del Sistema
+## ðŸ— Arquitectura del Sistema
 
-El sistema implementa una **arquitectura de capas MVC estricta** con separación total de responsabilidades:
+El sistema implementa una **arquitectura de capas MVC estricta** con separaciÃ³n total de responsabilidades:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    CLIENTE / SWAGGER UI                      │
-│                  HTTP + Bearer JWT Token                     │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│                    CAPA DE ENRUTAMIENTO                      │
-│          src/routes/*.js  —  Express Router                  │
-│   authRoutes · quotationRoutes · userRoutes                  │
-└──────────┬──────────────────────────┬───────────────────────┘
-           │                          │
-┌──────────▼──────────┐   ┌───────────▼───────────────────────┐
-│  MIDDLEWARES        │   │         CONTROLADORES              │
-│  authMiddleware.js  │   │  authController.js                 │
-│  roleMiddleware.js  │   │  quotationController.js            │
-│  JWT verify + RBAC  │   │  userController.js                 │
-└─────────────────────┘   └───────────┬───────────────────────┘
-                                      │
-                    ┌─────────────────▼─────────────────────┐
-                    │            SERVICIOS                    │
-                    │        pdfService.js (PDFKit)          │
-                    └─────────────────┬─────────────────────┘
-                                      │
-                    ┌─────────────────▼─────────────────────┐
-                    │              MODELOS                    │
-                    │   QuotationModel.js · UserModel.js     │
-                    │   Pool MySQL · Transacciones · RBAC    │
-                    └─────────────────┬─────────────────────┘
-                                      │
-                    ┌─────────────────▼─────────────────────┐
-                    │          BASE DE DATOS MySQL 8.0+      │
-                    │  8 tablas · Pool de 10 conexiones      │
-                    │  Charset utf8mb4 · Timezone UTC        │
-                    └───────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚               CLIENTE â€” SPA / Swagger UI                        â”‚
+â”‚          public/  (HTML + Vanilla JS + CSS)                     â”‚
+â”‚                HTTP + Bearer JWT Token                          â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                          â”‚
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                    CAPA DE ENRUTAMIENTO                          â”‚
+â”‚          src/routes/*.js  â€”  Express Router                     â”‚
+â”‚   authRoutes Â· quotationRoutes Â· clientRoutes Â· userRoutes      â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+           â”‚                          â”‚
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  MIDDLEWARES        â”‚   â”‚         CONTROLADORES                  â”‚
+â”‚  authMiddleware.js  â”‚   â”‚  authController.js                     â”‚
+â”‚  roleMiddleware.js  â”‚   â”‚  quotationController.js                â”‚
+â”‚  auditMiddleware.js â”‚   â”‚  clientController.js                   â”‚
+â”‚  JWT verify + RBAC  â”‚   â”‚  userController.js                     â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜   â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                      â”‚
+                    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                    â”‚            SERVICIOS                        â”‚
+                    â”‚        pdfService.js (PDFKit)              â”‚
+                    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                      â”‚
+                    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                    â”‚              MODELOS (DAL)                  â”‚
+                    â”‚   QuotationModel.js Â· UserModel.js         â”‚
+                    â”‚   ClientModel.js Â· AuditModel.js           â”‚
+                    â”‚   Pool MySQL Â· Transacciones Â· RBAC        â”‚
+                    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                      â”‚
+                    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                    â”‚          BASE DE DATOS MySQL 8.0+          â”‚
+                    â”‚  9 tablas Â· Pool de 10 conexiones          â”‚
+                    â”‚  Charset utf8mb4 Â· Timezone UTC            â”‚
+                    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
-### Principios de seguridad implementados
+### Patrones de diseÃ±o del frontend (SPA)
 
-- **Hashing bcrypt** con factor de costo configurable (12 rondas por defecto en producción)
-- **Protección brute-force**: bloqueo automático de cuenta tras 3 intentos fallidos por 15 minutos
-- **Cabeceras HTTP seguras** via `helmet` (CSP, X-Frame-Options, HSTS)
-- **CORS** restrictivo configurado por variable de entorno
-- **Consultas 100% parametrizadas** — cero concatenación de strings en SQL
-- **Pool de conexiones** con liberación garantizada en bloques `finally`
-- **Concurrencia atómica** mediante transacciones con `SELECT … FOR UPDATE`
+| PatrÃ³n | UbicaciÃ³n | PropÃ³sito |
+|---|---|---|
+| **Strategy** | `dashboardView.js` | `ExecutiveStrategy` vs `ManagerStrategy` â€” renderizado por rol |
+| **Command** | `dashboardView.js` | `ApproveQuotationCommand`, `ChangeStatusCommand`, etc. |
+| **Observer** | `quotationForm.js` | `LineItemsSubject` notifica a `RowSubtotalObserver`, `IvaObserver`, `GrandTotalObserver` |
+| **Mediator** | `quotationForm.js` | `FormMediator` coordina `LineItemsComponent`, `TotalsComponent` y `FileUploadComponent` |
 
 ---
 
-## 🛠 Stack Tecnológico
+## ðŸ‘¥ Matriz JerÃ¡rquica de Roles
 
-| Capa | Tecnología | Versión | Propósito |
+El sistema implementa una jerarquÃ­a de autoridad descendente. Cada nivel hereda todas las capacidades de los niveles inferiores y agrega las propias.
+
+```
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚  NIVEL 4 â€” SysAdmin  (Control absoluto del sistema)           â”‚
+â”‚  â€¢ Todas las transiciones de cualquier estado                 â”‚
+â”‚  â€¢ Puede revertir incluso estados avanzados a Pendiente       â”‚
+â”‚  â€¢ GestiÃ³n de usuarios (igual que Jefe)                       â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚  NIVEL 3 â€” Jefe  (Aprobador comercial final)                  â”‚
+â”‚  â€¢ Aprueba y rechaza desde cualquier estado activo            â”‚
+â”‚  â€¢ Marca cotizaciones como "Aceptada" (cierre de venta)       â”‚
+â”‚  â€¢ GestiÃ³n completa de usuarios (CRUD)                        â”‚
+â”‚  â€¢ Ve la Cola de AprobaciÃ³n con todos los estados activos     â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚  NIVEL 2 â€” Administrador  (Revisor tÃ©cnico y comentarista)    â”‚
+â”‚  â€¢ Deja comentarios de supervisiÃ³n (comentarios_admin)        â”‚
+â”‚  â€¢ Puede poner una cotizaciÃ³n "En Espera" con justificaciÃ³n   â”‚
+â”‚  â€¢ Puede retirar una cotizaciÃ³n de revisiÃ³n â†’ Pendiente       â”‚
+â”‚  â€¢ NO puede aprobar ni rechazar (autoridad exclusiva del Jefe)â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚  NIVEL 1 â€” Ejecutivo  (Ventas y proformas)                    â”‚
+â”‚  â€¢ Crea cotizaciones y agrega Ã­tems de lÃ­nea                  â”‚
+â”‚  â€¢ EnvÃ­a a revisiÃ³n una vez que el borrador estÃ¡ completo     â”‚
+â”‚  â€¢ Marca como "Enviada al cliente" tras aprobaciÃ³n interna    â”‚
+â”‚  â€¢ Ve Ãºnicamente sus propias cotizaciones en el dashboard     â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+```
+
+### Tabla detallada de permisos por acciÃ³n
+
+| AcciÃ³n | Ejecutivo | Administrador | Jefe | SysAdmin |
+|---|:---:|:---:|:---:|:---:|
+| Login / Logout | âœ… | âœ… | âœ… | âœ… |
+| Ver cotizaciones (propias) | âœ… | âœ… | âœ… | âœ… |
+| Crear cotizaciÃ³n | âœ… | âœ… | âœ… | âœ… |
+| Enviar a revisiÃ³n (`Pendiente â†’ En revision`) | âœ… | âœ… | âœ… | âœ… |
+| Dejar comentario de supervisiÃ³n | âŒ | âœ… | âŒ | âœ… |
+| Poner en espera con comentario (`â†’ En espera`) | âŒ | âœ… | âœ… | âœ… |
+| Retirar de revisiÃ³n (`En revision â†’ Pendiente`) | âŒ | âœ… | âœ… | âœ… |
+| **Aprobar** (`â†’ Aprobada internamente`) | âŒ | âŒ | âœ… | âœ… |
+| **Rechazar** (`â†’ Rechazada`) | âŒ | âŒ | âœ… | âœ… |
+| Enviar al cliente (`â†’ Enviada al cliente`) | âœ… | âŒ | âœ… | âœ… |
+| **Aceptar â€” Cierre de Venta** (`â†’ Aceptada`) | âœ…* | âŒ | âœ… | âœ… |
+| Ver cola de aprobaciÃ³n completa | âŒ | âŒ | âœ… | âœ… |
+| Subir/descargar PDF | âœ… | âœ… | âœ… | âœ… |
+| Ver historial de estados | âœ… | âœ… | âœ… | âœ… |
+| GestiÃ³n de usuarios (CRUD) | âŒ | âŒ | âœ… | âœ… |
+
+> \* El Ejecutivo puede registrar `Aceptada` Ãºnicamente desde `Enviada al cliente` (respuesta del cliente). El Jefe y SysAdmin pueden marcarla desde `Aprobada internamente` o `Enviada al cliente` como cierre de venta directo.
+
+---
+
+## âš™ï¸ MÃ¡quina de Estados
+
+Cada cotizaciÃ³n sigue un ciclo de vida formal con transiciones validadas por rol en `ROLE_TRANSITIONS` (fuente de verdad Ãºnica en `QuotationModel.js`). Ninguna transiciÃ³n puede ejecutarse sin el rol correcto.
+
+```
+                    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+                    â”‚    PENDIENTE    â”‚  â† Estado inicial al crear
+                    â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+            Ejecutivo/Admin  â”‚  envÃ­a a revisiÃ³n
+            (valida: Ã­tems,  â”‚  monto_total, fecha_validez)
+                    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”
+          â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â–¶â”‚   EN REVISION   â”‚â—€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+          â”‚         â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜                            â”‚
+          â”‚    Admin retira  â”‚  Jefe/SysAdmin deciden              â”‚
+          â”‚                  â”‚                                      â”‚
+          â”‚    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”                  â”‚
+          â”‚    â”‚             â”‚                  â”‚                  â”‚
+          â”‚  â”Œâ”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚            â”Œâ”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”          â”‚
+          â”‚  â”‚  EN ESPERA  â”‚  â”‚            â”‚  RECHAZADA â”‚          â”‚
+          â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚            â””â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”˜          â”‚
+          â”‚  Admin/Jefe        â”‚                  â”‚ Ejecutivo        â”‚
+          â”‚  retoma           â”‚                  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+          â”‚                  â–¼                         (rework)
+          â”‚     â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+          â”‚     â”‚  APROBADA INTERNAMENTE â”‚  â† Jefe/SysAdmin aprueban
+          â”‚     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+          â”‚           â”Œâ”€â”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+          â”‚           â”‚  Ejecutivo envÃ­a          Jefe/Sys  â”‚
+          â”‚           â”‚  al cliente               cierran   â”‚
+          â”‚    â”Œâ”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”       â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”
+          â”‚    â”‚  ENVIADA AL CLIENTE â”‚       â”‚    ACEPTADA      â”‚
+          â”‚    â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜       â”‚ (Cierre de Venta)â”‚
+          â”‚           â”‚                      â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+          â”‚     â”Œâ”€â”€â”€â”€â”€â”´â”€â”€â”€â”€â”€â”
+          â”‚     â”‚           â”‚
+          â”‚  â”Œâ”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â” â”Œâ”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”
+          â”‚  â”‚ ACEPTADA â”‚ â”‚RECHAZADA â”‚
+          â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜ â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+          â”‚
+          â””â”€â”€ Todos los estados activos â†’ ARCHIVADA (terminal)
+```
+
+### Transiciones por rol (resumen)
+
+| Estado Actual | Ejecutivo | Administrador | Jefe / SysAdmin |
 |---|---|---|---|
-| Runtime | Node.js | ≥ 18.0.0 | Entorno de ejecución JavaScript |
+| `Pendiente` | â†’ En revision, Archivada | â†’ En revision, En espera, Archivada | â†’ Cualquiera |
+| `En revision` | *(solo lectura)* | â†’ En espera, Pendiente, Archivada | â†’ Cualquiera |
+| `En espera` | *(solo lectura)* | â†’ En revision, Pendiente, Archivada | â†’ Cualquiera |
+| `Aprobada internamente` | â†’ Enviada al cliente | â†’ Archivada | â†’ **Aceptada**, Enviada, Rechazada, Archivada |
+| `Enviada al cliente` | â†’ Aceptada, Rechazada, Archivada | â†’ Archivada | â†’ **Aceptada**, Rechazada, Archivada |
+| `Rechazada` | â†’ Pendiente, Archivada | â†’ Pendiente, Archivada | â†’ Pendiente, Aprobada int., Archivada |
+| `Aceptada` | â†’ Archivada | â†’ Archivada | â†’ Archivada |
+| `Archivada` | *(terminal)* | *(terminal)* | *(terminal)* |
+
+---
+
+## ðŸ›¡ Capa de Seguridad y ValidaciÃ³n
+
+### ValidaciÃ³n cruzada con Zod
+
+El esquema de validaciÃ³n en `src/validators/quotationValidator.js` aplica reglas cruzadas que no pueden verificarse campo a campo:
+
+```js
+// fecha_validez debe ser igual o posterior a fecha_emision
+.refine(
+  (data) => !data.fecha_emision || !data.fecha_validez ||
+            data.fecha_validez >= data.fecha_emision,
+  {
+    message: 'La fecha de validez no puede ser anterior a la fecha de emisiÃ³n.',
+    path: ['fecha_validez'],
+  }
+)
+```
+
+**Reglas de validaciÃ³n implementadas:**
+
+| Regla | Campo | Tipo |
+|---|---|---|
+| `fecha_validez >= fecha_emision` | Fechas | Cross-field (Zod `.refine`) |
+| MÃ­nimo 1 Ã­tem de lÃ­nea | `detalles` | Array mÃ­nimo (`.min(1)`) |
+| `monto_total` obligatorio para envÃ­o a revisiÃ³n | Header | Pre-flight check |
+| `cantidad > 0` por Ã­tem | `detalles[].cantidad` | NumÃ©rico positivo |
+| `precio_unitario >= 0` por Ã­tem | `detalles[].precio_unitario` | NumÃ©rico no negativo |
+| `observaciones` obligatorio al rechazar | AprobaciÃ³n | Condicional (`aprobado = false`) |
+
+### MitigaciÃ³n de XSS almacenado (OWASP A03)
+
+Todos los campos controlados por el usuario que se renderizan en el DOM pasan por `escHtml()` antes de ser interpolados en `innerHTML`:
+
+```js
+function escHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+```
+
+Esta funciÃ³n protege los campos: `descripcion`, `cliente_nombre`, `ejecutivo_nombre`, `observaciones`, `obs_aprobacion`, `comentarios_admin` y todos los Ã­tems de lÃ­nea.
+
+### Otras medidas de seguridad activas
+
+| Medida | ImplementaciÃ³n |
+|---|---|
+| **Hashing bcrypt** | Factor de costo configurable (12 rondas por defecto en producciÃ³n) |
+| **Brute-force protection** | Bloqueo automÃ¡tico tras 3 intentos fallidos, 15 minutos de espera |
+| **Cabeceras HTTP seguras** | `helmet` (CSP, X-Frame-Options, HSTS, X-Content-Type-Options) |
+| **CORS restrictivo** | Origen configurado por variable de entorno `CORS_ORIGIN` |
+| **Consultas parametrizadas** | Cero concatenaciÃ³n de strings en SQL â€” solo prepared statements |
+| **InyecciÃ³n de sort column** | Whitelist explÃ­cita `SORTABLE_COLUMNS` â€” ningÃºn valor externo llega al `ORDER BY` |
+| **Concurrencia atÃ³mica** | Transacciones con `SELECT â€¦ FOR UPDATE` para el correlativo |
+| **Defense-in-depth** | El controller re-verifica el rol despuÃ©s del middleware (doble barrera) |
+| **Token revocation** | Tokens invalidados en memoria al hacer logout (antes de su expiraciÃ³n JWT) |
+
+---
+
+## ðŸ›  Stack TecnolÃ³gico
+
+| Capa | TecnologÃ­a | VersiÃ³n | PropÃ³sito |
+|---|---|---|---|
+| Runtime | Node.js | â‰¥ 18.0.0 | Entorno de ejecuciÃ³n JavaScript |
 | Framework | Express.js | 4.x | Servidor HTTP y enrutamiento |
 | Base de datos | MySQL | 8.0+ | Persistencia relacional |
 | Driver DB | mysql2 | 3.9.x | Pool de conexiones con soporte Promise |
-| Autenticación | jsonwebtoken | 9.x | Firma y verificación de tokens JWT |
-| Hashing | bcryptjs | 2.4.x | Encriptación segura de contraseñas |
-| PDF | PDFKit | 0.x | Generación de proformas en formato A4 |
-| Upload | Multer | 1.4.x | Validación y almacenamiento de PDFs |
+| AutenticaciÃ³n | jsonwebtoken | 9.x | Firma y verificaciÃ³n de tokens JWT |
+| Hashing | bcryptjs | 2.4.x | EncriptaciÃ³n segura de contraseÃ±as |
+| ValidaciÃ³n | zod | 3.x | ValidaciÃ³n de esquemas con cross-field rules |
+| PDF | PDFKit | 0.x | GeneraciÃ³n de proformas en formato A4 |
+| Upload | Multer | 1.4.x | ValidaciÃ³n y almacenamiento de PDFs |
 | Seguridad | Helmet | 7.x | Cabeceras HTTP de seguridad |
 | Logging | Morgan | 1.10.x | Registro de peticiones HTTP |
-| Variables | dotenv | 16.x | Gestión de entorno |
-| Testing | Jest + Supertest | 29.x | Pruebas unitarias e integración |
-| Dev server | Nodemon | 3.x | Recarga automática en desarrollo |
+| API Docs | Swagger UI Express | 5.x | DocumentaciÃ³n interactiva en `/api-docs/` |
+| Variables | dotenv | 16.x | GestiÃ³n de entorno |
+| Testing | Jest + Supertest | 29.x | Pruebas unitarias e integraciÃ³n |
+| Dev server | Nodemon | 3.x | Recarga automÃ¡tica en desarrollo |
 
 ---
 
-## 📁 Estructura de Archivos
+## ðŸ“ Estructura de Archivos
 
 ```
 rc-tractoparts/
-│
-├── 📂 scripts/
-│   └── seed-users.js              # Sembrado seguro de usuarios con hashes auto-verificados
-│
-├── 📂 sql/
-│   ├── init.sql                   # 8 tablas base + roles iniciales (Sprint 1)
-│   └── migrate_sprint2_estados.sql # ENUM Borrador + tabla historial (Sprint 2)
-│
-├── 📂 src/
-│   ├── 📂 config/
-│   │   └── db.js                  # Pool MySQL (Singleton) + testConnection()
-│   │
-│   ├── 📂 controllers/
-│   │   ├── authController.js      # Login / Logout (HU01)
-│   │   ├── quotationController.js # CRUD cotizaciones + HU08 aprobación + historial
-│   │   └── userController.js      # CRUD usuarios (solo Jefe — HU02)
-│   │
-│   ├── 📂 middlewares/
-│   │   ├── authMiddleware.js      # Verificación JWT + revocación en memoria
-│   │   └── roleMiddleware.js      # RBAC: authorize(['Jefe', 'Ejecutivo', ...])
-│   │
-│   ├── 📂 models/
-│   │   ├── QuotationModel.js      # DAL completo: state machine, transacciones, historial
-│   │   └── UserModel.js           # DAL usuarios: CRUD + brute-force counters
-│   │
-│   ├── 📂 routes/
-│   │   ├── authRoutes.js          # POST /api/auth/login|logout
-│   │   ├── quotationRoutes.js     # 10 rutas — orden fijo-antes-paramétrico crítico
-│   │   └── userRoutes.js          # /api/usuarios (Jefe solamente)
-│   │
-│   ├── 📂 services/
-│   │   └── pdfService.js          # Generación PDF corporativo (PDFKit, A4, auto-triggered)
-│   │
-│   ├── 📂 utils/
-│   │   └── auditLog.js            # logEvent() — escritura asíncrona a bitacora_auditoria
-│   │
-│   ├── app.js                     # Express: CORS, helmet, morgan, rutas, error handler global
-│   └── server.js                  # Inicio servidor + testConnection() + graceful shutdown
-│
-├── 📂 tests/
-│   ├── 📂 unit/
-│   │   └── calcularTotales.test.js       # 12 pruebas UT-01→UT-08 + EDGE cases
-│   └── 📂 integration/
-│       └── correlativo.concurrencia.test.js  # CC-01: 20 peticiones simultáneas
-│
-├── .env.example                   # Plantilla de variables de entorno
-├── .gitignore
-├── package.json
-└── README.md
+â”‚
+â”œâ”€â”€ ðŸ“‚ public/                         # Frontend SPA (servida como archivos estÃ¡ticos)
+â”‚   â”œâ”€â”€ index.html                     # PÃ¡gina de login
+â”‚   â”œâ”€â”€ dashboard.html                 # Dashboard principal (SPA)
+â”‚   â”œâ”€â”€ ðŸ“‚ css/
+â”‚   â”‚   â””â”€â”€ styles.css                 # Sistema de diseÃ±o: variables CSS, badges, grid
+â”‚   â””â”€â”€ ðŸ“‚ js/
+â”‚       â”œâ”€â”€ ðŸ“‚ services/
+â”‚       â”‚   â”œâ”€â”€ apiClient.js           # Wrapper Fetch con auto-adjuntar token JWT
+â”‚       â”‚   â””â”€â”€ authSession.js         # SesiÃ³n en memoria (user, token, logout)
+â”‚       â””â”€â”€ ðŸ“‚ views/
+â”‚           â”œâ”€â”€ authView.js            # Formulario de login
+â”‚           â”œâ”€â”€ dashboardView.js       # Strategy (Ejecutivo/Jefe) + Commands + UI
+â”‚           â””â”€â”€ quotationForm.js       # Formulario reactivo: Observer + Mediator
+â”‚
+â”œâ”€â”€ ðŸ“‚ scripts/
+â”‚   â”œâ”€â”€ seed-users.js                  # Sembrado seguro de usuarios con hashes bcrypt
+â”‚   â”œâ”€â”€ migrate-en-espera.js           # MigraciÃ³n: agrega estado 'En espera'
+â”‚   â””â”€â”€ run-migration-comentarios-admin.js  # MigraciÃ³n: columna comentarios_admin
+â”‚
+â”œâ”€â”€ ðŸ“‚ sql/
+â”‚   â”œâ”€â”€ init.sql                       # Esquema base: 9 tablas + ENUM + roles iniciales
+â”‚   â”œâ”€â”€ migration_add_en_espera.sql    # ENUM 'En espera'
+â”‚   â”œâ”€â”€ migration_add_comentarios_admin.sql  # Columna comentarios_admin
+â”‚   â””â”€â”€ migration_add_sysadmin_role.sql     # Rol SysAdmin
+â”‚
+â”œâ”€â”€ ðŸ“‚ src/
+â”‚   â”œâ”€â”€ ðŸ“‚ config/
+â”‚   â”‚   â””â”€â”€ db.js                      # Pool MySQL (Singleton) + testConnection()
+â”‚   â”‚
+â”‚   â”œâ”€â”€ ðŸ“‚ controllers/
+â”‚   â”‚   â”œâ”€â”€ authController.js          # Login / Logout (HU01)
+â”‚   â”‚   â”œâ”€â”€ quotationController.js     # CRUD cotizaciones + HU08 aprobaciÃ³n + historial
+â”‚   â”‚   â”œâ”€â”€ clientController.js        # CRUD clientes
+â”‚   â”‚   â””â”€â”€ userController.js          # CRUD usuarios (Jefe/SysAdmin â€” HU02)
+â”‚   â”‚
+â”‚   â”œâ”€â”€ ðŸ“‚ middlewares/
+â”‚   â”‚   â”œâ”€â”€ authMiddleware.js          # VerificaciÃ³n JWT + revocaciÃ³n en memoria
+â”‚   â”‚   â”œâ”€â”€ roleMiddleware.js          # RBAC: authorize(['Jefe', 'SysAdmin', ...])
+â”‚   â”‚   â””â”€â”€ auditMiddleware.js         # Registro automÃ¡tico de accesos
+â”‚   â”‚
+â”‚   â”œâ”€â”€ ðŸ“‚ models/
+â”‚   â”‚   â”œâ”€â”€ QuotationModel.js          # DAL completo: state machine, transacciones, historial
+â”‚   â”‚   â”œâ”€â”€ UserModel.js               # DAL usuarios: CRUD + brute-force counters
+â”‚   â”‚   â”œâ”€â”€ ClientModel.js             # DAL clientes
+â”‚   â”‚   â””â”€â”€ AuditModel.js              # DAL bitÃ¡cora de auditorÃ­a
+â”‚   â”‚
+â”‚   â”œâ”€â”€ ðŸ“‚ routes/
+â”‚   â”‚   â”œâ”€â”€ authRoutes.js              # POST /api/auth/login|logout
+â”‚   â”‚   â”œâ”€â”€ quotationRoutes.js         # 10 rutas â€” orden fijo-antes-paramÃ©trico crÃ­tico
+â”‚   â”‚   â”œâ”€â”€ clientRoutes.js            # /api/clientes
+â”‚   â”‚   â””â”€â”€ userRoutes.js              # /api/usuarios
+â”‚   â”‚
+â”‚   â”œâ”€â”€ ðŸ“‚ services/
+â”‚   â”‚   â””â”€â”€ pdfService.js              # GeneraciÃ³n PDF corporativo (PDFKit, A4, auto-triggered)
+â”‚   â”‚
+â”‚   â”œâ”€â”€ ðŸ“‚ utils/
+â”‚   â”‚   â””â”€â”€ auditLog.js                # logEvent() â€” escritura asÃ­ncrona a bitacora_auditoria
+â”‚   â”‚
+â”‚   â”œâ”€â”€ ðŸ“‚ validators/
+â”‚   â”‚   â”œâ”€â”€ authValidator.js           # Zod schemas para login
+â”‚   â”‚   â”œâ”€â”€ quotationValidator.js      # Zod schemas con cross-field fecha_validez >= fecha_emision
+â”‚   â”‚   â””â”€â”€ validate.js                # Middleware wrapper para schemas Zod
+â”‚   â”‚
+â”‚   â”œâ”€â”€ app.js                         # Express: CORS, helmet, morgan, Swagger, rutas, error handler
+â”‚   â””â”€â”€ server.js                      # Inicio servidor + testConnection() + graceful shutdown
+â”‚
+â”œâ”€â”€ ðŸ“‚ tests/
+â”‚   â”œâ”€â”€ ðŸ“‚ unit/
+â”‚   â”‚   â”œâ”€â”€ calcularTotales.test.js    # 12 pruebas UT-01â†’UT-08 + EDGE cases
+â”‚   â”‚   â””â”€â”€ validationEdgeCases.test.js  # Edge cases de validaciÃ³n Zod
+â”‚   â””â”€â”€ ðŸ“‚ integration/
+â”‚       â””â”€â”€ correlativo.concurrencia.test.js  # CC-01: 20 peticiones simultÃ¡neas
+â”‚
+â”œâ”€â”€ ðŸ“‚ uploads/cotizaciones/           # PDFs generados y subidos
+â”œâ”€â”€ .env.example                       # Plantilla de variables de entorno
+â”œâ”€â”€ package.json
+â””â”€â”€ README.md
 ```
 
 ---
 
-## ⚙️ Instalación y Configuración
+## âš™ï¸ InstalaciÃ³n y ConfiguraciÃ³n
 
 ### Requisitos previos
 
-Asegúrate de tener instalado en tu sistema:
+- **[Node.js](https://nodejs.org/) v18.0.0 o superior** â€” verificar con `node -v`
+- **[MySQL 8.0+](https://dev.mysql.com/downloads/)** â€” servidor local o remoto accesible
+- **[Git](https://git-scm.com/)** â€” para clonar el repositorio
 
-- **[Node.js](https://nodejs.org/) v18.0.0 o superior** — verificar con `node -v`
-- **[MySQL 8.0+](https://dev.mysql.com/downloads/)** — servidor local o remoto accesible
-- **[Git](https://git-scm.com/)** — para clonar el repositorio
-
-### Paso 1 — Clonar e instalar dependencias
+### Paso 1 â€” Clonar e instalar dependencias
 
 ```bash
-# Clonar el repositorio
 git clone https://github.com/AdrianGareca/rc-tractoparts.git
 cd rc-tractoparts
-
-# Instalar todas las dependencias de producción y desarrollo
 npm install
 ```
 
-### Paso 2 — Crear el archivo de variables de entorno
+### Paso 2 â€” Crear el archivo de variables de entorno
 
 ```bash
-# Copiar la plantilla y abrirla para editar
 cp .env.example .env
+# Editar .env con los valores reales
 ```
 
-Edita `.env` con tus valores reales (ver sección [Variables de Entorno](#-variables-de-entorno)).
+### Paso 3 â€” Inicializar la base de datos
 
-### Paso 3 — Inicializar la base de datos
-
-Ejecuta los scripts SQL en **MySQL Workbench** o desde la terminal en el orden indicado:
+Ejecutar los scripts SQL en **MySQL Workbench** o desde la terminal en el orden indicado:
 
 ```sql
--- Script 1: Estructura base (Sprint 1) — 8 tablas + roles
 SOURCE sql/init.sql;
-
--- Script 2: Expansión Sprint 2 — agrega estado 'Borrador' y tabla de historial
-SOURCE sql/migrate_sprint2_estados.sql;
+SOURCE sql/migration_add_en_espera.sql;
+SOURCE sql/migration_add_comentarios_admin.sql;
+SOURCE sql/migration_add_sysadmin_role.sql;
 ```
 
-> **Nota:** Si usas MySQL Workbench, haz doble clic en el esquema `rc_tractoparts` en el panel izquierdo para seleccionarlo (aparece en **negrita**) antes de ejecutar los scripts.
+> **Nota:** Seleccionar el esquema `rc_tractoparts` (doble clic para que aparezca en negrita) antes de ejecutar los scripts en MySQL Workbench.
 
-### Paso 4 — Sembrar usuarios de prueba
-
-El script genera hashes bcrypt en tiempo de ejecución y los auto-verifica antes de tocar la base de datos. Nunca se copian hashes externos.
+### Paso 4 â€” Sembrar usuarios de prueba
 
 ```bash
-# Vista previa: muestra el SQL generado sin escribir en la BD
-npm run seed
-
-# Ejecutar: aplica los usuarios directamente en la base de datos
 npm run seed:execute
 ```
 
 Los usuarios sembrados son:
 
-| Usuario | Contraseña | Rol |
+| Usuario | ContraseÃ±a | Rol |
 |---|---|---|
+| `sysadmin` | `sysadmin123` | SysAdmin |
 | `jefe` | `jefe123` | Jefe |
 | `adrian_admin` | `admin123` | Jefe |
 | `carlos_admin` | `admin123` | Administracion |
@@ -256,87 +456,92 @@ Los usuarios sembrados son:
 
 ---
 
-## 🔑 Variables de Entorno
-
-Crea un archivo `.env` en la raíz del proyecto con las siguientes variables. El archivo `.env` está en `.gitignore` y **nunca debe subirse al repositorio**.
+## ðŸ”‘ Variables de Entorno
 
 ```env
-# ── Aplicación ────────────────────────────────────────────
-NODE_ENV=development          # development | production | test
-PORT=3000                     # Puerto en el que escucha Express
+# â”€â”€ AplicaciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+NODE_ENV=development
+PORT=3000
 APP_NAME=RC-Tractoparts-API
 
-# ── Base de Datos (MySQL) ──────────────────────────────────
+# â”€â”€ Base de Datos (MySQL) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 DB_HOST=localhost
 DB_PORT=3306
-DB_USER=root                  # Usuario MySQL con permisos sobre rc_tractoparts
-DB_PASSWORD=tu_contraseña     # Contraseña del usuario MySQL
-DB_NAME=rc_tractoparts        # Base de datos principal
-DB_NAME_TEST=rc_tractoparts_test  # BD exclusiva para pruebas automatizadas
+DB_USER=root
+DB_PASSWORD=tu_contraseÃ±a
+DB_NAME=rc_tractoparts
+DB_NAME_TEST=rc_tractoparts_test
+DB_CONNECTION_LIMIT=10
+DB_QUEUE_LIMIT=0
 
-# Ajuste del pool de conexiones
-DB_CONNECTION_LIMIT=10        # Máximo de conexiones simultáneas en el pool
-DB_QUEUE_LIMIT=0              # 0 = cola ilimitada
+# â”€â”€ AutenticaciÃ³n y Seguridad â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+JWT_SECRET=cambia_esto_por_clave_larga_y_aleatoria_de_64_caracteres
+JWT_EXPIRES_IN=8h
+BCRYPT_ROUNDS=12
 
-# ── Autenticación y Seguridad ──────────────────────────────
-JWT_SECRET=cambia_esto_por_una_clave_larga_y_aleatoria_de_64_caracteres
-JWT_EXPIRES_IN=8h             # Duración del token (8 horas = jornada laboral completa)
-BCRYPT_ROUNDS=12              # Factor de costo bcrypt (mayor = más seguro y lento)
+# â”€â”€ ProtecciÃ³n Brute-Force â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+MAX_LOGIN_ATTEMPTS=3
+LOCK_DURATION_MINUTES=15
 
-# ── Protección Brute-Force ─────────────────────────────────
-MAX_LOGIN_ATTEMPTS=3          # Intentos fallidos antes de bloquear la cuenta
-LOCK_DURATION_MINUTES=15      # Duración del bloqueo en minutos
+# â”€â”€ Archivos PDF â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+UPLOAD_DIR=uploads/cotizaciones
+MAX_PDF_SIZE_MB=10
 
-# ── Archivos PDF ───────────────────────────────────────────
-UPLOAD_DIR=uploads/cotizaciones   # Directorio relativo para almacenar PDFs
-MAX_PDF_SIZE_MB=10            # Tamaño máximo de PDF en megabytes
-
-# ── CORS ───────────────────────────────────────────────────
-CORS_ORIGIN=http://localhost:5500  # Origen(s) permitido(s); separar con coma si son varios
+# â”€â”€ CORS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+CORS_ORIGIN=http://localhost:5500
 ```
 
-> ⚠️ **`JWT_SECRET`** debe ser una cadena larga, aleatoria e impredecible. Genera una segura con: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
+> âš ï¸ Generar un `JWT_SECRET` seguro: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
 
 ---
 
-## 🗄 Base de Datos
+## ðŸ—„ Base de Datos
 
 ### Esquema de tablas
 
-| Tabla | Tipo | Descripción |
-|---|---|---|
-| `roles` | Catálogo | 3 perfiles del sistema: Ejecutivo, Administracion, Jefe |
-| `usuarios` | Fuerte | Cuentas de usuario con hash bcrypt y control brute-force |
-| `clientes` | Fuerte | Contrapartes comerciales (razón social, NIT) |
-| `productos` | Fuerte | Catálogo interno de piezas y repuestos |
-| `cotizaciones_correlativo` | Débil | Contador atómico de seriales por año calendario |
-| `cotizaciones` | Débil | Registro principal de cada cotización (header) |
-| `cotizacion_detalles` | Débil | Ítems de línea de cada cotización |
-| `cotizacion_historial_estados` | Débil | Historial cronológico de transiciones de estado |
-| `bitacora_auditoria` | Débil | Log de auditoría inmutable (INSERT-only) |
+| Tabla | DescripciÃ³n |
+|---|---|
+| `roles` | CatÃ¡logo de perfiles: SysAdmin, Ejecutivo, Administracion, Jefe |
+| `usuarios` | Cuentas con hash bcrypt y control brute-force |
+| `clientes` | Contrapartes comerciales (razÃ³n social, NIT) |
+| `productos` | CatÃ¡logo interno de piezas y repuestos |
+| `cotizaciones_correlativo` | Contador atÃ³mico de seriales por aÃ±o calendario |
+| `cotizaciones` | Registro principal de cada cotizaciÃ³n (header + estado + `comentarios_admin`) |
+| `cotizacion_detalles` | Ãtems de lÃ­nea de cada cotizaciÃ³n |
+| `cotizacion_historial_estados` | Historial cronolÃ³gico de transiciones de estado |
+| `bitacora_auditoria` | Log de auditorÃ­a inmutable (INSERT-only) |
 
 ### Formato del correlativo generado
 
 ```
 COT-YYYY-NNNN
-│    │     └── Número secuencial del año, 0-rellenado a 4 dígitos
-│    └──────── Año calendario de 4 dígitos
-└───────────── Prefijo fijo de la empresa
+â”‚    â”‚     â””â”€â”€ NÃºmero secuencial del aÃ±o, 0-rellenado a 4 dÃ­gitos
+â”‚    â””â”€â”€â”€â”€â”€â”€â”€â”€ AÃ±o calendario de 4 dÃ­gitos
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ Prefijo fijo de la empresa
 ```
-
-Ejemplo: `COT-2026-0042` — cotización número 42 del año 2026.
 
 ---
 
-## 🚀 Ejecución del Proyecto
-
-### Modo desarrollo (con recarga automática)
+## ðŸš€ EjecuciÃ³n del Proyecto
 
 ```bash
+# Desarrollo (recarga automÃ¡tica)
 npm run dev
+
+# ProducciÃ³n
+npm start
+
+# Sembrar usuarios
+npm run seed:execute
+
+# Pruebas unitarias
+npm run test:unit
+
+# Todas las pruebas
+npm test
 ```
 
-Al iniciar, el servidor ejecuta `testConnection()` antes de aceptar tráfico HTTP. Si la base de datos no es accesible, el proceso termina con código de error `1`. Si todo está correcto, verás:
+Al iniciar correctamente verÃ¡s:
 
 ```
 ============================================================
@@ -344,394 +549,175 @@ Al iniciar, el servidor ejecuta `testConnection()` antes de aceptar tráfico HTT
 [Server] Environment : development
 [Server] Listening on: http://localhost:3000
 [Server] Health check: http://localhost:3000/health
+[Server] API Docs   : http://localhost:3000/api-docs/
 ============================================================
-[DB] Connected to MySQL — host: localhost:3306 | database: rc_tractoparts
-```
-
-### Endpoint de diagnóstico
-
-```bash
-curl http://localhost:3000/health
-# { "status": "ok", "service": "RC-Tractoparts-API", "timestamp": "..." }
-```
-
-### Modo producción
-
-```bash
-npm start
-```
-
-### Ejecutar pruebas
-
-```bash
-# Pruebas unitarias (no requiere BD)
-npm run test:unit
-
-# Todas las pruebas (requiere BD de test configurada en DB_NAME_TEST)
-npm test
-
-# Sembrar usuarios en la BD
-npm run seed:execute
+[DB] Connected to MySQL â€” host: localhost:3306 | database: rc_tractoparts
 ```
 
 ---
 
-## 📚 Documentación Interactiva (Swagger)
+## ðŸ“š DocumentaciÃ³n Interactiva (Swagger)
 
-Con el servidor en ejecución, accede a la documentación completa de la API en:
+Con el servidor corriendo, la documentaciÃ³n completa e interactiva de la API estÃ¡ disponible en:
 
 ```
 http://localhost:3000/api-docs/
 ```
 
-La interfaz Swagger UI permite:
+Swagger UI estÃ¡ **completamente configurado y operacional**. Permite:
+
 - **Explorar** todos los endpoints con sus esquemas de request/response
-- **Autenticarte** con el token JWT obtenido del login (botón **Authorize 🔒**)
-- **Probar** cada endpoint directamente desde el navegador sin necesidad de Postman
+- **Autenticarse** con el token JWT del login (botÃ³n **Authorize ðŸ”’**)
+- **Probar** cada endpoint directamente desde el navegador
 
-> **Flujo recomendado en Swagger:**
-> 1. `POST /api/auth/login` → copiar el `token` del response
-> 2. Clic en **Authorize 🔒** → pegar `Bearer <token>`
-> 3. Explorar libremente todos los endpoints protegidos
-
----
-
-## 🗺 Mapa Completo de Endpoints
-
-### 🔐 Autenticación — `/api/auth`
-
-| Método | Endpoint | Auth | Roles | Descripción |
-|---|---|---|---|---|
-| `POST` | `/api/auth/login` | ❌ Pública | — | Autenticación con credenciales; devuelve JWT |
-| `POST` | `/api/auth/logout` | ✅ JWT | Todos | Revoca el token activo en memoria |
-
-**Body de login:**
-```json
-{
-  "nombre_usuario": "jefe",
-  "password": "jefe123"
-}
-```
-
-**Response exitoso (200):**
-```json
-{
-  "success": true,
-  "message": "Authentication successful.",
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "user": {
-      "id": 1,
-      "nombre_completo": "Jefe del Sistema",
-      "nombre_usuario": "jefe",
-      "rol": "Jefe"
-    }
-  }
-}
-```
+> **Flujo recomendado:**
+> 1. `POST /api/auth/login` â†’ copiar el `token` del response
+> 2. Clic en **Authorize ðŸ”’** â†’ pegar `Bearer <token>`
+> 3. Explorar todos los endpoints protegidos
 
 ---
 
-### 👥 Usuarios — `/api/usuarios`
+## ðŸ—º Mapa Completo de Endpoints
 
-> Todos los endpoints de usuarios requieren rol **Jefe**.
+### ðŸ” AutenticaciÃ³n â€” `/api/auth`
 
-| Método | Endpoint | Descripción |
+| MÃ©todo | Endpoint | Auth | DescripciÃ³n |
+|---|---|---|---|
+| `POST` | `/api/auth/login` | âŒ PÃºblica | Devuelve JWT firmado |
+| `POST` | `/api/auth/logout` | âœ… JWT | Revoca el token activo |
+
+### ðŸ‘¥ Usuarios â€” `/api/usuarios` (Jefe / SysAdmin)
+
+| MÃ©todo | Endpoint | DescripciÃ³n |
 |---|---|---|
-| `GET` | `/api/usuarios` | Listar todos los usuarios del sistema |
-| `POST` | `/api/usuarios` | Crear un nuevo usuario |
-| `GET` | `/api/usuarios/:id` | Obtener detalle de un usuario |
-| `PUT` | `/api/usuarios/:id` | Actualizar perfil, rol o contraseña |
-| `DELETE` | `/api/usuarios/:id` | Desactivar usuario (soft delete, `activo = 0`) |
+| `GET` | `/api/usuarios` | Listar usuarios |
+| `POST` | `/api/usuarios` | Crear usuario |
+| `GET` | `/api/usuarios/:id` | Detalle de usuario |
+| `PUT` | `/api/usuarios/:id` | Actualizar usuario |
+| `DELETE` | `/api/usuarios/:id` | Desactivar usuario (soft delete) |
 
-**Body para crear usuario:**
-```json
-{
-  "nombre_completo": "María López",
-  "nombre_usuario": "maria_ejec",
-  "password": "contraseña_segura",
-  "id_rol": 1
-}
-```
+### ðŸ¢ Clientes â€” `/api/clientes`
 
-**Tabla de roles disponibles:**
+| MÃ©todo | Endpoint | Auth | DescripciÃ³n |
+|---|---|---|---|
+| `GET` | `/api/clientes` | âœ… JWT | Listar clientes |
+| `POST` | `/api/clientes` | âœ… JWT | Crear cliente |
+| `GET` | `/api/clientes/:id` | âœ… JWT | Detalle de cliente |
+| `PUT` | `/api/clientes/:id` | âœ… JWT | Actualizar cliente |
 
-| `id_rol` | Nombre | Descripción |
+### ðŸ“‹ Cotizaciones â€” `/api/cotizaciones`
+
+| MÃ©todo | Endpoint | Roles | DescripciÃ³n |
+|---|---|---|---|
+| `GET` | `/api/cotizaciones/resumen` | Todos | Conteo por estado |
+| `GET` | `/api/cotizaciones/pendientes-aprobacion` | Jefe, SysAdmin | Cola de aprobaciÃ³n: `Pendiente` + `En revision` + `En espera` |
+| `GET` | `/api/cotizaciones` | Todos | Listado paginado con 10 filtros |
+| `POST` | `/api/cotizaciones` | Todos | Crear cotizaciÃ³n + PDF automÃ¡tico |
+| `GET` | `/api/cotizaciones/:id` | Todos | Detalle: header + Ã­tems + historial |
+| `GET` | `/api/cotizaciones/:id/historial` | Todos | Historial cronolÃ³gico de estados |
+| `PUT` | `/api/cotizaciones/:id/estado` | SegÃºn rol | TransiciÃ³n de estado (state machine) |
+| `POST` | `/api/cotizaciones/:id/aprobar` | Jefe, SysAdmin | Aprobar o rechazar (HU08) |
+| `PATCH` | `/api/cotizaciones/:id/comentario-admin` | Administracion | Guardar comentario de supervisiÃ³n |
+| `POST` | `/api/cotizaciones/:id/pdf` | Ejecutivo | Subir PDF manualmente |
+| `GET` | `/api/cotizaciones/:id/pdf` | Todos | Descargar PDF adjunto |
+
+#### ParÃ¡metros de filtrado en `GET /api/cotizaciones`
+
+| ParÃ¡metro | Tipo | DescripciÃ³n |
 |---|---|---|
-| `1` | `Ejecutivo` | Crea y envía cotizaciones, sube PDFs |
-| `2` | `Administracion` | Gestión operativa, puede cancelar revisiones |
-| `3` | `Jefe` | Aprobación total, administración de usuarios |
+| `q` | string | BÃºsqueda libre en correlativo, razÃ³n social y NIT |
+| `razon_social` | string | Coincidencia parcial en nombre del cliente |
+| `nit` | string | Coincidencia parcial en NIT |
+| `estado` | string | Filtro exacto por estado del ciclo de vida |
+| `id_cliente` | number | Filtro por ID de cliente |
+| `id_ejecutivo` | number | Filtro por ID de ejecutivo |
+| `fecha_desde` | YYYY-MM-DD | LÃ­mite inferior de fecha de emisiÃ³n |
+| `fecha_hasta` | YYYY-MM-DD | LÃ­mite superior de fecha de emisiÃ³n |
+| `moneda` | `USD` \| `BOB` | Filtra por moneda |
+| `tiene_pdf` | `true` \| `false` | Solo con o sin PDF adjunto |
+| `page` | number | PÃ¡gina (base 1, por defecto 1) |
+| `limit` | number | Registros por pÃ¡gina (mÃ¡ximo 100, por defecto 20) |
+| `sort_by` | string | Columna de ordenamiento |
+| `sort_order` | `ASC` \| `DESC` | DirecciÃ³n del ordenamiento |
 
 ---
 
-### 📋 Cotizaciones — `/api/cotizaciones`
+## ðŸ§ª Pruebas Automatizadas
 
-#### Endpoints de colección y resumen
-
-| Método | Endpoint | Roles | Descripción |
-|---|---|---|---|
-| `GET` | `/api/cotizaciones/resumen` | Todos | Conteo de cotizaciones agrupado por estado |
-| `GET` | `/api/cotizaciones/pendientes-aprobacion` | Jefe | Cola de aprobación: todas las cotizaciones en `En revision` |
-| `GET` | `/api/cotizaciones` | Todos | Listado paginado, filtrado y ordenado |
-| `POST` | `/api/cotizaciones` | Ejecutivo, Admin, Jefe | Crear cotización (genera correlativo atómico + PDF automático) |
-
-#### Filtros disponibles en `GET /api/cotizaciones`
-
-| Parámetro | Tipo | Ejemplo | Descripción |
-|---|---|---|---|
-| `q` | string | `COT-2026` | Búsqueda libre en correlativo, razón social y NIT |
-| `razon_social` | string | `Minera` | Coincidencia parcial en nombre del cliente |
-| `nit` | string | `1234567` | Coincidencia parcial en NIT del cliente |
-| `estado` | string | `En revision` | Filtro exacto por estado del ciclo de vida |
-| `id_cliente` | number | `5` | Filtro por ID de cliente |
-| `id_ejecutivo` | number | `3` | Filtro por ID de ejecutivo |
-| `fecha_desde` | date | `2026-01-01` | Límite inferior de fecha de emisión (YYYY-MM-DD) |
-| `fecha_hasta` | date | `2026-06-30` | Límite superior de fecha de emisión (YYYY-MM-DD) |
-| `moneda` | string | `USD` | `USD` o `BOB` |
-| `tiene_pdf` | boolean | `true` | `true` = solo con PDF · `false` = solo sin PDF |
-| `page` | number | `1` | Página a recuperar (base 1) |
-| `limit` | number | `20` | Registros por página (máximo 100) |
-| `sort_by` | string | `fecha_emision` | Campo de ordenamiento |
-| `sort_order` | string | `DESC` | `ASC` o `DESC` |
-
-**Ejemplo de request con filtros:**
-```
-GET /api/cotizaciones?estado=En+revision&moneda=USD&page=1&limit=10&sort_by=creado_en&sort_order=DESC
-```
-
-**Response paginado:**
-```json
-{
-  "success": true,
-  "data": [ ...cotizaciones... ],
-  "pagination": {
-    "page": 1,
-    "limit": 10,
-    "totalRecords": 47,
-    "totalPages": 5,
-    "hasNext": true,
-    "hasPrev": false
-  }
-}
-```
-
-#### Endpoints de recurso individual
-
-| Método | Endpoint | Roles | Descripción |
-|---|---|---|---|
-| `GET` | `/api/cotizaciones/:id` | Todos | Detalle completo: header + ítems + aprobación |
-| `GET` | `/api/cotizaciones/:id/historial` | Todos | Historial cronológico de cambios de estado |
-| `PUT` | `/api/cotizaciones/:id/estado` | Según rol | Transición de estado (validada por la máquina de estados) |
-| `POST` | `/api/cotizaciones/:id/aprobar` | **Solo Jefe** | Aprobar o rechazar la cotización (HU08) |
-| `POST` | `/api/cotizaciones/:id/pdf` | Ejecutivo | Subir PDF manualmente (multipart, campo `archivo`) |
-| `GET` | `/api/cotizaciones/:id/pdf` | Todos | Descargar el PDF vinculado a la cotización |
-
-**Body para cambiar estado** (`PUT /:id/estado`):
-```json
-{
-  "nuevo_estado": "En revision",
-  "observacion": "Cotización lista para revisión interna."
-}
-```
-
-**Body para aprobación HU08** (`POST /:id/aprobar`):
-```json
-{
-  "aprobado": true,
-  "observaciones": "Márgenes dentro del rango aceptable. Aprobada para envío al cliente."
-}
-```
-```json
-{
-  "aprobado": false,
-  "observaciones": "El precio unitario del ítem 3 supera el límite autorizado. Requiere revisión."
-}
-```
-
-> ⚠️ El campo `observaciones` es **obligatorio cuando `aprobado` es `false`**. El ejecutivo necesita conocer el motivo del rechazo para poder corregir la cotización.
-
-**Body para crear cotización** (`POST /`):
-```json
-{
-  "id_cliente": 1,
-  "descripcion": "Suministro de repuestos para retroexcavadora CAT 320D — mantenimiento 1000 hrs.",
-  "fecha_emision": "2026-06-01",
-  "fecha_validez": "2026-07-01",
-  "monto_total": 15750.00,
-  "moneda": "USD",
-  "observaciones": "Precio incluye transporte hasta almacén del cliente.",
-  "detalles": [
-    {
-      "descripcion_item": "Filtro de aceite CAT 1R-0716",
-      "cantidad": 4,
-      "precio_unitario": 85.00,
-      "id_producto": null
-    },
-    {
-      "descripcion_item": "Kit de sellos hidráulicos — cilindro de pluma",
-      "cantidad": 1,
-      "precio_unitario": 450.00,
-      "id_producto": 12
-    }
-  ]
-}
-```
-
----
-
-## ⚙️ Máquina de Estados
-
-Cada cotización sigue un ciclo de vida formal con transiciones validadas por rol. Ninguna transición puede saltar pasos del flujo sin autorización.
-
-```
-                    ┌─────────────┐
-                    │   BORRADOR  │  ← Estado inicial tras la creación
-                    └──────┬──────┘
-                           │ Ejecutivo / Admin / Jefe
-                           │ (valida: ítems, monto, fecha_validez)
-                    ┌──────▼──────┐
-                    │ EN REVISION │  ← En cola de aprobación del Jefe
-                    └──────┬──────┘
-              ┌────────────┴──────────────┐
-              │  Solo JEFE                │  Solo JEFE
-    ┌─────────▼─────────┐     ┌──────────▼──────────┐
-    │ APROBADA INTERNA  │     │      RECHAZADA       │
-    └─────────┬─────────┘     └──────────┬───────────┘
-              │ Ejec/Admin/Jefe          │ Ejec/Admin
-    ┌─────────▼─────────┐      ┌─────────▼───────────┐
-    │ ENVIADA AL CLIENTE│      │       BORRADOR       │ ← Rework
-    └─────────┬─────────┘      └─────────────────────┘
-         ┌────┴────┐
-         ▼         ▼
-    ┌──────────┐ ┌───────────┐
-    │ ACEPTADA │ │ RECHAZADA │  ← Respuesta del cliente
-    └────┬─────┘ └─────┬─────┘
-         └──────┬───────┘
-                ▼
-          ┌──────────┐
-          │ ARCHIVADA│  ← Estado terminal
-          └──────────┘
-```
-
----
-
-## 🔐 Matriz de Roles y Permisos
-
-| Acción | Ejecutivo | Administracion | Jefe |
-|---|:---:|:---:|:---:|
-| Login / Logout | ✅ | ✅ | ✅ |
-| Ver cotizaciones | ✅ | ✅ | ✅ |
-| Crear cotización | ✅ | ✅ | ✅ |
-| Enviar a revisión (`Borrador → En revision`) | ✅ | ✅ | ✅ |
-| Cancelar revisión (`En revision → Borrador`) | ❌ | ✅ | ✅ |
-| **Aprobar cotización** (`En revision → Aprobada`) | ❌ | ❌ | ✅ |
-| **Rechazar cotización** (`En revision → Rechazada`) | ❌ | ❌ | ✅ |
-| Enviar al cliente (`Aprobada → Enviada`) | ✅ | ✅ | ✅ |
-| Registrar respuesta cliente (`Aceptada / Rechazada`) | ✅ | ✅ | ✅ |
-| Subir PDF manualmente | ✅ | ❌ | ❌ |
-| Descargar PDF | ✅ | ✅ | ✅ |
-| Ver historial de estados | ✅ | ✅ | ✅ |
-| Ver cola de aprobación | ❌ | ❌ | ✅ |
-| Gestión de usuarios (CRUD) | ❌ | ❌ | ✅ |
-
----
-
-## 🧪 Pruebas Automatizadas
-
-### Pruebas unitarias (sin BD)
+### Pruebas unitarias
 
 ```bash
 npm run test:unit
 ```
 
-La suite ejecuta **12 pruebas** que validan la lógica de cálculo de subtotales y totales de cotización:
+Ejecuta **12 pruebas** que validan la lÃ³gica de cÃ¡lculo de subtotales y la validaciÃ³n Zod:
 
-| ID | Descripción | Resultado |
+| ID | DescripciÃ³n | Estado |
 |---|---|---|
-| UT-01 | Subtotal exacto para ítem simple | ✅ |
-| UT-02 | Redondeo a 2 decimales en decimales periódicos | ✅ |
-| UT-03 | Suma correcta de múltiples ítems | ✅ |
-| UT-04 | Array vacío devuelve `0.00` | ✅ |
-| UT-05 | Cantidad fraccional produce subtotal correcto | ✅ |
-| UT-06 | Precio unitario máximo no lanza excepción | ✅ |
-| UT-07 | Cantidad negativa lanza error de validación | ✅ |
-| UT-08 | Precio negativo lanza error de validación | ✅ |
-| EDGE-01 | Cantidad cero lanza error de validación | ✅ |
-| EDGE-02 | Precio cero es válido y devuelve `0.00` | ✅ |
-| EDGE-03 | Un solo ítem: total = subtotal | ✅ |
-| EDGE-04 | Suma con decimales periódicos redondeada correctamente | ✅ |
+| UT-01 | Subtotal exacto para Ã­tem simple | âœ… |
+| UT-02 | Redondeo a 2 decimales en decimales periÃ³dicos | âœ… |
+| UT-03 | Suma correcta de mÃºltiples Ã­tems | âœ… |
+| UT-04 | Array vacÃ­o devuelve `0.00` | âœ… |
+| UT-05 | Cantidad fraccional produce subtotal correcto | âœ… |
+| UT-06 | Precio unitario mÃ¡ximo no lanza excepciÃ³n | âœ… |
+| UT-07 | Cantidad negativa lanza error de validaciÃ³n | âœ… |
+| UT-08 | Precio negativo lanza error de validaciÃ³n | âœ… |
+| EDGE-01 | Cantidad cero lanza error de validaciÃ³n | âœ… |
+| EDGE-02 | Precio cero es vÃ¡lido (`0.00`) | âœ… |
+| EDGE-03 | Un solo Ã­tem: total = subtotal | âœ… |
+| EDGE-04 | Suma con decimales periÃ³dicos redondeada correctamente | âœ… |
 
-### Prueba de concurrencia (con BD)
+### Prueba de concurrencia
 
-```bash
-npm test
-```
-
-La prueba `CC-01` dispara **20 peticiones simultáneas** de creación de cotización y verifica que todos los correlativos generados sean únicos. Valida el bloqueo `SELECT … FOR UPDATE` bajo carga real.
+`CC-01` â€” dispara **20 peticiones simultÃ¡neas** y verifica que todos los correlativos sean Ãºnicos. Valida el `SELECT â€¦ FOR UPDATE` bajo carga real.
 
 ---
 
-## 🔧 Solución de Problemas
+## ðŸ”§ SoluciÃ³n de Problemas
 
-### `UnauthorizedAccess` al ejecutar npm en PowerShell (Windows)
+### `UnauthorizedAccess` en PowerShell (Windows)
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
-### `Error Code: 1046 — No database selected` en MySQL Workbench
+### `Error Code: 1046 â€” No database selected` en MySQL Workbench
 
-Haz doble clic sobre el esquema `rc_tractoparts` en el panel izquierdo de Workbench para que aparezca en **negrita** antes de ejecutar el script.
+Doble clic sobre `rc_tractoparts` en el panel izquierdo (debe aparecer en **negrita**) antes de ejecutar el script.
 
-### `401 Invalid credentials` en el login a pesar de credenciales correctas
+### `401 Invalid credentials` con credenciales correctas
 
-El hash almacenado en la BD no fue generado a partir de la contraseña proporcionada. Ejecuta el script de sembrado para regenerar los hashes correctamente:
+El hash almacenado no corresponde. Resembrar:
 
 ```bash
 npm run seed:execute
 ```
 
-> **Nunca copies hashes bcrypt de fuentes externas.** Cada hash debe generarse en tiempo de ejecución con `bcrypt.hash()` y verificarse con `bcrypt.compare()` antes de persistirlo.
+### `FORBIDDEN_TRANSITION` al cambiar estado
 
-### `Error: Cannot find module 'pdfkit'`
+El rol del usuario no tiene permiso para esa transiciÃ³n. Consultar la secciÃ³n [MÃ¡quina de Estados](#-mÃ¡quina-de-estados).
 
-```bash
-npm install pdfkit
-```
+### La Cola de AprobaciÃ³n aparece vacÃ­a para el Jefe
 
-### El servidor inicia pero no conecta a la BD
-
-1. Verifica que MySQL esté corriendo: `mysql -u root -p`
-2. Confirma que las variables `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD` y `DB_NAME` en `.env` sean correctas
-3. Verifica que el usuario tenga permisos sobre la base de datos:
-   ```sql
-   GRANT ALL PRIVILEGES ON rc_tractoparts.* TO 'tu_usuario'@'localhost';
-   FLUSH PRIVILEGES;
-   ```
-
-### `FORBIDDEN_TRANSITION` al cambiar el estado de una cotización
-
-El rol del usuario autenticado no tiene permiso para ejecutar esa transición específica. Consulta la [Matriz de Roles y Permisos](#-matriz-de-roles-y-permisos) y la [Máquina de Estados](#-máquina-de-estados) para verificar el flujo correcto.
+Verificar que existan cotizaciones en estado `Pendiente`, `En revision` o `En espera`. El endpoint `/api/cotizaciones/pendientes-aprobacion` incluye los tres estados activos.
 
 ---
 
-## 👨‍💻 Autores y Contexto Académico
-
-Proyecto desarrollado como trabajo práctico universitario en la **Universidad Tecnológica Privada de Santa Cruz (UTEPSA)** — Ingeniería de Sistemas, aplicando metodología **XP + SCRUM** con sprints productivos de dos semanas.
+## ðŸ‘¨â€ðŸ’» Autores y Contexto AcadÃ©mico
 
 | | |
 |---|---|
-| **Institución** | UTEPSA — Universidad Tecnológica Privada de Santa Cruz |
-| **Carrera** | Ingeniería de Sistemas |
-| **Empresa** | RC Tractoparts — Importaciones de Maquinaria Pesada |
-| **Metodología** | XP / SCRUM con sprints de dos semanas |
-| **Sprint actual** | Sprint 2 — Ciclo de vida completo y gestión documental |
+| **InstituciÃ³n** | UTEPSA â€” Universidad TecnolÃ³gica Privada de Santa Cruz |
+| **Carrera** | IngenierÃ­a de Sistemas |
+| **Empresa** | RC Tractoparts â€” Importaciones de Maquinaria Pesada |
+| **MetodologÃ­a** | XP / SCRUM con sprints de dos semanas |
+| **Sprint actual** | Sprint 2 â€” Ciclo de vida completo y gestiÃ³n documental |
 
 ---
 
 <div align="center">
 
-**RC Tractoparts — Departamento de Sistemas**
-Santa Cruz de la Sierra, Bolivia · 2026
+**RC Tractoparts â€” Departamento de Sistemas**
+Santa Cruz de la Sierra, Bolivia Â· 2026
 
 </div>

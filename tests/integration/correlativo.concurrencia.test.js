@@ -89,6 +89,13 @@ describe('CC-01: Correlativo uniqueness under concurrent access', () => {
       fecha_emision: new Date().toISOString().split('T')[0], // Today's date: YYYY-MM-DD
       monto_total:   1000.00,
       moneda:        'USD',
+      detalles: [
+        {
+          descripcion_item: `Repuesto de prueba CC-01 #${i + 1}`,
+          cantidad:         2,
+          precio_unitario:  500.00,
+        },
+      ],
     }));
 
     // Fire all N requests simultaneously — Promise.all resolves when all settle

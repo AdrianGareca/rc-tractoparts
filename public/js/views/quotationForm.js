@@ -707,6 +707,22 @@ class FormMediator {
     // Compute monto_total from items
     const subtotal = sumSubtotals(items);
 
+    // Build the filtered detalles array — drop rows with no description
+    const filteredDetalles = items.filter(i => i.descripcion_item.trim()).map(i => ({
+      descripcion_item: i.descripcion_item.trim(),
+      cantidad:         parseFloat(i.cantidad)        || 1,
+      precio_unitario:  parseFloat(i.precio_unitario) || 0,
+    }));
+
+    // Client-side guard: require at least one line item with a description
+    if (filteredDetalles.length === 0) {
+      alert.textContent = 'La cotización debe tener al menos un ítem con descripción.';
+      alert.className   = 'form-alert show alert-error';
+      this.#container.querySelector('#items-body')
+        ?.querySelector('.item-input')?.focus();
+      return;
+    }
+
     // Build request body
     const body = {
       id_cliente,
@@ -716,11 +732,7 @@ class FormMediator {
       fecha_validez: fecha_validez || null,
       observaciones: this.#container.querySelector('#observaciones')?.value.trim() || null,
       monto_total:   subtotal > 0 ? subtotal : null,
-      detalles:     items.filter(i => i.descripcion_item.trim()).map(i => ({
-        descripcion_item: i.descripcion_item.trim(),
-        cantidad:         parseFloat(i.cantidad)        || 0,
-        precio_unitario:  parseFloat(i.precio_unitario) || 0,
-      })),
+      detalles:      filteredDetalles,
     };
 
     // Disable button / show spinner

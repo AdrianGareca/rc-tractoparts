@@ -111,8 +111,8 @@ const createQuotationSchema = z.object({
 
   detalles: z
     .array(detalleItemSchema)
-    .max(200, 'A quotation may not have more than 200 line items.')
-    .default([]),
+    .min(1, 'A quotation must contain at least one line item.')
+    .max(200, 'A quotation may not have more than 200 line items.'),
 }).refine(
   (data) => {
     // fecha_validez must be equal to or after fecha_emision (both present)
@@ -139,6 +139,15 @@ const updateStatusSchema = z.object({
     .string()
     .trim()
     .max(2000, 'observacion must not exceed 2000 characters.')
+    .optional()
+    .nullable(),
+
+  // Admin supervision comment — only meaningful when rol=Administracion;
+  // silently ignored by the controller for all other roles.
+  comentario_admin: z
+    .string()
+    .trim()
+    .max(4000, 'comentario_admin must not exceed 4000 characters.')
     .optional()
     .nullable(),
 });

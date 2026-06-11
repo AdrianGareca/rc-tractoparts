@@ -48,6 +48,7 @@ const ROLE_BADGE = {
   'Jefe':           'badge-role-jefe',
   'Ejecutivo':      'badge-role-ejecutivo',
   'Administracion': 'badge-role-admin',
+  'SysAdmin':       'badge-role-sysadmin',
 };
 
 const STAT_COLOR = {
@@ -75,6 +76,22 @@ function fmtDate(iso) {
   return iso.slice(0, 10);
 }
 
+/**
+ * escHtml — HTML-entity-encode a value before interpolating into innerHTML.
+ * Prevents stored-XSS when rendering user-controlled strings (OWASP A03).
+ * @param   {any} str  - Value to encode (null/undefined become empty string)
+ * @returns {string}
+ */
+function escHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function fmtAmount(n, currency = 'USD') {
   if (n == null) return '—';
   return `${currency} ${Number(n).toFixed(2)}`;
@@ -83,12 +100,19 @@ function fmtAmount(n, currency = 'USD') {
 // ---------------------------------------------------------------------------
 // _buildProformaHTML
 // Generates the full read-only proforma view HTML for a quotation object.
-// Used by both the Executive's "Ver" detail and the Jefe's approval decision.
+// Used by the Executive's "Ver" detail, the Jefe's approval decision, and
+// the Administrador's review panel.
 //   @param {Object}  q         — full quotation data (from findById, includes detalles[])
 //   @param {number}  id        — quotation ID (for PDF link)
-//   @param {boolean} jefeMode  — when true, renders the 4-action state-machine buttons
+//   @param {boolean|string} viewMode
+//     false | 'executive' — Executive read-only view (no action buttons)
+//     true  | 'jefe'      — Jefe full action grid + read-only admin comments
+//     'admin'             — Administrador view: comment textarea + "En Espera" button
 // ---------------------------------------------------------------------------
-function _buildProformaHTML(q, id, jefeMode) {
+function _buildProformaHTML(q, id, viewMode) {
+  const jefeMode  = viewMode === true  || viewMode === 'jefe';
+  const adminMode = viewMode === 'admin';
+
   const detalles = q.detalles ?? [];
   const subtotal = detalles.reduce((sum, d) => sum + parseFloat(d.subtotal || 0), 0);
   const iva      = subtotal * 0.13;
@@ -97,30 +121,72 @@ function _buildProformaHTML(q, id, jefeMode) {
   const detallesRows = detalles.length > 0
     ? detalles.map(d => `
         <tr>
-          <td>${d.descripcion_item}</td>
+          <td>${escHtml(d.descripcion_item)}</td>
           <td class="text-right">${Number(d.cantidad).toFixed(4).replace(/\.?0+$/, '')}</td>
           <td class="text-right">${Number(d.precio_unitario).toFixed(2)}</td>
           <td class="text-right fw-600">${Number(d.subtotal).toFixed(2)}</td>
         </tr>`).join('')
     : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Sin ítems registrados</td></tr>`;
 
+  // Jefe action grid — contextual buttons based on current state
+  const canApprove  = jefeMode && ['Pendiente', 'En revision', 'En espera'].includes(q.estado);
+  const canAceptar  = jefeMode && ['Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
+  const canRechazar = jefeMode && !['Aceptada', 'Archivada', 'Rechazada'].includes(q.estado);
+  const canHold     = jefeMode && ['Pendiente', 'En revision', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
+  const canRetract  = jefeMode && ['En revision', 'En espera', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
+
   const jefeButtons = jefeMode ? `
     <div class="approval-actions">
       <h4 class="approval-actions-title">Decisión del Jefe</h4>
       <div class="approval-actions-grid">
-        <button class="btn btn-warning btn-sm" id="btn-solicitar-cambios">
+        ${canRetract ? `<button class="btn btn-warning btn-sm" id="btn-solicitar-cambios">
           ↩ Solicitar Cambios
-        </button>
-        <button class="btn btn-hold btn-sm" id="btn-en-espera">
+        </button>` : ''}
+        ${canHold ? `<button class="btn btn-hold btn-sm" id="btn-en-espera">
           ⏸ Poner en Espera
-        </button>
-        <button class="btn btn-success" id="btn-aprobar">
+        </button>` : ''}
+        ${canApprove ? `<button class="btn btn-success" id="btn-aprobar">
           ✅ Aprobar Cotización
-        </button>
-        <button class="btn btn-danger btn-sm" id="btn-rechazar">
+        </button>` : ''}
+        ${canAceptar ? `<button class="btn btn-primary" id="btn-aceptar" style="grid-column:1/-1;">
+          🏆 Aceptar Cotización — Cierre de Venta
+        </button>` : ''}
+        ${canRechazar ? `<button class="btn btn-danger btn-sm" id="btn-rechazar">
           ❌ Rechazar
+        </button>` : ''}
+      </div>
+    </div>` : '';
+
+  // Admin action panel — comment box + "En Espera" button only
+  const adminButtons = adminMode ? `
+    <div class="approval-actions" style="border-top:1px solid var(--border);margin-top:1.5rem;padding-top:1.25rem;">
+      <h4 class="approval-actions-title">Revisión del Administrador</h4>
+      <div class="form-group" style="margin-bottom:.75rem;">
+        <label class="form-label" for="admin-comment-input">Comentario de Supervisión</label>
+        <textarea class="form-control" id="admin-comment-input" rows="3"
+                  placeholder="Ej: Verificar disponibilidad con proveedor antes de aprobar..."
+                  style="resize:vertical;">${q.comentarios_admin ?? ''}</textarea>
+        <span class="field-error" id="admin-comment-err"></span>
+      </div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="btn-save-comment">
+          💾 Guardar Comentario
+        </button>
+        <button class="btn btn-hold btn-sm" id="btn-admin-en-espera">
+          ⏸ Poner en Espera con Comentario
         </button>
       </div>
+    </div>` : '';
+
+  // Read-only admin comment block — always shown in Jefe mode.
+  // When no comment exists, a clean placeholder prevents layout confusion.
+  const adminCommentBlock = jefeMode ? `
+    <div class="form-group" style="margin-top:1rem;padding:1rem;background:var(--bg-secondary,#f8f9fa);border-left:3px solid #F97316;border-radius:4px;">
+      <span class="form-label" style="color:#F97316;">💬 Comentario del Administrador</span>
+      ${q.comentarios_admin
+        ? `<p class="proforma-description" style="margin-top:.25rem;">${escHtml(q.comentarios_admin)}</p>`
+        : `<p class="proforma-description text-muted" style="margin-top:.25rem;font-style:italic;">Sin comentarios del Administrador.</p>`
+      }
     </div>` : '';
 
   return /* html */ `
@@ -134,12 +200,12 @@ function _buildProformaHTML(q, id, jefeMode) {
         </div>
         <div class="proforma-meta-item">
           <span class="form-label">Cliente</span>
-          <p class="fw-600">${q.cliente_nombre ?? q.id_cliente}</p>
-          ${q.cliente_nit ? `<small class="text-muted">NIT: ${q.cliente_nit}</small>` : ''}
+          <p class="fw-600">${escHtml(q.cliente_nombre ?? q.id_cliente)}</p>
+          ${q.cliente_nit ? `<small class="text-muted">NIT: ${escHtml(q.cliente_nit)}</small>` : ''}
         </div>
         <div class="proforma-meta-item">
           <span class="form-label">Ejecutivo</span>
-          <p>${q.ejecutivo_nombre ?? '—'}</p>
+          <p>${escHtml(q.ejecutivo_nombre ?? '—')}</p>
         </div>
         <div class="proforma-meta-item">
           <span class="form-label">Fecha Emisión</span>
@@ -158,7 +224,7 @@ function _buildProformaHTML(q, id, jefeMode) {
       <!-- Description -->
       <div class="form-group" style="margin-bottom:1rem;">
         <span class="form-label">Descripción</span>
-        <p class="proforma-description">${q.descripcion}</p>
+        <p class="proforma-description">${escHtml(q.descripcion)}</p>
       </div>
 
       <!-- Line items table -->
@@ -195,14 +261,17 @@ function _buildProformaHTML(q, id, jefeMode) {
       ${q.obs_aprobacion ? `
       <div class="form-group" style="margin-top:1rem;">
         <span class="form-label">Observaciones de Aprobación</span>
-        <p class="proforma-description">${q.obs_aprobacion}</p>
+        <p class="proforma-description">${escHtml(q.obs_aprobacion)}</p>
       </div>` : ''}
 
       ${q.observaciones ? `
       <div class="form-group" style="margin-top:.5rem;">
         <span class="form-label">Observaciones Generales</span>
-        <p class="proforma-description">${q.observaciones}</p>
+        <p class="proforma-description">${escHtml(q.observaciones)}</p>
       </div>` : ''}
+
+      <!-- Admin comment — read-only in Jefe mode -->
+      ${adminCommentBlock}
 
       <!-- PDF viewer button -->
       ${q.pdf_ruta ? `
@@ -218,6 +287,7 @@ function _buildProformaHTML(q, id, jefeMode) {
       </div>`}
 
       ${jefeButtons}
+      ${adminButtons}
     </div>
   `;
 }
@@ -246,7 +316,7 @@ class ApproveQuotationCommand extends Command {
   async execute() {
     return api.post(`/api/cotizaciones/${this.#id}/aprobar`, {
       aprobado:      this.#aprobado,
-      obs_aprobacion:this.#obs,
+      observaciones: this.#obs,   // controller reads req.body.observaciones
     });
   }
 }
@@ -287,6 +357,30 @@ class UpdateUserCommand extends Command {
   #id; #data;
   constructor(id, data) { super(); this.#id = id; this.#data = data; }
   async execute() { return api.put(`/api/usuarios/${this.#id}`, this.#data); }
+}
+
+/** PATCH /api/cotizaciones/:id/comentario-admin — Save admin supervision comment */
+class SetComentarioAdminCommand extends Command {
+  #id; #comment;
+  constructor(id, comment) { super(); this.#id = id; this.#comment = comment; }
+  async execute() {
+    return api.patch(`/api/cotizaciones/${this.#id}/comentario-admin`, {
+      comentario_admin: this.#comment,
+    });
+  }
+}
+
+/** PUT /api/cotizaciones/:id/estado — Change quotation status with optional admin comment */
+class HoldWithCommentCommand extends Command {
+  #id; #comment;
+  constructor(id, comment) { super(); this.#id = id; this.#comment = comment; }
+  async execute() {
+    return api.put(`/api/cotizaciones/${this.#id}/estado`, {
+      nuevo_estado:    'En espera',
+      observacion:     this.#comment,
+      comentario_admin: this.#comment,  // persisted in dedicated column for Jefe to read
+    });
+  }
 }
 
 // ── Command Invoker ───────────────────────────────────────────────────────────
@@ -652,7 +746,7 @@ class ManagerStrategy extends DashboardStrategy {
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Correlativo</th><th>Ejecutivo</th>
+                  <th>Correlativo</th><th>Estado</th><th>Ejecutivo</th>
                   <th>Cliente</th><th>Monto</th><th>Fecha</th>
                   <th>Vence</th><th>Acciones</th>
                 </tr>
@@ -661,6 +755,7 @@ class ManagerStrategy extends DashboardStrategy {
                 ${rows.map(r => `
                   <tr>
                     <td class="fw-600">${r.numero_correlativo}</td>
+                    <td>${badgeHtml(r.estado)}</td>
                     <td>${r.ejecutivo_nombre ?? '—'}</td>
                     <td>${r.cliente_nombre ?? r.id_cliente}</td>
                     <td>${fmtAmount(r.monto_total, r.moneda)}</td>
@@ -723,6 +818,15 @@ class ManagerStrategy extends DashboardStrategy {
 
         body.querySelector('#btn-rechazar')?.addEventListener('click', () => {
           this._showApproveDialog(id, false);
+        });
+
+        body.querySelector('#btn-aceptar')?.addEventListener('click', () => {
+          this._confirmStateChange(id, 'Aceptada',
+            'Aceptar Cotización — Cierre de Venta',
+            'El cliente ha aceptado los términos. Esta acción registra el cierre de venta y congela cualquier modificación adicional.',
+            'Observaciones de cierre (opcional)',
+            false,
+            '🏆 ¡Cierre de venta registrado! La cotización ha sido aceptada.');
         });
       }, { wide: true });
     } catch (err) {
@@ -813,7 +917,7 @@ class ManagerStrategy extends DashboardStrategy {
   async _renderAllQuotations(panel) {
     panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
     try {
-      const data = await api.get('/api/cotizaciones?limit=25&sort_by=creado_en&sort_order=DESC');
+      const data = await api.get('/api/cotizaciones?limit=50&sort_by=creado_en&sort_order=DESC');
       const rows = data.data ?? [];
 
       if (rows.length === 0) {
@@ -823,7 +927,7 @@ class ManagerStrategy extends DashboardStrategy {
             <div class="empty-state">
               <div class="empty-state-icon">📋</div>
               <h4>Sin cotizaciones registradas</h4>
-              <p>No hay cotizaciones pendientes en el sistema.</p>
+              <p>No hay cotizaciones en el sistema.</p>
             </div>
           </div>`;
         return;
@@ -840,7 +944,7 @@ class ManagerStrategy extends DashboardStrategy {
               <thead>
                 <tr>
                   <th>Correlativo</th><th>Ejecutivo</th><th>Cliente</th>
-                  <th>Monto</th><th>Estado</th><th>Fecha</th>
+                  <th>Monto</th><th>Estado</th><th>Fecha</th><th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -852,14 +956,58 @@ class ManagerStrategy extends DashboardStrategy {
                     <td>${fmtAmount(r.monto_total, r.moneda)}</td>
                     <td>${badgeHtml(r.estado)}</td>
                     <td>${fmtDate(r.fecha_emision)}</td>
+                    <td>
+                      <button class="btn btn-ghost btn-sm" data-view-detail="${r.id}"
+                              data-correlativo="${r.numero_correlativo}">
+                        🔍 Ver Detalle
+                      </button>
+                    </td>
                   </tr>`).join('')
                 }
               </tbody>
             </table>
           </div>
         </div>`;
+
+      panel.querySelectorAll('[data-view-detail]').forEach(btn => {
+        btn.addEventListener('click', () =>
+          this._viewFullDetail(btn.dataset.viewDetail, btn.dataset.correlativo));
+      });
     } catch (err) {
       panel.innerHTML = `<div class="empty-state"><p>Error: ${err.message}</p></div>`;
+    }
+  }
+
+  // ── Full detail view from "Todas las Cotizaciones" (Jefe — with action buttons) ──
+
+  async _viewFullDetail(id, correlativo) {
+    try {
+      const data = await api.get(`/api/cotizaciones/${id}`);
+      const q    = data.data;
+      UI.openModal(`Proforma ${correlativo ?? q.numero_correlativo}`, (body) => {
+        body.innerHTML = _buildProformaHTML(q, id, 'jefe');
+        // Wire action buttons (same as approval detail)
+        body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () => {
+          this._confirmStateChange(id, 'Pendiente',
+            'Solicitar Cambios',
+            'La cotización volverá al Ejecutivo para correcciones.',
+            'Observaciones para el ejecutivo *', true,
+            'Cambios solicitados — cotización regresada al ejecutivo.');
+        });
+        body.querySelector('#btn-en-espera')?.addEventListener('click', () => {
+          this._confirmStateChange(id, 'En espera',
+            'Poner en Espera',
+            'La decisión queda suspendida mientras se verifica disponibilidad.',
+            'Motivo de la espera (opcional)', false,
+            'Cotización puesta en espera.');
+        });
+        body.querySelector('#btn-aprobar')?.addEventListener('click', () =>
+          this._showApproveDialog(id, true));
+        body.querySelector('#btn-rechazar')?.addEventListener('click', () =>
+          this._showApproveDialog(id, false));
+      }, { wide: true });
+    } catch (err) {
+      showToast(`No se pudo cargar la cotización: ${err.message}`, 'error');
     }
   }
 
@@ -1164,6 +1312,470 @@ const UI = {
 };
 
 // =============================================================================
+// STRATEGY: AdminStrategy (Administracion role)
+// Tabs: Cola de Revisión, Todas las Cotizaciones, Gestión de Usuarios, Auditoría
+// Key difference from ManagerStrategy:
+//   • Can add comments & put quotations "En espera" — but CANNOT approve/reject
+//   • Sees Jefe's approval queue in read-only mode (Cola de Revisión)
+//   • Has full User CRUD access (same as Jefe per spec)
+// =============================================================================
+class AdminStrategy extends DashboardStrategy {
+  #container;
+  #user;
+  #activeTab = 'review';
+
+  constructor(user) { super(); this.#user = user; }
+
+  async render(container) {
+    this.#container = container;
+
+    container.innerHTML = `
+      <div class="tab-bar" id="admin-tabs">
+        <button class="tab-btn active" data-tab="review">Cola de Revisión</button>
+        <button class="tab-btn" data-tab="quotations">Todas las Cotizaciones</button>
+        <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
+        <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
+      </div>
+      <div id="admin-panel"></div>
+    `;
+
+    container.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        container.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.#activeTab = btn.dataset.tab;
+        this._renderPanel(btn.dataset.tab);
+      });
+    });
+
+    await this._renderPanel(this.#activeTab);
+  }
+
+  async refresh() {
+    if (this.#container) await this._renderPanel(this.#activeTab);
+  }
+
+  async _renderPanel(tab) {
+    const panel = document.getElementById('admin-panel');
+    if (!panel) return;
+    switch (tab) {
+      case 'review':     await this._renderReviewQueue(panel); break;
+      case 'quotations': await this._renderAllQuotations(panel); break;
+      case 'users':      await this._renderUsers(panel);        break;
+      case 'audit':      await this._renderAuditLogs(panel);    break;
+    }
+  }
+
+  // ── Tab: Review queue (read + hold + comment) ─────────────────────────────
+
+  async _renderReviewQueue(panel) {
+    panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    try {
+      const data = await api.get('/api/cotizaciones/pendientes-aprobacion');
+      const rows = data.data ?? [];
+
+      if (rows.length === 0) {
+        panel.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">✅</div>
+            <h4>Cola vacía</h4>
+            <p>No hay cotizaciones pendientes de revisión.</p>
+          </div>`;
+        return;
+      }
+
+      panel.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <h3>Cola de Revisión (${rows.length})</h3>
+            <span class="text-muted text-sm">Puede añadir comentarios y poner en espera</span>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Correlativo</th><th>Ejecutivo</th>
+                  <th>Cliente</th><th>Monto</th><th>Fecha</th>
+                  <th>Vence</th><th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map(r => `
+                  <tr>
+                    <td class="fw-600">${r.numero_correlativo}</td>
+                    <td>${r.ejecutivo_nombre ?? '—'}</td>
+                    <td>${r.cliente_nombre ?? r.id_cliente}</td>
+                    <td>${fmtAmount(r.monto_total, r.moneda)}</td>
+                    <td>${fmtDate(r.fecha_emision)}</td>
+                    <td>${fmtDate(r.fecha_validez)}</td>
+                    <td>
+                      <button class="btn btn-primary btn-sm" data-review="${r.id}"
+                              style="white-space:nowrap;">
+                        📋 Revisar
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+
+      panel.querySelectorAll('[data-review]').forEach(btn => {
+        btn.addEventListener('click', () => this._viewAdminDetail(btn.dataset.review));
+      });
+
+    } catch (err) {
+      panel.innerHTML = `<div class="empty-state"><p>Error: ${err.message}</p></div>`;
+    }
+  }
+
+  // ── Admin proforma detail (comment box + En Espera only) ──────────────────
+
+  async _viewAdminDetail(id) {
+    try {
+      const data = await api.get(`/api/cotizaciones/${id}`);
+      const q    = data.data;
+
+      UI.openModal(`Revisión Administrador — ${q.numero_correlativo}`, (body) => {
+        body.innerHTML = _buildProformaHTML(q, id, 'admin');
+
+        // Wire "Save comment only" button
+        body.querySelector('#btn-save-comment')?.addEventListener('click', () => {
+          const comment = body.querySelector('#admin-comment-input')?.value ?? '';
+          const errEl   = body.querySelector('#admin-comment-err');
+          const btn     = body.querySelector('#btn-save-comment');
+          errEl.textContent = '';
+          CommandInvoker.run(new SetComentarioAdminCommand(id, comment), {
+            btn,
+            successMsg: 'Comentario guardado.',
+            onError: (err) => { errEl.textContent = err.data?.message || err.message; },
+          });
+        });
+
+        // Wire "Poner en Espera con Comentario" button
+        body.querySelector('#btn-admin-en-espera')?.addEventListener('click', () => {
+          const comment = body.querySelector('#admin-comment-input')?.value.trim() ?? '';
+          const errEl   = body.querySelector('#admin-comment-err');
+          const btn     = body.querySelector('#btn-admin-en-espera');
+          if (!comment) {
+            errEl.textContent = 'El comentario es requerido para poner en espera.';
+            return;
+          }
+          errEl.textContent = '';
+          CommandInvoker.run(new HoldWithCommentCommand(id, comment), {
+            btn,
+            successMsg: 'Cotización puesta en espera. Comentario guardado.',
+            onSuccess:  () => { UI.closeModal(); this.refresh(); },
+            onError:    (err) => { errEl.textContent = err.data?.message || err.message; },
+          });
+        });
+      }, { wide: true });
+    } catch (err) {
+      showToast(`No se pudo cargar la cotización: ${err.message}`, 'error');
+    }
+  }
+
+  // ── Tab: All quotations (full detail, admin view) ─────────────────────────
+
+  async _renderAllQuotations(panel) {
+    panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    try {
+      const data = await api.get('/api/cotizaciones?limit=50&sort_by=creado_en&sort_order=DESC');
+      const rows = data.data ?? [];
+
+      if (rows.length === 0) {
+        panel.innerHTML = `
+          <div class="card">
+            <div class="card-header"><h3>Todas las Cotizaciones</h3></div>
+            <div class="empty-state">
+              <div class="empty-state-icon">📋</div>
+              <h4>Sin cotizaciones registradas</h4>
+              <p>No hay cotizaciones en el sistema.</p>
+            </div>
+          </div>`;
+        return;
+      }
+
+      panel.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <h3>Todas las Cotizaciones</h3>
+            <span class="text-muted text-sm">${data.pagination?.totalRecords ?? rows.length} total</span>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Correlativo</th><th>Ejecutivo</th><th>Cliente</th>
+                  <th>Monto</th><th>Estado</th><th>Fecha</th><th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map(r => `
+                  <tr>
+                    <td class="fw-600">${r.numero_correlativo}</td>
+                    <td>${r.ejecutivo_nombre ?? '—'}</td>
+                    <td>${r.cliente_nombre ?? r.id_cliente}</td>
+                    <td>${fmtAmount(r.monto_total, r.moneda)}</td>
+                    <td>${badgeHtml(r.estado)}</td>
+                    <td>${fmtDate(r.fecha_emision)}</td>
+                    <td>
+                      <button class="btn btn-ghost btn-sm" data-admin-view="${r.id}"
+                              data-correlativo="${r.numero_correlativo}">
+                        🔍 Ver Detalle
+                      </button>
+                    </td>
+                  </tr>`).join('')
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+
+      panel.querySelectorAll('[data-admin-view]').forEach(btn => {
+        btn.addEventListener('click', () => this._viewAdminDetail(btn.dataset.adminView));
+      });
+    } catch (err) {
+      panel.innerHTML = `<div class="empty-state"><p>Error: ${err.message}</p></div>`;
+    }
+  }
+
+  // ── Tab: User Management ─────────────────────────────────────────────────
+  // Admin has full CRUD access per the hierarchy spec (same as Jefe).
+  async _renderUsers(panel) {
+    panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    try {
+      const data  = await api.get('/api/usuarios');
+      const users = data.data ?? [];
+
+      panel.innerHTML = `
+        <div class="card">
+          <div class="card-header">
+            <h3>Gestión de Usuarios</h3>
+            <button class="btn btn-primary btn-sm" id="btn-create-user-admin">+ Nuevo Usuario</button>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr><th>ID</th><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr>
+              </thead>
+              <tbody>
+                ${users.map(u => `
+                  <tr>
+                    <td>${u.id}</td>
+                    <td>${u.nombre_completo}</td>
+                    <td class="fw-600">${u.nombre_usuario}</td>
+                    <td>${roleBadgeHtml(u.rol)}</td>
+                    <td>
+                      <span class="badge ${u.activo ? 'badge-active' : 'badge-inactive'}">
+                        ${u.activo ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </td>
+                    <td>
+                      <div class="table-actions">
+                        <button class="btn btn-ghost btn-sm" data-user-edit="${u.id}"
+                                data-nombre="${u.nombre_completo}" data-rol="${u.id_rol}">Editar</button>
+                        ${u.activo ? `
+                        <button class="btn btn-danger btn-sm" data-user-deact="${u.id}"
+                                data-uname="${u.nombre_usuario}">Desactivar</button>` : ''}
+                      </div>
+                    </td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+
+      panel.querySelector('#btn-create-user-admin')?.addEventListener('click', () => this._showCreateUserModal());
+      panel.querySelectorAll('[data-user-edit]').forEach(btn =>
+        btn.addEventListener('click', () =>
+          this._showEditUserModal(btn.dataset.userEdit, btn.dataset.nombre, btn.dataset.rol)));
+      panel.querySelectorAll('[data-user-deact]').forEach(btn =>
+        btn.addEventListener('click', () =>
+          this._confirmDeactivateUser(btn.dataset.userDeact, btn.dataset.uname)));
+
+    } catch (err) {
+      panel.innerHTML = `<div class="empty-state"><p>Error cargando usuarios: ${err.message}</p></div>`;
+    }
+  }
+
+  _showCreateUserModal() {
+    UI.openModal('Crear Nuevo Usuario', (body) => {
+      body.innerHTML = `
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="nu2-nombre">Nombre Completo *</label>
+            <input class="form-control" type="text" id="nu2-nombre" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="nu2-usuario">Nombre de Usuario *</label>
+            <input class="form-control" type="text" id="nu2-usuario" autocapitalize="none" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="nu2-password">Contraseña *</label>
+            <input class="form-control" type="password" id="nu2-password" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="nu2-rol">Rol *</label>
+            <select class="form-control" id="nu2-rol">
+              <option value="1">Ejecutivo</option>
+              <option value="2">Administracion</option>
+              <option value="3">Jefe</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-alert" id="nu2-alert"></div>
+        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+          <button class="btn btn-ghost" id="nu2-cancel">Cancelar</button>
+          <button class="btn btn-primary" id="nu2-confirm">Crear Usuario</button>
+        </div>`;
+
+      body.querySelector('#nu2-cancel')?.addEventListener('click', UI.closeModal);
+      body.querySelector('#nu2-confirm')?.addEventListener('click', () => {
+        const nombre   = body.querySelector('#nu2-nombre')?.value.trim();
+        const usuario  = body.querySelector('#nu2-usuario')?.value.trim();
+        const password = body.querySelector('#nu2-password')?.value;
+        const id_rol   = parseInt(body.querySelector('#nu2-rol')?.value, 10);
+        const alertEl  = body.querySelector('#nu2-alert');
+        if (!nombre || !usuario || !password) {
+          alertEl.textContent = 'Todos los campos marcados con * son requeridos.';
+          alertEl.className   = 'form-alert show alert-error';
+          return;
+        }
+        const btn = body.querySelector('#nu2-confirm');
+        CommandInvoker.run(
+          new CreateUserCommand({ nombre_completo: nombre, nombre_usuario: usuario, password, id_rol }),
+          {
+            btn,
+            successMsg: `Usuario "${usuario}" creado exitosamente.`,
+            onSuccess:  () => { UI.closeModal(); this._renderUsers(document.getElementById('admin-panel')); },
+            onError:    (err) => {
+              alertEl.textContent = err.data?.message || err.message;
+              alertEl.className   = 'form-alert show alert-error';
+            },
+          }
+        );
+      });
+    });
+  }
+
+  _showEditUserModal(id, nombre, idRol) {
+    UI.openModal('Editar Usuario', (body) => {
+      body.innerHTML = `
+        <div class="form-group">
+          <label class="form-label" for="eu2-nombre">Nombre Completo</label>
+          <input class="form-control" type="text" id="eu2-nombre" value="${nombre ?? ''}" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="eu2-rol">Rol</label>
+          <select class="form-control" id="eu2-rol">
+            <option value="1" ${idRol == 1 ? 'selected' : ''}>Ejecutivo</option>
+            <option value="2" ${idRol == 2 ? 'selected' : ''}>Administracion</option>
+            <option value="3" ${idRol == 3 ? 'selected' : ''}>Jefe</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="eu2-password">Nueva Contraseña (dejar vacío para no cambiar)</label>
+          <input class="form-control" type="password" id="eu2-password" />
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+          <button class="btn btn-ghost" id="eu2-cancel">Cancelar</button>
+          <button class="btn btn-primary" id="eu2-confirm">Guardar Cambios</button>
+        </div>`;
+
+      body.querySelector('#eu2-cancel')?.addEventListener('click', UI.closeModal);
+      body.querySelector('#eu2-confirm')?.addEventListener('click', () => {
+        const updateData = {
+          nombre_completo: body.querySelector('#eu2-nombre')?.value.trim(),
+          id_rol:          parseInt(body.querySelector('#eu2-rol')?.value, 10),
+        };
+        const pw = body.querySelector('#eu2-password')?.value;
+        if (pw) updateData.password = pw;
+        const btn = body.querySelector('#eu2-confirm');
+        CommandInvoker.run(new UpdateUserCommand(id, updateData), {
+          btn,
+          successMsg: 'Usuario actualizado exitosamente.',
+          onSuccess:  () => { UI.closeModal(); this._renderUsers(document.getElementById('admin-panel')); },
+        });
+      });
+    });
+  }
+
+  _confirmDeactivateUser(id, username) {
+    UI.openModal('Confirmar Desactivación', (body) => {
+      body.innerHTML = `
+        <div class="confirm-dialog">
+          <h4>¿Desactivar al usuario "${username}"?</h4>
+          <p>El usuario no podrá acceder al sistema.</p>
+          <div style="display:flex;justify-content:center;gap:.75rem;">
+            <button class="btn btn-ghost" id="dc2-cancel">Cancelar</button>
+            <button class="btn btn-danger" id="dc2-confirm">Sí, Desactivar</button>
+          </div>
+        </div>`;
+
+      body.querySelector('#dc2-cancel')?.addEventListener('click', UI.closeModal);
+      body.querySelector('#dc2-confirm')?.addEventListener('click', () => {
+        const btn = body.querySelector('#dc2-confirm');
+        CommandInvoker.run(new DeactivateUserCommand(id), {
+          btn,
+          successMsg: `Usuario "${username}" desactivado.`,
+          onSuccess:  () => { UI.closeModal(); this._renderUsers(document.getElementById('admin-panel')); },
+        });
+      });
+    });
+  }
+
+  // ── Tab: Audit logs ───────────────────────────────────────────────────────
+  async _renderAuditLogs(panel) {
+    panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    try {
+      const data = await api.get('/api/auditoria?limit=50');
+      const rows = data.data ?? [];
+      panel.innerHTML = `
+        <div class="card">
+          <div class="card-header"><h3>Registros de Auditoría (últimos 50)</h3></div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr><th>Fecha</th><th>Usuario</th><th>Tabla</th><th>Acción</th><th>Registro</th><th>IP</th></tr>
+              </thead>
+              <tbody>
+                ${rows.length === 0
+                  ? `<tr><td colspan="6" style="text-align:center;padding:2rem;">Sin registros.</td></tr>`
+                  : rows.map(r => `<tr>
+                      <td class="text-sm">${fmtDate(r.fecha_hora)}</td>
+                      <td>${r.id_usuario ?? '—'}</td>
+                      <td>${r.tabla_afectada}</td>
+                      <td><code style="font-size:.75rem;">${r.accion}</code></td>
+                      <td>${r.id_registro_afectado ?? '—'}</td>
+                      <td class="text-muted text-xs">${r.ip_cliente}</td>
+                    </tr>`).join('')
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    } catch (err) {
+      panel.innerHTML = `
+        <div class="card">
+          <div class="card-header"><h3>Registros de Auditoría</h3></div>
+          <div class="card-body">
+            <div class="empty-state">
+              <div class="empty-state-icon">🔍</div>
+              <h4>Endpoint en desarrollo</h4>
+              <p>La tabla <code>auditoria</code> está activa en la BD.<br>
+              El endpoint <code>GET /api/auditoria</code> estará disponible próximamente.</p>
+            </div>
+          </div>
+        </div>`;
+    }
+  }
+}
+
+// =============================================================================
 // DASHBOARD CONTROLLER
 // Bootstraps the page, selects the Strategy based on the user's role,
 // renders sidebar navigation, and wires global interactions.
@@ -1184,10 +1796,15 @@ class DashboardController {
     // Populate identity elements
     this._populateIdentity(user, role);
 
-    // STRATEGY SELECTION based on role
-    this.#strategy = (role === 'Jefe')
+    // STRATEGY SELECTION based on role hierarchy:
+    //   Jefe / SysAdmin → ManagerStrategy  (full authority: approve, reject, all tabs)
+    //   Administracion  → AdminStrategy    (review + hold + comment; no approve/reject)
+    //   Ejecutivo       → ExecutiveStrategy (own quotations only)
+    this.#strategy = (role === 'Jefe' || role === 'SysAdmin')
       ? new ManagerStrategy(user)
-      : new ExecutiveStrategy(user);
+      : role === 'Administracion'
+        ? new AdminStrategy(user)
+        : new ExecutiveStrategy(user);
 
     // Render sidebar
     this._renderSidebar(role);
@@ -1254,6 +1871,26 @@ class DashboardController {
         <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
           <span class="link-icon">🚪</span> Cerrar Sesión
         </button>`;
+    } else if (role === 'Administracion') {
+      links = `
+        <span class="sidebar-section-label">Panel Principal</span>
+        <button class="sidebar-link active" data-section="review">
+          <span class="link-icon">📝</span> Cola de Revisión
+        </button>
+        <button class="sidebar-link" data-section="quotations">
+          <span class="link-icon">📋</span> Todas las Cotizaciones
+        </button>
+        <span class="sidebar-section-label">Administración</span>
+        <button class="sidebar-link" data-section="users">
+          <span class="link-icon">👥</span> Gestión de Usuarios
+        </button>
+        <button class="sidebar-link" data-section="audit">
+          <span class="link-icon">🔍</span> Registros de Auditoría
+        </button>
+        <span class="sidebar-section-label">Cuenta</span>
+        <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
+          <span class="link-icon">🚪</span> Cerrar Sesión
+        </button>`;
     } else {
       links = `
         <span class="sidebar-section-label">Mi Trabajo</span>
@@ -1302,8 +1939,8 @@ class DashboardController {
         const topbarTitle = document.getElementById('topbar-title');
         if (topbarTitle) topbarTitle.textContent = title;
 
-        // ManagerStrategy has _renderPanel; ExecutiveStrategy uses section logic
-        if (this.#strategy instanceof ManagerStrategy) {
+        // ManagerStrategy and AdminStrategy both have _renderPanel
+        if (this.#strategy instanceof ManagerStrategy || this.#strategy instanceof AdminStrategy) {
           this.#strategy._renderPanel(btn.dataset.section);
         }
       });

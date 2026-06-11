@@ -519,10 +519,10 @@ const QuotationController = {
   // Request body: { nuevo_estado: string, observacion?: string }
   // ---------------------------------------------------------------------------
   async updateStatus(req, res) {
-    const id                              = parseInt(req.params.id, 10);
-    const { nuevo_estado, observacion }   = req.body;
-    const userRol                         = req.user.rol;
-    const clientIp                        = req.ip || req.socket?.remoteAddress || null;
+    const id                                          = parseInt(req.params.id, 10);
+    const { nuevo_estado, observacion, comentario_admin } = req.body;
+    const userRol                                     = req.user.rol;
+    const clientIp                                    = req.ip || req.socket?.remoteAddress || null;
 
     // ── Basic validation ──────────────────────────────────────────────────────
     if (isNaN(id) || id < 1) {
@@ -592,11 +592,19 @@ const QuotationController = {
       }
 
       // ── Execute the transition (optimistic concurrency) ───────────────────
+      // comentario_admin is forwarded only when the calling role is Administracion;
+      // it is silently ignored for other roles to prevent privilege escalation
+      // via field injection.
+      const adminComment = (userRol === 'Administracion' && comentario_admin != null)
+        ? String(comentario_admin).trim() || null
+        : null;
+
       const updated = await QuotationModel.updateStatus(
         id,
         nuevo_estado,
         estadoActual,
-        userRol
+        userRol,
+        adminComment
       );
 
       if (!updated) {
@@ -720,19 +728,22 @@ const QuotationController = {
       });
     }
 
-    // ── Controller-level Jefe assertion (defense-in-depth after middleware) ──
+    // ── Controller-level high-privilege assertion (defense-in-depth after middleware) ──
     // If the middleware is misconfigured, this line catches the gap before any
     // approval data reaches the database.
-    if (req.user.rol !== 'Jefe') {
+    if (!['Jefe', 'SysAdmin'].includes(req.user.rol)) {
       return res.status(403).json({
         success: false,
-        message: `Access denied. Only the 'Jefe' role can approve or reject quotations. ` +
+        message: `Access denied. Only 'Jefe' or 'SysAdmin' roles can approve or reject quotations. ` +
                  `Your role is '${req.user.rol}'.`,
       });
     }
 
     try {
-      // ── Verify quotation exists and is in 'En revision' ───────────────────
+      // ── Verify quotation exists ───────────────────────────────────────────
+      // Jefe and SysAdmin hold absolute authority: they can approve or reject
+      // a quotation from ANY state (Pendiente, En revision, En espera, etc.).
+      // The state restriction has been removed to unblock the HU08 workflow.
       const quotation = await QuotationModel.findById(id);
 
       if (!quotation) {
@@ -742,20 +753,12 @@ const QuotationController = {
         });
       }
 
-      if (quotation.estado !== 'En revision') {
-        return res.status(409).json({
-          success: false,
-          message: `Only quotations in 'En revision' state can be approved or rejected. ` +
-                   `Current state: '${quotation.estado}'.`,
-        });
-      }
-
-      const estadoAnterior = quotation.estado; // 'En revision'
+      const estadoAnterior = quotation.estado;
       const nuevoEstado    = aprobado ? 'Aprobada internamente' : 'Rechazada';
       const obsText        = observaciones ? String(observaciones).trim() : null;
 
-      // ── Execute the approval write (also enforces estado = 'En revision' in DB) ─
-      const approved = await QuotationModel.approve(id, req.user.id, aprobado, obsText);
+      // ── Execute the approval write (optimistic concurrency on current state) ─
+      const approved = await QuotationModel.approve(id, req.user.id, aprobado, obsText, estadoAnterior);
 
       if (!approved) {
         // Another request changed the state between our findById and the UPDATE
@@ -862,6 +865,74 @@ const QuotationController = {
     } catch (error) {
       console.error('[QuotationController.getStateHistory] Error:', error.message);
       return res.status(500).json({ success: false, message: 'Failed to retrieve state history.' });
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // patchComentarioAdmin — PATCH /api/cotizaciones/:id/comentario-admin
+  //                        (Role: Administracion ONLY)
+  //
+  // Allows the Administracion role to write or overwrite the supervisor review
+  // comment on a quotation WITHOUT changing its state. This is separate from
+  // the 'En espera' state transition so admins can update their notes at any
+  // time before the Jefe reviews the item.
+  //
+  // Request body: { "comentario_admin": "text" }
+  // ---------------------------------------------------------------------------
+  async patchComentarioAdmin(req, res) {
+    const id       = parseInt(req.params.id, 10);
+    const clientIp = req.ip || req.socket?.remoteAddress || null;
+
+    if (isNaN(id) || id < 1) {
+      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
+    }
+
+    // Defense-in-depth: controller asserts role even though route middleware already guards it
+    if (req.user.rol !== 'Administracion') {
+      return res.status(403).json({
+        success: false,
+        message: `Access denied. Only the 'Administracion' role can update admin comments. Your role is '${req.user.rol}'.`,
+      });
+    }
+
+    const { comentario_admin } = req.body;
+
+    if (comentario_admin === undefined || comentario_admin === null) {
+      return res.status(422).json({
+        success: false,
+        message: "Field 'comentario_admin' is required. Send a string (or empty string to clear).",
+      });
+    }
+
+    const sanitized = String(comentario_admin).trim();
+
+    try {
+      const quotation = await QuotationModel.findById(id);
+      if (!quotation) {
+        return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
+      }
+
+      await QuotationModel.updateComentarioAdmin(id, sanitized || null);
+
+      await logEvent({
+        id_usuario:     req.user.id,
+        nombre_usuario: req.user.nombre_usuario,
+        accion:         'ACTUALIZAR_COMENTARIO_ADMIN',
+        entidad:        'cotizaciones',
+        id_entidad:     id,
+        detalle:        { comentario_admin: sanitized || null },
+        ip_origen:      clientIp,
+        resultado:      'exito',
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Admin comment updated successfully.',
+        data:    { id, comentarios_admin: sanitized || null },
+      });
+    } catch (error) {
+      console.error('[QuotationController.patchComentarioAdmin] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to update admin comment.' });
     }
   },
 };

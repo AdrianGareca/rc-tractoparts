@@ -22,7 +22,8 @@ CREATE TABLE roles (
 INSERT INTO roles (id, nombre, descripcion) VALUES
   (1, 'Ejecutivo',       'Sales executive; registers quotations and uploads PDFs'),
   (2, 'Administracion',  'Administrative staff; manages clients and reviews records'),
-  (3, 'Jefe',            'Department head; approves quotations and manages users');
+  (3, 'Jefe',            'Department head; approves quotations and manages users'),
+  (4, 'SysAdmin',        'Systems administrator; absolute system-wide authority over all entities');
 
 -- 2. USUARIOS
 CREATE TABLE usuarios (
@@ -94,6 +95,7 @@ CREATE TABLE cotizaciones (
   aprobado_por       INT UNSIGNED  DEFAULT NULL,
   fecha_aprobacion   DATETIME      DEFAULT NULL,
   obs_aprobacion     TEXT          DEFAULT NULL,
+  comentarios_admin  TEXT          DEFAULT NULL COMMENT 'Supervisor review comment written by Administracion role',
   creado_en          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   actualizado_en     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),

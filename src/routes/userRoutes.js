@@ -1,7 +1,11 @@
 // =============================================================================
 // src/routes/userRoutes.js
 // User Management Routes — /api/usuarios
-// (Section 3.10 — API Contract + Section 3.7.4 — Role: Jefe only)
+// (Section 3.10 — API Contract + Section 3.7.4 — Permission Matrix)
+//
+// Role access matrix (per SYSTEM HIERARCHY & PRIVILEGES SPECIFICATION):
+//   View, Create, Edit  → Jefe, Administracion, SysAdmin (unrestricted access)
+//   Delete (soft)       → Jefe, SysAdmin only
 // =============================================================================
 
 'use strict';
@@ -13,14 +17,16 @@ const authorize        = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
 
-// All user management endpoints are restricted to the Jefe role (Section 3.7.4)
-const jefeOnly = [authenticate, authorize(['Jefe'])];
+// Jefe + Administracion + SysAdmin can view, create, and edit users
+const userMgmtRoles = [authenticate, authorize(['Jefe', 'Administracion', 'SysAdmin'])];
+// Only Jefe and SysAdmin can deactivate users (destructive operation)
+const jefeOnly      = [authenticate, authorize(['Jefe', 'SysAdmin'])];
 
 /**
  * @swagger
  * tags:
  *   name: Usuarios
- *   description: Gestión de usuarios del sistema (solo Jefe)
+ *   description: Gestión de usuarios del sistema (Jefe, Administracion y SysAdmin pueden ver/crear/editar; solo Jefe y SysAdmin pueden desactivar)
  */
 
 /**
@@ -44,7 +50,7 @@ const jefeOnly = [authenticate, authorize(['Jefe'])];
  */
 
 // GET  /api/usuarios      — list all users
-router.get('/', ...jefeOnly, UserController.listUsers);
+router.get('/', ...userMgmtRoles, UserController.listUsers);
 
 /**
  * @swagger
@@ -94,7 +100,7 @@ router.get('/', ...jefeOnly, UserController.listUsers);
  */
 
 // POST /api/usuarios      — create a new user
-router.post('/', ...jefeOnly, UserController.createUser);
+router.post('/', ...userMgmtRoles, UserController.createUser);
 
 /**
  * @swagger
@@ -125,7 +131,7 @@ router.post('/', ...jefeOnly, UserController.createUser);
  */
 
 // GET  /api/usuarios/:id  — get one user by ID
-router.get('/:id', ...jefeOnly, UserController.getUserById);
+router.get('/:id', ...userMgmtRoles, UserController.getUserById);
 
 /**
  * @swagger
@@ -175,7 +181,7 @@ router.get('/:id', ...jefeOnly, UserController.getUserById);
  */
 
 // PUT  /api/usuarios/:id  — partial update (name, role, active flag, password reset)
-router.put('/:id', ...jefeOnly, UserController.updateUser);
+router.put('/:id', ...userMgmtRoles, UserController.updateUser);
 
 /**
  * @swagger

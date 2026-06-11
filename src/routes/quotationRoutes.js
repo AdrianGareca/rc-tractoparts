@@ -93,9 +93,11 @@ const upload = multer({
 // Each is an array spread into the route handler chain.
 // =============================================================================
 
-const allRoles     = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe'])];
-const writeRoles   = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe'])];
-const jefeOnly     = [authenticate, authorize(['Jefe'])];
+const allRoles      = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin'])];
+const writeRoles    = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin'])];
+const jefeOnly      = [authenticate, authorize(['Jefe', 'SysAdmin'])];
+const adminOnly     = [authenticate, authorize(['Administracion'])];
+const jefeAdminOnly = [authenticate, authorize(['Jefe', 'Administracion', 'SysAdmin'])];
 const ejecutivoOnly = [authenticate, authorize(['Ejecutivo'])];
 
 /**
@@ -148,7 +150,7 @@ router.get(
  * /api/cotizaciones/pendientes-aprobacion:
  *   get:
  *     summary: Cola de cotizaciones pendientes de aprobación (HU08)
- *     description: Retorna todas las cotizaciones en estado 'En revision', ordenadas de la más antigua a la más reciente. Exclusivo para el rol Jefe.
+ *     description: Retorna todas las cotizaciones en estado 'En revision', ordenadas de la más antigua a la más reciente. Exclusivo para los roles Jefe, Administracion y SysAdmin.
  *     tags: [Cotizaciones]
  *     security:
  *       - bearerAuth: []
@@ -158,16 +160,17 @@ router.get(
  *       401:
  *         description: Token ausente o inválido.
  *       403:
- *         description: Rol insuficiente (requiere Jefe).
+ *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
  *       500:
  *         description: Error interno del servidor.
  */
 // GET /api/cotizaciones/pendientes-aprobacion
 // All quotations currently in 'En revision', ordered oldest-first.
 // Feeds the Jefe's dedicated approval queue (HU08).
+// Administracion can also view this queue per the global-access spec.
 router.get(
   '/pendientes-aprobacion',
-  ...jefeOnly,
+  ...jefeAdminOnly,
   QuotationController.getPendingApproval
 );
 
@@ -446,7 +449,11 @@ router.get(
  * /api/cotizaciones/{id}/estado:
  *   put:
  *     summary: Cambiar estado de una cotización
- *     description: Ejecuta una transición de estado validada por el rol del usuario. Solo el Jefe puede aprobar o rechazar desde 'En revision'. Aplicar a 'En revision' requiere ítems, monto_total y fecha_validez definidos.
+ *     description: |
+ *       Ejecuta una transición de estado validada por el rol del usuario.
+ *       Solo el Jefe puede aprobar o rechazar desde 'En revision'.
+ *       El Administrador puede mover a 'En espera' y opcionalmente adjuntar un comentario de supervisión.
+ *       Aplicar a 'En revision' requiere ítems, monto_total y fecha_validez definidos.
  *     tags: [Cotizaciones]
  *     security:
  *       - bearerAuth: []
@@ -468,11 +475,14 @@ router.get(
  *             properties:
  *               nuevo_estado:
  *                 type: string
- *                 enum: [Pendiente, "En revision", "Aprobada internamente", "Enviada al cliente", Aceptada, Rechazada, Archivada]
- *                 example: "En revision"
+ *                 enum: [Pendiente, "En revision", "En espera", "Aprobada internamente", "Enviada al cliente", Aceptada, Rechazada, Archivada]
+ *                 example: "En espera"
  *               observacion:
  *                 type: string
- *                 description: Comentario opcional sobre la transición
+ *                 description: Comentario opcional sobre la transición (va al historial)
+ *               comentario_admin:
+ *                 type: string
+ *                 description: "Comentario de supervisión del Administrador (solo aplica cuando rol=Administracion; ignorado para otros roles)"
  *     responses:
  *       200:
  *         description: Estado actualizado correctamente.
@@ -507,8 +517,13 @@ router.put(
  * @swagger
  * /api/cotizaciones/{id}/aprobar:
  *   post:
- *     summary: Aprobar o rechazar cotización (HU08 — solo Jefe)
- *     description: Endpoint dedicado de aprobación/rechazo interno. Escribe los metadatos de aprobación, registra el evento de auditoría y regenera el PDF con el sello de aprobación.
+ *     summary: Aprobar o rechazar cotización (HU08 — Jefe y SysAdmin)
+ *     description: |
+ *       Endpoint dedicado de aprobación/rechazo interno con autoridad absoluta.
+ *       Jefe y SysAdmin pueden ejecutar esta acción desde CUALQUIER estado de la
+ *       cotización (Pendiente, En revisión, En espera, etc.). Escribe los metadatos
+ *       de aprobación, registra el evento de auditoría y regenera el PDF con el
+ *       sello de aprobación.
  *     tags: [Cotizaciones]
  *     security:
  *       - bearerAuth: []
@@ -518,7 +533,7 @@ router.put(
  *         required: true
  *         schema:
  *           type: integer
- *         description: ID de la cotización (debe estar en estado 'En revision')
+ *         description: ID de la cotización
  *     requestBody:
  *       required: true
  *       content:
@@ -540,21 +555,23 @@ router.put(
  *       200:
  *         description: Decisión de aprobación registrada y PDF regenerado.
  *       400:
- *         description: ID inválido o cotización no está en estado 'En revision'.
+ *         description: ID inválido.
  *       401:
  *         description: Token ausente o inválido.
  *       403:
- *         description: Rol insuficiente (requiere Jefe).
+ *         description: Rol insuficiente (requiere Jefe o SysAdmin).
  *       404:
  *         description: Cotización no encontrada.
+ *       409:
+ *         description: Conflicto de concurrencia optimista (el estado cambió entre lecturas).
  *       422:
  *         description: aprobado no proporcionado, no es booleano, o se rechaza sin observaciones.
  *       500:
  *         description: Error interno del servidor.
  */
 // POST /api/cotizaciones/:id/aprobar
-// HU08 — Dedicated Jefe approval / rejection endpoint.
-// Body: { aprobado: boolean, obs_aprobacion?: string }
+// HU08 — Dedicated Jefe / SysAdmin approval / rejection endpoint.
+// Body: { aprobado: boolean, observaciones?: string }
 // Writes approval metadata, logs audit event, and regenerates the PDF.
 // validate(): ensures aprobado is strictly boolean before controller logic.
 router.post(
@@ -662,6 +679,61 @@ router.get(
   '/:id/pdf',
   ...allRoles,
   QuotationController.downloadPdf
+);
+
+/**
+ * @swagger
+ * /api/cotizaciones/{id}/comentario-admin:
+ *   patch:
+ *     summary: Agregar/actualizar comentario de supervisión del Administrador
+ *     description: |
+ *       Permite al Administrador escribir o actualizar un comentario de revisión en una cotización
+ *       sin cambiar su estado. El comentario queda visible al Jefe en el panel de aprobación.
+ *       Exclusivo para el rol Administracion.
+ *     tags: [Cotizaciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la cotización
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - comentario_admin
+ *             properties:
+ *               comentario_admin:
+ *                 type: string
+ *                 description: Texto del comentario de supervisión (cadena vacía para limpiar)
+ *     responses:
+ *       200:
+ *         description: Comentario guardado correctamente.
+ *       400:
+ *         description: ID inválido.
+ *       401:
+ *         description: Token ausente o inválido.
+ *       403:
+ *         description: Rol insuficiente (requiere Administracion).
+ *       404:
+ *         description: Cotización no encontrada.
+ *       422:
+ *         description: Campo comentario_admin ausente.
+ *       500:
+ *         description: Error interno del servidor.
+ */
+// PATCH /api/cotizaciones/:id/comentario-admin
+// Administracion-only: write or overwrite the supervisor review comment.
+router.patch(
+  '/:id/comentario-admin',
+  ...adminOnly,
+  QuotationController.patchComentarioAdmin
 );
 
 // =============================================================================
