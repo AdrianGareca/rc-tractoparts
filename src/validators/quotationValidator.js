@@ -19,12 +19,12 @@
 const { z } = require('zod');
 
 // ---------------------------------------------------------------------------
-// Valid business values (mirrors the ENUM in the cotizaciones table)
+// Valid business values (mirrors the ENUM in the cotizaciones table exactly)
 // ---------------------------------------------------------------------------
 const VALID_STATES = [
-  'Borrador',
   'Pendiente',
   'En revision',
+  'En espera',
   'Aprobada internamente',
   'Enviada al cliente',
   'Aceptada',
@@ -113,7 +113,17 @@ const createQuotationSchema = z.object({
     .array(detalleItemSchema)
     .max(200, 'A quotation may not have more than 200 line items.')
     .default([]),
-});
+}).refine(
+  (data) => {
+    // fecha_validez must be equal to or after fecha_emision (both present)
+    if (!data.fecha_validez || !data.fecha_emision) return true;
+    return data.fecha_validez >= data.fecha_emision;
+  },
+  {
+    message: 'fecha_validez must be on or after fecha_emision.',
+    path: ['fecha_validez'],
+  }
+);
 
 // ---------------------------------------------------------------------------
 // updateStatusSchema — PUT /api/cotizaciones/:id/estado
@@ -140,10 +150,12 @@ const approveQuotationSchema = z.object({
   aprobado: z
     .boolean({ required_error: 'aprobado (boolean) is required.' }),
 
-  obs_aprobacion: z
+  // Field name MUST match what quotationController.approveQuotation reads
+  // from req.body after validate() replaces it with the parsed output.
+  observaciones: z
     .string()
     .trim()
-    .max(2000, 'obs_aprobacion must not exceed 2000 characters.')
+    .max(2000, 'observaciones must not exceed 2000 characters.')
     .optional()
     .nullable(),
 });

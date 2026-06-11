@@ -23,13 +23,13 @@ const { pool } = require('../config/db');
 
 // ---------------------------------------------------------------------------
 // All valid state values for the cotizaciones.estado ENUM column.
-// 'Borrador' is the canonical initial state (Sprint 2+).
-// 'Pendiente' is preserved for Sprint 1 records created before the migration.
+// Must mirror the ENUM definition in sql/init.sql exactly.
+// 'Pendiente' is the canonical initial state and the DB column default.
 // ---------------------------------------------------------------------------
 const VALID_STATES = [
-  'Borrador',               // Draft; quotation is being assembled by the Ejecutivo
-  'Pendiente',              // Legacy initial state (Sprint 1 backward compatibility)
+  'Pendiente',              // Initial state; quotation is being assembled by the Ejecutivo
   'En revision',            // Submitted; awaiting Jefe's internal approval decision
+  'En espera',              // Decision suspended pending external supplier stock checks
   'Aprobada internamente',  // Approved by Jefe; ready to be sent to the client
   'Enviada al cliente',     // Formally delivered to the client
   'Aceptada',               // Client accepted the terms
@@ -46,43 +46,42 @@ const VALID_STATES = [
 //   • Only 'Jefe' can transition from 'En revision' to approval/rejection states.
 //   • 'Ejecutivo' cannot act on a quotation once it has been submitted ('En revision'
 //     becomes read-only for them — they must wait for the Jefe's decision).
-//   • 'Administracion' may pull back a submitted quotation ('En revision' → 'Borrador')
+//   • 'Administracion' may pull back a submitted quotation ('En revision' → 'Pendiente')
 //     but cannot approve or reject it.
-//   • 'Borrador' and 'Pendiente' share identical allowed transitions for every role
-//     (Pendiente is the pre-migration alias; they are semantically identical).
+//   • 'Pendiente' is the canonical initial state per the DB ENUM definition.
 // ---------------------------------------------------------------------------
 const ROLE_TRANSITIONS = {
 
   Ejecutivo: {
-    Borrador:                ['En revision', 'Archivada'],
-    Pendiente:               ['En revision', 'Archivada'],    // Legacy alias
-    'En revision':           [],                              // Read-only: wait for Jefe
+    Pendiente:               ['En revision', 'Archivada'],
+    'En revision':           [],                                    // Read-only: wait for Jefe
+    'En espera':             [],                                    // Read-only: Jefe suspended decision
     'Aprobada internamente': ['Enviada al cliente'],
     'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],
-    Rechazada:               ['Borrador', 'Archivada'],        // Reset to draft for rework
+    Rechazada:               ['Pendiente', 'Archivada'],            // Reset to initial state for rework
     Aceptada:                ['Archivada'],
     Archivada:               [],
   },
 
   Administracion: {
-    Borrador:                ['En revision', 'Archivada'],
     Pendiente:               ['En revision', 'Archivada'],
-    'En revision':           ['Borrador', 'Archivada'],        // Can cancel a submission
+    'En revision':           ['Pendiente', 'Archivada'],            // Can cancel a submission
+    'En espera':             ['Pendiente', 'Archivada'],            // Can cancel a hold
     'Aprobada internamente': ['Enviada al cliente', 'Archivada'],
     'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],
-    Rechazada:               ['Borrador', 'Archivada'],
+    Rechazada:               ['Pendiente', 'Archivada'],
     Aceptada:                ['Archivada'],
     Archivada:               [],
   },
 
   Jefe: {
-    // Full authority — exclusive access to internal approval and rejection
-    Borrador:                ['En revision', 'Archivada'],
+    // Full authority — exclusive access to internal approval, rejection, and hold
     Pendiente:               ['En revision', 'Archivada'],
-    'En revision':           ['Aprobada internamente', 'Rechazada', 'Borrador', 'Archivada'],
+    'En revision':           ['Aprobada internamente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
+    'En espera':             ['Aprobada internamente', 'Rechazada', 'Pendiente', 'Archivada'],
     'Aprobada internamente': ['Enviada al cliente', 'Archivada'],
     'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],
-    Rechazada:               ['Borrador', 'Archivada'],
+    Rechazada:               ['Pendiente', 'Archivada'],
     Aceptada:                ['Archivada'],
     Archivada:               [],
   },
@@ -93,12 +92,12 @@ const ROLE_TRANSITIONS = {
 // ROLE_TRANSITIONS is always the authoritative source in the application.
 // ---------------------------------------------------------------------------
 const STATE_TRANSITIONS = {
-  Borrador:                ['En revision', 'Archivada'],
   Pendiente:               ['En revision', 'Archivada'],
-  'En revision':           ['Aprobada internamente', 'Rechazada', 'Borrador', 'Archivada'],
+  'En revision':           ['Aprobada internamente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
+  'En espera':             ['Aprobada internamente', 'Rechazada', 'Pendiente', 'Archivada'],
   'Aprobada internamente': ['Enviada al cliente', 'Archivada'],
   'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],
-  Rechazada:               ['Borrador', 'Archivada'],
+  Rechazada:               ['Pendiente', 'Archivada'],
   Aceptada:                ['Archivada'],
   Archivada:               [],
 };
@@ -254,7 +253,7 @@ const QuotationModel = {
 
   // ---------------------------------------------------------------------------
   // create — Insert the cotizaciones header inside a caller-managed transaction.
-  // Initial state is 'Borrador' (Sprint 2+); requires migration for existing DBs.
+  // Initial state is 'Pendiente' — the only valid initial ENUM value in the DB.
   // ---------------------------------------------------------------------------
   async create(connection, data) {
     const sql = `
@@ -262,7 +261,7 @@ const QuotationModel = {
         (numero_correlativo, id_cliente, id_ejecutivo, descripcion,
          monto_total, moneda, estado, observaciones, fecha_emision, fecha_validez)
       VALUES
-        (?, ?, ?, ?, ?, ?, 'Borrador', ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?, ?)
     `;
 
     const [result] = await connection.execute(sql, [
@@ -443,10 +442,14 @@ const QuotationModel = {
       ${BASE_JOINS}
       ${whereClause}
       ORDER BY ${sortColumn} ${sortOrder}
-      LIMIT ? OFFSET ?
+      LIMIT ${limit} OFFSET ${offset}
     `;
 
-    const [rows] = await pool.execute(sql, [...whereValues, limit, offset]);
+    // LIMIT and OFFSET are embedded as SQL literals (not bound params) because
+    // mysql2 v3 prepared statements mistype them as DOUBLE, causing
+    // "Incorrect arguments to mysqld_stmt_execute". Both values are
+    // validated integers (Math.min / Math.max / parseInt) so this is safe.
+    const [rows] = await pool.execute(sql, whereValues);
     return rows;
   },
 
@@ -490,7 +493,7 @@ const QuotationModel = {
       GROUP BY c.estado
       ORDER BY FIELD(
         c.estado,
-        'Borrador', 'Pendiente', 'En revision', 'Aprobada internamente',
+        'Pendiente', 'En revision', 'En espera', 'Aprobada internamente',
         'Enviada al cliente', 'Aceptada', 'Rechazada', 'Archivada'
       )
     `;
@@ -797,7 +800,7 @@ const QuotationModel = {
       SELECT
         ba.id,
         NULL                 AS estado_anterior,
-        'Borrador'           AS estado_nuevo,
+        'Pendiente'          AS estado_nuevo,
         ba.nombre_usuario,
         NULL                 AS rol_usuario,
         NULL                 AS observacion,

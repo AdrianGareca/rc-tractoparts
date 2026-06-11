@@ -100,12 +100,27 @@ const QuotationController = {
 
       const numeroCorrelativo = await QuotationModel.generateCorrelativo(connection);
 
+      // Recalculate monto_total server-side from line items so the stored
+      // header total always matches the sum of the actual detail rows.
+      // The client-supplied value is ignored when detalles are present.
+      let calculatedTotal = null;
+      if (detalles.length > 0) {
+        calculatedTotal = parseFloat(
+          detalles.reduce((sum, item) => {
+            return sum + parseFloat(item.cantidad) * parseFloat(item.precio_unitario);
+          }, 0).toFixed(2)
+        );
+      } else if (monto_total != null) {
+        // No line items — accept an explicit header-level total (e.g. free-text quote)
+        calculatedTotal = parseFloat(monto_total);
+      }
+
       const quotationId = await QuotationModel.create(connection, {
         numero_correlativo: numeroCorrelativo,
         id_cliente:         parseInt(id_cliente, 10),
         id_ejecutivo:       req.user.id,
         descripcion:        String(descripcion).trim(),
-        monto_total:        monto_total != null ? parseFloat(monto_total) : null,
+        monto_total:        calculatedTotal,
         moneda:             moneda || 'USD',
         observaciones:      observaciones || null,
         fecha_emision,
@@ -133,11 +148,11 @@ const QuotationController = {
         );
       }
 
-      // Initial history record (Borrador is the first state)
+      // Initial history record ('Pendiente' is the DB-valid initial state)
       await QuotationModel.logStateHistory({
         id_cotizacion:  quotationId,
         estado_anterior: null,
-        estado_nuevo:   'Borrador',
+        estado_nuevo:   'Pendiente',
         id_usuario:     req.user.id,
         nombre_usuario: req.user.nombre_usuario,
         rol_usuario:    req.user.rol,
@@ -242,10 +257,12 @@ const QuotationController = {
         return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
       }
 
-      const relativePath = path.join(
-        process.env.UPLOAD_DIR || 'uploads/cotizaciones',
-        req.file.filename
-      );
+      // Use forward slashes regardless of OS so the stored DB path is
+      // portable and consistent when displayed or queried cross-platform.
+      const relativePath = [
+        (process.env.UPLOAD_DIR || 'uploads/cotizaciones').replace(/\\/g, '/'),
+        req.file.filename,
+      ].join('/');
 
       await QuotationModel.updatePdfPath(id, relativePath);
 
@@ -397,6 +414,9 @@ const QuotationController = {
         else return res.status(422).json({ success: false, message: "tiene_pdf must be 'true' or 'false'." });
       }
 
+      // Explicit parseInt(..., 10) guarantees strict integer type before injection
+      // into the MySQL prepared-statement parameter array (prevents the
+      // "Incorrect arguments to mysqld_stmt_execute" error from raw string coercion).
       const page      = Math.max(1, parseInt(req.query.page,  10) || 1);
       const limit     = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
       const sortBy    = req.query.sort_by || 'creado_en';

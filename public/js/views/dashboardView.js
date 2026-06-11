@@ -36,6 +36,7 @@ const STATE_BADGE = {
   'Borrador':              'badge-borrador',
   'Pendiente':             'badge-pendiente',
   'En revision':           'badge-en-revision',
+  'En espera':             'badge-en-espera',
   'Aprobada internamente': 'badge-aprobada',
   'Enviada al cliente':    'badge-enviada',
   'Aceptada':              'badge-aceptada',
@@ -52,6 +53,7 @@ const ROLE_BADGE = {
 const STAT_COLOR = {
   'Pendiente':             '#F59E0B',
   'En revision':           '#F97316',
+  'En espera':             '#6366F1',
   'Aprobada internamente': '#10B981',
   'Enviada al cliente':    '#3B82F6',
   'Aceptada':              '#8B5CF6',
@@ -76,6 +78,148 @@ function fmtDate(iso) {
 function fmtAmount(n, currency = 'USD') {
   if (n == null) return '—';
   return `${currency} ${Number(n).toFixed(2)}`;
+}
+
+// ---------------------------------------------------------------------------
+// _buildProformaHTML
+// Generates the full read-only proforma view HTML for a quotation object.
+// Used by both the Executive's "Ver" detail and the Jefe's approval decision.
+//   @param {Object}  q         — full quotation data (from findById, includes detalles[])
+//   @param {number}  id        — quotation ID (for PDF link)
+//   @param {boolean} jefeMode  — when true, renders the 4-action state-machine buttons
+// ---------------------------------------------------------------------------
+function _buildProformaHTML(q, id, jefeMode) {
+  const detalles = q.detalles ?? [];
+  const subtotal = detalles.reduce((sum, d) => sum + parseFloat(d.subtotal || 0), 0);
+  const iva      = subtotal * 0.13;
+  const total    = subtotal + iva;
+
+  const detallesRows = detalles.length > 0
+    ? detalles.map(d => `
+        <tr>
+          <td>${d.descripcion_item}</td>
+          <td class="text-right">${Number(d.cantidad).toFixed(4).replace(/\.?0+$/, '')}</td>
+          <td class="text-right">${Number(d.precio_unitario).toFixed(2)}</td>
+          <td class="text-right fw-600">${Number(d.subtotal).toFixed(2)}</td>
+        </tr>`).join('')
+    : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Sin ítems registrados</td></tr>`;
+
+  const jefeButtons = jefeMode ? `
+    <div class="approval-actions">
+      <h4 class="approval-actions-title">Decisión del Jefe</h4>
+      <div class="approval-actions-grid">
+        <button class="btn btn-warning btn-sm" id="btn-solicitar-cambios">
+          ↩ Solicitar Cambios
+        </button>
+        <button class="btn btn-hold btn-sm" id="btn-en-espera">
+          ⏸ Poner en Espera
+        </button>
+        <button class="btn btn-success" id="btn-aprobar">
+          ✅ Aprobar Cotización
+        </button>
+        <button class="btn btn-danger btn-sm" id="btn-rechazar">
+          ❌ Rechazar
+        </button>
+      </div>
+    </div>` : '';
+
+  return /* html */ `
+    <div class="proforma-detail">
+
+      <!-- Status + metadata bar -->
+      <div class="proforma-meta-bar">
+        <div class="proforma-meta-item">
+          <span class="form-label">Estado</span>
+          <p>${badgeHtml(q.estado)}</p>
+        </div>
+        <div class="proforma-meta-item">
+          <span class="form-label">Cliente</span>
+          <p class="fw-600">${q.cliente_nombre ?? q.id_cliente}</p>
+          ${q.cliente_nit ? `<small class="text-muted">NIT: ${q.cliente_nit}</small>` : ''}
+        </div>
+        <div class="proforma-meta-item">
+          <span class="form-label">Ejecutivo</span>
+          <p>${q.ejecutivo_nombre ?? '—'}</p>
+        </div>
+        <div class="proforma-meta-item">
+          <span class="form-label">Fecha Emisión</span>
+          <p>${fmtDate(q.fecha_emision)}</p>
+        </div>
+        <div class="proforma-meta-item">
+          <span class="form-label">Fecha de Validez</span>
+          <p>${fmtDate(q.fecha_validez)}</p>
+        </div>
+        <div class="proforma-meta-item">
+          <span class="form-label">Moneda</span>
+          <p>${q.moneda}</p>
+        </div>
+      </div>
+
+      <!-- Description -->
+      <div class="form-group" style="margin-bottom:1rem;">
+        <span class="form-label">Descripción</span>
+        <p class="proforma-description">${q.descripcion}</p>
+      </div>
+
+      <!-- Line items table -->
+      <div class="table-wrapper proforma-items-wrapper" style="margin-bottom:1rem;">
+        <table class="data-table proforma-items-table">
+          <thead>
+            <tr>
+              <th>Descripción del Ítem</th>
+              <th class="text-right">Cantidad</th>
+              <th class="text-right">Precio Unit. (${q.moneda})</th>
+              <th class="text-right">Subtotal (${q.moneda})</th>
+            </tr>
+          </thead>
+          <tbody>${detallesRows}</tbody>
+        </table>
+      </div>
+
+      <!-- Totals panel -->
+      <div class="proforma-totals">
+        <div class="proforma-total-row">
+          <span>Subtotal</span>
+          <span class="fw-600">${q.moneda} ${subtotal.toFixed(2)}</span>
+        </div>
+        <div class="proforma-total-row">
+          <span>IVA Bolivia (13%)</span>
+          <span>${q.moneda} ${iva.toFixed(2)}</span>
+        </div>
+        <div class="proforma-total-row proforma-grand-total">
+          <span>TOTAL CON IVA</span>
+          <span class="fw-600">${q.moneda} ${total.toFixed(2)}</span>
+        </div>
+      </div>
+
+      ${q.obs_aprobacion ? `
+      <div class="form-group" style="margin-top:1rem;">
+        <span class="form-label">Observaciones de Aprobación</span>
+        <p class="proforma-description">${q.obs_aprobacion}</p>
+      </div>` : ''}
+
+      ${q.observaciones ? `
+      <div class="form-group" style="margin-top:.5rem;">
+        <span class="form-label">Observaciones Generales</span>
+        <p class="proforma-description">${q.observaciones}</p>
+      </div>` : ''}
+
+      <!-- PDF viewer button -->
+      ${q.pdf_ruta ? `
+      <div class="proforma-pdf-bar">
+        <a class="btn btn-outline btn-sm" href="/api/cotizaciones/${id}/pdf" target="_blank"
+           rel="noopener noreferrer">
+          📄 Ver PDF Adjunto
+        </a>
+        <span class="text-muted text-xs">Se abre en una nueva pestaña</span>
+      </div>` : `
+      <div class="proforma-pdf-bar">
+        <span class="text-muted text-sm">Sin documento PDF adjunto.</span>
+      </div>`}
+
+      ${jefeButtons}
+    </div>
+  `;
 }
 
 // =============================================================================
@@ -217,7 +361,8 @@ class ExecutiveStrategy extends DashboardStrategy {
             <select class="form-control" id="filter-estado" style="min-width:140px;">
               <option value="">Todos</option>
               <option>Borrador</option><option>Pendiente</option>
-              <option>En revision</option><option>Aprobada internamente</option>
+              <option>En revision</option><option>En espera</option>
+              <option>Aprobada internamente</option>
               <option>Enviada al cliente</option><option>Aceptada</option>
               <option>Rechazada</option><option>Archivada</option>
             </select>
@@ -378,24 +523,7 @@ class ExecutiveStrategy extends DashboardStrategy {
       const data = await api.get(`/api/cotizaciones/${id}`);
       const q    = data.data;
       UI.openModal(`Cotización ${q.numero_correlativo}`, (body) => {
-        body.innerHTML = `
-          <div class="form-row">
-            <div><span class="form-label">Estado</span><p>${badgeHtml(q.estado)}</p></div>
-            <div><span class="form-label">Cliente ID</span><p>${q.id_cliente}</p></div>
-            <div><span class="form-label">Fecha Emisión</span><p>${fmtDate(q.fecha_emision)}</p></div>
-            <div><span class="form-label">Monto Total</span><p>${fmtAmount(q.monto_total, q.moneda)}</p></div>
-          </div>
-          <div class="form-group mt-2">
-            <span class="form-label">Descripción</span>
-            <p style="color:var(--text-secondary);font-size:.9rem;">${q.descripcion}</p>
-          </div>
-          ${q.pdf_ruta ? `
-          <div class="mt-2">
-            <a class="btn btn-ghost btn-sm" href="/api/cotizaciones/${id}/pdf" target="_blank">
-              📄 Descargar PDF
-            </a>
-          </div>` : ''}
-        `;
+        body.innerHTML = _buildProformaHTML(q, id, false);
       });
     } catch (err) {
       showToast(`No se pudo cargar la cotización: ${err.message}`, 'error');
@@ -404,7 +532,7 @@ class ExecutiveStrategy extends DashboardStrategy {
 
   _changeStatus(id, currentStatus, triggerBtn) {
     const VALID_STATES = [
-      'Borrador','Pendiente','En revision',
+      'Borrador','Pendiente','En revision','En espera',
       'Aprobada internamente','Enviada al cliente',
       'Aceptada','Rechazada','Archivada',
     ];
@@ -517,14 +645,16 @@ class ManagerStrategy extends DashboardStrategy {
       panel.innerHTML = `
         <div class="card">
           <div class="card-header">
-            <h3>Cotizaciones en Revisión (${rows.length})</h3>
+            <h3>Cola de Aprobación (${rows.length})</h3>
+            <span class="text-muted text-sm">Haz clic en "Revisar y Decidir" para ver la proforma completa</span>
           </div>
           <div class="table-wrapper">
             <table class="data-table">
               <thead>
                 <tr>
                   <th>Correlativo</th><th>Ejecutivo</th>
-                  <th>Cliente</th><th>Monto</th><th>Fecha</th><th>Decisión</th>
+                  <th>Cliente</th><th>Monto</th><th>Fecha</th>
+                  <th>Vence</th><th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -535,13 +665,12 @@ class ManagerStrategy extends DashboardStrategy {
                     <td>${r.cliente_nombre ?? r.id_cliente}</td>
                     <td>${fmtAmount(r.monto_total, r.moneda)}</td>
                     <td>${fmtDate(r.fecha_emision)}</td>
+                    <td>${fmtDate(r.fecha_validez)}</td>
                     <td>
-                      <div class="table-actions">
-                        <button class="btn btn-success btn-sm"
-                                data-approve="true"  data-id="${r.id}">✓ Aprobar</button>
-                        <button class="btn btn-danger  btn-sm"
-                                data-approve="false" data-id="${r.id}">✗ Rechazar</button>
-                      </div>
+                      <button class="btn btn-primary btn-sm" data-review="${r.id}"
+                              style="white-space:nowrap;">
+                        📋 Revisar y Decidir
+                      </button>
                     </td>
                   </tr>
                 `).join('')}
@@ -550,14 +679,92 @@ class ManagerStrategy extends DashboardStrategy {
           </div>
         </div>`;
 
-      panel.querySelectorAll('[data-approve]').forEach(btn => {
-        btn.addEventListener('click', () =>
-          this._showApproveDialog(btn.dataset.id, btn.dataset.approve === 'true', btn));
+      panel.querySelectorAll('[data-review]').forEach(btn => {
+        btn.addEventListener('click', () => this._viewApprovalDetail(btn.dataset.review));
       });
 
     } catch (err) {
       panel.innerHTML = `<div class="empty-state"><p>Error: ${err.message}</p></div>`;
     }
+  }
+
+  // ── Full proforma detail + state-machine action panel (Jefe view) ──────────
+
+  async _viewApprovalDetail(id) {
+    try {
+      const data = await api.get(`/api/cotizaciones/${id}`);
+      const q    = data.data;
+
+      UI.openModal(`Proforma ${q.numero_correlativo} — Decisión de Jefe`, (body) => {
+        body.innerHTML = _buildProformaHTML(q, id, true);
+
+        // Wire the 4 state-machine action buttons
+        body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () => {
+          this._confirmStateChange(id, 'Pendiente',
+            'Solicitar Cambios',
+            'La cotización volverá al Ejecutivo para correcciones.',
+            'Observaciones para el ejecutivo *',
+            true,
+            'Cambios solicitados — cotización regresada al ejecutivo.');
+        });
+
+        body.querySelector('#btn-en-espera')?.addEventListener('click', () => {
+          this._confirmStateChange(id, 'En espera',
+            'Poner en Espera',
+            'La decisión queda suspendida mientras se verifica disponibilidad de stock con el proveedor.',
+            'Motivo de la espera (opcional)',
+            false,
+            'Cotización puesta en espera.');
+        });
+
+        body.querySelector('#btn-aprobar')?.addEventListener('click', () => {
+          this._showApproveDialog(id, true);
+        });
+
+        body.querySelector('#btn-rechazar')?.addEventListener('click', () => {
+          this._showApproveDialog(id, false);
+        });
+      }, { wide: true });
+    } catch (err) {
+      showToast(`No se pudo cargar la cotización: ${err.message}`, 'error');
+    }
+  }
+
+  // ── Generic state-transition confirmation dialog (Solicitar Cambios / En Espera) ──
+
+  _confirmStateChange(id, newState, title, description, obsLabel, obsRequired, successMsg) {
+    UI.openModal(title, (body) => {
+      body.innerHTML = `
+        <p class="text-sm" style="color:var(--text-secondary);margin-bottom:1rem;">
+          ${description}
+        </p>
+        <div class="form-group">
+          <label class="form-label" for="sc-obs">${obsLabel}</label>
+          <textarea class="form-control" id="sc-obs" rows="3"
+                    placeholder="${obsRequired ? 'Requerido' : 'Opcional'}"></textarea>
+          <span class="field-error" id="sc-err"></span>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+          <button class="btn btn-ghost" id="sc-cancel">Cancelar</button>
+          <button class="btn btn-primary" id="sc-confirm">${title}</button>
+        </div>`;
+
+      body.querySelector('#sc-cancel')?.addEventListener('click', UI.closeModal);
+      body.querySelector('#sc-confirm')?.addEventListener('click', () => {
+        const obs    = body.querySelector('#sc-obs')?.value.trim() ?? '';
+        const errEl  = body.querySelector('#sc-err');
+        if (obsRequired && !obs) {
+          errEl.textContent = 'Este campo es requerido.';
+          return;
+        }
+        const btn = body.querySelector('#sc-confirm');
+        CommandInvoker.run(new ChangeStatusCommand(id, newState, obs), {
+          btn,
+          successMsg,
+          onSuccess: () => { UI.closeModal(); this.refresh(); },
+        });
+      });
+    });
   }
 
   _showApproveDialog(id, aprobado, _triggerBtn) {
@@ -567,19 +774,20 @@ class ManagerStrategy extends DashboardStrategy {
     UI.openModal(title, (body) => {
       body.innerHTML = `
         <div class="confirm-dialog">
-          <h4>${aprobado ? '¿Confirmar aprobación?' : '¿Confirmar rechazo?'}</h4>
-          <p>ID de cotización: <strong>#${id}</strong></p>
+          <h4>${aprobado ? '✅ ¿Confirmar aprobación?' : '❌ ¿Confirmar rechazo?'}</h4>
+          <p>Cotización: <strong>#${id}</strong></p>
+          ${aprobado ? `<p class="text-sm" style="color:var(--text-secondary);">Se generará el número oficial de correlativo y se bloqueará la edición.</p>` : ''}
         </div>
         <div class="form-group">
           <label class="form-label" for="obs-approval">${label}</label>
           <textarea class="form-control" id="obs-approval" rows="3"
-                    placeholder="${aprobado ? '' : 'Requerido para rechazar'}"></textarea>
+                    placeholder="${aprobado ? 'Ej: Precios verificados con proveedor.' : 'Requerido para rechazar'}"></textarea>
           <span class="field-error" id="err-obs"></span>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
           <button class="btn btn-ghost"  id="cancel-approve">Cancelar</button>
           <button class="btn ${aprobado ? 'btn-success' : 'btn-danger'}" id="confirm-approve">
-            ${aprobado ? 'Sí, Aprobar' : 'Sí, Rechazar'}
+            ${aprobado ? '✅ Sí, Aprobar' : '❌ Sí, Rechazar'}
           </button>
         </div>`;
 
@@ -593,7 +801,7 @@ class ManagerStrategy extends DashboardStrategy {
         const confirmBtn = body.querySelector('#confirm-approve');
         CommandInvoker.run(new ApproveQuotationCommand(id, aprobado, obs), {
           btn:        confirmBtn,
-          successMsg: aprobado ? 'Cotización aprobada exitosamente.' : 'Cotización rechazada.',
+          successMsg: aprobado ? 'Cotización aprobada. El correlativo oficial ha sido generado.' : 'Cotización rechazada.',
           onSuccess:  () => { UI.closeModal(); this.refresh(); },
         });
       });
@@ -922,14 +1130,21 @@ class ManagerStrategy extends DashboardStrategy {
 const UI = {
   open: false,
 
-  openModal(title, renderFn) {
-    const overlay = document.getElementById('modal-overlay');
-    const body    = document.getElementById('modal-body');
-    const titleEl = document.getElementById('modal-title');
+  openModal(title, renderFn, { wide = false } = {}) {
+    const overlay  = document.getElementById('modal-overlay');
+    const dialog   = document.getElementById('modal-dialog');
+    const body     = document.getElementById('modal-body');
+    const titleEl  = document.getElementById('modal-title');
     if (!overlay || !body || !titleEl) return;
 
     titleEl.textContent = title;
     body.innerHTML      = '';
+
+    // Toggle wide layout for complex views (proforma detail)
+    if (dialog) {
+      dialog.classList.toggle('modal-wide', wide);
+    }
+
     renderFn(body);
 
     overlay.classList.add('open');
@@ -941,7 +1156,9 @@ const UI = {
 
   closeModal() {
     const overlay = document.getElementById('modal-overlay');
+    const dialog  = document.getElementById('modal-dialog');
     if (overlay) overlay.classList.remove('open');
+    if (dialog)  dialog.classList.remove('modal-wide');
     UI.open = false;
   },
 };

@@ -36,6 +36,7 @@ const swaggerJsdoc = require('swagger-jsdoc');
 const authRoutes      = require('./routes/authRoutes');
 const quotationRoutes = require('./routes/quotationRoutes');
 const userRoutes      = require('./routes/userRoutes');
+const clientRoutes    = require('./routes/clientRoutes');
 
 const app = express();
 
@@ -169,6 +170,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 app.use('/api/auth',         authRoutes);       // POST /api/auth/login|logout
 app.use('/api/cotizaciones', quotationRoutes);  // CRUD /api/cotizaciones
 app.use('/api/usuarios',      userRoutes);       // CRUD /api/usuarios (Jefe only)
+app.use('/api/clientes',      clientRoutes);     // GET|POST /api/clientes (all roles)
 
 // Health-check endpoint
 app.get('/health', (req, res) => {

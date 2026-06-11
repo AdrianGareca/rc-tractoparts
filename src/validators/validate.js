@@ -30,7 +30,9 @@ function validate(schema) {
     const result = schema.safeParse(req.body);
 
     if (!result.success) {
-      const errors = result.error.errors.map((issue) => ({
+      // Zod v4 uses .issues (non-enumerable); .errors was removed in v4
+      const rawIssues = result.error.issues ?? result.error.errors ?? [];
+      const errors = rawIssues.map((issue) => ({
         field:   issue.path.join('.') || 'body',
         message: issue.message,
       }));

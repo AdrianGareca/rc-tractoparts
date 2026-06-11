@@ -87,6 +87,7 @@ const AuditActions = {
   CREAR_USUARIO:     'CREAR_USUARIO',
   EDITAR_USUARIO:    'EDITAR_USUARIO',
   DESACTIVAR_USUARIO:'DESACTIVAR_USUARIO',
+  CREAR_CLIENTE:     'CREAR_CLIENTE',
 };
 
 module.exports = { logEvent, AuditActions };

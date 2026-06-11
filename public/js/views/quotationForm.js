@@ -202,6 +202,9 @@ class FormMediator {
     // Wire drag-and-drop / file input
     this._wireFileUpload();
 
+    // Wire client search autocomplete + express client registration
+    this._wireClientSearch();
+
     // Wire Cancel
     this.#container.querySelector('#btn-cancel')?.addEventListener('click', () => {
       if (onCancel) onCancel();
@@ -222,11 +225,33 @@ class FormMediator {
 
         <!-- Header fields -->
         <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" for="id_cliente">ID Cliente *</label>
-            <input class="form-control" type="number" id="id_cliente" min="1" placeholder="Ej: 3" required />
+          <!-- CLIENT SELECTOR: replaces the old number input -->
+          <div class="form-group" style="flex:2;">
+            <label class="form-label" for="cliente-search">Cliente *</label>
+            <div class="client-select-wrapper">
+              <div class="client-search-group">
+                <input
+                  class="form-control"
+                  type="text"
+                  id="cliente-search"
+                  placeholder="Buscar por nombre o NIT…"
+                  autocomplete="off"
+                  aria-haspopup="listbox"
+                  aria-autocomplete="list"
+                />
+                <button type="button" id="btn-nuevo-cliente" class="btn btn-outline-green btn-sm btn-nuevo-cliente"
+                        title="Registrar nuevo cliente en el sistema">
+                  + Nuevo Cliente
+                </button>
+              </div>
+              <!-- Hidden field stores the resolved numeric client ID -->
+              <input type="hidden" id="id_cliente" />
+              <!-- Autocomplete dropdown -->
+              <div class="client-dropdown" id="client-dropdown" role="listbox" aria-label="Clientes sugeridos"></div>
+            </div>
             <span class="field-error" id="err-cliente"></span>
           </div>
+
           <div class="form-group">
             <label class="form-label" for="fecha_emision">Fecha de Emisión *</label>
             <input class="form-control" type="date" id="fecha_emision" required />
@@ -249,8 +274,18 @@ class FormMediator {
             </select>
           </div>
           <div class="form-group">
-            <label class="form-label" for="fecha_validez">Fecha de Validez</label>
+            <label class="form-label" for="fecha_validez">
+              Fecha de Validez
+              <span
+                class="info-icon"
+                tabindex="0"
+                role="tooltip"
+                aria-label="Fecha límite de precios y disponibilidad"
+                data-tooltip="En Bolivia, los precios de repuestos pesados fluctuan con el tipo de cambio y disponibilidad de importación. Esta fecha garantiza al cliente los precios y el stock cotizados. Pasada esta fecha, los valores pueden variar."
+              >ⓘ</span>
+            </label>
             <input class="form-control" type="date" id="fecha_validez" />
+            <span class="field-error" id="err-validez"></span>
           </div>
           <div class="form-group">
             <label class="form-label" for="observaciones">Observaciones</label>
@@ -391,10 +426,209 @@ class FormMediator {
     }
   }
 
+  // ── Private: client autocomplete search ───────────────────────────────────
+
+  _wireClientSearch() {
+    const searchInput = this.#container.querySelector('#cliente-search');
+    const dropdown    = this.#container.querySelector('#client-dropdown');
+    const hiddenInput = this.#container.querySelector('#id_cliente');
+    const errEl       = this.#container.querySelector('#err-cliente');
+    if (!searchInput || !dropdown || !hiddenInput) return;
+
+    let debounceTimer = null;
+
+    const closeDropdown = () => {
+      dropdown.innerHTML = '';
+      dropdown.classList.remove('open');
+    };
+
+    /** Called when the user picks a client from the list or after express creation */
+    const selectClient = (id, label) => {
+      hiddenInput.value  = id;
+      searchInput.value  = label;
+      if (errEl) errEl.textContent = '';
+      closeDropdown();
+    };
+
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.trim();
+      // Clear the stored ID whenever the user edits the text
+      hiddenInput.value = '';
+      clearTimeout(debounceTimer);
+      if (q.length < 1) { closeDropdown(); return; }
+
+      debounceTimer = setTimeout(async () => {
+        try {
+          const data    = await api.get(`/api/clientes?q=${encodeURIComponent(q)}`);
+          const clients = data.data ?? [];
+
+          if (clients.length === 0) {
+            dropdown.innerHTML = `
+              <div class="client-dropdown-empty">
+                Sin resultados para "<em>${q}</em>"
+              </div>`;
+            dropdown.classList.add('open');
+            return;
+          }
+
+          dropdown.innerHTML = clients.map(c => `
+            <div class="client-dropdown-item" data-id="${c.id}"
+                 data-label="${c.razon_social.replace(/"/g, '&quot;')}"
+                 role="option" tabindex="-1">
+              <span class="cdi-name">${c.razon_social}</span>
+              ${c.nit ? `<span class="cdi-nit">NIT: ${c.nit}</span>` : ''}
+            </div>
+          `).join('');
+          dropdown.classList.add('open');
+
+          dropdown.querySelectorAll('.client-dropdown-item').forEach(item => {
+            item.addEventListener('mousedown', (e) => {
+              // Use mousedown so blur fires before click is lost
+              e.preventDefault();
+              selectClient(item.dataset.id, item.dataset.label);
+            });
+          });
+        } catch (_err) {
+          dropdown.innerHTML = '<div class="client-dropdown-empty">Error buscando clientes.</div>';
+          dropdown.classList.add('open');
+        }
+      }, 300);
+    });
+
+    // Close dropdown when focus leaves the search field
+    searchInput.addEventListener('blur', () => {
+      // Small delay so mousedown on an item can fire first
+      setTimeout(closeDropdown, 200);
+    });
+
+    // Wire the "+ Nuevo Cliente" express-registration button
+    this.#container.querySelector('#btn-nuevo-cliente')?.addEventListener('click', () => {
+      this._openNuevoClienteModal(selectClient);
+    });
+  }
+
+  // ── Private: express client registration sub-modal ────────────────────────
+
+  _openNuevoClienteModal(onCreated) {
+    // Render a fixed-position overlay inside the quotation form's container
+    const overlay = document.createElement('div');
+    overlay.className = 'sub-modal-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'subm-title');
+
+    overlay.innerHTML = /* html */ `
+      <div class="sub-modal">
+        <div class="sub-modal-header">
+          <h4 id="subm-title">Registrar Nuevo Cliente</h4>
+          <button type="button" class="btn-icon sub-modal-close" id="subm-close" aria-label="Cerrar">✕</button>
+        </div>
+        <div class="sub-modal-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="nc-razon-social">Razón Social *</label>
+              <input class="form-control" type="text" id="nc-razon-social"
+                     placeholder="Nombre comercial o legal" maxlength="150" />
+              <span class="field-error" id="nc-err-razon"></span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="nc-nit">NIT</label>
+              <input class="form-control" type="text" id="nc-nit"
+                     placeholder="Ej: 1234567890" maxlength="20" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="nc-contacto">Contacto</label>
+              <input class="form-control" type="text" id="nc-contacto"
+                     placeholder="Nombre del responsable" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="nc-telefono">Teléfono</label>
+              <input class="form-control" type="tel" id="nc-telefono"
+                     placeholder="Ej: 77012345" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="nc-email">Email</label>
+            <input class="form-control" type="email" id="nc-email"
+                   placeholder="contacto@empresa.com" />
+          </div>
+          <div class="form-alert" id="nc-alert" role="alert"></div>
+          <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem;">
+            <button type="button" class="btn btn-ghost" id="subm-cancel">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="subm-save">
+              <span id="subm-label">Guardar Cliente</span>
+              <span class="spinner hidden" id="subm-spinner"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Append as child of the main modal body (inherits stacking context)
+    this.#container.closest('.modal-body, [id="modal-body"]')?.appendChild(overlay)
+      ?? document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+
+    overlay.querySelector('#subm-close')?.addEventListener('click', close);
+    overlay.querySelector('#subm-cancel')?.addEventListener('click', close);
+
+    // Close on backdrop click
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+
+    overlay.querySelector('#subm-save')?.addEventListener('click', async () => {
+      const razon_social = overlay.querySelector('#nc-razon-social')?.value.trim();
+      const nit          = overlay.querySelector('#nc-nit')?.value.trim()      || null;
+      const contacto     = overlay.querySelector('#nc-contacto')?.value.trim() || null;
+      const email        = overlay.querySelector('#nc-email')?.value.trim()    || null;
+      const telefono     = overlay.querySelector('#nc-telefono')?.value.trim() || null;
+
+      const alertEl  = overlay.querySelector('#nc-alert');
+      const errRazon = overlay.querySelector('#nc-err-razon');
+
+      // Client-side guard
+      if (!razon_social) {
+        errRazon.textContent = 'La razón social es requerida.';
+        return;
+      }
+      errRazon.textContent = '';
+      alertEl.className    = 'form-alert';
+
+      const saveBtn    = overlay.querySelector('#subm-save');
+      const labelEl    = overlay.querySelector('#subm-label');
+      const spinnerEl  = overlay.querySelector('#subm-spinner');
+
+      saveBtn.disabled = true;
+      if (labelEl)   labelEl.textContent = 'Guardando...';
+      if (spinnerEl) spinnerEl.classList.remove('hidden');
+
+      try {
+        const resp   = await api.post('/api/clientes', { razon_social, nit, contacto, email, telefono });
+        const client = resp.data;
+        showToast(`Cliente "${client.razon_social}" registrado exitosamente.`, 'success');
+        onCreated(String(client.id), client.razon_social);
+        close();
+      } catch (err) {
+        const msg = err.data?.message || err.message || 'Error al registrar el cliente.';
+        alertEl.textContent = msg;
+        alertEl.className   = 'form-alert show alert-error';
+        saveBtn.disabled    = false;
+        if (labelEl)   labelEl.textContent = 'Guardar Cliente';
+        if (spinnerEl) spinnerEl.classList.add('hidden');
+      }
+    });
+
+    // Auto-focus first field
+    overlay.querySelector('#nc-razon-social')?.focus();
+  }
+
   // ── Private: drag-and-drop file upload ────────────────────────────────────
 
-  _wireFileUpload() {
-    const zone      = this.#container.querySelector('#drop-zone');
+  _wireFileUpload() {    const zone      = this.#container.querySelector('#drop-zone');
     const fileInput = this.#container.querySelector('#pdf-input');
     const fileName  = this.#container.querySelector('#file-name');
     if (!zone || !fileInput) return;
@@ -440,12 +674,20 @@ class FormMediator {
     const items    = this.#subject.getItems();
 
     // --- Client-side validation ---
-    const id_cliente  = parseInt(this.#container.querySelector('#id_cliente')?.value, 10);
-    const descripcion = this.#container.querySelector('#descripcion')?.value.trim();
+    const id_cliente    = parseInt(this.#container.querySelector('#id_cliente')?.value, 10);
+    const descripcion   = this.#container.querySelector('#descripcion')?.value.trim();
     const fecha_emision = this.#container.querySelector('#fecha_emision')?.value;
+    const fecha_validez = this.#container.querySelector('#fecha_validez')?.value || null;
+
+    // Clear previous inline errors
+    ['#err-cliente','#err-descripcion','#err-fecha','#err-validez'].forEach(sel => {
+      const el = this.#container.querySelector(sel);
+      if (el) el.textContent = '';
+    });
 
     if (!id_cliente || id_cliente < 1) {
-      this.#container.querySelector('#err-cliente').textContent = 'Se requiere un ID de cliente válido.';
+      this.#container.querySelector('#err-cliente').textContent = 'Selecciona un cliente de la lista.';
+      this.#container.querySelector('#cliente-search')?.focus();
       return;
     }
     if (!descripcion) {
@@ -454,6 +696,11 @@ class FormMediator {
     }
     if (!fecha_emision) {
       this.#container.querySelector('#err-fecha').textContent = 'La fecha de emisión es requerida.';
+      return;
+    }
+    if (fecha_validez && fecha_validez < fecha_emision) {
+      this.#container.querySelector('#err-validez').textContent =
+        'La fecha de validez debe ser igual o posterior a la fecha de emisión.';
       return;
     }
 
@@ -465,10 +712,10 @@ class FormMediator {
       id_cliente,
       descripcion,
       fecha_emision,
-      moneda:       this.#container.querySelector('#moneda')?.value      || 'USD',
-      fecha_validez:this.#container.querySelector('#fecha_validez')?.value || null,
-      observaciones:this.#container.querySelector('#observaciones')?.value.trim() || null,
-      monto_total:  subtotal > 0 ? subtotal : null,
+      moneda:        this.#container.querySelector('#moneda')?.value      || 'USD',
+      fecha_validez: fecha_validez || null,
+      observaciones: this.#container.querySelector('#observaciones')?.value.trim() || null,
+      monto_total:   subtotal > 0 ? subtotal : null,
       detalles:     items.filter(i => i.descripcion_item.trim()).map(i => ({
         descripcion_item: i.descripcion_item.trim(),
         cantidad:         parseFloat(i.cantidad)        || 0,
