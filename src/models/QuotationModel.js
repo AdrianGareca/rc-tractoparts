@@ -87,7 +87,9 @@ const ROLE_TRANSITIONS = {
     'En revision':           ['Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
     'En espera':             ['Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'En revision', 'Archivada'],
     'Aprobada internamente': ['Aceptada', 'Enviada al cliente', 'Rechazada', 'Archivada'],
-    'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],
+    // 'Pendiente' added: allows Jefe to request changes when the quote has already
+    // been sent to the client (asynchronous internal delivery model — HU-CambioPostEnvio).
+    'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Pendiente', 'Archivada'],
     // Rechazada → can be reverted to Pendiente OR En revision by high-privilege roles
     // (HU-Revertir: allows re-injecting into the approval queue after sudden business changes)
     Rechazada:               ['Pendiente', 'En revision', 'Aprobada internamente', 'Archivada'],
@@ -600,23 +602,23 @@ const QuotationModel = {
   validateTransitionByRole(estadoActual, nuevoEstado, rol) {
     const roleMatrix = ROLE_TRANSITIONS[rol];
 
-    // Unknown role — should never reach here if authMiddleware is wired correctly
+    // Rol desconocido — no debería llegar aquí si el middleware de autenticación está activo
     if (!roleMatrix) {
       return {
         valid:  false,
-        reason: `Role '${rol}' is not recognized in the state machine.`,
+        reason: `El rol '${rol}' no está reconocido en la máquina de estados del sistema.`,
       };
     }
 
     const allowedFromState = roleMatrix[estadoActual] || [];
 
     if (!allowedFromState.includes(nuevoEstado)) {
-      // Craft a specific error: distinguish "no transitions at all" from "wrong target"
+      // Mensaje de error específico: distinguir "sin transiciones posibles" de "destino incorrecto"
       const reason = allowedFromState.length === 0
-        ? `The '${rol}' role cannot make any transitions from the '${estadoActual}' state. ` +
-          `This state is read-only for your role.`
-        : `The '${rol}' role cannot transition from '${estadoActual}' to '${nuevoEstado}'. ` +
-          `Allowed transitions from '${estadoActual}' for your role: [${allowedFromState.join(', ')}].`;
+        ? `El rol '${rol}' no puede realizar ninguna transición desde el estado '${estadoActual}'. ` +
+          `Este estado es de solo lectura para su rol.`
+        : `El rol '${rol}' no puede transicionar desde '${estadoActual}' hacia '${nuevoEstado}'. ` +
+          `Transiciones permitidas desde '${estadoActual}' para su rol: [${allowedFromState.join(', ')}].`;
 
       return {
         valid:              false,
@@ -886,6 +888,145 @@ const QuotationModel = {
 
     // Merge: creation event first, then the state transitions in order
     return [...creationRows, ...historyRows];
+  },
+
+  // ===========================================================================
+  // SPRINT 3 — Daily proformas, notification helpers, progress analytics
+  // ===========================================================================
+
+  // ---------------------------------------------------------------------------
+  // findProformasHoy — quotations whose fecha_emision equals the current server
+  // date (CURDATE()). Used by the "Proformas del Día" executive widget.
+  // Optionally scoped to a single executive.
+  // ---------------------------------------------------------------------------
+  async findProformasHoy(id_ejecutivo = null) {
+    const values = [];
+    let extraWhere = 'WHERE c.fecha_emision = CURDATE()';
+    if (id_ejecutivo) {
+      extraWhere += ' AND c.id_ejecutivo = ?';
+      values.push(parseInt(id_ejecutivo, 10));
+    }
+
+    const sql = `
+      SELECT
+        c.id,
+        c.numero_correlativo,
+        cl.razon_social    AS cliente_nombre,
+        u.nombre_completo   AS ejecutivo_nombre,
+        c.monto_total,
+        c.moneda,
+        c.estado,
+        c.fecha_emision,
+        c.fecha_validez
+      FROM cotizaciones c
+      ${BASE_JOINS}
+      ${extraWhere}
+      ORDER BY c.creado_en DESC
+    `;
+
+    const [rows] = await pool.execute(sql, values);
+    return rows;
+  },
+
+  // ---------------------------------------------------------------------------
+  // findNotificacionesPendientes — Returns quotations that were sent back to
+  // 'Pendiente' via a change-request from Administracion or Jefe, signalling
+  // the assigned Ejecutivo that corrections are required.
+  //
+  // A "pending correction notification" is defined as: a history entry where
+  // estado_nuevo = 'Pendiente' AND estado_anterior IS NOT NULL (i.e. not the
+  // initial creation event) AND the quotation's current estado is still 'Pendiente'.
+  // ---------------------------------------------------------------------------
+  async findNotificacionesPendientes(id_ejecutivo) {
+    const sql = `
+      SELECT
+        c.id                AS id_cotizacion,
+        c.numero_correlativo,
+        cl.razon_social     AS cliente_nombre,
+        h.observacion,
+        h.nombre_usuario    AS solicitado_por,
+        h.rol_usuario       AS rol_solicitante,
+        h.creado_en         AS fecha_solicitud
+      FROM cotizacion_historial_estados h
+      INNER JOIN cotizaciones c  ON c.id  = h.id_cotizacion
+      INNER JOIN clientes    cl  ON cl.id = c.id_cliente
+      WHERE h.estado_nuevo      = 'Pendiente'
+        AND h.estado_anterior   IS NOT NULL
+        AND h.estado_anterior   != 'Pendiente'
+        AND c.estado            = 'Pendiente'
+        AND c.id_ejecutivo      = ?
+      ORDER BY h.creado_en DESC
+    `;
+
+    const [rows] = await pool.execute(sql, [parseInt(id_ejecutivo, 10)]);
+    return rows;
+  },
+
+  // ---------------------------------------------------------------------------
+  // getProgreso — Monthly analytics for Jefe / SysAdmin performance dashboard.
+  // Returns three data sets in a single DB round-trip:
+  //   1. total_mes_usd     — Sum of monto_total (USD) for the current month
+  //   2. conversion_ratio  — COUNT(Aceptada) / (COUNT(Aceptada) + COUNT(Rechazada))
+  //   3. por_ejecutivo     — Per-executive breakdown of all states this month
+  // ---------------------------------------------------------------------------
+  async getProgreso() {
+    // Monthly volume (current month, USD only)
+    const [volumenRows] = await pool.execute(`
+      SELECT
+        SUM(CASE WHEN moneda = 'USD' THEN monto_total ELSE 0 END) AS total_mes_usd,
+        SUM(CASE WHEN moneda = 'BOB' THEN monto_total ELSE 0 END) AS total_mes_bob,
+        COUNT(*)                                                   AS total_cotizaciones
+      FROM cotizaciones
+      WHERE MONTH(fecha_emision) = MONTH(CURDATE())
+        AND YEAR(fecha_emision)  = YEAR(CURDATE())
+    `);
+
+    // Conversion ratio across all time (meaningful business metric)
+    const [conversionRows] = await pool.execute(`
+      SELECT
+        SUM(CASE WHEN estado = 'Aceptada'  THEN 1 ELSE 0 END) AS total_aceptadas,
+        SUM(CASE WHEN estado = 'Rechazada' THEN 1 ELSE 0 END) AS total_rechazadas
+      FROM cotizaciones
+      WHERE estado IN ('Aceptada', 'Rechazada')
+    `);
+
+    // Per-executive breakdown for the current month
+    const [porEjecutivoRows] = await pool.execute(`
+      SELECT
+        u.nombre_completo                                              AS ejecutivo,
+        COUNT(*)                                                       AS total,
+        SUM(CASE WHEN c.estado = 'Aceptada'  THEN 1 ELSE 0 END)      AS aceptadas,
+        SUM(CASE WHEN c.estado = 'Rechazada' THEN 1 ELSE 0 END)      AS rechazadas,
+        SUM(CASE WHEN c.estado = 'Pendiente' THEN 1 ELSE 0 END)      AS pendientes,
+        SUM(CASE WHEN c.estado = 'En revision' THEN 1 ELSE 0 END)    AS en_revision,
+        SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END) AS volumen_usd
+      FROM cotizaciones c
+      INNER JOIN usuarios u ON u.id = c.id_ejecutivo
+      WHERE MONTH(c.fecha_emision) = MONTH(CURDATE())
+        AND YEAR(c.fecha_emision)  = YEAR(CURDATE())
+      GROUP BY c.id_ejecutivo, u.nombre_completo
+      ORDER BY volumen_usd DESC
+    `);
+
+    const vol        = volumenRows[0] || {};
+    const conv       = conversionRows[0] || {};
+    const aceptadas  = parseInt(conv.total_aceptadas  || 0, 10);
+    const rechazadas = parseInt(conv.total_rechazadas || 0, 10);
+    const total      = aceptadas + rechazadas;
+
+    return {
+      volumen: {
+        total_mes_usd:      parseFloat(vol.total_mes_usd  || 0).toFixed(2),
+        total_mes_bob:      parseFloat(vol.total_mes_bob  || 0).toFixed(2),
+        total_cotizaciones: parseInt(vol.total_cotizaciones || 0, 10),
+      },
+      conversion: {
+        total_aceptadas:  aceptadas,
+        total_rechazadas: rechazadas,
+        ratio_pct:        total > 0 ? ((aceptadas / total) * 100).toFixed(1) : '0.0',
+      },
+      por_ejecutivo: porEjecutivoRows,
+    };
   },
 
   // ===========================================================================

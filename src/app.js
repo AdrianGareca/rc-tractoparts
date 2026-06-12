@@ -38,6 +38,7 @@ const quotationRoutes = require('./routes/quotationRoutes');
 const userRoutes      = require('./routes/userRoutes');
 const clientRoutes    = require('./routes/clientRoutes');
 const brandRoutes     = require('./routes/brandRoutes');
+const reportesRoutes  = require('./routes/reportesRoutes');
 
 const app = express();
 
@@ -173,6 +174,7 @@ app.use('/api/cotizaciones', quotationRoutes);  // CRUD /api/cotizaciones
 app.use('/api/usuarios',      userRoutes);       // CRUD /api/usuarios (Jefe only)
 app.use('/api/clientes',      clientRoutes);     // GET|POST /api/clientes (all roles)
 app.use('/api/marcas',        brandRoutes);      // GET|POST /api/marcas (brand catalog)
+app.use('/api/reportes',      reportesRoutes);   // GET /api/reportes/progreso (Jefe/SysAdmin)
 
 // Health-check endpoint
 app.get('/health', (req, res) => {

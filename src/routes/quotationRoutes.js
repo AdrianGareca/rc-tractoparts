@@ -174,6 +174,16 @@ router.get(
   QuotationController.getPendingApproval
 );
 
+// GET /api/cotizaciones/notificaciones
+// Pending correction notifications for the authenticated Ejecutivo.
+// Returns quotations sent back to 'Pendiente' that still await rework.
+// Must be registered before /:id to avoid parameter collision.
+router.get(
+  '/notificaciones',
+  ...allRoles,
+  QuotationController.getNotificaciones
+);
+
 // =============================================================================
 // 3–4. COLLECTION ROUTES
 // =============================================================================

@@ -419,6 +419,15 @@ const QuotationController = {
         else return res.status(422).json({ success: false, message: "tiene_pdf must be 'true' or 'false'." });
       }
 
+      // Shortcut filter: hoy=true constrains fecha_emision to today (CURDATE()).
+      // Overrides any explicit fecha_desde / fecha_hasta values — used by the
+      // "Proformas del Día" executive widget.
+      if (req.query.hoy === 'true') {
+        const today = new Date().toISOString().slice(0, 10);
+        filters.fecha_desde = today;
+        filters.fecha_hasta = today;
+      }
+
       // Explicit parseInt(..., 10) guarantees strict integer type before injection
       // into the MySQL prepared-statement parameter array (prevents the
       // "Incorrect arguments to mysqld_stmt_execute" error from raw string coercion).
@@ -950,6 +959,28 @@ const QuotationController = {
     } catch (error) {
       console.error('[QuotationController.patchComentarioAdmin] Error:', error.message);
       return res.status(500).json({ success: false, message: 'Failed to update admin comment.' });
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // getNotificaciones — GET /api/cotizaciones/notificaciones  (Role: Ejecutivo)
+  // Returns pending correction notifications for the authenticated Ejecutivo.
+  // A notification exists when a quotation was sent back to 'Pendiente' by
+  // Administracion or Jefe and is still awaiting correction.
+  // ---------------------------------------------------------------------------
+  async getNotificaciones(req, res) {
+    try {
+      // Only Ejecutivos receive personal correction notifications.
+      // Jefe / Admin see all state changes via the audit log.
+      if (req.user.rol !== 'Ejecutivo') {
+        return res.status(200).json({ success: true, total: 0, data: [] });
+      }
+
+      const rows = await QuotationModel.findNotificacionesPendientes(req.user.id);
+      return res.status(200).json({ success: true, total: rows.length, data: rows });
+    } catch (error) {
+      console.error('[QuotationController.getNotificaciones] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to retrieve notifications.' });
     }
   },
 };

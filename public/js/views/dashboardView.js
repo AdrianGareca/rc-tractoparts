@@ -478,6 +478,9 @@ class ExecutiveStrategy extends DashboardStrategy {
     container.innerHTML = `
       <div id="stats-section" class="stats-grid"></div>
 
+      <!-- Proformas del Día — daily intake widget -->
+      <div id="proformas-hoy-section"></div>
+
       <div class="card">
         <div class="card-header">
           <h3>Mis Cotizaciones</h3>
@@ -532,11 +535,56 @@ class ExecutiveStrategy extends DashboardStrategy {
       if (e.key === 'Enter') { this.#page = 1; this._loadQuotations(); }
     });
 
-    await Promise.all([this._loadSummary(), this._loadQuotations()]);
+    await Promise.all([this._loadSummary(), this._loadQuotations(), this._loadProformasHoy()]);
   }
 
   async refresh() {
-    if (this.#container) await Promise.all([this._loadSummary(), this._loadQuotations()]);
+    if (this.#container) await Promise.all([this._loadSummary(), this._loadQuotations(), this._loadProformasHoy()]);
+  }
+
+  async _loadProformasHoy() {
+    const section = document.getElementById('proformas-hoy-section');
+    if (!section) return;
+    try {
+      const data = await api.get('/api/cotizaciones?hoy=true&limit=50&sort_by=creado_en&sort_order=DESC');
+      const rows = data.data ?? [];
+      const today = new Date().toLocaleDateString('es-BO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+      if (rows.length === 0) {
+        section.innerHTML = `
+          <div class="card" style="border-left:4px solid #3B82F6;margin-bottom:1rem;">
+            <div class="card-header" style="padding-bottom:.5rem;">
+              <h4 style="margin:0;color:#3B82F6;">📅 Proformas del Día — ${escHtml(today)}</h4>
+            </div>
+            <p class="text-muted" style="padding:.5rem 1rem 1rem;">Sin proformas emitidas hoy.</p>
+          </div>`;
+        return;
+      }
+
+      section.innerHTML = `
+        <div class="card" style="border-left:4px solid #3B82F6;margin-bottom:1rem;">
+          <div class="card-header" style="padding-bottom:.5rem;">
+            <h4 style="margin:0;color:#3B82F6;">📅 Proformas del Día — ${escHtml(today)}</h4>
+            <span class="badge" style="background:#3B82F6;color:#fff;">${rows.length} emitida${rows.length > 1 ? 's' : ''}</span>
+          </div>
+          <div class="table-wrapper" style="margin:0;">
+            <table class="data-table" style="font-size:.85rem;">
+              <thead>
+                <tr><th>Correlativo</th><th>Cliente</th><th>Monto</th><th>Estado</th></tr>
+              </thead>
+              <tbody>
+                ${rows.map(r => `
+                  <tr>
+                    <td class="fw-600">${escHtml(r.numero_correlativo)}</td>
+                    <td>${escHtml(r.cliente_nombre ?? '—')}</td>
+                    <td>${fmtAmount(r.monto_total, r.moneda)}</td>
+                    <td>${badgeHtml(r.estado)}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    } catch (_) { /* non-fatal — widget failure must not break main view */ }
   }
 
   async _loadSummary() {
@@ -650,10 +698,54 @@ class ExecutiveStrategy extends DashboardStrategy {
 
   async _viewQuotation(id) {
     try {
-      const data = await api.get(`/api/cotizaciones/${id}`);
-      const q    = data.data;
+      const [quotData, histData] = await Promise.allSettled([
+        api.get(`/api/cotizaciones/${id}`),
+        api.get(`/api/cotizaciones/${id}/historial`),
+      ]);
+
+      if (quotData.status === 'rejected') throw quotData.reason;
+
+      const q       = quotData.value.data;
+      const history = histData.status === 'fulfilled' ? (histData.value.data ?? []) : [];
+
       UI.openModal(`Cotización ${q.numero_correlativo}`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, false);
+
+        // ── Historial de Seguimiento — Chronological timeline ───────────────
+        if (history.length > 0) {
+          const timelineHtml = `
+            <div style="margin-top:1.5rem;border-top:1px solid var(--border);padding-top:1rem;">
+              <h4 style="margin-bottom:.75rem;font-size:.95rem;color:var(--text-secondary);">
+                🕐 Historial de Seguimiento
+              </h4>
+              <ol style="list-style:none;padding:0;margin:0;position:relative;">
+                ${history.map((h, i) => {
+                  const isFirst = i === 0;
+                  const label   = h.tipo_evento === 'creacion'
+                    ? 'Cotización creada'
+                    : `${escHtml(h.estado_anterior ?? '—')} → ${escHtml(h.estado_nuevo)}`;
+                  const fecha   = h.creado_en
+                    ? new Date(h.creado_en).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })
+                    : '—';
+                  const obs     = h.observacion ? ` <em style="color:var(--text-secondary);">Obs: ${escHtml(h.observacion)}</em>` : '';
+                  return `
+                    <li style="display:flex;gap:.75rem;margin-bottom:.75rem;align-items:flex-start;">
+                      <span style="flex-shrink:0;width:10px;height:10px;border-radius:50%;
+                                   margin-top:4px;background:${isFirst ? '#3B82F6' : '#6366F1'};"></span>
+                      <div style="font-size:.85rem;line-height:1.4;">
+                        <strong>${fecha}</strong> — ${label}<br>
+                        <span style="color:var(--text-secondary);">
+                          Usuario: ${escHtml(h.nombre_usuario ?? '—')}
+                          ${h.rol_usuario ? ` · Rol: ${escHtml(h.rol_usuario)}` : ''}
+                        </span>
+                        ${obs}
+                      </div>
+                    </li>`;
+                }).join('')}
+              </ol>
+            </div>`;
+          body.insertAdjacentHTML('beforeend', timelineHtml);
+        }
       });
     } catch (err) {
       showToast(`No se pudo cargar la cotización: ${err.message}`, 'error');
@@ -722,6 +814,7 @@ class ManagerStrategy extends DashboardStrategy {
         <button class="tab-btn" data-tab="quotations">Todas las Cotizaciones</button>
         <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
         <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
+        <button class="tab-btn" data-tab="reportes">📊 Reportes</button>
       </div>
       <div id="manager-panel"></div>
     `;
@@ -747,10 +840,95 @@ class ManagerStrategy extends DashboardStrategy {
     if (!panel) return;
 
     switch (tab) {
-      case 'approvals':  await this._renderApprovals(panel);  break;
-      case 'quotations': await this._renderAllQuotations(panel); break;
-      case 'users':      await this._renderUsers(panel);      break;
-      case 'audit':      await this._renderAuditLogs(panel);  break;
+      case 'approvals':  await this._renderApprovals(panel);       break;
+      case 'quotations': await this._renderAllQuotations(panel);   break;
+      case 'users':      await this._renderUsers(panel);           break;
+      case 'audit':      await this._renderAuditLogs(panel);       break;
+      case 'reportes':   await this._renderReportes(panel);        break;
+    }
+  }
+
+  // ── Tab: Reportes ─────────────────────────────────────────────────────────
+
+  async _renderReportes(panel) {
+    panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    try {
+      const data    = await api.get('/api/reportes/progreso');
+      const { volumen, conversion, por_ejecutivo } = data.data;
+      const periodo = data.periodo ?? '—';
+
+      const ratioColor = parseFloat(conversion.ratio_pct) >= 50 ? '#10B981' : '#EF4444';
+
+      panel.innerHTML = `
+        <div class="card" style="margin-bottom:1rem;">
+          <div class="card-header">
+            <h3>📊 Dashboard de Rendimiento — ${escHtml(periodo)}</h3>
+          </div>
+          <div class="stats-grid" style="padding:1rem 1rem 0;">
+            <div class="stat-card" style="--stat-accent:#3B82F6;">
+              <div class="stat-card-value">${Number(volumen.total_mes_usd).toFixed(2)}</div>
+              <div class="stat-card-label">Volumen USD (mes)</div>
+            </div>
+            <div class="stat-card" style="--stat-accent:#8B5CF6;">
+              <div class="stat-card-value">${Number(volumen.total_mes_bob).toFixed(2)}</div>
+              <div class="stat-card-label">Volumen BOB (mes)</div>
+            </div>
+            <div class="stat-card" style="--stat-accent:#F59E0B;">
+              <div class="stat-card-value">${volumen.total_cotizaciones}</div>
+              <div class="stat-card-label">Cotizaciones (mes)</div>
+            </div>
+            <div class="stat-card" style="--stat-accent:${ratioColor};">
+              <div class="stat-card-value">${conversion.ratio_pct}%</div>
+              <div class="stat-card-label">Tasa de Éxito</div>
+            </div>
+            <div class="stat-card" style="--stat-accent:#10B981;">
+              <div class="stat-card-value">${conversion.total_aceptadas}</div>
+              <div class="stat-card-label">Aceptadas (total)</div>
+            </div>
+            <div class="stat-card" style="--stat-accent:#EF4444;">
+              <div class="stat-card-value">${conversion.total_rechazadas}</div>
+              <div class="stat-card-label">Rechazadas (total)</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>Rendimiento por Ejecutivo — ${escHtml(periodo)}</h3>
+          </div>
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Ejecutivo</th>
+                  <th class="text-right">Total</th>
+                  <th class="text-right">Aceptadas</th>
+                  <th class="text-right">Rechazadas</th>
+                  <th class="text-right">Pendientes</th>
+                  <th class="text-right">En Revisión</th>
+                  <th class="text-right">Volumen USD</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${por_ejecutivo.length === 0
+                  ? `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted);">Sin datos para el mes actual.</td></tr>`
+                  : por_ejecutivo.map(e => `
+                    <tr>
+                      <td class="fw-600">${escHtml(e.ejecutivo)}</td>
+                      <td class="text-right">${e.total}</td>
+                      <td class="text-right" style="color:#10B981;">${e.aceptadas}</td>
+                      <td class="text-right" style="color:#EF4444;">${e.rechazadas}</td>
+                      <td class="text-right" style="color:#F59E0B;">${e.pendientes}</td>
+                      <td class="text-right" style="color:#F97316;">${e.en_revision}</td>
+                      <td class="text-right fw-600">USD ${Number(e.volumen_usd).toFixed(2)}</td>
+                    </tr>`).join('')
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    } catch (err) {
+      panel.innerHTML = `<div class="empty-state"><p>Error cargando reportes: ${escHtml(err.message)}</p></div>`;
     }
   }
 
@@ -1071,6 +1249,18 @@ class ManagerStrategy extends DashboardStrategy {
           this._confirmEnviarCliente(id));
         body.querySelector('#btn-rechazar')?.addEventListener('click', () =>
           this._showApproveDialog(id, false));
+
+        // FIX: #btn-aceptar was missing from _viewFullDetail — wired here so
+        // quotations in 'Aprobada internamente' / 'Enviada al cliente' reached
+        // from the "Todas las Cotizaciones" tab can complete the sale closure.
+        body.querySelector('#btn-aceptar')?.addEventListener('click', () => {
+          this._confirmStateChange(id, 'Aceptada',
+            'Aceptar Cotización — Cierre de Venta',
+            'El cliente ha aceptado los términos. Esta acción registra el cierre de venta y congela cualquier modificación adicional.',
+            'Observaciones de cierre (opcional)',
+            false,
+            '🏆 ¡Cierre de venta registrado! La cotización ha sido aceptada.');
+        });
 
         // Revert rejection buttons
         body.querySelector('#btn-revertir-pendiente')?.addEventListener('click', () => {
@@ -1948,6 +2138,12 @@ class DashboardController {
       document.getElementById('sidebar')?.classList.toggle('sidebar-open');
     });
 
+    // ── Notification badge (Ejecutivo only) ───────────────────────────────
+    // Poll once on load; show a clickable badge if pending corrections exist.
+    if (role === 'Ejecutivo') {
+      this._refreshNotifBadge();
+    }
+
     // Render the main content via the selected Strategy
     const container = document.getElementById('page-content');
     await this.#strategy.render(container);
@@ -2084,6 +2280,55 @@ class DashboardController {
       AuthSession.clearSession();
       window.location.href = '/';
     });
+  }
+
+  // ── Notification badge — pending corrections counter ─────────────────────
+  async _refreshNotifBadge() {
+    try {
+      const data  = await api.get('/api/cotizaciones/notificaciones');
+      const total = data.total ?? 0;
+      const btn   = document.getElementById('btn-notificaciones');
+      const badge = document.getElementById('notif-count');
+      if (!btn || !badge) return;
+
+      if (total > 0) {
+        btn.style.display    = 'inline-flex';
+        badge.textContent    = total > 99 ? '99+' : String(total);
+        btn.title            = `Tienes ${total} proforma${total > 1 ? 's' : ''} observada${total > 1 ? 's' : ''} pendiente${total > 1 ? 's' : ''} de corrección`;
+
+        // One-time click handler — open a quick notification summary modal
+        btn.onclick = () => {
+          api.get('/api/cotizaciones/notificaciones').then(d => {
+            const rows = d.data ?? [];
+            UI.openModal('🔔 Proformas Observadas Pendientes', (body) => {
+              body.innerHTML = `
+                <p class="text-sm" style="color:var(--text-secondary);margin-bottom:1rem;">
+                  Las siguientes cotizaciones requieren tu atención y correcciones:
+                </p>
+                <ul style="list-style:none;padding:0;margin:0;">
+                  ${rows.map(n => `
+                    <li style="padding:.6rem .75rem;border:1px solid var(--border);border-radius:6px;
+                                margin-bottom:.5rem;background:var(--bg-secondary);">
+                      <strong>${escHtml(n.numero_correlativo)}</strong>
+                      — ${escHtml(n.cliente_nombre ?? '—')}<br>
+                      <span class="text-sm" style="color:var(--text-secondary);">
+                        Solicitado por: ${escHtml(n.solicitado_por ?? '—')}
+                        · Rol: ${escHtml(n.rol_solicitante ?? '—')}
+                        · ${new Date(n.fecha_solicitud).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })}
+                      </span>
+                      ${n.observacion ? `<br><em class="text-sm" style="color:#F97316;">Obs: ${escHtml(n.observacion)}</em>` : ''}
+                    </li>`).join('')}
+                </ul>
+                <p class="text-sm text-muted" style="margin-top:1rem;">
+                  Abre la cotización desde "Mis Cotizaciones" para realizar las correcciones y reenviar a revisión.
+                </p>`;
+            });
+          }).catch(() => showToast('No se pudo cargar las notificaciones.', 'error'));
+        };
+      } else {
+        btn.style.display = 'none';
+      }
+    } catch (_) { /* non-fatal — badge failure must not break the dashboard */ }
   }
 }
 

@@ -26,6 +26,13 @@ const ROUNDS = 10;
 // ---------------------------------------------------------------------------
 const SEED_USERS = [
   {
+    nombre_completo: 'Administrador del Sistema',
+    nombre_usuario:  'sysadmin',
+    password:        'sysadmin123',
+    id_rol:          4,
+    activo:          1,
+  },
+  {
     nombre_completo: 'Jefe del Sistema',
     nombre_usuario:  'jefe',
     password:        'jefe123',
@@ -119,6 +126,43 @@ async function main() {
       );
       console.log(`  ✓ ${result.insertId > 0 ? 'INSERTED' : 'UPDATED'}: ${u.nombre_usuario}`);
     }
+
+    // ── Defensive SysAdmin hydration guard ────────────────────────────────
+    // Ensure that at least one user with nombre_usuario='sysadmin' OR id_rol=4
+    // exists in the system after seeding. If neither condition is met, this
+    // indicates the SysAdmin seed was skipped or was missing — create it now
+    // with absolute system-wide permissions.
+    const [[existsRow]] = await pool.execute(
+      `SELECT COUNT(*) AS cnt FROM usuarios
+       WHERE nombre_usuario = 'sysadmin' OR id_rol = 4
+       LIMIT 1`
+    );
+
+    if (!existsRow || existsRow.cnt === 0) {
+      console.log('\n⚠️  SysAdmin guard triggered — no sysadmin user found. Creating emergency SysAdmin…');
+      const saPass   = 'sysadmin123';
+      const saHash   = await bcrypt.hash(saPass, ROUNDS);
+      const saVerify = await bcrypt.compare(saPass, saHash);
+      if (!saVerify) throw new Error('FATAL: SysAdmin emergency hash self-verification failed.');
+
+      await pool.execute(
+        `INSERT INTO usuarios
+           (nombre_completo, nombre_usuario, password_hash, id_rol, activo, intentos_fallidos, bloqueado_hasta)
+         VALUES ('Administrador del Sistema', 'sysadmin', ?, 4, 1, 0, NULL)
+         ON DUPLICATE KEY UPDATE
+           password_hash     = VALUES(password_hash),
+           id_rol            = 4,
+           activo            = 1,
+           intentos_fallidos = 0,
+           bloqueado_hasta   = NULL`,
+        [saHash]
+      );
+      console.log('  ✓ EMERGENCY CREATED: sysadmin (id_rol=4, password=sysadmin123)');
+    } else {
+      console.log('  ✓ SysAdmin guard: sysadmin user confirmed present in database.');
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     console.log('\n✅ All seed users applied.\n');
   } catch (err) {
     console.error('❌ Database error:', err.message);

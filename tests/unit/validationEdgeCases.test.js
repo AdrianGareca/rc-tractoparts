@@ -175,7 +175,7 @@ describe('QuotationModel.validateTransitionByRole — state machine', () => {
       'En revision', 'Aprobada internamente', 'Ejecutivo'
     );
     expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/read-only/i);
+    expect(result.reason).toMatch(/solo lectura/i);  // translated to Spanish
   });
 
   // VEC-10 — SysAdmin inherits Jefe transitions
@@ -208,7 +208,7 @@ describe('QuotationModel.validateTransitionByRole — state machine', () => {
       'Pendiente', 'En revision', 'Fantasma'
     );
     expect(result.valid).toBe(false);
-    expect(result.reason).toMatch(/not recognized/i);
+    expect(result.reason).toMatch(/no est.*reconocido/i);  // translated to Spanish
   });
 });
 

@@ -49,6 +49,15 @@
         <div class="topbar-actions">
           <span class="topbar-username" id="topbar-username"></span>
           <span class="badge" id="topbar-role-badge"></span>
+          <!-- Notification badge — populated by DashboardController for Ejecutivo role -->
+          <button class="btn btn-ghost btn-sm notif-btn" id="btn-notificaciones"
+                  style="display:none;position:relative;" title="Proformas observadas pendientes">
+            🔔 <span class="notif-badge" id="notif-count"
+                     style="position:absolute;top:2px;right:2px;background:#EF4444;color:#fff;
+                            border-radius:50%;font-size:.65rem;min-width:16px;height:16px;
+                            display:flex;align-items:center;justify-content:center;
+                            font-weight:700;line-height:1;padding:0 3px;">0</span>
+          </button>
           <button class="btn btn-ghost btn-sm" id="btn-logout">Cerrar sesión</button>
         </div>
       </header>
