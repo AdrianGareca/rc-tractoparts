@@ -45,6 +45,20 @@ const detalleItemSchema = z.object({
     .optional()
     .nullable(),
 
+  // Manufacturer Part Number (Código de Parte).
+  // Optional: present when the technician knows the exact part code.
+  // Stored in cotizacion_detalles.codigo_parte (VARCHAR 50).
+  // Multiple rows with the same codigo in one request are valid — the
+  // front-end merges them into a single row with a summed quantity; the
+  // backend imposes no unique constraint on this column so there are no
+  // duplicate-key errors regardless of how many identical codes are sent.
+  codigo: z
+    .string({ invalid_type_error: 'codigo must be a string.' })
+    .trim()
+    .max(50, 'codigo (Part Number) must not exceed 50 characters.')
+    .optional()
+    .nullable(),
+
   descripcion_item: z
     .string({ required_error: 'Item description is required.' })
     .trim()
@@ -60,6 +74,13 @@ const detalleItemSchema = z.object({
     .number({ required_error: 'Unit price is required.', invalid_type_error: 'precio_unitario must be a number.' })
     .min(0, 'Unit price must be 0 or greater.')
     .max(99999999999.99, 'Unit price is too large.'),
+
+  marca_id: z
+    .number({ invalid_type_error: 'marca_id must be a number.' })
+    .int('marca_id must be an integer.')
+    .positive('marca_id must be a positive integer.')
+    .optional()
+    .nullable(),
 });
 
 // ---------------------------------------------------------------------------

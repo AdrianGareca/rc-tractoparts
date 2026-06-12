@@ -119,21 +119,31 @@ function _buildProformaHTML(q, id, viewMode) {
   const total    = subtotal + iva;
 
   const detallesRows = detalles.length > 0
-    ? detalles.map(d => `
+    ? detalles.map(d => {
+        // Prefer the catalog Part Number (via productos FK); fall back to the
+        // ad-hoc codigo_parte stored directly in the line item.
+        const codigoParte = d.producto_codigo || d.codigo_parte;
+        return `
         <tr>
           <td>${escHtml(d.descripcion_item)}</td>
+          <td class="text-muted text-sm">${codigoParte ? escHtml(codigoParte) : '—'}</td>
+          ${d.marca_nombre ? `<td class="text-muted text-sm">${escHtml(d.marca_nombre)}</td>` : '<td class="text-muted text-sm">—</td>'}
           <td class="text-right">${Number(d.cantidad).toFixed(4).replace(/\.?0+$/, '')}</td>
           <td class="text-right">${Number(d.precio_unitario).toFixed(2)}</td>
           <td class="text-right fw-600">${Number(d.subtotal).toFixed(2)}</td>
-        </tr>`).join('')
-    : `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Sin ítems registrados</td></tr>`;
+        </tr>`;
+      }).join('')
+    : `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Sin ítems registrados</td></tr>`;
 
   // Jefe action grid — contextual buttons based on current state
-  const canApprove  = jefeMode && ['Pendiente', 'En revision', 'En espera'].includes(q.estado);
-  const canAceptar  = jefeMode && ['Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
-  const canRechazar = jefeMode && !['Aceptada', 'Archivada', 'Rechazada'].includes(q.estado);
-  const canHold     = jefeMode && ['Pendiente', 'En revision', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
-  const canRetract  = jefeMode && ['En revision', 'En espera', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
+  const canApprove      = jefeMode && ['Pendiente', 'En revision', 'En espera'].includes(q.estado);
+  const canEnviarCliente= jefeMode && ['Pendiente', 'En revision', 'En espera', 'Aprobada internamente'].includes(q.estado);
+  const canAceptar      = jefeMode && ['Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
+  const canRechazar     = jefeMode && !['Aceptada', 'Archivada', 'Rechazada'].includes(q.estado);
+  const canHold         = jefeMode && ['Pendiente', 'En revision', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
+  const canRetract      = jefeMode && ['En revision', 'En espera', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
+  // High-privilege revert: only Jefe/SysAdmin can revert a Rechazada quotation
+  const canRevertir = jefeMode && q.estado === 'Rechazada';
 
   const jefeButtons = jefeMode ? `
     <div class="approval-actions">
@@ -148,6 +158,10 @@ function _buildProformaHTML(q, id, viewMode) {
         ${canApprove ? `<button class="btn btn-success" id="btn-aprobar">
           ✅ Aprobar Cotización
         </button>` : ''}
+        ${canEnviarCliente ? `<button class="btn btn-success" id="btn-enviar-cliente"
+          style="background:#16a34a;border-color:#15803d;grid-column:1/-1;">
+          🟢 Aprobar y Enviar al Cliente
+        </button>` : ''}
         ${canAceptar ? `<button class="btn btn-primary" id="btn-aceptar" style="grid-column:1/-1;">
           🏆 Aceptar Cotización — Cierre de Venta
         </button>` : ''}
@@ -155,7 +169,27 @@ function _buildProformaHTML(q, id, viewMode) {
           ❌ Rechazar
         </button>` : ''}
       </div>
-    </div>` : '';
+    </div>
+    ${canRevertir ? `
+    <div class="approval-actions" style="margin-top:1rem;border-top:2px solid #F59E0B;padding-top:1rem;">
+      <h4 class="approval-actions-title" style="color:#B45309;">🔄 Revertir Rechazo</h4>
+      <p class="text-sm" style="color:var(--text-secondary);margin-bottom:.75rem;">
+        Como autoridad comercial superior, puede revaluar esta cotización y reintroducirla
+        en el flujo de aprobación. Las observaciones de rechazo previas serán preservadas
+        en el historial de estados.
+      </p>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+        <button class="btn btn-warning btn-sm" id="btn-revertir-pendiente"
+                style="background:#F59E0B;color:#000;border:none;">
+          🔄 Revertir a Pendiente
+        </button>
+        <button class="btn btn-warning btn-sm" id="btn-revertir-revision"
+                style="background:#F97316;color:#fff;border:none;">
+          🔄 Revertir a En Revisión
+        </button>
+      </div>
+    </div>` : ''}
+    ` : '';
 
   // Admin action panel — comment box + "En Espera" button only
   const adminButtons = adminMode ? `
@@ -233,6 +267,8 @@ function _buildProformaHTML(q, id, viewMode) {
           <thead>
             <tr>
               <th>Descripción del Ítem</th>
+              <th>Cód. Parte</th>
+              <th>Marca</th>
               <th class="text-right">Cantidad</th>
               <th class="text-right">Precio Unit. (${q.moneda})</th>
               <th class="text-right">Subtotal (${q.moneda})</th>
@@ -570,7 +606,7 @@ class ExecutiveStrategy extends DashboardStrategy {
               ${rows.map(r => `
                 <tr>
                   <td class="fw-600">${r.numero_correlativo}</td>
-                  <td>${r.cliente_nombre ?? r.id_cliente}</td>
+                  <td>${r.cliente_nombre ? escHtml(r.cliente_nombre) : r.id_cliente}</td>
                   <td>${fmtDate(r.fecha_emision)}</td>
                   <td>${fmtAmount(r.monto_total, r.moneda)}</td>
                   <td>${badgeHtml(r.estado)}</td>
@@ -756,8 +792,8 @@ class ManagerStrategy extends DashboardStrategy {
                   <tr>
                     <td class="fw-600">${r.numero_correlativo}</td>
                     <td>${badgeHtml(r.estado)}</td>
-                    <td>${r.ejecutivo_nombre ?? '—'}</td>
-                    <td>${r.cliente_nombre ?? r.id_cliente}</td>
+                    <td>${escHtml(r.ejecutivo_nombre ?? '—')}</td>
+                    <td>${escHtml(r.cliente_nombre ?? String(r.id_cliente))}</td>
                     <td>${fmtAmount(r.monto_total, r.moneda)}</td>
                     <td>${fmtDate(r.fecha_emision)}</td>
                     <td>${fmtDate(r.fecha_validez)}</td>
@@ -816,6 +852,10 @@ class ManagerStrategy extends DashboardStrategy {
           this._showApproveDialog(id, true);
         });
 
+        body.querySelector('#btn-enviar-cliente')?.addEventListener('click', () => {
+          this._confirmEnviarCliente(id);
+        });
+
         body.querySelector('#btn-rechazar')?.addEventListener('click', () => {
           this._showApproveDialog(id, false);
         });
@@ -827,6 +867,14 @@ class ManagerStrategy extends DashboardStrategy {
             'Observaciones de cierre (opcional)',
             false,
             '🏆 ¡Cierre de venta registrado! La cotización ha sido aceptada.');
+        });
+
+        // ── Revert rejection buttons (Jefe / SysAdmin only) ─────────────────────
+        body.querySelector('#btn-revertir-pendiente')?.addEventListener('click', () => {
+          this._confirmRevertRejection(id, 'Pendiente');
+        });
+        body.querySelector('#btn-revertir-revision')?.addEventListener('click', () => {
+          this._confirmRevertRejection(id, 'En revision');
         });
       }, { wide: true });
     } catch (err) {
@@ -869,6 +917,22 @@ class ManagerStrategy extends DashboardStrategy {
         });
       });
     });
+  }
+
+  // ── Confirm direct "Aprobar y Enviar al Cliente" transition ─────────────────
+  // Allows the Jefe to skip 'Aprobada internamente' and send directly to the
+  // client in a single step. The transition is logged to cotizacion_historial_estados.
+
+  _confirmEnviarCliente(id) {
+    this._confirmStateChange(
+      id,
+      'Enviada al cliente',
+      'Aprobar y Enviar al Cliente',
+      'La cotización pasará directamente al estado "Enviada al cliente", omitiendo la aprobación interna intermedia. Esta acción queda registrada en el historial de estados.',
+      'Nota para el historial (opcional)',
+      false,
+      '🟢 Cotización aprobada y enviada al cliente exitosamente.'
+    );
   }
 
   _showApproveDialog(id, aprobado, _triggerBtn) {
@@ -951,14 +1015,14 @@ class ManagerStrategy extends DashboardStrategy {
                 ${rows.map(r => `
                   <tr>
                     <td class="fw-600">${r.numero_correlativo}</td>
-                    <td>${r.ejecutivo_nombre ?? '—'}</td>
-                    <td>${r.cliente_nombre ?? r.id_cliente}</td>
+                    <td>${escHtml(r.ejecutivo_nombre ?? '—')}</td>
+                    <td>${escHtml(r.cliente_nombre ?? String(r.id_cliente))}</td>
                     <td>${fmtAmount(r.monto_total, r.moneda)}</td>
                     <td>${badgeHtml(r.estado)}</td>
                     <td>${fmtDate(r.fecha_emision)}</td>
                     <td>
                       <button class="btn btn-ghost btn-sm" data-view-detail="${r.id}"
-                              data-correlativo="${r.numero_correlativo}">
+                              data-correlativo="${escHtml(r.numero_correlativo)}">
                         🔍 Ver Detalle
                       </button>
                     </td>
@@ -1003,12 +1067,75 @@ class ManagerStrategy extends DashboardStrategy {
         });
         body.querySelector('#btn-aprobar')?.addEventListener('click', () =>
           this._showApproveDialog(id, true));
+        body.querySelector('#btn-enviar-cliente')?.addEventListener('click', () =>
+          this._confirmEnviarCliente(id));
         body.querySelector('#btn-rechazar')?.addEventListener('click', () =>
           this._showApproveDialog(id, false));
+
+        // Revert rejection buttons
+        body.querySelector('#btn-revertir-pendiente')?.addEventListener('click', () => {
+          this._confirmRevertRejection(id, 'Pendiente');
+        });
+        body.querySelector('#btn-revertir-revision')?.addEventListener('click', () => {
+          this._confirmRevertRejection(id, 'En revision');
+        });
       }, { wide: true });
     } catch (err) {
       showToast(`No se pudo cargar la cotización: ${err.message}`, 'error');
     }
+  }
+
+  // ── Confirm revert rejection — Jefe / SysAdmin exclusive ────────────────────────
+
+  _confirmRevertRejection(id, targetState) {
+    const label = targetState === 'Pendiente'
+      ? 'Revertir a Pendiente (Borrador para Correcciones)'
+      : 'Revertir a En Revisión (Flujo de Aprobación)';
+
+    UI.openModal('🔄 Revertir Rechazo / Revaluar Cotización', (body) => {
+      body.innerHTML = `
+        <div style="background:#FEF9C3;border:1px solid #F59E0B;border-radius:6px;padding:.75rem 1rem;margin-bottom:1rem;">
+          <strong style="color:#B45309;">⚠️ Acción de Alta Autoridad</strong>
+          <p class="text-sm" style="color:#78350F;margin:.25rem 0 0;">
+            Esta acción revierte el estado de <strong>Rechazada</strong> a
+            <strong>${escHtml(targetState)}</strong> y reinyecta la cotización en el flujo de trabajo.
+            El historial de rechazo se preservará en la trazabilidad de estados.
+          </p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="rev-obs">Justificación de la Revaluación *</label>
+          <textarea class="form-control" id="rev-obs" rows="3"
+                    placeholder="Ej: Nueva información del proveedor cambia las condiciones comerciales."></textarea>
+          <span class="field-error" id="rev-err"></span>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+          <button class="btn btn-ghost" id="rev-cancel">Cancelar</button>
+          <button class="btn btn-sm" id="rev-confirm"
+                  style="background:#F59E0B;color:#000;border:none;font-weight:600;">
+            🔄 Confirmar Revertir Rechazo
+          </button>
+        </div>`;
+
+      body.querySelector('#rev-cancel')?.addEventListener('click', UI.closeModal);
+      body.querySelector('#rev-confirm')?.addEventListener('click', () => {
+        const obs   = body.querySelector('#rev-obs')?.value.trim() ?? '';
+        const errEl = body.querySelector('#rev-err');
+        if (!obs) { errEl.textContent = 'La justificación es requerida.'; return; }
+        errEl.textContent = '';
+
+        const rollbackNote = `[REVERTIR RECHAZO] ${obs}`;
+        const btn = body.querySelector('#rev-confirm');
+
+        CommandInvoker.run(
+          new ChangeStatusCommand(id, targetState, rollbackNote),
+          {
+            btn,
+            successMsg: `🔄 Cotización revertida a "${targetState}" exitosamente. Reinyectada en el flujo.`,
+            onSuccess:  () => { UI.closeModal(); this.refresh(); },
+          }
+        );
+      });
+    });
   }
 
   // ── Tab: User Management (CRUD) ───────────────────────────────────────────
@@ -1403,8 +1530,8 @@ class AdminStrategy extends DashboardStrategy {
                 ${rows.map(r => `
                   <tr>
                     <td class="fw-600">${r.numero_correlativo}</td>
-                    <td>${r.ejecutivo_nombre ?? '—'}</td>
-                    <td>${r.cliente_nombre ?? r.id_cliente}</td>
+                    <td>${escHtml(r.ejecutivo_nombre ?? '—')}</td>
+                    <td>${escHtml(r.cliente_nombre ?? String(r.id_cliente))}</td>
                     <td>${fmtAmount(r.monto_total, r.moneda)}</td>
                     <td>${fmtDate(r.fecha_emision)}</td>
                     <td>${fmtDate(r.fecha_validez)}</td>
@@ -1515,14 +1642,14 @@ class AdminStrategy extends DashboardStrategy {
                 ${rows.map(r => `
                   <tr>
                     <td class="fw-600">${r.numero_correlativo}</td>
-                    <td>${r.ejecutivo_nombre ?? '—'}</td>
-                    <td>${r.cliente_nombre ?? r.id_cliente}</td>
+                    <td>${escHtml(r.ejecutivo_nombre ?? '—')}</td>
+                    <td>${escHtml(r.cliente_nombre ?? String(r.id_cliente))}</td>
                     <td>${fmtAmount(r.monto_total, r.moneda)}</td>
                     <td>${badgeHtml(r.estado)}</td>
                     <td>${fmtDate(r.fecha_emision)}</td>
                     <td>
                       <button class="btn btn-ghost btn-sm" data-admin-view="${r.id}"
-                              data-correlativo="${r.numero_correlativo}">
+                              data-correlativo="${escHtml(r.numero_correlativo)}">
                         🔍 Ver Detalle
                       </button>
                     </td>

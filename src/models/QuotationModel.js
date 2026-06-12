@@ -80,12 +80,17 @@ const ROLE_TRANSITIONS = {
     // Absolute commercial authority — can approve, reject, or hold from ANY state.
     // Pendiente can now be directly approved/rejected without requiring the
     // 'En revision' intermediate step (HU08 override fix).
-    Pendiente:               ['En revision', 'En espera', 'Aprobada internamente', 'Rechazada', 'Archivada'],
-    'En revision':           ['Aprobada internamente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
-    'En espera':             ['Aprobada internamente', 'Rechazada', 'Pendiente', 'En revision', 'Archivada'],
+    // 'Enviada al cliente' is reachable from ALL active states so the Jefe can
+    // skip the 'Aprobada internamente' intermediate step when the quotation
+    // can be sent to the client immediately (HU08 — direct send transition).
+    Pendiente:               ['En revision', 'En espera', 'Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Archivada'],
+    'En revision':           ['Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
+    'En espera':             ['Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'En revision', 'Archivada'],
     'Aprobada internamente': ['Aceptada', 'Enviada al cliente', 'Rechazada', 'Archivada'],
     'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],
-    Rechazada:               ['Pendiente', 'Aprobada internamente', 'Archivada'],
+    // Rechazada → can be reverted to Pendiente OR En revision by high-privilege roles
+    // (HU-Revertir: allows re-injecting into the approval queue after sudden business changes)
+    Rechazada:               ['Pendiente', 'En revision', 'Aprobada internamente', 'Archivada'],
     Aceptada:                ['Archivada'],
     Archivada:               [],
   },
@@ -93,12 +98,13 @@ const ROLE_TRANSITIONS = {
   // SysAdmin — absolute system-wide authority, mirrors Jefe transitions and
   // additionally can fully reset any non-Archivada state back to Pendiente.
   SysAdmin: {
-    Pendiente:               ['En revision', 'En espera', 'Aprobada internamente', 'Rechazada', 'Archivada'],
-    'En revision':           ['Aprobada internamente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
-    'En espera':             ['Aprobada internamente', 'Rechazada', 'Pendiente', 'En revision', 'Archivada'],
+    Pendiente:               ['En revision', 'En espera', 'Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Archivada'],
+    'En revision':           ['Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
+    'En espera':             ['Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'En revision', 'Archivada'],
     'Aprobada internamente': ['Aceptada', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'Archivada'],
     'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Pendiente', 'Archivada'],
-    Rechazada:               ['Pendiente', 'Aprobada internamente', 'Archivada'],
+    // Rechazada → can be reverted to Pendiente OR En revision
+    Rechazada:               ['Pendiente', 'En revision', 'Aprobada internamente', 'Archivada'],
     Aceptada:                ['Archivada', 'Pendiente'],
     Archivada:               [],    // Terminal — even SysAdmin cannot un-archive
   },
@@ -302,12 +308,17 @@ const QuotationModel = {
   async createDetalles(connection, id_cotizacion, detalles) {
     if (!detalles || detalles.length === 0) return;
 
-    const placeholders = detalles.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+    // 8 bound params per row: added codigo_parte for Part Number storage
+    const placeholders = detalles.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
 
     const values = detalles.flatMap((item) => {
       const subtotal = parseFloat(
         (parseFloat(item.cantidad) * parseFloat(item.precio_unitario)).toFixed(2)
       );
+      // Truncate codigo to 50 chars max (mirrors VARCHAR(50) DB column)
+      const codigoParte = item.codigo
+        ? String(item.codigo).trim().substring(0, 50) || null
+        : null;
       return [
         id_cotizacion,
         item.id_producto    || null,
@@ -315,12 +326,14 @@ const QuotationModel = {
         parseFloat(item.cantidad),
         parseFloat(item.precio_unitario),
         subtotal,
+        item.marca_id       || null,
+        codigoParte,
       ];
     });
 
     await connection.execute(
       `INSERT INTO cotizacion_detalles
-         (id_cotizacion, id_producto, descripcion_item, cantidad, precio_unitario, subtotal)
+         (id_cotizacion, id_producto, descripcion_item, cantidad, precio_unitario, subtotal, marca_id, codigo_parte)
        VALUES ${placeholders}`,
       values
     );
@@ -370,12 +383,16 @@ const QuotationModel = {
         d.id,
         d.id_producto,
         p.codigo          AS producto_codigo,
+        d.codigo_parte,
         d.descripcion_item,
         d.cantidad,
         d.precio_unitario,
-        d.subtotal
+        d.subtotal,
+        d.marca_id,
+        m.nombre          AS marca_nombre
       FROM cotizacion_detalles d
       LEFT JOIN productos p ON p.id = d.id_producto
+      LEFT JOIN marcas    m ON m.id = d.marca_id
       WHERE d.id_cotizacion = ?
       ORDER BY d.id ASC
     `;

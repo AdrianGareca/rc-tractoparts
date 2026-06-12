@@ -149,27 +149,32 @@ const QuotationController = {
       }
 
       // Initial history record ('Pendiente' is the DB-valid initial state)
-      await QuotationModel.logStateHistory({
-        id_cotizacion:  quotationId,
-        estado_anterior: null,
-        estado_nuevo:   'Pendiente',
-        id_usuario:     req.user.id,
-        nombre_usuario: req.user.nombre_usuario,
-        rol_usuario:    req.user.rol,
-        observacion:    'Quotation created.',
-        ip_origen:      clientIp,
-      });
+      // Non-fatal: audit logging failures must never mask a successfully committed quotation.
+      try {
+        await QuotationModel.logStateHistory({
+          id_cotizacion:  quotationId,
+          estado_anterior: null,
+          estado_nuevo:   'Pendiente',
+          id_usuario:     req.user.id,
+          nombre_usuario: req.user.nombre_usuario,
+          rol_usuario:    req.user.rol,
+          observacion:    'Quotation created.',
+          ip_origen:      clientIp,
+        });
 
-      await logEvent({
-        id_usuario:     req.user.id,
-        nombre_usuario: req.user.nombre_usuario,
-        accion:         AuditActions.CREAR_COTIZACION,
-        entidad:        'cotizaciones',
-        id_entidad:     quotationId,
-        detalle:        { numero_correlativo: numeroCorrelativo, id_cliente, monto_total: monto_total || null },
-        ip_origen:      clientIp,
-        resultado:      'exito',
-      });
+        await logEvent({
+          id_usuario:     req.user.id,
+          nombre_usuario: req.user.nombre_usuario,
+          accion:         AuditActions.CREAR_COTIZACION,
+          entidad:        'cotizaciones',
+          id_entidad:     quotationId,
+          detalle:        { numero_correlativo: numeroCorrelativo, id_cliente, monto_total: monto_total || null },
+          ip_origen:      clientIp,
+          resultado:      'exito',
+        });
+      } catch (auditErr) {
+        console.warn('[QuotationController.createQuotation] Audit logging failed (non-fatal):', auditErr.message);
+      }
 
       return res.status(201).json({
         success:          true,
@@ -617,33 +622,37 @@ const QuotationController = {
         });
       }
 
-      // ── Persist in the dedicated state history table ──────────────────────
-      await QuotationModel.logStateHistory({
-        id_cotizacion:  id,
-        estado_anterior: estadoActual,
-        estado_nuevo:   nuevo_estado,
-        id_usuario:     req.user.id,
-        nombre_usuario: req.user.nombre_usuario,
-        rol_usuario:    userRol,
-        observacion:    observacion || null,
-        ip_origen:      clientIp,
-      });
-
-      // ── Write the generic audit event ─────────────────────────────────────
-      await logEvent({
-        id_usuario:     req.user.id,
-        nombre_usuario: req.user.nombre_usuario,
-        accion:         AuditActions.CAMBIAR_ESTADO,
-        entidad:        'cotizaciones',
-        id_entidad:     id,
-        detalle: {
+      // ── Persist in the dedicated state history table (non-fatal) ────────────
+      // Audit logging failures must never mask a successfully committed transition.
+      try {
+        await QuotationModel.logStateHistory({
+          id_cotizacion:  id,
           estado_anterior: estadoActual,
-          nuevo_estado,
-          observacion:     observacion || null,
-        },
-        ip_origen:  clientIp,
-        resultado:  'exito',
-      });
+          estado_nuevo:   nuevo_estado,
+          id_usuario:     req.user.id,
+          nombre_usuario: req.user.nombre_usuario,
+          rol_usuario:    userRol,
+          observacion:    observacion || null,
+          ip_origen:      clientIp,
+        });
+
+        await logEvent({
+          id_usuario:     req.user.id,
+          nombre_usuario: req.user.nombre_usuario,
+          accion:         AuditActions.CAMBIAR_ESTADO,
+          entidad:        'cotizaciones',
+          id_entidad:     id,
+          detalle: {
+            estado_anterior: estadoActual,
+            nuevo_estado,
+            observacion:     observacion || null,
+          },
+          ip_origen:  clientIp,
+          resultado:  'exito',
+        });
+      } catch (auditErr) {
+        console.warn('[QuotationController.updateStatus] Audit logging failed (non-fatal):', auditErr.message);
+      }
 
       return res.status(200).json({
         success: true,
@@ -773,31 +782,34 @@ const QuotationController = {
         });
       }
 
-      // ── Write to the state history table ──────────────────────────────────
-      await QuotationModel.logStateHistory({
-        id_cotizacion:  id,
-        estado_anterior: estadoAnterior,
-        estado_nuevo:   nuevoEstado,
-        id_usuario:     req.user.id,
-        nombre_usuario: req.user.nombre_usuario,
-        rol_usuario:    req.user.rol,
-        observacion:    obsText,
-        ip_origen:      clientIp,
-      });
+      // ── Write to the state history table (non-fatal) ─────────────────────
+      // Audit logging failures must never mask a successfully committed approval.
+      try {
+        await QuotationModel.logStateHistory({
+          id_cotizacion:  id,
+          estado_anterior: estadoAnterior,
+          estado_nuevo:   nuevoEstado,
+          id_usuario:     req.user.id,
+          nombre_usuario: req.user.nombre_usuario,
+          rol_usuario:    req.user.rol,
+          observacion:    obsText,
+          ip_origen:      clientIp,
+        });
 
-      // ── Write the audit event ─────────────────────────────────────────────
-      const auditAction = aprobado ? AuditActions.APROBAR : AuditActions.RECHAZAR;
-
-      await logEvent({
-        id_usuario:     req.user.id,
-        nombre_usuario: req.user.nombre_usuario,
-        accion:         auditAction,
-        entidad:        'cotizaciones',
-        id_entidad:     id,
-        detalle:        { aprobado, observaciones: obsText },
-        ip_origen:      clientIp,
-        resultado:      'exito',
-      });
+        const auditAction = aprobado ? AuditActions.APROBAR : AuditActions.RECHAZAR;
+        await logEvent({
+          id_usuario:     req.user.id,
+          nombre_usuario: req.user.nombre_usuario,
+          accion:         auditAction,
+          entidad:        'cotizaciones',
+          id_entidad:     id,
+          detalle:        { aprobado, observaciones: obsText },
+          ip_origen:      clientIp,
+          resultado:      'exito',
+        });
+      } catch (auditErr) {
+        console.warn('[QuotationController.approveQuotation] Audit logging failed (non-fatal):', auditErr.message);
+      }
 
       // ── PDF regeneration — reflect the new status in the document ─────────
       // Non-fatal: the approval is committed regardless of PDF outcome.

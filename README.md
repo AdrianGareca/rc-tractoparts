@@ -703,6 +703,69 @@ Verificar que existan cotizaciones en estado `Pendiente`, `En revision` o `En es
 
 ---
 
+## � Sprint 3 — Nuevas Funcionalidades
+
+### Módulo de Marcas de Repuestos (Marcas de Repuestos)
+
+Implementa un catálogo centralizado de marcas de maquinaria pesada utilizable en cada ítem de detalle de una cotización.
+
+**Base de datos:**
+- Nueva tabla `marcas` (`id`, `nombre` UNIQUE, `activo`) con 8 marcas predeterminadas: Caterpillar, Komatsu, John Deere, Volvo, Cummins, Case, JCB, Alternativo.
+- Nueva columna `marca_id INT UNSIGNED NULL` en `cotizacion_detalles` con FK `ON DELETE SET NULL`.
+- Migración: `sql/migration_add_marcas.sql` (idempotente).
+
+**API REST:**
+
+| Método | Endpoint | Roles | Descripción |
+|--------|----------|-------|-------------|
+| `GET`  | `/api/marcas` | Todos (autenticados) | Lista marcas activas ordenadas alfabéticamente |
+| `POST` | `/api/marcas` | Ejecutivo, Administracion, Jefe, SysAdmin | Crea una nueva marca (trim + unicidad case-insensitive) |
+
+Reglas de negocio:
+- El `POST` normaliza el nombre (`.trim()`) antes de persistirlo.
+- Si la marca ya existe (colisión case-insensitive), se devuelve HTTP **409** con el registro existente para que el frontend pueda auto-seleccionarlo.
+- El campo `marca_id` en cada ítem de cotización es **opcional** (NULL permitido para ítems de servicios o logística).
+
+**Frontend (`quotationForm.js`):**
+- Dropdown `<select class="item-marca">` en cada fila de ítem, cargado desde `GET /api/marcas` al inicializar el formulario.
+- Botón verde `+` inline junto al selector. Al hacer clic abre un sub-modal de registro de marca. Una vez guardada, actualiza todos los selectores del formulario y auto-selecciona la nueva marca en la fila activa.
+- Si la marca ya existe (HTTP 409), se auto-selecciona sin crear un duplicado.
+
+**Archivos nuevos:**
+- `src/models/BrandModel.js`
+- `src/controllers/brandController.js`
+- `src/routes/brandRoutes.js`
+- `sql/migration_add_marcas.sql`
+
+---
+
+### Mecanismo de Reversión de Rechazo (Revertir Rechazo)
+
+Permite a roles de alta jerarquía (Jefe, SysAdmin) revertir el estado `Rechazada` de una cotización para reinyectarla en el flujo de aprobación ante cambios comerciales repentinos.
+
+**Máquina de estados actualizada:**
+
+| Rol | Estado `Rechazada` → Transiciones permitidas |
+|-----|----------------------------------------------|
+| Jefe | `Pendiente`, `En revision`, `Aprobada internamente`, `Archivada` |
+| SysAdmin | `Pendiente`, `En revision`, `Aprobada internamente`, `Archivada` |
+
+El estado `'En revision'` fue agregado a las transiciones desde `Rechazada` para Jefe y SysAdmin (antes solo era `'Pendiente'` y `'Archivada'`).
+
+**Frontend (`dashboardView.js`):**
+- En la vista de proforma (modo Jefe), cuando `q.estado === 'Rechazada'`, se renderiza un bloque de acción ámbar prominente: **"🔄 Revertir Rechazo / Revaluar Cotización"** con dos opciones:
+  - **Revertir a Pendiente** — regresa al ejecutivo para correcciones.
+  - **Revertir a En Revisión** — reinyecta directamente en la cola de aprobación.
+- El diálogo de confirmación exige una justificación de revaluación (campo requerido).
+- La observación se prefija con `[REVERTIR RECHAZO]` para identificación clara en el historial de estados y la bitácora de auditoría.
+- El historial de rechazo previo se preserva íntegramente en `cotizacion_historial_estados`.
+
+**Disponible en:**
+- Cola de Aprobación (`_viewApprovalDetail`)
+- Todas las Cotizaciones (`_viewFullDetail`)
+
+---
+
 ## 👨‍💻 Autores y Contexto Académico
 
 | | |
@@ -711,7 +774,7 @@ Verificar que existan cotizaciones en estado `Pendiente`, `En revision` o `En es
 | **Carrera** | Ingeniería de Sistemas |
 | **Empresa** | RC Tractoparts — Importaciones de Maquinaria Pesada |
 | **Metodología** | XP / SCRUM con sprints de dos semanas |
-| **Sprint actual** | Sprint 2 — Ciclo de vida completo y gestión documental |
+| **Sprint actual** | Sprint 3 — Marcas de Repuestos y Reversión de Rechazos |
 
 ---
 

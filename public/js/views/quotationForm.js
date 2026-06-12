@@ -30,6 +30,16 @@ function fmt(n) {
   return isNaN(n) ? '0.00' : Number(n).toFixed(2);
 }
 
+/** HTML-entity-encode a value before interpolating as text content in innerHTML.
+ *  Prevents stored-XSS when rendering user-controlled strings (OWASP A03). */
+function escText(v) {
+  if (v == null) return '';
+  return String(v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 /** Sum all item subtotals from the items array */
 function sumSubtotals(items) {
   return items.reduce((acc, it) => {
@@ -164,6 +174,7 @@ class FormMediator {
   #subject;          // LineItemsSubject (Observable)
   #container;        // Root DOM element of the form
   #uploadedFile = null;
+  #brands = [];      // Cache of { id, nombre } loaded from GET /api/marcas
 
   constructor(container) {
     this.#container = container;
@@ -173,7 +184,15 @@ class FormMediator {
   // ── Public mount entry point ───────────────────────────────────────────────
 
   /** Render the complete form into the container and wire all interactions. */
-  render(onSuccess, onCancel) {
+  async render(onSuccess, onCancel) {
+    // Pre-load brand catalog before rendering — failures are non-fatal
+    try {
+      const resp   = await api.get('/api/marcas');
+      this.#brands = resp.data ?? [];
+    } catch (_) {
+      this.#brands = [];
+    }
+
     this.#container.innerHTML = this._buildFormHTML();
 
     // Grab observer target elements
@@ -299,14 +318,16 @@ class FormMediator {
           <div class="table-wrapper" style="border-radius:6px;">
             <table class="line-items-table">
               <thead>
-                <tr>
-                  <th style="width:40%">Descripción</th>
-                  <th style="width:12%">Cantidad</th>
-                  <th style="width:17%">Precio Unit.</th>
-                  <th style="width:17%">Subtotal</th>
-                  <th style="width:7%"></th>
-                </tr>
-              </thead>
+              <tr>
+                <th style="width:28%">Descripción</th>
+                <th style="width:12%">Cód. Parte</th>
+                <th style="width:14%">Marca</th>
+                <th style="width:10%">Cantidad</th>
+                <th style="width:14%">Precio Unit.</th>
+                <th style="width:15%">Subtotal</th>
+                <th style="width:7%"></th>
+              </tr>
+            </thead>
               <tbody id="items-body"></tbody>
             </table>
           </div>
@@ -361,22 +382,62 @@ class FormMediator {
 
   // ── Private: append one table row ─────────────────────────────────────────
 
-  _appendRow(index, tbody) {
+  /**
+   * @param {number}      index   - Position in the Subject items array
+   * @param {HTMLElement} tbody   - Target table body element
+   * @param {Object|null} itemData - Pre-existing item data for re-render after deletion.
+   *   When null (new row), inputs are rendered with blank / default values.
+   */
+  _appendRow(index, tbody, itemData = null) {
     const tr = document.createElement('tr');
     tr.dataset.rowIndex = index;
+
+    // Minimal HTML-attribute escaper for pre-populated values (prevents XSS via
+    // double-quote injection into the value="…" attribute context).
+    const safeAttr  = (v) => v != null ? String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;') : '';
+    const safeCod   = safeAttr(itemData?.codigo           ?? '');
+    const safeDesc  = safeAttr(itemData?.descripcion_item  ?? '');
+    const safeCant  = itemData?.cantidad        ?? 1;
+    const safePrice = itemData?.precio_unitario ?? 0;
+    const safeMarca = itemData?.marca_id        ?? '';
+
+    // Build brand options HTML from cached brand list
+    const brandOptions = this.#brands
+      .map(b => `<option value="${b.id}"${b.id === Number(safeMarca) ? ' selected' : ''}>${escText(b.nombre)}</option>`)
+      .join('');
 
     tr.innerHTML = /* html */ `
       <td>
         <input class="item-input" type="text" data-field="descripcion_item" data-idx="${index}"
-               placeholder="Descripción del ítem" />
+               value="${safeDesc}" placeholder="Descripción del ítem" />
+      </td>
+      <td>
+        <input class="item-input item-codigo" type="text" data-field="codigo" data-idx="${index}"
+               value="${safeCod}" placeholder="Ej: 7E-6116" maxlength="50"
+               style="width:100%;font-size:.8rem;"
+               title="Código de Parte del fabricante. Si ya existe en otra fila, las cantidades se suman automáticamente." />
+      </td>
+      <td class="item-marca-cell">
+        <div style="display:flex;gap:4px;align-items:center;">
+          <select class="form-control item-marca" data-field="marca_id" data-idx="${index}"
+                  style="flex:1;min-width:0;font-size:.8rem;padding:2px 4px;">
+            <option value="">— Sin marca —</option>
+            ${brandOptions}
+          </select>
+          <button type="button" class="btn-add-brand" data-idx="${index}"
+                  title="Registrar nueva marca"
+                  style="flex-shrink:0;width:22px;height:22px;padding:0;border-radius:50%;background:#16a34a;color:#fff;border:none;cursor:pointer;font-size:1rem;line-height:1;">
+            +
+          </button>
+        </div>
       </td>
       <td>
         <input class="item-input" type="number" data-field="cantidad" data-idx="${index}"
-               value="1" min="0.0001" step="any" style="width:80px;" />
+               value="${safeCant}" min="0.0001" step="any" style="width:80px;" />
       </td>
       <td>
         <input class="item-input" type="number" data-field="precio_unitario" data-idx="${index}"
-               value="0" min="0" step="any" style="width:110px;" />
+               value="${safePrice}" min="0" step="any" style="width:110px;" />
       </td>
       <td class="item-subtotal" data-item-subtotal="${index}">0.00</td>
       <td>
@@ -384,13 +445,59 @@ class FormMediator {
       </td>
     `;
 
-    // Wire field → Subject update (Mediator receives input events)
+    // Wire all text/number inputs → Subject update via Mediator
     tr.querySelectorAll('.item-input').forEach(input => {
       input.addEventListener('input', (e) => {
         const field = e.target.dataset.field;
         const idx   = parseInt(e.target.dataset.idx, 10);
         this._onItemFieldChange(idx, field, e.target.value);
       });
+    });
+
+    // ── Part Number (Código de Parte) deduplication ─────────────────────────
+    // When the user leaves the Cód. Parte field and the typed code already
+    // exists in another row, merge the current row's quantity into that row
+    // and remove this row.  This enforces the heavy-machinery business rule:
+    //   "Multiple identical parts → single line item with summed quantity."
+    tr.querySelector('.item-codigo')?.addEventListener('blur', (e) => {
+      const rawCodigo = e.target.value.trim();
+      if (!rawCodigo) return;                     // blank — nothing to merge
+      const normalised = rawCodigo.toUpperCase();
+      const currentIdx = parseInt(e.target.dataset.idx, 10);
+      const items      = this.#subject.getItems();
+
+      // Find an existing row with the same code (case-insensitive)
+      const dupeIdx = items.findIndex((item, i) =>
+        i !== currentIdx &&
+        String(item.codigo || '').trim().toUpperCase() === normalised
+      );
+      if (dupeIdx === -1) return;                 // unique code — no merge needed
+
+      // Merge: add this row's quantity to the existing row in the Subject
+      const thisQty = parseFloat(items[currentIdx]?.cantidad) || 1;
+      const dupeQty = parseFloat(items[dupeIdx]?.cantidad)    || 1;
+      const merged  = parseFloat((thisQty + dupeQty).toFixed(4));
+      this.#subject.updateItem(dupeIdx, 'cantidad', merged);
+
+      // Remove this (new) row and re-render; the dupe row will show merged qty
+      this._onRemoveItem(currentIdx);
+      showToast(
+        `Cód. Parte "${rawCodigo}" ya existe — cantidad fusionada: ${merged}.`,
+        'info'
+      );
+    });
+
+    // Wire brand selector → Subject update
+    tr.querySelector('.item-marca')?.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      const val = e.target.value ? parseInt(e.target.value, 10) : null;
+      this._onItemFieldChange(idx, 'marca_id', val);
+    });
+
+    // Wire '+' brand creation button
+    tr.querySelector('.btn-add-brand')?.addEventListener('click', (e) => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      this._openNuevaMarcaModal(idx);
     });
 
     // Wire remove button
@@ -416,14 +523,144 @@ class FormMediator {
 
     this.#subject.removeItem(index);
 
-    // Re-render all rows (index positions shifted)
+    // Re-render all rows, passing the current item data so input values are
+    // preserved correctly after the index shift (fixes the default-value bug).
     tbody.innerHTML = '';
-    this.#subject.getItems().forEach((_, idx) => this._appendRow(idx, tbody));
+    const currentItems = this.#subject.getItems();
+    currentItems.forEach((item, idx) => this._appendRow(idx, tbody, item));
 
-    // If all rows removed, add one blank row
-    if (this.#subject.getItems().length === 0) {
+    // If all rows removed, seed one blank row
+    if (currentItems.length === 0) {
       this._appendRow(this.#subject.addItem(), tbody);
     }
+  }
+
+  // ── Private: inline brand creation sub-modal ─────────────────────────────
+
+  _openNuevaMarcaModal(rowIndex) {
+    const overlay = document.createElement('div');
+    overlay.className = 'sub-modal-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'bm-title');
+
+    overlay.innerHTML = /* html */ `
+      <div class="sub-modal">
+        <div class="sub-modal-header">
+          <h4 id="bm-title">Registrar Nueva Marca</h4>
+          <button type="button" class="btn-icon sub-modal-close" id="bm-close" aria-label="Cerrar">✕</button>
+        </div>
+        <div class="sub-modal-body">
+          <div class="form-group">
+            <label class="form-label" for="bm-nombre">Nombre de la Marca *</label>
+            <input class="form-control" type="text" id="bm-nombre"
+                   placeholder="Ej: Hitachi" maxlength="100" />
+            <span class="field-error" id="bm-err"></span>
+          </div>
+          <div class="form-alert" id="bm-alert" role="alert"></div>
+          <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem;">
+            <button type="button" class="btn btn-ghost" id="bm-cancel">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="bm-save">
+              <span id="bm-label">Guardar Marca</span>
+              <span class="spinner hidden" id="bm-spinner"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.#container.closest('.modal-body, [id="modal-body"]')?.appendChild(overlay)
+      ?? document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#bm-close')?.addEventListener('click', close);
+    overlay.querySelector('#bm-cancel')?.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    overlay.querySelector('#bm-nombre')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); overlay.querySelector('#bm-save')?.click(); }
+    });
+
+    overlay.querySelector('#bm-save')?.addEventListener('click', async () => {
+      const nombre  = overlay.querySelector('#bm-nombre')?.value.trim();
+      const errEl   = overlay.querySelector('#bm-err');
+      const alertEl = overlay.querySelector('#bm-alert');
+      const saveBtn = overlay.querySelector('#bm-save');
+      const lbl     = overlay.querySelector('#bm-label');
+      const spin    = overlay.querySelector('#bm-spinner');
+
+      if (!nombre) { errEl.textContent = 'El nombre es requerido.'; return; }
+      errEl.textContent  = '';
+      alertEl.className  = 'form-alert';
+      saveBtn.disabled   = true;
+      lbl.textContent    = 'Guardando...';
+      spin.classList.remove('hidden');
+
+      try {
+        const resp = await api.post('/api/marcas', { nombre });
+        const brand = resp.data;
+
+        // Update global brand cache
+        if (!this.#brands.find(b => b.id === brand.id)) {
+          this.#brands.push({ id: brand.id, nombre: brand.nombre });
+          this.#brands.sort((a, b) => a.nombre.localeCompare(b.nombre));
+        }
+
+        // Refresh ALL selectors across all rows with the new option
+        this.#container.querySelectorAll('.item-marca').forEach(sel => {
+          const currentVal = sel.value;
+          // Rebuild options
+          sel.innerHTML =
+            '<option value="">— Sin marca —</option>' +
+            this.#brands.map(b => `<option value="${b.id}"${b.id === brand.id ? ' selected' : ''}>${escText(b.nombre)}</option>`).join('');
+          // Restore previous selection unless this is the target row
+          const idx = parseInt(sel.dataset.idx, 10);
+          if (idx === rowIndex) {
+            sel.value = String(brand.id);
+            this._onItemFieldChange(rowIndex, 'marca_id', brand.id);
+          } else {
+            sel.value = currentVal;
+          }
+        });
+
+        showToast(`Marca "${brand.nombre}" registrada y seleccionada.`, 'success');
+        close();
+      } catch (err) {
+        // If 409 — brand already exists: auto-select it
+        if (err.status === 409 && err.data?.data) {
+          const existing = err.data.data;
+          if (!this.#brands.find(b => b.id === existing.id)) {
+            this.#brands.push({ id: existing.id, nombre: existing.nombre });
+            this.#brands.sort((a, b) => a.nombre.localeCompare(b.nombre));
+          }
+          // Auto-select in target row
+          const targetSel = this.#container.querySelector(`.item-marca[data-idx="${rowIndex}"]`);
+          if (targetSel) {
+            if (!targetSel.querySelector(`option[value="${existing.id}"]`)) {
+              const opt = document.createElement('option');
+              opt.value = existing.id;
+              opt.textContent = existing.nombre;
+              targetSel.appendChild(opt);
+            }
+            targetSel.value = String(existing.id);
+            this._onItemFieldChange(rowIndex, 'marca_id', existing.id);
+          }
+          showToast(`Marca "${existing.nombre}" ya existe. Seleccionada automáticamente.`, 'info');
+          close();
+          return;
+        }
+
+        const msg = err.data?.message || err.message || 'Error al crear la marca.';
+        alertEl.textContent = msg;
+        alertEl.className   = 'form-alert show alert-error';
+        saveBtn.disabled    = false;
+        lbl.textContent     = 'Guardar Marca';
+        spin.classList.add('hidden');
+      }
+    });
+
+    // Auto-focus brand name input
+    setTimeout(() => overlay.querySelector('#bm-nombre')?.focus(), 50);
   }
 
   // ── Private: client autocomplete search ───────────────────────────────────
@@ -628,7 +865,8 @@ class FormMediator {
 
   // ── Private: drag-and-drop file upload ────────────────────────────────────
 
-  _wireFileUpload() {    const zone      = this.#container.querySelector('#drop-zone');
+  _wireFileUpload() {
+    const zone      = this.#container.querySelector('#drop-zone');
     const fileInput = this.#container.querySelector('#pdf-input');
     const fileName  = this.#container.querySelector('#file-name');
     if (!zone || !fileInput) return;
@@ -708,10 +946,12 @@ class FormMediator {
     const subtotal = sumSubtotals(items);
 
     // Build the filtered detalles array — drop rows with no description
-    const filteredDetalles = items.filter(i => i.descripcion_item.trim()).map(i => ({
+    const filteredDetalles = items.filter(i => i.descripcion_item?.trim()).map(i => ({
       descripcion_item: i.descripcion_item.trim(),
+      codigo:           i.codigo ? String(i.codigo).trim() || null : null,
       cantidad:         parseFloat(i.cantidad)        || 1,
       precio_unitario:  parseFloat(i.precio_unitario) || 0,
+      marca_id:         i.marca_id                    || null,
     }));
 
     // Client-side guard: require at least one line item with a description
