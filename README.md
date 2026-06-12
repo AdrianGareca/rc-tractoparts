@@ -1,270 +1,340 @@
-<div align="center">
+﻿<div align="center">
 
-# 🚜 RC Tractoparts
-### Sistema de Gestión de Cotizaciones y Proformas
+# 🚜 RC Tractoparts — Quotation Management System
 
-**Plataforma full-stack empresarial para la gestión integral del ciclo de vida de cotizaciones comerciales**
+**Production-Grade Full-Stack Quotation & Proforma Platform**
+
+*Universidad Tecnológica Privada de Santa Cruz (UTEPSA) · Carrera de Ingeniería de Sistemas*
 
 ---
 
-![Node.js](https://img.shields.io/badge/Node.js-≥18.0.0-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-%E2%89%A518.0.0-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-4.x-000000?style=for-the-badge&logo=express&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0+-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
 ![JWT](https://img.shields.io/badge/JWT-Auth-000000?style=for-the-badge&logo=jsonwebtokens&logoColor=white)
-![Jest](https://img.shields.io/badge/Jest-Tests_12%2F12_✓-C21325?style=for-the-badge&logo=jest&logoColor=white)
-![Swagger](https://img.shields.io/badge/Swagger-UI_/api--docs-85EA2D?style=for-the-badge&logo=swagger&logoColor=black)
-![Sprint](https://img.shields.io/badge/Sprint-2_Completado-1B2B4B?style=for-the-badge)
-![License](https://img.shields.io/badge/Licencia-UNLICENSED-red?style=for-the-badge)
+![Zod](https://img.shields.io/badge/Zod-Schema_Validator-3068B7?style=for-the-badge)
+![Jest](https://img.shields.io/badge/Jest-Tests_Passing-C21325?style=for-the-badge&logo=jest&logoColor=white)
+![OWASP](https://img.shields.io/badge/OWASP-A03_Mitigated-0055A4?style=for-the-badge)
+![Sprint](https://img.shields.io/badge/Sprint-2_Completed-1B2B4B?style=for-the-badge)
+![License](https://img.shields.io/badge/License-UNLICENSED-red?style=for-the-badge)
 
 </div>
 
 ---
 
-## 📋 Tabla de Contenidos
+## Table of Contents
 
-1. [Descripción General](#-descripción-general)
-2. [Arquitectura del Sistema](#-arquitectura-del-sistema)
-3. [Matriz Jerárquica de Roles](#-matriz-jerárquica-de-roles)
-4. [Máquina de Estados — Ciclo de Vida de Cotizaciones](#-máquina-de-estados)
-5. [Capa de Seguridad y Validación](#-capa-de-seguridad-y-validación)
-6. [Stack Tecnológico](#-stack-tecnológico)
-7. [Estructura de Archivos](#-estructura-de-archivos)
-8. [Instalación y Configuración](#-instalación-y-configuración)
-9. [Variables de Entorno](#-variables-de-entorno)
-10. [Base de Datos](#-base-de-datos)
-11. [Ejecución del Proyecto](#-ejecución-del-proyecto)
-12. [Documentación Interactiva (Swagger)](#-documentación-interactiva-swagger)
-13. [Mapa Completo de Endpoints](#-mapa-completo-de-endpoints)
-14. [Pruebas Automatizadas](#-pruebas-automatizadas)
-15. [Solución de Problemas](#-solución-de-problemas)
+1. [Project Overview & Context](#1-project-overview--context)
+2. [Architecture Diagrams](#2-architecture-diagrams)
+   - [2.1 System Architecture](#21-system-architecture)
+   - [2.2 Master Relational ERD](#22-master-relational-erd)
+   - [2.3 Quotation State Machine](#23-quotation-state-machine)
+3. [Recent Critical Refactorings & QA Audit](#3-recent-critical-refactorings--qa-audit)
+   - [3.1 OWASP A03 Mitigation — XSS Sanitization](#31-owasp-a03-mitigation--xss-sanitization)
+   - [3.2 Async Anti-Crash Infrastructure](#32-async-anti-crash-infrastructure--isolated-audit-logging)
+   - [3.3 Line Item Fusing Logic](#33-line-item-fusing-logic--part-number-deduplication)
+4. [Bootstrapping & Installation Guide](#4-bootstrapping--installation-guide)
+5. [Role Hierarchy & Permissions Matrix](#5-role-hierarchy--permissions-matrix)
+6. [API Endpoint Map](#6-api-endpoint-map)
+7. [Test Suite](#7-test-suite)
 
 ---
 
-## 📖 Descripción General
+## 1. Project Overview & Context
 
-RC Tractoparts es una empresa boliviana de importación de maquinaria pesada y repuestos con sede en **Santa Cruz de la Sierra, Bolivia**. Este repositorio contiene la **plataforma full-stack** del Sistema de Gestión de Cotizaciones y Proformas, desarrollado bajo metodología **XP/SCRUM** en dos sprints productivos.
+### Academic Context
 
-El sistema automatiza el ciclo completo de una cotización comercial: desde su creación por el Ejecutivo de ventas, pasando por la revisión técnica del Administrador (con comentarios de supervisión), la aprobación definitiva del Jefe, el envío formal al cliente y el cierre de venta como `Aceptada`.
-
-### Funcionalidades clave implementadas
-
-| Característica | Descripción |
+| Field | Detail |
 |---|---|
-| 🔐 **Autenticación JWT** | Tokens firmados con expiración configurable y revocación en memoria al cerrar sesión |
-| 🔒 **RBAC jerárquico** | SysAdmin › Jefe › Administrador › Ejecutivo — cada endpoint valida el rol antes de ejecutar |
-| 🔢 **Correlativo atómico** | `SELECT … FOR UPDATE` garantiza seriales únicos bajo concurrencia máxima (RNF10) |
-| 📄 **PDF automático** | Generación de proformas con marca corporativa en el momento de creación y aprobación |
-| ⚙️ **Máquina de estados** | Flujo formal `Pendiente → En revision → Aprobada internamente → Aceptada` con cierre de venta |
-| 💬 **Comentarios del Administrador** | Campo `comentarios_admin` para observaciones de supervisión visibles solo por el Jefe |
-| ⏸ **Estado En Espera** | El Administrador puede suspender la revisión mientras verifica stock con proveedores |
-| 🛡️ **Flujo de aprobación HU08** | Solo Jefe/SysAdmin pueden aprobar, rechazar o cerrar una venta |
-| 📊 **Consultas avanzadas** | Listado paginado con 10 filtros combinables, ordenamiento dinámico y conteo paralelo |
-| 📝 **Auditoría completa** | Cada acción se registra en `bitacora_auditoria` con IP, usuario, rol y metadatos |
-| 🌐 **Dashboard SPA** | Interfaz web con patrones Strategy, Command, Observer y Mediator — sin frameworks externos |
+| **Institution** | Universidad Tecnológica Privada de Santa Cruz (UTEPSA) |
+| **Department** | Carrera de Ingeniería de Sistemas |
+| **Methodology** | **Agile XP (Extreme Programming)** — short iteration feedback loops, test-first development, pair-programming discipline, and continuous client integration |
+| **Sprint Cadence** | Two completed productive sprints; active sprint focuses on QA hardening, security audit, and UX resilience |
+| **Client** | RC Tractoparts S.R.L. — Santa Cruz de la Sierra, Bolivia; imports heavy machinery and OEM/aftermarket spare parts |
+
+### System Purpose
+
+RC Tractoparts is a commercial quotation management platform that automates the complete lifecycle of a business proposal: from creation by a Sales Executive (`Ejecutivo`), through administrative review by the `Administracion` role, formal approval by the `Jefe` (Department Head), formal delivery to the client, and definitive closure as `Aceptada` or `Rechazada`. The platform enforces a strict role-based permission hierarchy, a formal state machine, an immutable audit trail, and automatic PDF proforma generation.
+
+### Core Feature Matrix
+
+| Feature | Implementation Detail |
+|---|---|
+| **JWT Authentication** | Signed tokens with configurable expiration; in-memory revocation on logout |
+| **RBAC — Role-Based Access Control** | Hierarchical: SysAdmin › Jefe › Administracion › Ejecutivo — every endpoint validates role before execution |
+| **Atomic Serial Numbering** | `SELECT … FOR UPDATE` guarantees unique correlative serials under maximum concurrency (RNF-10) |
+| **PDF Proforma Generation** | Automatic corporate proforma on creation and state transitions using PDFKit |
+| **Quotation State Machine** | Formal 8-state lifecycle with per-role transition matrices (`ROLE_TRANSITIONS` in `QuotationModel.js`) |
+| **Admin Comments** | `comentarios_admin` field for supervisory remarks, visible exclusively to the Jefe |
+| **On-Hold State** | `Administracion` can suspend review while verifying supplier stock |
+| **Immutable Audit Trail** | Every significant event persisted to `bitacora_auditoria` with IP, username, role, and JSON metadata |
+| **Advanced Querying** | Paginated listing with 10 combinable filters, dynamic column ordering, and parallel counting |
+| **SPA Frontend** | Vanilla JS dashboard implementing Strategy, Command, Observer, and Mediator design patterns — zero external UI frameworks |
+| **XSS Protection** | `escHtml` / `escText` sanitization wrappers enforced at all 8 dynamic HTML injection points (OWASP A03) |
+| **3NF Database Design** | Full third-normal-form schema; `productos.marca_id` FK replaces former denormalized `marca VARCHAR(80)` column |
 
 ---
 
-## 🏗 Arquitectura del Sistema
+## 2. Architecture Diagrams
 
-El sistema implementa una **arquitectura de capas MVC estricta** con separación total de responsabilidades:
+### 2.1 System Architecture
 
+The platform implements a strict, decoupled full-stack pipeline. The Browser SPA communicates exclusively through a REST API. All inbound payloads are intercepted first by the JWT and RBAC middleware chain, then validated at the Zod schema boundary, before reaching any controller or model logic.
+
+```mermaid
+graph TD
+    subgraph FE["Frontend — Browser SPA (Vanilla JS)"]
+        A1["dashboard.html / index.html\nCustom HTML Rendering Engine"]
+        A2["dashboardView.js\nquotationForm.js"]
+        A3["escHtml / escText\nXSS Sanitization Layer\nOWASP A03 Protection"]
+        A4["apiClient.js\nBearer JWT Injection\nauthSession.js Token Store"]
+        A1 --> A2
+        A2 --> A3
+        A2 --> A4
+    end
+
+    subgraph BE["Express.js Backend — REST API"]
+        B1["authMiddleware.js\nJWT Signature Verify"]
+        B2["roleMiddleware.js\nRBAC Enforcement"]
+        B3["auditMiddleware.js\nRequest Logging"]
+        B4["Zod Validator Layer\nquotationValidator\nauthValidator"]
+        B5["Controllers\nauthController\nquotationController\nclientController\nuserController\nbrandController"]
+        B6["State-Machine Model Layer\nQuotationModel\nUserModel / ClientModel\nBrandModel / AuditModel"]
+        B7["pdfService.js\nPDFKit Corporate Proforma"]
+        B8["auditLog.js\nlogEvent / logStateHistory\nFire-and-Forget Isolated"]
+        B1 --> B2
+        B2 --> B3
+        B3 --> B4
+        B4 --> B5
+        B5 --> B6
+        B5 --> B7
+        B5 --> B8
+    end
+
+    subgraph DB["MySQL 8.0+ — rc_tractoparts Database"]
+        C1["roles\nusuarios"]
+        C2["cotizaciones\ncotizacion_detalles\ncotizaciones_correlativo"]
+        C3["clientes\nmarcas\nproductos"]
+        C4["auditoria\nbitacora_auditoria\ncotizacion_historial_estados"]
+    end
+
+    A4 -->|"HTTP REST + Bearer JWT"| B1
+    B6 --> C1
+    B6 --> C2
+    B6 --> C3
+    B8 --> C4
+    B7 --> C2
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│               CLIENTE — SPA / Swagger UI                        │
-│          public/  (HTML + Vanilla JS + CSS)                     │
-│                HTTP + Bearer JWT Token                          │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────────┐
-│                    CAPA DE ENRUTAMIENTO                          │
-│          src/routes/*.js  —  Express Router                     │
-│   authRoutes · quotationRoutes · clientRoutes · userRoutes      │
-└──────────┬──────────────────────────┬───────────────────────────┘
-           │                          │
-┌──────────▼──────────┐   ┌───────────▼───────────────────────────┐
-│  MIDDLEWARES        │   │         CONTROLADORES                  │
-│  authMiddleware.js  │   │  authController.js                     │
-│  roleMiddleware.js  │   │  quotationController.js                │
-│  auditMiddleware.js │   │  clientController.js                   │
-│  JWT verify + RBAC  │   │  userController.js                     │
-└─────────────────────┘   └───────────┬───────────────────────────┘
-                                      │
-                    ┌─────────────────▼─────────────────────────┐
-                    │            SERVICIOS                        │
-                    │        pdfService.js (PDFKit)              │
-                    └─────────────────┬─────────────────────────┘
-                                      │
-                    ┌─────────────────▼─────────────────────────┐
-                    │              MODELOS (DAL)                  │
-                    │   QuotationModel.js · UserModel.js         │
-                    │   ClientModel.js · AuditModel.js           │
-                    │   Pool MySQL · Transacciones · RBAC        │
-                    └─────────────────┬─────────────────────────┘
-                                      │
-                    ┌─────────────────▼─────────────────────────┐
-                    │          BASE DE DATOS MySQL 8.0+          │
-                    │  9 tablas · Pool de 10 conexiones          │
-                    │  Charset utf8mb4 · Timezone UTC            │
-                    └───────────────────────────────────────────┘
-```
-
-### Patrones de diseño del frontend (SPA)
-
-| Patrón | Ubicación | Propósito |
-|---|---|---|
-| **Strategy** | `dashboardView.js` | `ExecutiveStrategy` vs `ManagerStrategy` — renderizado por rol |
-| **Command** | `dashboardView.js` | `ApproveQuotationCommand`, `ChangeStatusCommand`, etc. |
-| **Observer** | `quotationForm.js` | `LineItemsSubject` notifica a `RowSubtotalObserver`, `IvaObserver`, `GrandTotalObserver` |
-| **Mediator** | `quotationForm.js` | `FormMediator` coordina `LineItemsComponent`, `TotalsComponent` y `FileUploadComponent` |
 
 ---
 
-## 👥 Matriz Jerárquica de Roles
+### 2.2 Master Relational ERD
 
-El sistema implementa una jerarquía de autoridad descendente. Cada nivel hereda todas las capacidades de los niveles inferiores y agrega las propias.
+Full 3NF-compliant schema as defined in `sql/init.sql` (Single Source of Truth). This file supersedes all former migration scripts. The `productos.marca_id` FK column replaces the former denormalized `marca VARCHAR(80)`, establishing proper referential integrity and eliminating transitive dependencies.
 
+```mermaid
+erDiagram
+    roles {
+        TINYINT id PK
+        VARCHAR nombre
+        VARCHAR descripcion
+    }
+
+    usuarios {
+        INT id PK
+        VARCHAR nombre_completo
+        VARCHAR nombre_usuario
+        VARCHAR password_hash
+        TINYINT id_rol FK
+        TINYINT activo
+        TINYINT intentos_fallidos
+        DATETIME bloqueado_hasta
+        DATETIME ultimo_acceso
+        DATETIME creado_en
+        DATETIME actualizado_en
+    }
+
+    marcas {
+        INT id PK
+        VARCHAR nombre
+        TINYINT activo
+    }
+
+    clientes {
+        INT id PK
+        VARCHAR razon_social
+        VARCHAR nit
+        VARCHAR contacto
+        VARCHAR email
+        VARCHAR telefono
+        TINYINT activo
+        DATETIME creado_en
+    }
+
+    productos {
+        INT id PK
+        VARCHAR codigo
+        VARCHAR descripcion
+        VARCHAR unidad
+        DECIMAL precio_referencia
+        INT marca_id FK
+        TINYINT activo
+        DATETIME creado_en
+    }
+
+    cotizaciones {
+        INT id PK
+        VARCHAR numero_correlativo
+        INT id_cliente FK
+        INT id_ejecutivo FK
+        TEXT descripcion
+        DECIMAL monto_total
+        CHAR moneda
+        ENUM estado
+        VARCHAR pdf_ruta
+        DATE fecha_emision
+        DATE fecha_validez
+        INT aprobado_por FK
+        TEXT obs_aprobacion
+        TEXT comentarios_admin
+        DATETIME creado_en
+        DATETIME actualizado_en
+    }
+
+    cotizacion_detalles {
+        INT id PK
+        INT id_cotizacion FK
+        INT id_producto FK
+        VARCHAR descripcion_item
+        DECIMAL cantidad
+        DECIMAL precio_unitario
+        DECIMAL subtotal
+        VARCHAR codigo_parte
+        INT marca_id FK
+    }
+
+    auditoria {
+        INT id_auditoria PK
+        INT id_usuario FK
+        VARCHAR tabla_afectada
+        VARCHAR accion
+        INT id_registro_afectado
+        TEXT detalles
+        VARCHAR ip_cliente
+        TIMESTAMP fecha_hora
+    }
+
+    bitacora_auditoria {
+        BIGINT id PK
+        INT id_usuario FK
+        VARCHAR nombre_usuario
+        VARCHAR accion
+        VARCHAR entidad
+        INT id_entidad
+        JSON detalle
+        VARCHAR ip_origen
+        ENUM resultado
+        DATETIME creado_en
+    }
+
+    cotizacion_historial_estados {
+        INT id PK
+        INT id_cotizacion FK
+        VARCHAR estado_anterior
+        VARCHAR estado_nuevo
+        INT id_usuario FK
+        VARCHAR nombre_usuario
+        VARCHAR rol_usuario
+        TEXT observacion
+        VARCHAR ip_origen
+        DATETIME creado_en
+    }
+
+    roles ||--o{ usuarios : "has role (id_rol)"
+    usuarios ||--o{ cotizaciones : "creates (id_ejecutivo)"
+    usuarios ||--o{ cotizaciones : "approves (aprobado_por)"
+    clientes ||--o{ cotizaciones : "is quoted (id_cliente)"
+    marcas ||--o{ productos : "categorizes (marca_id)"
+    marcas ||--o{ cotizacion_detalles : "brand at quote time (marca_id)"
+    productos ||--o{ cotizacion_detalles : "referenced by (id_producto)"
+    cotizaciones ||--o{ cotizacion_detalles : "contains — CASCADE (id_cotizacion)"
+    cotizaciones ||--o{ cotizacion_historial_estados : "tracked by (id_cotizacion)"
+    usuarios ||--o{ auditoria : "logged in (id_usuario)"
+    usuarios ||--o{ bitacora_auditoria : "logged in (id_usuario)"
+    usuarios ||--o{ cotizacion_historial_estados : "triggered by (id_usuario)"
 ```
-┌───────────────────────────────────────────────────────────────┐
-│  NIVEL 4 — SysAdmin  (Control absoluto del sistema)           │
-│  • Todas las transiciones de cualquier estado                 │
-│  • Puede revertir incluso estados avanzados a Pendiente       │
-│  • Gestión de usuarios (igual que Jefe)                       │
-├───────────────────────────────────────────────────────────────┤
-│  NIVEL 3 — Jefe  (Aprobador comercial final)                  │
-│  • Aprueba y rechaza desde cualquier estado activo            │
-│  • Marca cotizaciones como "Aceptada" (cierre de venta)       │
-│  • Gestión completa de usuarios (CRUD)                        │
-│  • Ve la Cola de Aprobación con todos los estados activos     │
-├───────────────────────────────────────────────────────────────┤
-│  NIVEL 2 — Administrador  (Revisor técnico y comentarista)    │
-│  • Deja comentarios de supervisión (comentarios_admin)        │
-│  • Puede poner una cotización "En Espera" con justificación   │
-│  • Puede retirar una cotización de revisión → Pendiente       │
-│  • NO puede aprobar ni rechazar (autoridad exclusiva del Jefe)│
-├───────────────────────────────────────────────────────────────┤
-│  NIVEL 1 — Ejecutivo  (Ventas y proformas)                    │
-│  • Crea cotizaciones y agrega ítems de línea                  │
-│  • Envía a revisión una vez que el borrador está completo     │
-│  • Marca como "Enviada al cliente" tras aprobación interna    │
-│  • Ve únicamente sus propias cotizaciones en el dashboard     │
-└───────────────────────────────────────────────────────────────┘
-```
-
-### Tabla detallada de permisos por acción
-
-| Acción | Ejecutivo | Administrador | Jefe | SysAdmin |
-|---|:---:|:---:|:---:|:---:|
-| Login / Logout | ✅ | ✅ | ✅ | ✅ |
-| Ver cotizaciones (propias) | ✅ | ✅ | ✅ | ✅ |
-| Crear cotización | ✅ | ✅ | ✅ | ✅ |
-| Enviar a revisión (`Pendiente → En revision`) | ✅ | ✅ | ✅ | ✅ |
-| Dejar comentario de supervisión | ❌ | ✅ | ❌ | ✅ |
-| Poner en espera con comentario (`→ En espera`) | ❌ | ✅ | ✅ | ✅ |
-| Retirar de revisión (`En revision → Pendiente`) | ❌ | ✅ | ✅ | ✅ |
-| **Aprobar** (`→ Aprobada internamente`) | ❌ | ❌ | ✅ | ✅ |
-| **Rechazar** (`→ Rechazada`) | ❌ | ❌ | ✅ | ✅ |
-| Enviar al cliente (`→ Enviada al cliente`) | ✅ | ❌ | ✅ | ✅ |
-| **Aceptar — Cierre de Venta** (`→ Aceptada`) | ✅* | ❌ | ✅ | ✅ |
-| Ver cola de aprobación completa | ❌ | ❌ | ✅ | ✅ |
-| Subir/descargar PDF | ✅ | ✅ | ✅ | ✅ |
-| Ver historial de estados | ✅ | ✅ | ✅ | ✅ |
-| Gestión de usuarios (CRUD) | ❌ | ❌ | ✅ | ✅ |
-
-> \* El Ejecutivo puede registrar `Aceptada` únicamente desde `Enviada al cliente` (respuesta del cliente). El Jefe y SysAdmin pueden marcarla desde `Aprobada internamente` o `Enviada al cliente` como cierre de venta directo.
 
 ---
 
-## ⚙️ Máquina de Estados
+### 2.3 Quotation State Machine
 
-Cada cotización sigue un ciclo de vida formal con transiciones validadas por rol en `ROLE_TRANSITIONS` (fuente de verdad única en `QuotationModel.js`). Ninguna transición puede ejecutarse sin el rol correcto.
+The `ROLE_TRANSITIONS` constant in `src/models/QuotationModel.js` is the authoritative, immutable access-control matrix governing all state changes. Transitions marked with **⭐** are the **golden paths** available exclusively to `Jefe` and `SysAdmin`, allowing them to bypass intermediate review stages and move directly to `Enviada al cliente` or `Aprobada internamente` from any active state.
 
+```mermaid
+stateDiagram-v2
+    state "Pendiente" as P
+    state "En revision" as ER
+    state "En espera" as EE
+    state "Aprobada internamente" as AI
+    state "Enviada al cliente" as EC
+    state "Aceptada" as AC
+    state "Rechazada" as RE
+    state "Archivada [TERMINAL]" as AR
+
+    [*] --> P : Nueva cotizacion creada por Ejecutivo
+
+    P --> ER : Enviar a revision (todos los roles)
+    P --> EE : Poner en espera (Administracion)
+    P --> AI : Aprobar directamente GOLDEN PATH Jefe-SysAdmin
+    P --> EC : Enviar al cliente GOLDEN PATH Jefe-SysAdmin
+    P --> RE : Rechazar (Jefe / SysAdmin)
+    P --> AR : Archivar
+
+    ER --> AI : Aprobar internamente (Jefe / SysAdmin)
+    ER --> EC : Envio directo GOLDEN PATH Jefe-SysAdmin
+    ER --> EE : Suspender decision (Administracion / Jefe)
+    ER --> P : Retractar para revision
+    ER --> RE : Rechazar (Jefe / SysAdmin)
+    ER --> AR : Archivar
+
+    EE --> ER : Reanudar revision
+    EE --> AI : Aprobar (Jefe / SysAdmin)
+    EE --> EC : Envio directo GOLDEN PATH Jefe-SysAdmin
+    EE --> P : Retractar
+    EE --> RE : Rechazar (Jefe / SysAdmin)
+    EE --> AR : Archivar
+
+    AI --> EC : Enviar al cliente (Ejecutivo / Jefe)
+    AI --> AC : Aceptar directamente (Jefe / SysAdmin)
+    AI --> RE : Rechazar (Jefe / SysAdmin)
+    AI --> AR : Archivar
+
+    EC --> AC : Cliente acepta
+    EC --> RE : Cliente rechaza
+    EC --> AR : Archivar
+
+    RE --> P : Reabrir para revision (todos los roles)
+    RE --> ER : Re-inyectar a cola de aprobacion (Jefe / SysAdmin)
+    RE --> AI : Revertir a aprobada (Jefe / SysAdmin)
+    RE --> AR : Archivar
+
+    AC --> AR : Cierre definitivo
+
+    AR --> [*]
 ```
-                    ┌─────────────────┐
-                    │    PENDIENTE    │  ← Estado inicial al crear
-                    └────────┬────────┘
-            Ejecutivo/Admin  │  envía a revisión
-            (valida: ítems,  │  monto_total, fecha_validez)
-                    ┌────────▼────────┐
-          ┌────────▶│   EN REVISION   │◀───────────────────────────┐
-          │         └────────┬────────┘                            │
-          │    Admin retira  │  Jefe/SysAdmin deciden              │
-          │                  │                                      │
-          │    ┌─────────────┼──────────────────┐                  │
-          │    │             │                  │                  │
-          │  ┌─▼──────────┐  │            ┌─────▼──────┐          │
-          │  │  EN ESPERA  │  │            │  RECHAZADA │          │
-          │  └─────────────┘  │            └─────┬──────┘          │
-          │  Admin/Jefe        │                  │ Ejecutivo        │
-          │  retoma           │                  └──────────────────┘
-          │                  ▼                         (rework)
-          │     ┌────────────────────────┐
-          │     │  APROBADA INTERNAMENTE │  ← Jefe/SysAdmin aprueban
-          │     └────────────┬───────────┘
-          │           ┌──────┴──────────────────────────────┐
-          │           │  Ejecutivo envía          Jefe/Sys  │
-          │           │  al cliente               cierran   │
-          │    ┌──────▼──────────────┐       ┌──────────────▼──┐
-          │    │  ENVIADA AL CLIENTE │       │    ACEPTADA      │
-          │    └──────┬──────────────┘       │ (Cierre de Venta)│
-          │           │                      └──────────────────┘
-          │     ┌─────┴─────┐
-          │     │           │
-          │  ┌──▼───────┐ ┌─▼────────┐
-          │  │ ACEPTADA │ │RECHAZADA │
-          │  └──────────┘ └──────────┘
-          │
-          └── Todos los estados activos → ARCHIVADA (terminal)
-```
-
-### Transiciones por rol (resumen)
-
-| Estado Actual | Ejecutivo | Administrador | Jefe / SysAdmin |
-|---|---|---|---|
-| `Pendiente` | → En revision, Archivada | → En revision, En espera, Archivada | → Cualquiera |
-| `En revision` | *(solo lectura)* | → En espera, Pendiente, Archivada | → Cualquiera |
-| `En espera` | *(solo lectura)* | → En revision, Pendiente, Archivada | → Cualquiera |
-| `Aprobada internamente` | → Enviada al cliente | → Archivada | → **Aceptada**, Enviada, Rechazada, Archivada |
-| `Enviada al cliente` | → Aceptada, Rechazada, Archivada | → Archivada | → **Aceptada**, Rechazada, Archivada |
-| `Rechazada` | → Pendiente, Archivada | → Pendiente, Archivada | → Pendiente, Aprobada int., Archivada |
-| `Aceptada` | → Archivada | → Archivada | → Archivada |
-| `Archivada` | *(terminal)* | *(terminal)* | *(terminal)* |
 
 ---
 
-## 🛡 Capa de Seguridad y Validación
+## 3. Recent Critical Refactorings & QA Audit
 
-### Validación cruzada con Zod
+### 3.1 OWASP A03 Mitigation — XSS Sanitization
 
-El esquema de validación en `src/validators/quotationValidator.js` aplica reglas cruzadas que no pueden verificarse campo a campo:
+**Threat Modeled:** Stored Cross-Site Scripting (XSS) via attacker-controlled strings (quotation descriptions, part numbers, client names, usernames) rendered directly into `innerHTML` template literals inside the SPA. An attacker with write access to any quotation field could inject malicious `<script>` payloads that execute in the browser of any user viewing the record.
 
-```js
-// fecha_validez debe ser igual o posterior a fecha_emision
-.refine(
-  (data) => !data.fecha_emision || !data.fecha_validez ||
-            data.fecha_validez >= data.fecha_emision,
-  {
-    message: 'La fecha de validez no puede ser anterior a la fecha de emisión.',
-    path: ['fecha_validez'],
-  }
-)
-```
+**Solution Implemented:** Two dedicated HTML-entity-encoding helpers were introduced and enforced at **8 explicit injection points** across `dashboardView.js` and `quotationForm.js`:
 
-**Reglas de validación implementadas:**
-
-| Regla | Campo | Tipo |
-|---|---|---|
-| `fecha_validez >= fecha_emision` | Fechas | Cross-field (Zod `.refine`) |
-| Mínimo 1 ítem de línea | `detalles` | Array mínimo (`.min(1)`) |
-| `monto_total` obligatorio para envío a revisión | Header | Pre-flight check |
-| `cantidad > 0` por ítem | `detalles[].cantidad` | Numérico positivo |
-| `precio_unitario >= 0` por ítem | `detalles[].precio_unitario` | Numérico no negativo |
-| `observaciones` obligatorio al rechazar | Aprobación | Condicional (`aprobado = false`) |
-
-### Mitigación de XSS almacenado (OWASP A03)
-
-Todos los campos controlados por el usuario que se renderizan en el DOM pasan por `escHtml()` antes de ser interpolados en `innerHTML`:
-
-```js
+```javascript
+// dashboardView.js — full 5-character entity map
 function escHtml(str) {
   if (str == null) return '';
   return String(str)
@@ -274,513 +344,317 @@ function escHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+// quotationForm.js — text-context encoder (no attribute quoting needed)
+function escText(v) {
+  if (v == null) return '';
+  return String(v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 ```
 
-Esta función protege los campos: `descripcion`, `cliente_nombre`, `ejecutivo_nombre`, `observaciones`, `obs_aprobacion`, `comentarios_admin` y todos los ítems de línea.
+**Coverage — Sanitized Injection Points:**
 
-### Otras medidas de seguridad activas
-
-| Medida | Implementación |
-|---|---|
-| **Hashing bcrypt** | Factor de costo configurable (12 rondas por defecto en producción) |
-| **Brute-force protection** | Bloqueo automático tras 3 intentos fallidos, 15 minutos de espera |
-| **Cabeceras HTTP seguras** | `helmet` (CSP, X-Frame-Options, HSTS, X-Content-Type-Options) |
-| **CORS restrictivo** | Origen configurado por variable de entorno `CORS_ORIGIN` |
-| **Consultas parametrizadas** | Cero concatenación de strings en SQL — solo prepared statements |
-| **Inyección de sort column** | Whitelist explícita `SORTABLE_COLUMNS` — ningún valor externo llega al `ORDER BY` |
-| **Concurrencia atómica** | Transacciones con `SELECT … FOR UPDATE` para el correlativo |
-| **Defense-in-depth** | El controller re-verifica el rol después del middleware (doble barrera) |
-| **Token revocation** | Tokens invalidados en memoria al hacer logout (antes de su expiración JWT) |
-
----
-
-## 🛠 Stack Tecnológico
-
-| Capa | Tecnología | Versión | Propósito |
-|---|---|---|---|
-| Runtime | Node.js | ≥ 18.0.0 | Entorno de ejecución JavaScript |
-| Framework | Express.js | 4.x | Servidor HTTP y enrutamiento |
-| Base de datos | MySQL | 8.0+ | Persistencia relacional |
-| Driver DB | mysql2 | 3.9.x | Pool de conexiones con soporte Promise |
-| Autenticación | jsonwebtoken | 9.x | Firma y verificación de tokens JWT |
-| Hashing | bcryptjs | 2.4.x | Encriptación segura de contraseñas |
-| Validación | zod | 3.x | Validación de esquemas con cross-field rules |
-| PDF | PDFKit | 0.x | Generación de proformas en formato A4 |
-| Upload | Multer | 1.4.x | Validación y almacenamiento de PDFs |
-| Seguridad | Helmet | 7.x | Cabeceras HTTP de seguridad |
-| Logging | Morgan | 1.10.x | Registro de peticiones HTTP |
-| API Docs | Swagger UI Express | 5.x | Documentación interactiva en `/api-docs/` |
-| Variables | dotenv | 16.x | Gestión de entorno |
-| Testing | Jest + Supertest | 29.x | Pruebas unitarias e integración |
-| Dev server | Nodemon | 3.x | Recarga automática en desarrollo |
-
----
-
-## 📁 Estructura de Archivos
-
-```
-rc-tractoparts/
-│
-├── 📂 public/                         # Frontend SPA (servida como archivos estáticos)
-│   ├── index.html                     # Página de login
-│   ├── dashboard.html                 # Dashboard principal (SPA)
-│   ├── 📂 css/
-│   │   └── styles.css                 # Sistema de diseño: variables CSS, badges, grid
-│   └── 📂 js/
-│       ├── 📂 services/
-│       │   ├── apiClient.js           # Wrapper Fetch con auto-adjuntar token JWT
-│       │   └── authSession.js         # Sesión en memoria (user, token, logout)
-│       └── 📂 views/
-│           ├── authView.js            # Formulario de login
-│           ├── dashboardView.js       # Strategy (Ejecutivo/Jefe) + Commands + UI
-│           └── quotationForm.js       # Formulario reactivo: Observer + Mediator
-│
-├── 📂 scripts/
-│   ├── seed-users.js                  # Sembrado seguro de usuarios con hashes bcrypt
-│   ├── migrate-en-espera.js           # Migración: agrega estado 'En espera'
-│   └── run-migration-comentarios-admin.js  # Migración: columna comentarios_admin
-│
-├── 📂 sql/
-│   ├── init.sql                       # Esquema base: 9 tablas + ENUM + roles iniciales
-│   ├── migration_add_en_espera.sql    # ENUM 'En espera'
-│   ├── migration_add_comentarios_admin.sql  # Columna comentarios_admin
-│   └── migration_add_sysadmin_role.sql     # Rol SysAdmin
-│
-├── 📂 src/
-│   ├── 📂 config/
-│   │   └── db.js                      # Pool MySQL (Singleton) + testConnection()
-│   │
-│   ├── 📂 controllers/
-│   │   ├── authController.js          # Login / Logout (HU01)
-│   │   ├── quotationController.js     # CRUD cotizaciones + HU08 aprobación + historial
-│   │   ├── clientController.js        # CRUD clientes
-│   │   └── userController.js          # CRUD usuarios (Jefe/SysAdmin — HU02)
-│   │
-│   ├── 📂 middlewares/
-│   │   ├── authMiddleware.js          # Verificación JWT + revocación en memoria
-│   │   ├── roleMiddleware.js          # RBAC: authorize(['Jefe', 'SysAdmin', ...])
-│   │   └── auditMiddleware.js         # Registro automático de accesos
-│   │
-│   ├── 📂 models/
-│   │   ├── QuotationModel.js          # DAL completo: state machine, transacciones, historial
-│   │   ├── UserModel.js               # DAL usuarios: CRUD + brute-force counters
-│   │   ├── ClientModel.js             # DAL clientes
-│   │   └── AuditModel.js              # DAL bitácora de auditoría
-│   │
-│   ├── 📂 routes/
-│   │   ├── authRoutes.js              # POST /api/auth/login|logout
-│   │   ├── quotationRoutes.js         # 10 rutas — orden fijo-antes-paramétrico crítico
-│   │   ├── clientRoutes.js            # /api/clientes
-│   │   └── userRoutes.js              # /api/usuarios
-│   │
-│   ├── 📂 services/
-│   │   └── pdfService.js              # Generación PDF corporativo (PDFKit, A4, auto-triggered)
-│   │
-│   ├── 📂 utils/
-│   │   └── auditLog.js                # logEvent() — escritura asíncrona a bitacora_auditoria
-│   │
-│   ├── 📂 validators/
-│   │   ├── authValidator.js           # Zod schemas para login
-│   │   ├── quotationValidator.js      # Zod schemas con cross-field fecha_validez >= fecha_emision
-│   │   └── validate.js                # Middleware wrapper para schemas Zod
-│   │
-│   ├── app.js                         # Express: CORS, helmet, morgan, Swagger, rutas, error handler
-│   └── server.js                      # Inicio servidor + testConnection() + graceful shutdown
-│
-├── 📂 tests/
-│   ├── 📂 unit/
-│   │   ├── calcularTotales.test.js    # 12 pruebas UT-01→UT-08 + EDGE cases
-│   │   └── validationEdgeCases.test.js  # Edge cases de validación Zod
-│   └── 📂 integration/
-│       └── correlativo.concurrencia.test.js  # CC-01: 20 peticiones simultáneas
-│
-├── 📂 uploads/cotizaciones/           # PDFs generados y subidos
-├── .env.example                       # Plantilla de variables de entorno
-├── package.json
-└── README.md
-```
-
----
-
-## ⚙️ Instalación y Configuración
-
-### Requisitos previos
-
-- **[Node.js](https://nodejs.org/) v18.0.0 o superior** — verificar con `node -v`
-- **[MySQL 8.0+](https://dev.mysql.com/downloads/)** — servidor local o remoto accesible
-- **[Git](https://git-scm.com/)** — para clonar el repositorio
-
-### Paso 1 — Clonar e instalar dependencias
-
-```bash
-git clone https://github.com/AdrianGareca/rc-tractoparts.git
-cd rc-tractoparts
-npm install
-```
-
-### Paso 2 — Crear el archivo de variables de entorno
-
-```bash
-cp .env.example .env
-# Editar .env con los valores reales
-```
-
-### Paso 3 — Inicializar la base de datos
-
-Ejecutar los scripts SQL en **MySQL Workbench** o desde la terminal en el orden indicado:
-
-```sql
-SOURCE sql/init.sql;
-SOURCE sql/migration_add_en_espera.sql;
-SOURCE sql/migration_add_comentarios_admin.sql;
-SOURCE sql/migration_add_sysadmin_role.sql;
-```
-
-> **Nota:** Seleccionar el esquema `rc_tractoparts` (doble clic para que aparezca en negrita) antes de ejecutar los scripts en MySQL Workbench.
-
-### Paso 4 — Sembrar usuarios de prueba
-
-```bash
-npm run seed:execute
-```
-
-Los usuarios sembrados son:
-
-| Usuario | Contraseña | Rol |
+| File | Field | Context |
 |---|---|---|
-| `sysadmin` | `sysadmin123` | SysAdmin |
-| `jefe` | `jefe123` | Jefe |
-| `adrian_admin` | `admin123` | Jefe |
-| `carlos_admin` | `admin123` | Administracion |
-| `elena_ejec` | `ejecutivo123` | Ejecutivo |
+| `dashboardView.js` | `descripcion_item` | Proforma line item description cell |
+| `dashboardView.js` | `codigo_parte` / `producto_codigo` | Part Number column |
+| `dashboardView.js` | `marca_nombre` | Brand column |
+| `dashboardView.js` | `razon_social` | Client name in quotation header |
+| `dashboardView.js` | `nombre_usuario` | User display in audit log rows |
+| `dashboardView.js` | `numero_correlativo` | Serial number in table and header |
+| `quotationForm.js` | `descripcion_item` | Line item input fallback rendering |
+| `quotationForm.js` | `codigo_parte` | Part Number field autocomplete option rendering |
+
+All 8 points now escape user-controlled data before interpolation into template literals, fully neutralizing stored XSS attack vectors at the rendering boundary.
 
 ---
 
-## 🔑 Variables de Entorno
+### 3.2 Async Anti-Crash Infrastructure — Isolated Audit Logging
 
-```env
-# ── Aplicación ─────────────────────────────────────────────
-NODE_ENV=development
+**Problem:** Audit-logging calls (`logStateHistory` and `logEvent`) were initially unguarded async operations. Any transient database network drop, connection pool exhaustion, or MySQL timeout would cause an unhandled Promise rejection to propagate back through the call stack, aborting the **primary business transaction** (state transition, approval, creation) with a 500 error — a side-effect failure blocking the core operation.
+
+**Solution:** Both audit functions are now wrapped in isolated `try/catch` blocks that fully absorb all errors internally. This pattern enforces **100% fire-and-forget semantics** — the audit layer is a silent observer and can never interrupt the business flow:
+
+```javascript
+// src/models/QuotationModel.js — logStateHistory
+async logStateHistory({ id_cotizacion, estado_anterior, estado_nuevo, ...rest }) {
+  try {
+    await pool.execute(
+      `INSERT INTO cotizacion_historial_estados
+         (id_cotizacion, estado_anterior, estado_nuevo, id_usuario,
+          nombre_usuario, rol_usuario, observacion, ip_origen)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id_cotizacion, estado_anterior, estado_nuevo, ...]
+    );
+  } catch (err) {
+    // Absorbed internally — history failure must NEVER block primary state transitions
+    console.error('[QuotationModel.logStateHistory] Failed:', err.message,
+      { id_cotizacion, estado_anterior, estado_nuevo });
+  }
+}
+
+// src/utils/auditLog.js — logEvent
+async function logEvent({ id_usuario, accion, entidad, ...rest }) {
+  try {
+    await pool.execute(
+      `INSERT INTO bitacora_auditoria
+         (id_usuario, nombre_usuario, accion, entidad, id_entidad,
+          detalle, ip_origen, resultado)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [...]
+    );
+  } catch (err) {
+    // Logging failure is silently absorbed — primary HTTP response is unaffected
+    console.error('[auditLog.logEvent] Audit write failed:', err.message);
+  }
+}
+```
+
+**Result:** The primary business operation (state transition, approval, creation) completes successfully and returns the correct HTTP `200`/`201` response even when the audit database layer is temporarily unreachable. **100% transaction isolation** between the business domain and the observability infrastructure is achieved.
+
+---
+
+### 3.3 Line Item Fusing Logic — Part Number Deduplication
+
+**Problem:** A user adding multiple line items for the same spare part (identified by `codigo_parte` / Manufacturer Part Number) produces redundant rows with split quantities. This corrupts per-item totals, pollutes the generated PDF proforma, and violates the business rule that each Part Number maps to exactly one row per quotation.
+
+**Solution:** A `blur` event listener is attached to every `.item-codigo` input field inside `quotationForm.js`. On focus loss, it performs a case-insensitive duplicate scan across all current line items and fuses any matching row:
+
+```javascript
+// quotationForm.js — LineItemsComponent._addRow()
+tr.querySelector('.item-codigo')?.addEventListener('blur', (e) => {
+  const rawCodigo = e.target.value.trim().toUpperCase();
+  if (!rawCodigo) return;                         // Blank field — nothing to merge
+
+  const items   = this.#subject.getItems();
+  const thisIdx = /* index of the current row */ ;
+  const dupeIdx = items.findIndex(
+    (it, i) => i !== thisIdx &&
+               it.codigo_parte?.trim().toUpperCase() === rawCodigo
+  );
+
+  if (dupeIdx === -1) return;                     // Unique code — no merge needed
+
+  // Aggregate: add current row's quantity into the pre-existing duplicate row
+  const thisQty = parseFloat(items[thisIdx].cantidad) || 0;
+  const dupeQty = parseFloat(items[dupeIdx].cantidad) || 0;
+  const merged  = parseFloat((thisQty + dupeQty).toFixed(4));
+
+  this.#subject.updateItem(dupeIdx, 'cantidad', merged);
+  this.#subject.removeItem(thisIdx);              // Remove the newly entered duplicate
+
+  showToast(
+    `Cód. Parte "${rawCodigo}" ya existe — cantidad fusionada: ${merged}.`,
+    'info'
+  );
+});
+```
+
+**Behavior at Runtime:**
+1. User types a Part Number in the `codigo_parte` field of a new row.
+2. On `blur`, the listener performs a case-insensitive match against all existing rows.
+3. If a duplicate is found, the new row's quantity is added to the existing row's quantity (with 4-decimal precision), the duplicate row is removed, and a toast notification confirms the merge.
+4. If no duplicate exists, the row is accepted unchanged.
+
+This client-side guard runs before form submission, ensuring clean, deduplicated line item data reaches the backend and the PDF renderer.
+
+---
+
+## 4. Bootstrapping & Installation Guide
+
+### Prerequisites
+
+| Requirement | Minimum Version | Notes |
+|---|---|---|
+| Node.js | 18.0.0 | LTS recommended |
+| npm | Bundled with Node.js | — |
+| MySQL Server | 8.0 | InnoDB engine required |
+| MySQL Workbench | Any | For SQL script execution |
+
+---
+
+### Step 1 — Clone the Repository
+
+```bash
+git clone <repository-url>
+cd rc-tractoparts
+```
+
+---
+
+### Step 2 — Configure Environment Variables
+
+Create a `.env` file at the project root with the following structure:
+
+```dotenv
+# ─── Application ─────────────────────────────────────────────────────────────
 PORT=3000
-APP_NAME=RC-Tractoparts-API
+NODE_ENV=development
 
-# ── Base de Datos (MySQL) ───────────────────────────────────
-DB_HOST=localhost
+# ─── Database ─────────────────────────────────────────────────────────────────
+DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=tu_contraseña
+DB_PASSWORD=your_mysql_password_here
 DB_NAME=rc_tractoparts
-DB_NAME_TEST=rc_tractoparts_test
-DB_CONNECTION_LIMIT=10
-DB_QUEUE_LIMIT=0
 
-# ── Autenticación y Seguridad ───────────────────────────────
-JWT_SECRET=cambia_esto_por_clave_larga_y_aleatoria_de_64_caracteres
+# ─── JWT Authentication ───────────────────────────────────────────────────────
+JWT_SECRET=replace_with_a_long_random_cryptographic_secret_minimum_32_chars
 JWT_EXPIRES_IN=8h
-BCRYPT_ROUNDS=12
-
-# ── Protección Brute-Force ──────────────────────────────────
-MAX_LOGIN_ATTEMPTS=3
-LOCK_DURATION_MINUTES=15
-
-# ── Archivos PDF ────────────────────────────────────────────
-UPLOAD_DIR=uploads/cotizaciones
-MAX_PDF_SIZE_MB=10
-
-# ── CORS ────────────────────────────────────────────────────
-CORS_ORIGIN=http://localhost:5500
 ```
 
-> ⚠️ Generar un `JWT_SECRET` seguro: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
+> **Security Note:** `JWT_SECRET` must be a cryptographically random string of at least 32 characters. Generate one with: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`. **Never commit `.env` to version control.**
 
 ---
 
-## 🗄 Base de Datos
+### Step 3 — Initialize the Database (Single Source of Truth)
 
-### Esquema de tablas
+`sql/init.sql` is the **sole canonical database definition**. It absorbs and supersedes all former migration scripts (`migration_add_sysadmin_role.sql`, `migration_add_en_espera.sql`, `migration_add_comentarios_admin.sql`, `migration_add_marcas.sql`). Execute it once on a fresh MySQL instance:
 
-| Tabla | Descripción |
+1. Open **MySQL Workbench** and connect to your local server.
+2. Navigate to **File → Open SQL Script** and select `sql/init.sql`.
+3. Execute the full script with `Ctrl + Shift + Enter` (or click the lightning bolt ⚡ icon).
+
+The script performs the following in FK-safe execution order:
+
+| Step | Operation |
 |---|---|
-| `roles` | Catálogo de perfiles: SysAdmin, Ejecutivo, Administracion, Jefe |
-| `usuarios` | Cuentas con hash bcrypt y control brute-force |
-| `clientes` | Contrapartes comerciales (razón social, NIT) |
-| `productos` | Catálogo interno de piezas y repuestos |
-| `cotizaciones_correlativo` | Contador atómico de seriales por año calendario |
-| `cotizaciones` | Registro principal de cada cotización (header + estado + `comentarios_admin`) |
-| `cotizacion_detalles` | Ítems de línea de cada cotización |
-| `cotizacion_historial_estados` | Historial cronológico de transiciones de estado |
-| `bitacora_auditoria` | Log de auditoría inmutable (INSERT-only) |
-
-### Formato del correlativo generado
-
-```
-COT-YYYY-NNNN
-│    │     └── Número secuencial del año, 0-rellenado a 4 dígitos
-│    └──────── Año calendario de 4 dígitos
-└───────────── Prefijo fijo de la empresa
-```
+| 0 | Drop and recreate the `rc_tractoparts` database with `utf8mb4_unicode_ci` collation |
+| 1 | Create `roles` table; seed all 4 canonical roles |
+| 2 | Create `usuarios` table with brute-force lockout fields; seed placeholder accounts |
+| 3 | Create `marcas` table; seed 8 default heavy-machinery brands |
+| 4 | Create `clientes` table; seed 2 sample clients |
+| 5 | Create `productos` table with `marca_id FK → marcas(id)` (3NF) |
+| 6 | Create `cotizaciones_correlativo` serial-counter table |
+| 7 | Create `cotizaciones` table with full 8-value state ENUM |
+| 8 | Create `cotizacion_detalles` with CASCADE delete and dual-brand FK |
+| 9 | Create `auditoria` table |
+| 10 | Create `bitacora_auditoria` table |
+| 11 | Create `cotizacion_historial_estados` table |
+| 12 | Insert seed data (serial counter, sample clients) |
 
 ---
 
-## 🚀 Ejecución del Proyecto
+### Step 4 — Hydrate Cryptographic Password Hashes
+
+The `init.sql` seed accounts contain **placeholder** bcrypt strings. The seeder script derives properly-salted hashes from each account's canonical development password and writes them back to the database:
 
 ```bash
-# Desarrollo (recarga automática)
+node scripts/seed-users.js --execute
+```
+
+After execution, the following development accounts are available:
+
+| Role | Username | Development Password |
+|---|---|---|
+| Ejecutivo | `ejecutivo1` | `ejecutivo123` |
+| Ejecutivo | `elena_ejec` | `ejecutivo123` |
+| Administracion | `carlos_admin` | `admin123` |
+| Administracion | `admin` | `admin123` |
+| Jefe | `jefe` | `jefe123` |
+| Jefe | `jefe1` | `jefe123` |
+| SysAdmin | `sysadmin` | `sysadmin123` |
+
+> **Production Note:** All development passwords must be replaced with strong, unique credentials before any production deployment. The seeder script is a development utility only.
+
+---
+
+### Step 5 — Install Dependencies & Launch
+
+```bash
+npm install
 npm run dev
-
-# Producción
-npm start
-
-# Sembrar usuarios
-npm run seed:execute
-
-# Pruebas unitarias
-npm run test:unit
-
-# Todas las pruebas
-npm test
 ```
 
-Al iniciar correctamente verás:
+The API server starts on `http://localhost:3000` (or the `PORT` value configured in `.env`).
 
-```
-============================================================
-[Server] RC-Tractoparts-API running
-[Server] Environment : development
-[Server] Listening on: http://localhost:3000
-[Server] Health check: http://localhost:3000/health
-[Server] API Docs   : http://localhost:3000/api-docs/
-============================================================
-[DB] Connected to MySQL — host: localhost:3306 | database: rc_tractoparts
-```
-
----
-
-## 📚 Documentación Interactiva (Swagger)
-
-Con el servidor corriendo, la documentación completa e interactiva de la API está disponible en:
-
-```
-http://localhost:3000/api-docs/
-```
-
-Swagger UI está **completamente configurado y operacional**. Permite:
-
-- **Explorar** todos los endpoints con sus esquemas de request/response
-- **Autenticarse** con el token JWT del login (botón **Authorize 🔒**)
-- **Probar** cada endpoint directamente desde el navegador
-
-> **Flujo recomendado:**
-> 1. `POST /api/auth/login` → copiar el `token` del response
-> 2. Clic en **Authorize 🔒** → pegar `Bearer <token>`
-> 3. Explorar todos los endpoints protegidos
-
----
-
-## 🗺 Mapa Completo de Endpoints
-
-### 🔐 Autenticación — `/api/auth`
-
-| Método | Endpoint | Auth | Descripción |
-|---|---|---|---|
-| `POST` | `/api/auth/login` | ❌ Pública | Devuelve JWT firmado |
-| `POST` | `/api/auth/logout` | ✅ JWT | Revoca el token activo |
-
-### 👥 Usuarios — `/api/usuarios` (Jefe / SysAdmin)
-
-| Método | Endpoint | Descripción |
-|---|---|---|
-| `GET` | `/api/usuarios` | Listar usuarios |
-| `POST` | `/api/usuarios` | Crear usuario |
-| `GET` | `/api/usuarios/:id` | Detalle de usuario |
-| `PUT` | `/api/usuarios/:id` | Actualizar usuario |
-| `DELETE` | `/api/usuarios/:id` | Desactivar usuario (soft delete) |
-
-### 🏢 Clientes — `/api/clientes`
-
-| Método | Endpoint | Auth | Descripción |
-|---|---|---|---|
-| `GET` | `/api/clientes` | ✅ JWT | Listar clientes |
-| `POST` | `/api/clientes` | ✅ JWT | Crear cliente |
-| `GET` | `/api/clientes/:id` | ✅ JWT | Detalle de cliente |
-| `PUT` | `/api/clientes/:id` | ✅ JWT | Actualizar cliente |
-
-### 📋 Cotizaciones — `/api/cotizaciones`
-
-| Método | Endpoint | Roles | Descripción |
-|---|---|---|---|
-| `GET` | `/api/cotizaciones/resumen` | Todos | Conteo por estado |
-| `GET` | `/api/cotizaciones/pendientes-aprobacion` | Jefe, SysAdmin | Cola de aprobación: `Pendiente` + `En revision` + `En espera` |
-| `GET` | `/api/cotizaciones` | Todos | Listado paginado con 10 filtros |
-| `POST` | `/api/cotizaciones` | Todos | Crear cotización + PDF automático |
-| `GET` | `/api/cotizaciones/:id` | Todos | Detalle: header + ítems + historial |
-| `GET` | `/api/cotizaciones/:id/historial` | Todos | Historial cronológico de estados |
-| `PUT` | `/api/cotizaciones/:id/estado` | Según rol | Transición de estado (state machine) |
-| `POST` | `/api/cotizaciones/:id/aprobar` | Jefe, SysAdmin | Aprobar o rechazar (HU08) |
-| `PATCH` | `/api/cotizaciones/:id/comentario-admin` | Administracion | Guardar comentario de supervisión |
-| `POST` | `/api/cotizaciones/:id/pdf` | Ejecutivo | Subir PDF manualmente |
-| `GET` | `/api/cotizaciones/:id/pdf` | Todos | Descargar PDF adjunto |
-
-#### Parámetros de filtrado en `GET /api/cotizaciones`
-
-| Parámetro | Tipo | Descripción |
-|---|---|---|
-| `q` | string | Búsqueda libre en correlativo, razón social y NIT |
-| `razon_social` | string | Coincidencia parcial en nombre del cliente |
-| `nit` | string | Coincidencia parcial en NIT |
-| `estado` | string | Filtro exacto por estado del ciclo de vida |
-| `id_cliente` | number | Filtro por ID de cliente |
-| `id_ejecutivo` | number | Filtro por ID de ejecutivo |
-| `fecha_desde` | YYYY-MM-DD | Límite inferior de fecha de emisión |
-| `fecha_hasta` | YYYY-MM-DD | Límite superior de fecha de emisión |
-| `moneda` | `USD` \| `BOB` | Filtra por moneda |
-| `tiene_pdf` | `true` \| `false` | Solo con o sin PDF adjunto |
-| `page` | number | Página (base 1, por defecto 1) |
-| `limit` | number | Registros por página (máximo 100, por defecto 20) |
-| `sort_by` | string | Columna de ordenamiento |
-| `sort_order` | `ASC` \| `DESC` | Dirección del ordenamiento |
-
----
-
-## 🧪 Pruebas Automatizadas
-
-### Pruebas unitarias
-
-```bash
-npm run test:unit
-```
-
-Ejecuta **12 pruebas** que validan la lógica de cálculo de subtotales y la validación Zod:
-
-| ID | Descripción | Estado |
-|---|---|---|
-| UT-01 | Subtotal exacto para ítem simple | ✅ |
-| UT-02 | Redondeo a 2 decimales en decimales periódicos | ✅ |
-| UT-03 | Suma correcta de múltiples ítems | ✅ |
-| UT-04 | Array vacío devuelve `0.00` | ✅ |
-| UT-05 | Cantidad fraccional produce subtotal correcto | ✅ |
-| UT-06 | Precio unitario máximo no lanza excepción | ✅ |
-| UT-07 | Cantidad negativa lanza error de validación | ✅ |
-| UT-08 | Precio negativo lanza error de validación | ✅ |
-| EDGE-01 | Cantidad cero lanza error de validación | ✅ |
-| EDGE-02 | Precio cero es válido (`0.00`) | ✅ |
-| EDGE-03 | Un solo ítem: total = subtotal | ✅ |
-| EDGE-04 | Suma con decimales periódicos redondeada correctamente | ✅ |
-
-### Prueba de concurrencia
-
-`CC-01` — dispara **20 peticiones simultáneas** y verifica que todos los correlativos sean únicos. Valida el `SELECT … FOR UPDATE` bajo carga real.
-
----
-
-## 🔧 Solución de Problemas
-
-### `UnauthorizedAccess` en PowerShell (Windows)
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-```
-
-### `Error Code: 1046 — No database selected` en MySQL Workbench
-
-Doble clic sobre `rc_tractoparts` en el panel izquierdo (debe aparecer en **negrita**) antes de ejecutar el script.
-
-### `401 Invalid credentials` con credenciales correctas
-
-El hash almacenado no corresponde. Resembrar:
-
-```bash
-npm run seed:execute
-```
-
-### `FORBIDDEN_TRANSITION` al cambiar estado
-
-El rol del usuario no tiene permiso para esa transición. Consultar la sección [Máquina de Estados](#-máquina-de-estados).
-
-### La Cola de Aprobación aparece vacía para el Jefe
-
-Verificar que existan cotizaciones en estado `Pendiente`, `En revision` o `En espera`. El endpoint `/api/cotizaciones/pendientes-aprobacion` incluye los tres estados activos.
-
----
-
-## � Sprint 3 — Nuevas Funcionalidades
-
-### Módulo de Marcas de Repuestos (Marcas de Repuestos)
-
-Implementa un catálogo centralizado de marcas de maquinaria pesada utilizable en cada ítem de detalle de una cotización.
-
-**Base de datos:**
-- Nueva tabla `marcas` (`id`, `nombre` UNIQUE, `activo`) con 8 marcas predeterminadas: Caterpillar, Komatsu, John Deere, Volvo, Cummins, Case, JCB, Alternativo.
-- Nueva columna `marca_id INT UNSIGNED NULL` en `cotizacion_detalles` con FK `ON DELETE SET NULL`.
-- Migración: `sql/migration_add_marcas.sql` (idempotente).
-
-**API REST:**
-
-| Método | Endpoint | Roles | Descripción |
-|--------|----------|-------|-------------|
-| `GET`  | `/api/marcas` | Todos (autenticados) | Lista marcas activas ordenadas alfabéticamente |
-| `POST` | `/api/marcas` | Ejecutivo, Administracion, Jefe, SysAdmin | Crea una nueva marca (trim + unicidad case-insensitive) |
-
-Reglas de negocio:
-- El `POST` normaliza el nombre (`.trim()`) antes de persistirlo.
-- Si la marca ya existe (colisión case-insensitive), se devuelve HTTP **409** con el registro existente para que el frontend pueda auto-seleccionarlo.
-- El campo `marca_id` en cada ítem de cotización es **opcional** (NULL permitido para ítems de servicios o logística).
-
-**Frontend (`quotationForm.js`):**
-- Dropdown `<select class="item-marca">` en cada fila de ítem, cargado desde `GET /api/marcas` al inicializar el formulario.
-- Botón verde `+` inline junto al selector. Al hacer clic abre un sub-modal de registro de marca. Una vez guardada, actualiza todos los selectores del formulario y auto-selecciona la nueva marca en la fila activa.
-- Si la marca ya existe (HTTP 409), se auto-selecciona sin crear un duplicado.
-
-**Archivos nuevos:**
-- `src/models/BrandModel.js`
-- `src/controllers/brandController.js`
-- `src/routes/brandRoutes.js`
-- `sql/migration_add_marcas.sql`
-
----
-
-### Mecanismo de Reversión de Rechazo (Revertir Rechazo)
-
-Permite a roles de alta jerarquía (Jefe, SysAdmin) revertir el estado `Rechazada` de una cotización para reinyectarla en el flujo de aprobación ante cambios comerciales repentinos.
-
-**Máquina de estados actualizada:**
-
-| Rol | Estado `Rechazada` → Transiciones permitidas |
-|-----|----------------------------------------------|
-| Jefe | `Pendiente`, `En revision`, `Aprobada internamente`, `Archivada` |
-| SysAdmin | `Pendiente`, `En revision`, `Aprobada internamente`, `Archivada` |
-
-El estado `'En revision'` fue agregado a las transiciones desde `Rechazada` para Jefe y SysAdmin (antes solo era `'Pendiente'` y `'Archivada'`).
-
-**Frontend (`dashboardView.js`):**
-- En la vista de proforma (modo Jefe), cuando `q.estado === 'Rechazada'`, se renderiza un bloque de acción ámbar prominente: **"🔄 Revertir Rechazo / Revaluar Cotización"** con dos opciones:
-  - **Revertir a Pendiente** — regresa al ejecutivo para correcciones.
-  - **Revertir a En Revisión** — reinyecta directamente en la cola de aprobación.
-- El diálogo de confirmación exige una justificación de revaluación (campo requerido).
-- La observación se prefija con `[REVERTIR RECHAZO]` para identificación clara en el historial de estados y la bitácora de auditoría.
-- El historial de rechazo previo se preserva íntegramente en `cotizacion_historial_estados`.
-
-**Disponible en:**
-- Cola de Aprobación (`_viewApprovalDetail`)
-- Todas las Cotizaciones (`_viewFullDetail`)
-
----
-
-## 👨‍💻 Autores y Contexto Académico
-
-| | |
+| Endpoint | URL |
 |---|---|
-| **Institución** | UTEPSA — Universidad Tecnológica Privada de Santa Cruz |
-| **Carrera** | Ingeniería de Sistemas |
-| **Empresa** | RC Tractoparts — Importaciones de Maquinaria Pesada |
-| **Metodología** | XP / SCRUM con sprints de dos semanas |
-| **Sprint actual** | Sprint 3 — Marcas de Repuestos y Reversión de Rechazos |
+| REST API base | `http://localhost:3000/api` |
+| Swagger interactive documentation | `http://localhost:3000/api-docs` |
+| SPA Dashboard | `http://localhost:3000/dashboard.html` |
+
+---
+
+## 5. Role Hierarchy & Permissions Matrix
+
+```
+SysAdmin (4) ── Absolute system-wide authority over all entities and state transitions
+    │
+    └── Jefe (3) ── Full commercial approval authority; manages users; complete transition matrix
+            │
+            └── Administracion (2) ── Review, hold, retract; manages clients; no approval authority
+                        │
+                        └── Ejecutivo (1) ── Creates and submits quotations; uploads PDFs; reads own records
+```
+
+| Action | Ejecutivo | Administracion | Jefe | SysAdmin |
+|---|:---:|:---:|:---:|:---:|
+| Create quotation | ✅ | — | — | ✅ |
+| Submit for review (`Pendiente → En revision`) | ✅ | ✅ | ✅ | ✅ |
+| Place on hold (`En espera`) | — | ✅ | ✅ | ✅ |
+| Approve internally (`→ Aprobada internamente`) | — | — | ✅ | ✅ |
+| **Direct golden-path send** (`→ Enviada al cliente`) | — | — | ✅ | ✅ |
+| Reject quotation | — | — | ✅ | ✅ |
+| Revert `Rechazada` back to queue | — | — | ✅ | ✅ |
+| Manage user accounts | — | — | ✅ | ✅ |
+| View audit log (`bitacora_auditoria`) | — | — | ✅ | ✅ |
+| Full system override (un-archive, reset) | — | — | — | ✅ |
+
+---
+
+## 6. API Endpoint Map
+
+| Method | Path | Minimum Role | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/login` | Public | Authenticate; receive signed JWT |
+| `POST` | `/api/auth/logout` | Authenticated | Revoke JWT; clear server-side token |
+| `GET` | `/api/cotizaciones` | Ejecutivo | Paginated list with 10 combinable filters |
+| `POST` | `/api/cotizaciones` | Ejecutivo | Create new quotation with line items |
+| `GET` | `/api/cotizaciones/:id` | Ejecutivo | Full quotation detail with `detalles[]` |
+| `PUT` | `/api/cotizaciones/:id/estado` | Role-dependent | Execute a state transition (ROLE_TRANSITIONS enforced) |
+| `POST` | `/api/cotizaciones/:id/aprobar` | Jefe | Formal internal approval action |
+| `GET` | `/api/cotizaciones/:id/pdf` | Ejecutivo | Stream generated proforma PDF |
+| `GET` | `/api/cotizaciones/:id/historial` | Ejecutivo | Full chronological state-change timeline |
+| `GET` | `/api/clientes` | Ejecutivo | Client directory |
+| `POST` | `/api/clientes` | Administracion | Register new client |
+| `PUT` | `/api/clientes/:id` | Administracion | Update client record |
+| `GET` | `/api/usuarios` | Jefe | User list with role information |
+| `POST` | `/api/usuarios` | Jefe | Create new user account |
+| `DELETE` | `/api/usuarios/:id` | Jefe | Deactivate (soft-delete) user account |
+| `GET` | `/api/marcas` | Ejecutivo | Spare part brand catalog |
+| `GET` | `/api-docs` | Public | Swagger UI — interactive API documentation |
+
+---
+
+## 7. Test Suite
+
+```bash
+# Run all suites
+npm test
+
+# Unit tests only
+npm run test:unit
+
+# Integration tests only (requires a live MySQL connection configured in .env)
+npm run test:integration
+```
+
+| Suite | File | What It Validates |
+|---|---|---|
+| **Unit: Total Calculation** | `tests/unit/calcularTotales.test.js` | Subtotal, 13% Bolivia IVA, and grand total arithmetic precision |
+| **Unit: Validation Edge Cases** | `tests/unit/validationEdgeCases.test.js` | Zod schema boundary conditions: empty strings, type coercion, missing required fields |
+| **Integration: Concurrent Serial** | `tests/integration/correlativo.concurrencia.test.js` | `SELECT … FOR UPDATE` atomicity — parallel requests must each receive a unique correlative serial (RNF-10 compliance) |
 
 ---
 
 <div align="center">
 
 **RC Tractoparts — Departamento de Sistemas**
-Santa Cruz de la Sierra, Bolivia · 2026
+
+*UTEPSA · Carrera de Ingeniería de Sistemas · Santa Cruz de la Sierra, Bolivia*
 
 </div>
