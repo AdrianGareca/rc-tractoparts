@@ -64,6 +64,7 @@ const api = {
   get:    (endpoint)           => _request('GET',    endpoint),
   post:   (endpoint, body)     => _request('POST',   endpoint, body),
   put:    (endpoint, body)     => _request('PUT',    endpoint, body),
+  patch:  (endpoint, body)     => _request('PATCH',  endpoint, body),
   delete: (endpoint)           => _request('DELETE', endpoint),
 
   /** Multipart upload — body must be a FormData instance */

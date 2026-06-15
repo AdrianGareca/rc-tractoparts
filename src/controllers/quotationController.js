@@ -14,6 +14,7 @@
 
 'use strict';
 
+const fs                          = require('fs');
 const path                        = require('path');
 const { pool }                    = require('../config/db');
 const QuotationModel              = require('../models/QuotationModel');
@@ -295,6 +296,11 @@ const QuotationController = {
 
   // ---------------------------------------------------------------------------
   // downloadPdf — GET /api/cotizaciones/:id/pdf  (All roles)
+  //
+  // Priority 1: If pdf_ruta is set and the file physically exists on disk,
+  //             stream that uploaded corporate PDF directly to the client.
+  // Priority 2: If pdf_ruta is absent or the file is missing, fall back to
+  //             on-the-fly PDFKit generation as an emergency safety net.
   // ---------------------------------------------------------------------------
   async downloadPdf(req, res) {
     const id       = parseInt(req.params.id, 10);
@@ -311,11 +317,46 @@ const QuotationController = {
         return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
       }
 
-      if (!quotation.pdf_ruta) {
-        return res.status(404).json({ success: false, message: 'No PDF document is attached to this quotation.' });
+      // ── Priority 1: serve the uploaded corporate PDF if it exists on disk ──
+      if (quotation.pdf_ruta) {
+        const absolutePath = path.resolve(process.cwd(), quotation.pdf_ruta);
+
+        if (fs.existsSync(absolutePath)) {
+          await logEvent({
+            id_usuario:     req.user.id,
+            nombre_usuario: req.user.nombre_usuario,
+            accion:         AuditActions.DESCARGAR_PDF,
+            entidad:        'cotizaciones',
+            id_entidad:     id,
+            detalle:        { pdf_ruta: quotation.pdf_ruta, source: 'uploaded' },
+            ip_origen:      clientIp,
+            resultado:      'exito',
+          });
+
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader(
+            'Content-Disposition',
+            `inline; filename="${quotation.numero_correlativo}.pdf"`,
+          );
+          return res.sendFile(absolutePath, (err) => {
+            if (err) {
+              console.error('[QuotationController.downloadPdf] Uploaded file send error:', err.message);
+              if (!res.headersSent) {
+                res.status(500).json({ success: false, message: 'Failed to send the PDF file.' });
+              }
+            }
+          });
+        }
+
+        // File path recorded in DB but binary is gone from disk — log and fall through
+        console.warn(
+          `[QuotationController.downloadPdf] pdf_ruta set but file not found on disk: ${absolutePath}. Falling back to PDFKit generation.`,
+        );
       }
 
-      const absolutePath = path.resolve(process.cwd(), quotation.pdf_ruta);
+      // ── Priority 2: dynamic PDFKit generation (emergency fallback) ─────────
+      const relativePath        = await pdfService.generateQuotationPdf(quotation);
+      const generatedAbsPath    = path.resolve(process.cwd(), relativePath);
 
       await logEvent({
         id_usuario:     req.user.id,
@@ -323,20 +364,25 @@ const QuotationController = {
         accion:         AuditActions.DESCARGAR_PDF,
         entidad:        'cotizaciones',
         id_entidad:     id,
-        detalle:        { pdf_ruta: quotation.pdf_ruta },
+        detalle:        { pdf_ruta: relativePath, source: 'generated' },
         ip_origen:      clientIp,
         resultado:      'exito',
       });
 
-      const downloadFilename = `${quotation.numero_correlativo}.pdf`;
-      res.download(absolutePath, downloadFilename, (err) => {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${quotation.numero_correlativo}.pdf"`,
+      );
+      return res.sendFile(generatedAbsPath, (err) => {
         if (err) {
-          console.error('[QuotationController.downloadPdf] File send error:', err.message);
+          console.error('[QuotationController.downloadPdf] Generated file send error:', err.message);
           if (!res.headersSent) {
-            res.status(500).json({ success: false, message: 'Failed to send the PDF file.' });
+            res.status(500).json({ success: false, message: 'Failed to send the generated PDF.' });
           }
         }
       });
+
     } catch (error) {
       console.error('[QuotationController.downloadPdf] Error:', error.message);
       return res.status(500).json({ success: false, message: 'Failed to retrieve the PDF document.' });
@@ -820,12 +866,22 @@ const QuotationController = {
         console.warn('[QuotationController.approveQuotation] Audit logging failed (non-fatal):', auditErr.message);
       }
 
-      // ── PDF regeneration — reflect the new status in the document ─────────
+      // ── PDF regeneration — only if no uploaded corporate PDF exists ─────────
+      // Business rule: if the Ejecutivo uploaded a corporate Excel-derived PDF
+      // (pdf_ruta is set and the file exists on disk), that file is the canonical
+      // document and must NOT be replaced by a PDFKit-generated fallback.
+      // We only regenerate when there is no uploaded file, so the approval status
+      // badge is reflected in the auto-generated document.
       // Non-fatal: the approval is committed regardless of PDF outcome.
       try {
         const updatedQuotation = await QuotationModel.findById(id);
-        const newPdfPath       = await pdfService.generateQuotationPdf(updatedQuotation);
-        await QuotationModel.updatePdfPath(id, newPdfPath);
+        const hasUploadedPdf   = updatedQuotation.pdf_ruta &&
+          fs.existsSync(path.resolve(process.cwd(), updatedQuotation.pdf_ruta));
+
+        if (!hasUploadedPdf) {
+          const newPdfPath = await pdfService.generateQuotationPdf(updatedQuotation);
+          await QuotationModel.updatePdfPath(id, newPdfPath);
+        }
       } catch (pdfErr) {
         console.warn(
           `[QuotationController] PDF regeneration after ${aprobado ? 'approval' : 'rejection'} failed (non-fatal):`,

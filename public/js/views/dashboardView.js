@@ -98,6 +98,35 @@ function fmtAmount(n, currency = 'USD') {
 }
 
 // ---------------------------------------------------------------------------
+// _wirePdfButton
+// Attaches an authenticated PDF fetch handler to the #btn-ver-pdf button
+// rendered inside a modal body. Uses apiClient (which injects the Bearer
+// token) instead of a plain anchor navigation that would strip the header.
+// ---------------------------------------------------------------------------
+function _wirePdfButton(body, id) {
+  const btn = body.querySelector('#btn-ver-pdf');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+      const response = await api.get(`/api/cotizaciones/${id}/pdf`);
+      const blob     = await response.blob();
+      const url      = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      // Revoke the object URL after a short delay to free memory while
+      // still giving the new tab enough time to load the PDF.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (err) {
+      showToast(err.data?.message || err.message || 'No se pudo cargar el PDF.', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '📄 Ver PDF Adjunto';
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // _buildProformaHTML
 // Generates the full read-only proforma view HTML for a quotation object.
 // Used by the Executive's "Ver" detail, the Jefe's approval decision, and
@@ -312,10 +341,9 @@ function _buildProformaHTML(q, id, viewMode) {
       <!-- PDF viewer button -->
       ${q.pdf_ruta ? `
       <div class="proforma-pdf-bar">
-        <a class="btn btn-outline btn-sm" href="/api/cotizaciones/${id}/pdf" target="_blank"
-           rel="noopener noreferrer">
+        <button class="btn btn-outline btn-sm" id="btn-ver-pdf" type="button">
           📄 Ver PDF Adjunto
-        </a>
+        </button>
         <span class="text-muted text-xs">Se abre en una nueva pestaña</span>
       </div>` : `
       <div class="proforma-pdf-bar">
@@ -692,7 +720,7 @@ class ExecutiveStrategy extends DashboardStrategy {
       });
 
     } catch (err) {
-      section.innerHTML = `<div class="empty-state"><p>Error cargando cotizaciones: ${err.message}</p></div>`;
+      section.innerHTML = `<div class="empty-state"><p>Error cargando cotizaciones: ${escHtml(err.message)}</p></div>`;
     }
   }
 
@@ -710,6 +738,7 @@ class ExecutiveStrategy extends DashboardStrategy {
 
       UI.openModal(`Cotización ${q.numero_correlativo}`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, false);
+        _wirePdfButton(body, id);
 
         // ── Historial de Seguimiento — Chronological timeline ───────────────
         if (history.length > 0) {
@@ -993,7 +1022,7 @@ class ManagerStrategy extends DashboardStrategy {
       });
 
     } catch (err) {
-      panel.innerHTML = `<div class="empty-state"><p>Error: ${err.message}</p></div>`;
+      panel.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.message)}</p></div>`;
     }
   }
 
@@ -1006,6 +1035,7 @@ class ManagerStrategy extends DashboardStrategy {
 
       UI.openModal(`Proforma ${q.numero_correlativo} — Decisión de Jefe`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, true);
+        _wirePdfButton(body, id);
 
         // Wire the 4 state-machine action buttons
         body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () => {
@@ -1216,7 +1246,7 @@ class ManagerStrategy extends DashboardStrategy {
           this._viewFullDetail(btn.dataset.viewDetail, btn.dataset.correlativo));
       });
     } catch (err) {
-      panel.innerHTML = `<div class="empty-state"><p>Error: ${err.message}</p></div>`;
+      panel.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.message)}</p></div>`;
     }
   }
 
@@ -1228,6 +1258,7 @@ class ManagerStrategy extends DashboardStrategy {
       const q    = data.data;
       UI.openModal(`Proforma ${correlativo ?? q.numero_correlativo}`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, 'jefe');
+        _wirePdfButton(body, id);
         // Wire action buttons (same as approval detail)
         body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () => {
           this._confirmStateChange(id, 'Pendiente',
@@ -1389,7 +1420,7 @@ class ManagerStrategy extends DashboardStrategy {
           this._confirmDeactivateUser(btn.dataset.userDeact, btn.dataset.uname)));
 
     } catch (err) {
-      panel.innerHTML = `<div class="empty-state"><p>Error cargando usuarios: ${err.message}</p></div>`;
+      panel.innerHTML = `<div class="empty-state"><p>Error cargando usuarios: ${escHtml(err.message)}</p></div>`;
     }
   }
 
@@ -1555,7 +1586,7 @@ class ManagerStrategy extends DashboardStrategy {
             </div>
           </div>`;
       } else {
-        panel.innerHTML = `<div class="empty-state"><p>Error: ${err.message}</p></div>`;
+        panel.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.message)}</p></div>`;
       }
     }
   }
@@ -1743,7 +1774,7 @@ class AdminStrategy extends DashboardStrategy {
       });
 
     } catch (err) {
-      panel.innerHTML = `<div class="empty-state"><p>Error: ${err.message}</p></div>`;
+      panel.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.message)}</p></div>`;
     }
   }
 
@@ -1756,6 +1787,7 @@ class AdminStrategy extends DashboardStrategy {
 
       UI.openModal(`Revisión Administrador — ${q.numero_correlativo}`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, 'admin');
+        _wirePdfButton(body, id);
 
         // Wire "Save comment only" button
         body.querySelector('#btn-save-comment')?.addEventListener('click', () => {
@@ -1854,7 +1886,7 @@ class AdminStrategy extends DashboardStrategy {
         btn.addEventListener('click', () => this._viewAdminDetail(btn.dataset.adminView));
       });
     } catch (err) {
-      panel.innerHTML = `<div class="empty-state"><p>Error: ${err.message}</p></div>`;
+      panel.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.message)}</p></div>`;
     }
   }
 
@@ -1913,7 +1945,7 @@ class AdminStrategy extends DashboardStrategy {
           this._confirmDeactivateUser(btn.dataset.userDeact, btn.dataset.uname)));
 
     } catch (err) {
-      panel.innerHTML = `<div class="empty-state"><p>Error cargando usuarios: ${err.message}</p></div>`;
+      panel.innerHTML = `<div class="empty-state"><p>Error cargando usuarios: ${escHtml(err.message)}</p></div>`;
     }
   }
 
