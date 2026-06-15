@@ -883,10 +883,25 @@ class ManagerStrategy extends DashboardStrategy {
     panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
     try {
       const data    = await api.get('/api/reportes/progreso');
-      const { volumen, conversion, por_ejecutivo } = data.data;
+      // Defensive destructure: guard against a degraded API response where
+      // data.data is null/undefined, which would otherwise throw:
+      // "Cannot destructure property 'volumen' of undefined"
+      const {
+        volumen      = {},
+        conversion   = {},
+        por_ejecutivo = [],
+      } = data.data ?? {};
       const periodo = data.periodo ?? '—';
 
-      const ratioColor = parseFloat(conversion.ratio_pct) >= 50 ? '#10B981' : '#EF4444';
+      // Safe numeric defaults for every stat cell
+      const volUSD   = Number(volumen.total_mes_usd   ?? 0).toFixed(2);
+      const volBOB   = Number(volumen.total_mes_bob   ?? 0).toFixed(2);
+      const totalCot = volumen.total_cotizaciones ?? 0;
+      const ratioPct = conversion.ratio_pct       ?? '0.0';
+      const aceptadas  = conversion.total_aceptadas  ?? 0;
+      const rechazadas = conversion.total_rechazadas ?? 0;
+
+      const ratioColor = parseFloat(ratioPct) >= 50 ? '#10B981' : '#EF4444';
 
       panel.innerHTML = `
         <div class="card" style="margin-bottom:1rem;">
@@ -895,27 +910,27 @@ class ManagerStrategy extends DashboardStrategy {
           </div>
           <div class="stats-grid" style="padding:1rem 1rem 0;">
             <div class="stat-card" style="--stat-accent:#3B82F6;">
-              <div class="stat-card-value">${Number(volumen.total_mes_usd).toFixed(2)}</div>
+              <div class="stat-card-value">${volUSD}</div>
               <div class="stat-card-label">Volumen USD (mes)</div>
             </div>
             <div class="stat-card" style="--stat-accent:#8B5CF6;">
-              <div class="stat-card-value">${Number(volumen.total_mes_bob).toFixed(2)}</div>
+              <div class="stat-card-value">${volBOB}</div>
               <div class="stat-card-label">Volumen BOB (mes)</div>
             </div>
             <div class="stat-card" style="--stat-accent:#F59E0B;">
-              <div class="stat-card-value">${volumen.total_cotizaciones}</div>
+              <div class="stat-card-value">${totalCot}</div>
               <div class="stat-card-label">Cotizaciones (mes)</div>
             </div>
             <div class="stat-card" style="--stat-accent:${ratioColor};">
-              <div class="stat-card-value">${conversion.ratio_pct}%</div>
+              <div class="stat-card-value">${ratioPct}%</div>
               <div class="stat-card-label">Tasa de Éxito</div>
             </div>
             <div class="stat-card" style="--stat-accent:#10B981;">
-              <div class="stat-card-value">${conversion.total_aceptadas}</div>
+              <div class="stat-card-value">${aceptadas}</div>
               <div class="stat-card-label">Aceptadas (total)</div>
             </div>
             <div class="stat-card" style="--stat-accent:#EF4444;">
-              <div class="stat-card-value">${conversion.total_rechazadas}</div>
+              <div class="stat-card-value">${rechazadas}</div>
               <div class="stat-card-label">Rechazadas (total)</div>
             </div>
           </div>

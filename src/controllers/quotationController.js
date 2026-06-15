@@ -258,8 +258,38 @@ const QuotationController = {
     }
 
     try {
+      // ── Magic-number check (OWASP A08 — Software & Data Integrity) ──────────
+      // MIME type declared in the multipart request is CLIENT-CONTROLLED and can
+      // be trivially spoofed.  After multer writes the file, we open the first
+      // 5 bytes and verify they match the canonical PDF signature: "%PDF-".
+      // Any file that fails this check is deleted immediately and the request is
+      // rejected before the path ever reaches the database.
+      const uploadedAbsPath = path.resolve(process.cwd(), req.file.path);
+      try {
+        const fd     = await fs.promises.open(uploadedAbsPath, 'r');
+        const header = Buffer.alloc(5);
+        await fd.read(header, 0, 5, 0);
+        await fd.close();
+        if (header.toString('ascii') !== '%PDF-') {
+          await fs.promises.unlink(uploadedAbsPath).catch(() => {});
+          return res.status(422).json({
+            success: false,
+            message: 'File content is not a valid PDF (magic-number mismatch). Upload rejected.',
+          });
+        }
+      } catch (magicErr) {
+        // If we cannot read the file for any reason, reject to be safe
+        await fs.promises.unlink(uploadedAbsPath).catch(() => {});
+        return res.status(422).json({
+          success: false,
+          message: 'Could not verify uploaded file integrity. Upload rejected.',
+        });
+      }
+
       const quotation = await QuotationModel.findById(id);
       if (!quotation) {
+        // Clean up the already-saved file if the quotation doesn't exist
+        await fs.promises.unlink(uploadedAbsPath).catch(() => {});
         return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
       }
 

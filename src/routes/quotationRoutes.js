@@ -29,10 +29,11 @@
 
 'use strict';
 
-const express = require('express');
-const multer  = require('multer');
-const path    = require('path');
-const fs      = require('fs');
+const express    = require('express');
+const multer     = require('multer');
+const path       = require('path');
+const fs         = require('fs');
+const rateLimit  = require('express-rate-limit');
 
 const QuotationController = require('../controllers/quotationController');
 const { authenticate }    = require('../middlewares/authMiddleware');
@@ -86,6 +87,24 @@ const upload = multer({
     fileSize: maxPdfBytes,  // Reject oversized files before reaching the controller
     files:    1,            // Only one attachment per request
   },
+});
+
+// ---------------------------------------------------------------------------
+// Upload rate limiter — strictly limits PDF upload calls per IP to prevent
+// disk-exhaustion attacks. At the 10 MB file cap, 20 uploads = up to 200 MB
+// per window from a single IP, which is a safe operational ceiling.
+// Applied ONLY to POST /:id/pdf — does not affect any other endpoint.
+// ---------------------------------------------------------------------------
+const uploadLimiter = rateLimit({
+  windowMs:        15 * 60 * 1000, // 15-minute sliding window
+  max:             20,              // max 20 upload attempts per IP per window
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message: {
+    success: false,
+    message: 'Too many PDF upload attempts from this IP. Please wait 15 minutes.',
+  },
+  skip: () => process.env.NODE_ENV === 'test',
 });
 
 // =============================================================================
@@ -643,6 +662,7 @@ router.post(
 router.post(
   '/:id/pdf',
   ...ejecutivoOnly,
+  uploadLimiter,
   upload.single('archivo'),
   QuotationController.uploadPdf
 );

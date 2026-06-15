@@ -949,7 +949,11 @@ class FormMediator {
     const filteredDetalles = items.filter(i => i.descripcion_item?.trim()).map(i => ({
       descripcion_item: i.descripcion_item.trim(),
       codigo:           i.codigo ? String(i.codigo).trim() || null : null,
-      cantidad:         parseFloat(i.cantidad)        || 1,
+      // Pass the raw parsed value — do NOT fall back to 1 here.
+      // A quantity of 0 is invalid (Zod rejects it as "must be greater than 0")
+      // and the backend will return a descriptive 422 error.  Coercing 0 → 1
+      // silently masks the input mistake and confuses the user.
+      cantidad:         parseFloat(i.cantidad),
       precio_unitario:  parseFloat(i.precio_unitario) || 0,
       marca_id:         i.marca_id                    || null,
     }));
