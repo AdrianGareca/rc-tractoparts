@@ -16,7 +16,13 @@
     <!-- Sidebar — navigation populated by dashboardView.js -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-logo">
-        <div class="sidebar-logo-icon">⚙</div>
+        <div class="sidebar-logo-icon">
+          <img src="/assets/images/rc_logo.png"
+               alt="RC Tractoparts"
+               class="sidebar-logo-img"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+          <span class="sidebar-logo-fallback" aria-hidden="true">⚙</span>
+        </div>
         <div class="sidebar-logo-text">
           <strong>RC Tractoparts</strong>
           <span>Cotizaciones v2.0</span>

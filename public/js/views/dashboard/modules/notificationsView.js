@@ -15,6 +15,43 @@ import api, { showToast } from '../../../services/apiClient.js';
 import { escHtml }        from '../helpers.js';
 
 // ---------------------------------------------------------------------------
+// _requestNotifPermission
+// Silently requests Web Notification permission on first load.
+// MUST be called from a user-gesture context (e.g. page load after interaction)
+// to satisfy browser security policies.  Non-fatal: failing does not affect
+// the in-app badge or modal — desktop push is purely additive.
+// ---------------------------------------------------------------------------
+export function requestNotifPermission() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------------------
+// _pushDesktopNotif
+// Fires a native browser desktop notification if permission has been granted.
+// Works when the tab is in the background or minimised (WhatsApp-web style).
+// @param {string} title   — Notification header
+// @param {string} body    — Short dynamic body text
+// @param {string} [icon]  — Optional icon URL (defaults to company logo)
+// ---------------------------------------------------------------------------
+function _pushDesktopNotif(title, body, icon = '/assets/images/rc_logo.png') {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const n = new Notification(title, {
+      body,
+      icon,
+      badge: icon,
+      tag:   'rc-tractoparts-notif',   // collapses repeated notifications into one
+      renotify: true,                  // vibrate/sound even if tag already shown
+    });
+    // Auto-close after 6 s so it doesn't pile up in the notification centre
+    setTimeout(() => n.close(), 6000);
+  } catch (_) { /* non-fatal — Notification API unavailable in some contexts */ }
+}
+
+// ---------------------------------------------------------------------------
 // _tipoStyle — returns { icon, borderColor, labelColor } for each tipo
 // ---------------------------------------------------------------------------
 function _tipoStyle(tipo) {
@@ -68,18 +105,31 @@ export async function refreshNotifBadge(UI) {
     if (!btn || !badge) return;
 
     if (total > 0) {
+      // Track previous count so we only push a desktop notification when
+      // the badge count actually increases (new events, not just re-polls).
+      const prevTotal = parseInt(btn.dataset.prevTotal ?? '0', 10);
+      btn.dataset.prevTotal = String(total);
+
       btn.style.display = 'inline-flex';
       badge.textContent = total > 99 ? '99+' : String(total);
       btn.title         = `Tienes ${total} notificación${total > 1 ? 'es' : ''} pendiente${total > 1 ? 's' : ''}`;
 
+      // Fire a desktop push notification when new events have arrived since
+      // the last poll — even if the browser tab is minimised or in the background.
+      if (total > prevTotal) {
+        const diff = total - prevTotal;
+        _pushDesktopNotif(
+          'RC Tractoparts',
+          `Tienes ${diff} nueva${diff > 1 ? 's' : ''} notificación${diff > 1 ? 'es' : ''} pendiente${diff > 1 ? 's' : ''}.`,
+        );
+      }
       // One-time click handler — open notification summary modal
       btn.onclick = () => {
-        api.get('/api/cotizaciones/notificaciones').then(async d => {
+        api.get('/api/cotizaciones/notificaciones').then(d => {
           const rows = d.data ?? [];
 
           // Partition OUTSIDE the modal callback so the reference is available
-          // for the markNotificacionesLeidas call below (was the scope bug that
-          // triggered a ReferenceError → caught by .catch → showed the toast).
+          // for the markNotificacionesLeidas call wired to the explicit button.
           const aprobaciones = rows.filter(r => r.tipo === 'aprobacion' || r.tipo === 'envio_cliente');
           const correcciones = rows.filter(r => r.tipo === 'correccion');
 
@@ -100,6 +150,16 @@ export async function refreshNotifBadge(UI) {
                 ${correcciones.map(_buildNotifItem).join('')}
               </ul>` : '';
 
+            // Explicit "mark as read" button — aprobaciones only persist until
+            // the user consciously dismisses them.  Corrections self-clear when
+            // the Ejecutivo re-submits the corrected quote.
+            const markReadBtn = aprobaciones.length > 0
+              ? `<button id="btn-marcar-leidas" class="btn btn-ghost btn-sm"
+                   style="margin-top:.75rem;">
+                   ✅ Marcar aprobaciones como leídas
+                 </button>`
+              : '';
+
             body.innerHTML = `
               <p class="text-sm" style="color:var(--text-secondary);margin-bottom:.75rem;">
                 Tienes <strong>${rows.length}</strong> notificación${rows.length > 1 ? 'es' : ''} pendiente${rows.length > 1 ? 's' : ''}.
@@ -108,19 +168,36 @@ export async function refreshNotifBadge(UI) {
               ${corrSection}
               <p class="text-sm text-muted" style="margin-top:.75rem;">
                 Abre la cotización desde "Mis Cotizaciones" para ver el detalle completo.
-              </p>`;
-          });
+              </p>
+              ${markReadBtn}`;
 
-          // Mark approval/envio notifications as read so the badge resets
-          // on the next poll. Correction notifications self-clear when the
-          // Ejecutivo re-submits the quote.
-          if (aprobaciones.length > 0) {
-            await api.post('/api/cotizaciones/notificaciones/leer', {}).catch(() => {});
-          }
+            // Wire the explicit mark-as-read button AFTER innerHTML is set
+            body.querySelector('#btn-marcar-leidas')?.addEventListener('click', async () => {
+              await api.post('/api/cotizaciones/notificaciones/leer', {}).catch(() => {});
+              showToast('Notificaciones de aprobación marcadas como leídas.', 'success');
+              // Refresh badge immediately so the count updates
+              await refreshNotifBadge(UI);
+            });
+          });
         }).catch(() => showToast('No se pudo cargar las notificaciones.', 'error'));
       };
     } else {
       btn.style.display = 'none';
     }
   } catch (_) { /* non-fatal — badge failure must not break the dashboard */ }
+}
+
+// ---------------------------------------------------------------------------
+// startNotifPolling
+// Starts a periodic refresh of the notification badge so the count stays
+// current across soft navigations and long-lived dashboard sessions.
+// Returns the interval ID so the caller can clear it on teardown.
+//
+// @param {Object} UI          — The UI modal helper singleton
+// @param {number} [intervalMs=90000] — Poll interval (default 90 s)
+// ---------------------------------------------------------------------------
+export function startNotifPolling(UI, intervalMs = 90_000) {
+  // Fetch immediately, then on each interval tick
+  refreshNotifBadge(UI);
+  return setInterval(() => refreshNotifBadge(UI), intervalMs);
 }

@@ -152,7 +152,9 @@ const writeRoles    = [authenticate, authorize(['Ejecutivo', 'Administracion', '
 // delegation (delegaciones_rol) are granted Jefe-level authority on this request.
 const jefeOnly      = [authenticate, resolveDelegacion, authorize(['Jefe', 'SysAdmin'])];
 const adminOnly     = [authenticate, authorize(['Administracion'])];
-const jefeAdminOnly = [authenticate, authorize(['Jefe', 'Administracion', 'SysAdmin'])];
+// jefeAdminOnly also includes resolveDelegacion so that a delegated Ejecutivo
+// (rol_efectivo = 'Jefe') can access supervisor-level routes (e.g. approval queue).
+const jefeAdminOnly = [authenticate, resolveDelegacion, authorize(['Jefe', 'Administracion', 'SysAdmin'])];
 const ejecutivoOnly = [authenticate, authorize(['Ejecutivo'])];
 
 /**

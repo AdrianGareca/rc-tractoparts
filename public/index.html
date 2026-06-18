@@ -12,7 +12,13 @@
 
     <!-- Branding -->
     <div class="auth-logo">
-      <div class="auth-logo-icon">⚙</div>
+      <div class="auth-logo-icon">
+        <img src="/assets/images/rc_logo.png"
+             alt="RC Tractoparts"
+             class="auth-logo-img"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <span class="auth-logo-fallback" aria-hidden="true">⚙</span>
+      </div>
       <h1>RC Tractoparts</h1>
       <p>Sistema de Gestión de Cotizaciones</p>
     </div>

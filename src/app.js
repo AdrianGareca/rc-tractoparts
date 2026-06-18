@@ -33,12 +33,13 @@ const swaggerUi   = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 
 // Route modules
-const authRoutes      = require('./routes/authRoutes');
-const quotationRoutes = require('./routes/quotationRoutes');
-const userRoutes      = require('./routes/userRoutes');
-const clientRoutes    = require('./routes/clientRoutes');
-const brandRoutes     = require('./routes/brandRoutes');
-const reportesRoutes  = require('./routes/reportesRoutes');
+const authRoutes        = require('./routes/authRoutes');
+const quotationRoutes   = require('./routes/quotationRoutes');
+const userRoutes        = require('./routes/userRoutes');
+const clientRoutes      = require('./routes/clientRoutes');
+const brandRoutes       = require('./routes/brandRoutes');
+const reportesRoutes    = require('./routes/reportesRoutes');
+const delegacionRoutes  = require('./routes/delegacionRoutes');
 
 const app = express();
 
@@ -164,6 +165,10 @@ const swaggerDocs = swaggerJsdoc(swaggerOptions);
 // ---------------------------------------------------------------------------
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// Serve backend image assets (logo, brand images) at /assets/images/ so the
+// frontend can reference the same canonical rc_logo.png used by the PDF engine.
+app.use('/assets/images', express.static(path.join(__dirname, 'assets', 'images')));
+
 // ---------------------------------------------------------------------------
 // 7. Swagger UI — interactive API documentation at /api-docs
 // ---------------------------------------------------------------------------
@@ -172,12 +177,13 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 // ---------------------------------------------------------------------------
 // 6. Application Routes
 // ---------------------------------------------------------------------------
-app.use('/api/auth',         authRoutes);       // POST /api/auth/login|logout
-app.use('/api/cotizaciones', quotationRoutes);  // CRUD /api/cotizaciones
-app.use('/api/usuarios',      userRoutes);       // CRUD /api/usuarios (Jefe only)
-app.use('/api/clientes',      clientRoutes);     // GET|POST /api/clientes (all roles)
-app.use('/api/marcas',        brandRoutes);      // GET|POST /api/marcas (brand catalog)
-app.use('/api/reportes',      reportesRoutes);   // GET /api/reportes/progreso (Jefe/SysAdmin)
+app.use('/api/auth',         authRoutes);         // POST /api/auth/login|logout
+app.use('/api/cotizaciones', quotationRoutes);    // CRUD /api/cotizaciones
+app.use('/api/usuarios',      userRoutes);         // CRUD /api/usuarios (Jefe only)
+app.use('/api/clientes',      clientRoutes);       // GET|POST /api/clientes (all roles)
+app.use('/api/marcas',        brandRoutes);        // GET|POST /api/marcas (brand catalog)
+app.use('/api/reportes',      reportesRoutes);     // GET /api/reportes/progreso (Jefe/SysAdmin)
+app.use('/api/delegaciones',  delegacionRoutes);   // CRUD /api/delegaciones (Jefe/SysAdmin)
 
 // Health-check endpoint
 app.get('/health', (req, res) => {

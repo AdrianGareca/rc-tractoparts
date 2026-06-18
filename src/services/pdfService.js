@@ -236,6 +236,42 @@ function numberToWordsES(amount) {
 // =============================================================================
 
 // ---------------------------------------------------------------------------
+// drawLogoWatermark
+// Paints the RC Tractoparts logo image (or text fallback) as a full-page
+// centred watermark at near-invisible opacity.  Call once per page, BEFORE
+// any other content so every element renders on top (painter's order).
+// @param {PDFDocument} doc
+// ---------------------------------------------------------------------------
+function drawLogoWatermark(doc) {
+  if (!fs.existsSync(LOGO_PATH)) {
+    // Text fallback — large, centred, ultra-faint
+    doc.save();
+    doc.opacity(0.05);
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(72)
+      .fillColor(C.NAVY)
+      .text('RC TRACTOPARTS', MARGIN, PH / 2 - 36,
+        { width: CW, align: 'center', lineBreak: false });
+    doc.restore();
+    return;
+  }
+  const WM_SIZE = 260;   // pt — large but subtly transparent
+  const wx      = (PW - WM_SIZE) / 2;
+  const wy      = (PH - WM_SIZE) / 2;
+  doc.save();
+  doc.opacity(0.06);     // 6% — visible branding, zero legibility impact
+  doc.image(LOGO_PATH, wx, wy, {
+    width:  WM_SIZE,
+    height: WM_SIZE,
+    fit:    [WM_SIZE, WM_SIZE],
+    align:  'center',
+    valign: 'center',
+  });
+  doc.restore();
+}
+
+// ---------------------------------------------------------------------------
 // renderWatermark
 // Paints a tilted "APROBADO" ink-stamp behind the items table on the current page.
 // Must be called AFTER drawing the header/grid sections (so those remain clean)
@@ -248,9 +284,10 @@ function numberToWordsES(amount) {
 // ---------------------------------------------------------------------------
 function renderWatermark(doc, quotation, tableBodyY) {
   const estado = (quotation.estado_nombre || quotation.estado || '').toUpperCase();
-  const shouldStamp = estado === 'CONFIRMADO'
-    || estado === 'APROBADA INTERNAMENTE'
-    || estado.includes('CONFIRM')
+  // Only stamp when the quotation has been formally approved or accepted.
+  // The legacy 'CONFIRMADO' guard is removed — the DB uses canonical Spanish state names.
+  const shouldStamp = estado === 'APROBADA INTERNAMENTE'
+    || estado === 'ACEPTADA'
     || estado.includes('APROBAD');
 
   if (!shouldStamp) return;
@@ -301,10 +338,10 @@ function drawHeader(doc, quotation) {
   const y0      = MARGIN;
   const LOGO_W  = 155;
   const LOGO_H  = 72;
-  const BRAND_H = 15;
+  const BRAND_H = 22;          // open-layout brand strip height
   const GAP     = 4;
   const BOX_W   = 185;
-  const BOX_H   = LOGO_H + GAP + BRAND_H;  // 91 pt — matches left block height
+  const BOX_H   = LOGO_H + GAP + BRAND_H;  // 98 pt — matches left block height
   const BOX_X   = PW - MARGIN - BOX_W;
 
   // ── Left: corporate logo (real image with text fallback) ──────────────────
@@ -342,31 +379,25 @@ function drawHeader(doc, quotation) {
         MARGIN + 4, y0 + 46, { width: LOGO_W - 8, align: 'center', lineBreak: false });
   }
 
-  // ── Left: partner brand strip (real images with text fallback) ─────────────
+  // ── Left: partner brand strip — open layout, no cubito borders ────────────
+  // Each brand renders freely (image or bold text fallback) in an equal slot.
+  // No outer rect and no inter-cell dividers: clean, readable, airy aesthetic.
+  // (BRAND_H is declared at the top of drawHeader alongside LOGO_H)
   const brandY  = y0 + LOGO_H + GAP;
-  const brandCW = LOGO_W / BRAND_DEFS.length;  // ≈ 25.83 pt per cell
+  const brandCW = LOGO_W / BRAND_DEFS.length;  // ≈ 25.83 pt per slot
   const IMG_PAD = 3;
 
-  // Draw a single thin border around the entire strip (no colored cell fills —
-  // clean proforma aesthetic matching the physical printed sheet).
+  // Single hairline rule below the strip to separate it from the subtitle
   doc
-    .rect(MARGIN, brandY, LOGO_W, BRAND_H)
-    .lineWidth(0.5)
-    .fillAndStroke(C.WHITE, C.BORDER_GRAY);
+    .moveTo(MARGIN, brandY + BRAND_H)
+    .lineTo(MARGIN + LOGO_W, brandY + BRAND_H)
+    .lineWidth(0.4)
+    .strokeColor(C.BORDER_GRAY)
+    .stroke();
 
   BRAND_DEFS.forEach(({ file, label }, i) => {
     const bx      = MARGIN + i * brandCW;
     const imgPath = path.join(BRANDS_DIR, file);
-
-    // Thin vertical divider between logos (except before first)
-    if (i > 0) {
-      doc
-        .moveTo(bx, brandY)
-        .lineTo(bx, brandY + BRAND_H)
-        .lineWidth(0.3)
-        .strokeColor(C.BORDER_GRAY)
-        .stroke();
-    }
 
     if (fs.existsSync(imgPath)) {
       doc.image(imgPath, bx + IMG_PAD, brandY + IMG_PAD, {
@@ -377,12 +408,12 @@ function drawHeader(doc, quotation) {
         valign: 'center',
       });
     } else {
-      // Text fallback when brand image asset is not yet deployed
+      // Elegant text fallback: bold navy, larger font, vertically centered
       doc
         .font('Helvetica-Bold')
-        .fontSize(4.5)
+        .fontSize(5.5)
         .fillColor(C.NAVY)
-        .text(label, bx, brandY + (BRAND_H - 4.5) / 2,
+        .text(label, bx, brandY + (BRAND_H - 5.5) / 2,
           { width: brandCW, align: 'center', lineBreak: false });
     }
   });
@@ -405,7 +436,9 @@ function drawHeader(doc, quotation) {
   const infoRows = [
     ['Nº COTIZACIÓN', quotation.numero_correlativo || '—'],
     ['PEDIDO',        (quotation.tipo_pedido || 'EMAIL').toUpperCase()],
-    ['ESTADO',        (quotation.estado      || 'CONFIRMADO').toUpperCase()],
+    // Store raw DB estado so the STATUS color palette can be resolved in the
+    // render loop; the display string is uppercased there before painting.
+    ['ESTADO',        quotation.estado || 'Pendiente'],
     ['FECHA CONFIRM.', formatDate(quotation.fecha_aprobacion || quotation.fecha_emision)],
   ];
 
@@ -423,11 +456,15 @@ function drawHeader(doc, quotation) {
       .fillColor(C.MID_GRAY)
       .text(lbl, BOX_X + 6, ry + (rowH - 7) / 2,
         { width: LABELW, lineBreak: false });
+    // For the ESTADO row, resolve the dynamic color from the STATUS palette
+    // and uppercase the value for display; all other rows use DARK_GRAY as-is.
+    const valText  = lbl === 'ESTADO' ? String(val).toUpperCase() : String(val);
+    const valColor = lbl === 'ESTADO' ? (C.STATUS[String(val)] || C.DARK_GRAY) : C.DARK_GRAY;
     doc
       .font('Helvetica-Bold')
       .fontSize(7.5)
-      .fillColor(C.DARK_GRAY)
-      .text(String(val), BOX_X + LABELW + 4, ry + (rowH - 7.5) / 2,
+      .fillColor(valColor)
+      .text(valText, BOX_X + LABELW + 4, ry + (rowH - 7.5) / 2,
         { width: BOX_W - LABELW - 10, lineBreak: false });
     // Row bottom divider
     doc
@@ -680,6 +717,8 @@ function drawItemsTable(doc, quotation, startY) {
         .strokeColor(C.BORDER_GRAY)
         .stroke();
       doc.addPage();
+      // Paint the logo watermark behind content on the new page (painter's order)
+      drawLogoWatermark(doc);
       drawFooter(doc, quotation);
       y = MARGIN + 8;
       y = drawTableHeaderRow(doc, y);
@@ -724,13 +763,25 @@ function drawItemsTable(doc, quotation, startY) {
       .text(item.codigo_alternativo || '—', COL_X.codAlt + 2, ty,
         { width: COL.codAlt - 4, align: 'center', lineBreak: false });
 
-    // DESCRIPCIÓN — top-aligned, wraps
+    // DESCRIPCIÓN — top-aligned, wraps; brand name as a muted italic subtitle
     doc
       .font('Helvetica')
       .fontSize(7.5)
       .fillColor(C.DARK_GRAY)
       .text(String(item.descripcion_item || '—'), COL_X.desc + 4, y + 5,
         { width: COL.desc - 8, lineBreak: true });
+
+    // Inline brand label — rendered as clean italic text, no box/rect
+    if (item.marca_nombre) {
+      const descH = doc.heightOfString(String(item.descripcion_item || ''), { width: COL.desc - 8 });
+      const brandLabelY = y + 5 + descH + 1;
+      doc
+        .font('Helvetica-Oblique')
+        .fontSize(6)
+        .fillColor(C.MID_GRAY)
+        .text(item.marca_nombre.toUpperCase(), COL_X.desc + 4, brandLabelY,
+          { width: COL.desc - 8, lineBreak: false });
+    }
 
     // CANT. — right-aligned, es-BO format
     const qtyVal = parseFloat(item.cantidad);
@@ -1156,8 +1207,12 @@ async function generateQuotationPdf(quotation) {
       writeStream.on('error',  (err) => reject(err));
 
       // 4. Render layout sections top-to-bottom
-      // Header, subtitle, and 3-col grid are drawn first so the watermark
-      // (painted next) stays visually inside the items table area.
+      // Logo watermark is painted FIRST so every subsequent element sits on
+      // top of it (PDFKit uses painter's order: last draw = topmost layer).
+      drawLogoWatermark(doc);
+
+      // Header, subtitle, and 3-col grid are drawn first so the APROBADO
+      // watermark stamp (painted next) stays visually inside the items table.
       let y = drawHeader(doc, quotation);
       y     = drawSubtitle(doc, y);
       y     = drawThreeColumnGrid(doc, quotation, y);

@@ -37,7 +37,8 @@ import {
 } from './dashboard/helpers.js';
 import { wirePdfButton, wireExcelButton, buildTimelineHtml } from './dashboard/modules/timelineView.js';
 import { renderReportes, renderAdvancedReports } from './dashboard/modules/reportesView.js';
-import { refreshNotifBadge }               from './dashboard/modules/notificationsView.js';
+import { refreshNotifBadge, requestNotifPermission, startNotifPolling } from './dashboard/modules/notificationsView.js';
+import { renderDelegacionPanel } from './dashboard/modules/delegacionView.js';
 
 // ---------------------------------------------------------------------------
 // _buildProformaHTML
@@ -154,16 +155,21 @@ function _buildProformaHTML(q, id, viewMode) {
       </div>
     </div>` : '';
 
-  // Read-only admin comment block — always shown in Jefe mode.
-  // When no comment exists, a clean placeholder prevents layout confusion.
-  const adminCommentBlock = jefeMode ? `
-    <div class="form-group" style="margin-top:1rem;padding:1rem;background:var(--bg-secondary,#f8f9fa);border-left:3px solid #F97316;border-radius:4px;">
+  // Read-only admin comment block — shown to ALL authenticated roles when a
+  // comment exists, so Ejecutivos can see supervisor notes.  In Jefe mode an
+  // empty-state placeholder is also rendered so the section is never invisible.
+  // Hidden in adminMode because that mode already provides an editable textarea.
+  const adminCommentBlock = !adminMode && q.comentarios_admin
+    ? `<div class="form-group" style="margin-top:1rem;padding:1rem;background:var(--bg-secondary,#f8f9fa);border-left:3px solid #F97316;border-radius:4px;">
       <span class="form-label" style="color:#F97316;">💬 Comentario del Administrador</span>
-      ${q.comentarios_admin
-        ? `<p class="proforma-description" style="margin-top:.25rem;">${escHtml(q.comentarios_admin)}</p>`
-        : `<p class="proforma-description text-muted" style="margin-top:.25rem;font-style:italic;">Sin comentarios del Administrador.</p>`
-      }
-    </div>` : '';
+      <p class="proforma-description" style="margin-top:.25rem;">${escHtml(q.comentarios_admin)}</p>
+    </div>`
+    : jefeMode && !adminMode
+      ? `<div class="form-group" style="margin-top:1rem;padding:1rem;background:var(--bg-secondary,#f8f9fa);border-left:3px solid #F97316;border-radius:4px;">
+      <span class="form-label" style="color:#F97316;">💬 Comentario del Administrador</span>
+      <p class="proforma-description text-muted" style="margin-top:.25rem;font-style:italic;">Sin comentarios del Administrador.</p>
+    </div>`
+      : '';
 
   return /* html */ `
     <div class="proforma-detail">
@@ -750,6 +756,7 @@ class ManagerStrategy extends DashboardStrategy {
         <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
         <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
         <button class="tab-btn" data-tab="reportes">📊 Reportes</button>
+        <button class="tab-btn" data-tab="delegacion">🔑 Delegación</button>
       </div>
       <div id="manager-panel"></div>
     `;
@@ -780,6 +787,7 @@ class ManagerStrategy extends DashboardStrategy {
       case 'users':      await this._renderUsers(panel);           break;
       case 'audit':      await this._renderAuditLogs(panel);       break;
       case 'reportes':   await this._renderReportes(panel);        break;
+      case 'delegacion': await renderDelegacionPanel(panel);       break;
     }
   }
 
@@ -2009,9 +2017,11 @@ class DashboardController {
     });
 
     // ── Notification badge (Ejecutivo only) ───────────────────────────────
-    // Poll once on load; show a clickable badge if pending corrections exist.
+    // Start periodic polling so the badge stays current across soft navigations.
+    // startNotifPolling fetches immediately then re-polls every 90 s.
     if (role === 'Ejecutivo') {
-      this._refreshNotifBadge();
+      requestNotifPermission();
+      startNotifPolling(UI);
     }
 
     // Render the main content via the selected Strategy

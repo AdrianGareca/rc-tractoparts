@@ -527,6 +527,298 @@ The script performs the following in FK-safe execution order:
 | 2 | Create `usuarios` table with brute-force lockout fields; seed placeholder accounts |
 | 3 | Create `marcas` table; seed 8 default heavy-machinery brands |
 | 4 | Create `clientes` table; seed 2 sample clients |
+
+---
+
+### Step 4 — Seed Proper Password Hashes
+
+The placeholder `password_hash` values in `sql/init.sql` are not real bcrypt hashes. After running the schema script, replace them with properly-derived hashes:
+
+```bash
+node scripts/seed-users.js --execute
+```
+
+Default development credentials after seeding:
+
+| Username | Password | Role |
+|---|---|---|
+| `jefe` | `jefe123` | Jefe |
+| `admin` | `admin123` | Administracion |
+| `sysadmin` | `sysadmin123` | SysAdmin |
+| `ejecutivo1` | `ejecutivo123` | Ejecutivo |
+
+---
+
+### Step 5 — Start the Server
+
+```bash
+# Development (hot-reload via nodemon)
+npm run dev
+
+# Production
+npm start
+```
+
+The API will be available at `http://localhost:3000`.  
+Interactive Swagger documentation: `http://localhost:3000/api-docs`.
+
+---
+
+### Step 6 — Run the Test Suite
+
+```bash
+# Run all test suites (unit + integration)
+npm test
+
+# Unit tests only (no DB required)
+npm run test:unit
+
+# Integration tests only (requires live DB_NAME_TEST in .env)
+npm run test:integration
+```
+
+For integration tests, add the following to `.env`:
+
+```dotenv
+DB_NAME_TEST=rc_tractoparts_test
+```
+
+Ensure the test database is bootstrapped with the same `sql/init.sql` script under the `rc_tractoparts_test` name before running integration tests.
+
+---
+
+## 8. Advanced Core Modules
+
+### 8.1 Role Delegation Engine
+
+**Purpose:** Allows a `Jefe` to temporarily transfer their approval authority to an `Ejecutivo` for a bounded time window — useful when the department head is travelling or unavailable.
+
+**Key Files:**
+
+| File | Role |
+|---|---|
+| `sql/init.sql` → `delegaciones_rol` table | Schema: stores delegator, delegate, start/end datetime, revocation flag |
+| `src/models/DelegacionModel.js` | Data access: `findActiveDelegacion`, `createDelegacion`, `revocarDelegacion`, `findByJefe`, `findEjecutivos` |
+| `src/middlewares/delegacionMiddleware.js` | Request-time resolver: promotes `req.user.rol_efectivo` to `'Jefe'` when an active delegation exists |
+| `src/controllers/delegacionController.js` | CRUD endpoint handlers |
+| `src/routes/delegacionRoutes.js` | REST routes at `/api/delegaciones` |
+| `public/js/views/dashboard/modules/delegacionView.js` | SPA management panel (dropdown, datetime pickers, history table, revoke button) |
+
+**How it works:**
+
+1. The `Jefe` opens the **🔑 Delegación** tab in their dashboard.
+2. They select an `Ejecutivo` from the dropdown (populated via `GET /api/delegaciones/ejecutivos`), choose `fecha_inicio` and `fecha_fin` datetime values, and click **Activar Delegación Temporal**.
+3. The frontend `POST`s to `/api/delegaciones`; the backend inserts a row into `delegaciones_rol`.
+4. On every subsequent request by the delegated `Ejecutivo`, `delegacionMiddleware` performs a `NOW() BETWEEN fecha_inicio AND fecha_fin` DB check. If an active record exists, `req.user.rol_efectivo` is set to `'Jefe'`.
+5. All role-guarded endpoints use `req.user.rol_efectivo` (not the base `req.user.rol`) via `roleMiddleware`, granting the delegated user full Jefe-level authority.
+6. The original `req.user.rol` is never mutated — audit logs always distinguish a real Jefe from a delegated one.
+
+**Security guarantees:**
+- The DB clock (MySQL `NOW()`) performs the time-window check, eliminating client-clock drift.
+- An `activo = 0` flag allows immediate revocation without deleting the audit record.
+- Only the Jefe who created a delegation can revoke it (`WHERE id_usuario_jefe = ?` guard in the model).
+
+---
+
+### 8.2 Persistent Async Notifications Engine
+
+**Purpose:** Surfaces approval events to `Ejecutivos` as persistent, unread-until-acknowledged in-app notifications. Unlike ephemeral alerts, these survive page reloads and use a badge counter pattern identical to WhatsApp Web.
+
+**Key Files:**
+
+| File | Role |
+|---|---|
+| `sql/init.sql` → `notificaciones` table | Schema: `leida TINYINT(1) DEFAULT 0`, indexed on `(id_usuario, leida)` |
+| `src/models/QuotationModel.js` → `insertNotificacion`, `findNotificacionesEjecutivo`, `markNotificacionesLeidas` | DB operations |
+| `src/controllers/quotationController.js` → `getNotificaciones`, `markNotificacionesLeidas` | Endpoint handlers |
+| `public/js/views/dashboard/modules/notificationsView.js` | Badge refresh, modal renderer, Web Notification API bridge |
+
+**Notification lifecycle:**
+
+```
+Jefe approves/sends quotation
+        │
+        ▼
+QuotationStateController.updateStatus()
+        │ INSERT INTO notificaciones (leida = 0)
+        ▼
+GET /api/cotizaciones/notificaciones   ← polled every 90 s by Ejecutivo SPA
+        │ returns unread rows
+        ▼
+Badge counter increments ──→ Desktop push notification (if permission granted)
+        │
+Ejecutivo opens notification modal
+        │
+POST /api/cotizaciones/notificaciones/leer
+        │ UPDATE notificaciones SET leida = 1
+        ▼
+Badge resets to 0
+```
+
+**Notification types:**
+
+| `tipo` | Trigger |
+|---|---|
+| `aprobacion` | Jefe transitions quotation to `Aprobada internamente` |
+| `envio_cliente` | Jefe transitions quotation to `Enviada al cliente` |
+| `correccion` | Jefe returns quotation to `Pendiente` (change-request) |
+
+---
+
+### 8.3 Dynamic Status PDF Generation Engine
+
+**Purpose:** Generates a corporate-grade proforma PDF at quotation creation time and on demand via re-generation. Each PDF carries a centered, high-transparency watermark reflecting the current quotation state (`PENDIENTE`, `APROBADA INTERNAMENTE`, `RECHAZADA`, etc.).
+
+**Key Files:**
+
+| File | Role |
+|---|---|
+| `src/services/pdfService.js` | Core PDFKit document builder |
+| `src/controllers/quotation/quotationPdfController.js` | HTTP handlers: upload, download, re-generate |
+| `src/assets/images/` | Logo and brand image assets served at `/assets/images/` |
+
+**Watermark logic:**
+
+The watermark is drawn using PDFKit's graphics API:
+
+```js
+// Centered, rotated, low-opacity state watermark
+doc.save()
+   .rotate(-45, { origin: [pageWidth / 2, pageHeight / 2] })
+   .fillColor('#808080').opacity(0.10)
+   .fontSize(80).font('Helvetica-Bold')
+   .text(estado.toUpperCase(), 0, pageHeight / 2 - 40, { align: 'center', width: pageWidth })
+   .restore();
+```
+
+**State → Watermark color mapping:**
+
+| Estado | Watermark Color | Opacity |
+|---|---|---|
+| Pendiente | Gray `#808080` | 10 % |
+| Aprobada internamente | Emerald `#10B981` | 10 % |
+| Enviada al cliente | Blue `#3B82F6` | 10 % |
+| Rechazada | Red `#EF4444` | 10 % |
+| Aceptada | Green `#16A34A` | 10 % |
+| Archivada | Dark gray `#374151` | 8 % |
+
+---
+
+## 9. Full API Endpoint Map
+
+### Authentication — `/api/auth`
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/login` | None | Validate credentials, return JWT (rate-limited: 5/15 min) |
+| `POST` | `/api/auth/logout` | Bearer | Revoke JWT (in-memory blacklist) |
+
+### Quotations — `/api/cotizaciones`
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| `POST` | `/` | Ejecutivo, Admin | Create quotation (atomic + auto-PDF) |
+| `GET` | `/` | All | Paginated + filtered quotation list |
+| `GET` | `/resumen` | All | Count grouped by estado |
+| `GET` | `/pendientes-aprobacion` | Jefe (+ delegated) | Approval queue |
+| `GET` | `/notificaciones` | Ejecutivo | Unread notifications |
+| `POST` | `/notificaciones/leer` | Ejecutivo | Mark all notifications as read |
+| `GET` | `/:id` | All | Full quotation detail + line items |
+| `GET` | `/:id/historial` | All | State transition timeline |
+| `PUT` | `/:id/estado` | All (role-constrained) | Change state via state machine |
+| `POST` | `/:id/aprobar` | Jefe (+ delegated) | Approve or reject |
+| `PATCH` | `/:id/comentario-admin` | Admin | Set supervisor comment |
+| `POST` | `/:id/pdf` | Ejecutivo, Admin | Upload PDF |
+| `GET` | `/:id/pdf` | All | Download PDF |
+
+### Users — `/api/usuarios`
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| `GET` | `/` | Jefe, Admin | List all users |
+| `GET` | `/:id` | Jefe, Admin | Get user by ID |
+| `POST` | `/` | Jefe, Admin | Create user |
+| `PUT` | `/:id` | Jefe, Admin | Update user |
+| `DELETE` | `/:id` | Jefe | Soft-deactivate user |
+
+### Delegations — `/api/delegaciones`
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| `GET` | `/ejecutivos` | Jefe | List Ejecutivo candidates for dropdown |
+| `GET` | `/` | Jefe | List own delegation records |
+| `POST` | `/` | Jefe | Create temporal delegation |
+| `DELETE` | `/:id` | Jefe | Revoke delegation (soft-delete) |
+
+### Clients — `/api/clientes`
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| `GET` | `/` | All | List all clients |
+| `POST` | `/` | Jefe, Admin | Create client |
+
+### Brands — `/api/marcas`
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| `GET` | `/` | All | List all brands |
+| `POST` | `/` | Jefe | Create brand |
+
+### Reports — `/api/reportes`
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| `GET` | `/progreso` | Jefe, Admin | Business intelligence metrics |
+
+---
+
+## 10. Test Suite
+
+### Test Matrix
+
+| Suite | File | Type | Coverage |
+|---|---|---|---|
+| Subtotals & Totals | `tests/unit/calcularTotales.test.js` | Unit | UT-01 through UT-08 |
+| Validation Edge Cases | `tests/unit/validationEdgeCases.test.js` | Unit | Schema boundary conditions |
+| Concurrency | `tests/integration/correlativo.concurrencia.test.js` | Integration | 20 simultaneous POST requests produce unique correlatives |
+| New Features | `tests/integration/newFeatures.test.js` | Integration | Delegation engine, admin notes, notification persistence |
+
+### Running Tests
+
+```bash
+# All tests (unit + integration), forced exit after completion
+npm test
+# or equivalently:
+npx jest --forceExit
+
+# Unit tests only (no DB connection required)
+npm run test:unit
+
+# Integration tests only
+npm run test:integration
+```
+
+### Test Environment Setup
+
+Integration tests require a dedicated test database. Add to `.env`:
+
+```dotenv
+NODE_ENV=test
+DB_NAME_TEST=rc_tractoparts_test
+```
+
+Bootstrap the test database:
+
+```bash
+mysql -u root -p rc_tractoparts_test < sql/init.sql
+node scripts/seed-users.js --execute
+```
+
+The test suites automatically isolate their data using `beforeAll`/`afterAll` hooks that insert and clean up test fixtures within transactions. The rate limiter is automatically bypassed in `NODE_ENV=test` mode.
+
+---
+
+*Last updated: 2026-06-18 — Sprint 3 — Role Delegation Engine, Persistent Notifications, Comprehensive QA expansion*
 | 5 | Create `productos` table with `marca_id FK → marcas(id)` (3NF) |
 | 6 | Create `cotizaciones_correlativo` serial-counter table |
 | 7 | Create `cotizaciones` table with full 8-value state ENUM |
