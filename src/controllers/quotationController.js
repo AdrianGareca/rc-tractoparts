@@ -1,21 +1,20 @@
 // =============================================================================
 // src/controllers/quotationController.js
-// Quotation Controller — All Sprints
+// Quotation Controller — Core Operations
 //
-// Sprint 1:  createQuotation (atomic tx + auto-PDF), getQuotationById,
-//            uploadPdf, downloadPdf
+// Sprint 1:  createQuotation (atomic tx + auto-PDF), getQuotationById
 // Sprint 2 Step 1: getQuotations (paginated+filtered), getPendingApproval,
 //                  getStateSummary
-// Sprint 2 Step 2: updateStatus (role-based state machine + 'En revision'
-//                  mandatory-field pre-check), approveQuotation (HU08 with
-//                  boolean aprobado + mandatory observaciones on rejection +
-//                  PDF regeneration on approval), getStateHistory
+// Sprint 2 Step 2: patchComentarioAdmin (Administracion-only comment)
+//                  getNotificaciones (Ejecutivo pending-corrections feed)
+//
+// PDF operations (uploadPdf, downloadPdf) →  quotation/quotationPdfController.js
+// State machine  (updateStatus, approveQuotation, getStateHistory)
+//                                          →  quotation/quotationStateController.js
 // =============================================================================
 
 'use strict';
 
-const fs                          = require('fs');
-const path                        = require('path');
 const { pool }                    = require('../config/db');
 const QuotationModel              = require('../models/QuotationModel');
 const { logEvent, AuditActions }  = require('../utils/auditLog');
@@ -44,6 +43,17 @@ const QuotationController = {
       moneda,
       observaciones,
       fecha_validez,
+      tipo_pedido,
+      tiempo_entrega,
+      solicitante_no_solicitud,
+      solicitante_area,
+      solicitante_celular,
+      solicitante_correo,
+      equipo_marca,
+      equipo_tipo,
+      equipo_modelo,
+      equipo_serie,
+      equipo_motor,
       detalles = [],
     } = req.body;
 
@@ -117,15 +127,26 @@ const QuotationController = {
       }
 
       const quotationId = await QuotationModel.create(connection, {
-        numero_correlativo: numeroCorrelativo,
-        id_cliente:         parseInt(id_cliente, 10),
-        id_ejecutivo:       req.user.id,
-        descripcion:        String(descripcion).trim(),
-        monto_total:        calculatedTotal,
-        moneda:             moneda || 'USD',
-        observaciones:      observaciones || null,
+        numero_correlativo:       numeroCorrelativo,
+        id_cliente:               parseInt(id_cliente, 10),
+        id_ejecutivo:             req.user.id,
+        descripcion:              String(descripcion).trim(),
+        monto_total:              calculatedTotal,
+        moneda:                   moneda || 'BOB',
+        observaciones:            observaciones            || null,
         fecha_emision,
-        fecha_validez:      fecha_validez || null,
+        fecha_validez:            fecha_validez            || null,
+        tipo_pedido:              tipo_pedido              || null,
+        tiempo_entrega:           tiempo_entrega           || null,
+        solicitante_no_solicitud: solicitante_no_solicitud || null,
+        solicitante_area:         solicitante_area         || null,
+        solicitante_celular:      solicitante_celular      || null,
+        solicitante_correo:       solicitante_correo       || null,
+        equipo_marca:             equipo_marca             || null,
+        equipo_tipo:              equipo_tipo              || null,
+        equipo_modelo:            equipo_modelo            || null,
+        equipo_serie:             equipo_serie             || null,
+        equipo_motor:             equipo_motor             || null,
       });
 
       if (detalles.length > 0) {
@@ -239,188 +260,9 @@ const QuotationController = {
     }
   },
 
-  // ---------------------------------------------------------------------------
-  // uploadPdf — POST /api/cotizaciones/:id/pdf  (Role: Ejecutivo)
-  // ---------------------------------------------------------------------------
-  async uploadPdf(req, res) {
-    const id       = parseInt(req.params.id, 10);
-    const clientIp = req.ip || req.socket?.remoteAddress || null;
-
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
-
-    if (!req.file) {
-      return res.status(422).json({
-        success: false,
-        message: 'No PDF file received. Ensure the field name is "archivo" and the file is a valid PDF.',
-      });
-    }
-
-    try {
-      // ── Magic-number check (OWASP A08 — Software & Data Integrity) ──────────
-      // MIME type declared in the multipart request is CLIENT-CONTROLLED and can
-      // be trivially spoofed.  After multer writes the file, we open the first
-      // 5 bytes and verify they match the canonical PDF signature: "%PDF-".
-      // Any file that fails this check is deleted immediately and the request is
-      // rejected before the path ever reaches the database.
-      const uploadedAbsPath = path.resolve(process.cwd(), req.file.path);
-      try {
-        const fd     = await fs.promises.open(uploadedAbsPath, 'r');
-        const header = Buffer.alloc(5);
-        await fd.read(header, 0, 5, 0);
-        await fd.close();
-        if (header.toString('ascii') !== '%PDF-') {
-          await fs.promises.unlink(uploadedAbsPath).catch(() => {});
-          return res.status(422).json({
-            success: false,
-            message: 'File content is not a valid PDF (magic-number mismatch). Upload rejected.',
-          });
-        }
-      } catch (magicErr) {
-        // If we cannot read the file for any reason, reject to be safe
-        await fs.promises.unlink(uploadedAbsPath).catch(() => {});
-        return res.status(422).json({
-          success: false,
-          message: 'Could not verify uploaded file integrity. Upload rejected.',
-        });
-      }
-
-      const quotation = await QuotationModel.findById(id);
-      if (!quotation) {
-        // Clean up the already-saved file if the quotation doesn't exist
-        await fs.promises.unlink(uploadedAbsPath).catch(() => {});
-        return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
-      }
-
-      // Use forward slashes regardless of OS so the stored DB path is
-      // portable and consistent when displayed or queried cross-platform.
-      const relativePath = [
-        (process.env.UPLOAD_DIR || 'uploads/cotizaciones').replace(/\\/g, '/'),
-        req.file.filename,
-      ].join('/');
-
-      await QuotationModel.updatePdfPath(id, relativePath);
-
-      await logEvent({
-        id_usuario:     req.user.id,
-        nombre_usuario: req.user.nombre_usuario,
-        accion:         AuditActions.SUBIR_PDF,
-        entidad:        'cotizaciones',
-        id_entidad:     id,
-        detalle:        { archivo: req.file.filename, size_bytes: req.file.size },
-        ip_origen:      clientIp,
-        resultado:      'exito',
-      });
-
-      return res.status(200).json({
-        success:  true,
-        message:  'PDF uploaded and linked to quotation successfully.',
-        data:     { id, pdf_ruta: relativePath, filename: req.file.filename },
-      });
-    } catch (error) {
-      console.error('[QuotationController.uploadPdf] Error:', error.message);
-      return res.status(500).json({ success: false, message: 'Failed to link the uploaded PDF.' });
-    }
-  },
-
-  // ---------------------------------------------------------------------------
-  // downloadPdf — GET /api/cotizaciones/:id/pdf  (All roles)
-  //
-  // Priority 1: If pdf_ruta is set and the file physically exists on disk,
-  //             stream that uploaded corporate PDF directly to the client.
-  // Priority 2: If pdf_ruta is absent or the file is missing, fall back to
-  //             on-the-fly PDFKit generation as an emergency safety net.
-  // ---------------------------------------------------------------------------
-  async downloadPdf(req, res) {
-    const id       = parseInt(req.params.id, 10);
-    const clientIp = req.ip || req.socket?.remoteAddress || null;
-
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
-
-    try {
-      const quotation = await QuotationModel.findById(id);
-
-      if (!quotation) {
-        return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
-      }
-
-      // ── Priority 1: serve the uploaded corporate PDF if it exists on disk ──
-      if (quotation.pdf_ruta) {
-        const absolutePath = path.resolve(process.cwd(), quotation.pdf_ruta);
-
-        if (fs.existsSync(absolutePath)) {
-          await logEvent({
-            id_usuario:     req.user.id,
-            nombre_usuario: req.user.nombre_usuario,
-            accion:         AuditActions.DESCARGAR_PDF,
-            entidad:        'cotizaciones',
-            id_entidad:     id,
-            detalle:        { pdf_ruta: quotation.pdf_ruta, source: 'uploaded' },
-            ip_origen:      clientIp,
-            resultado:      'exito',
-          });
-
-          res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader(
-            'Content-Disposition',
-            `inline; filename="${quotation.numero_correlativo}.pdf"`,
-          );
-          return res.sendFile(absolutePath, (err) => {
-            if (err) {
-              console.error('[QuotationController.downloadPdf] Uploaded file send error:', err.message);
-              if (!res.headersSent) {
-                res.status(500).json({ success: false, message: 'Failed to send the PDF file.' });
-              }
-            }
-          });
-        }
-
-        // File path recorded in DB but binary is gone from disk — log and fall through
-        console.warn(
-          `[QuotationController.downloadPdf] pdf_ruta set but file not found on disk: ${absolutePath}. Falling back to PDFKit generation.`,
-        );
-      }
-
-      // ── Priority 2: dynamic PDFKit generation (emergency fallback) ─────────
-      const relativePath        = await pdfService.generateQuotationPdf(quotation);
-      const generatedAbsPath    = path.resolve(process.cwd(), relativePath);
-
-      await logEvent({
-        id_usuario:     req.user.id,
-        nombre_usuario: req.user.nombre_usuario,
-        accion:         AuditActions.DESCARGAR_PDF,
-        entidad:        'cotizaciones',
-        id_entidad:     id,
-        detalle:        { pdf_ruta: relativePath, source: 'generated' },
-        ip_origen:      clientIp,
-        resultado:      'exito',
-      });
-
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader(
-        'Content-Disposition',
-        `inline; filename="${quotation.numero_correlativo}.pdf"`,
-      );
-      return res.sendFile(generatedAbsPath, (err) => {
-        if (err) {
-          console.error('[QuotationController.downloadPdf] Generated file send error:', err.message);
-          if (!res.headersSent) {
-            res.status(500).json({ success: false, message: 'Failed to send the generated PDF.' });
-          }
-        }
-      });
-
-    } catch (error) {
-      console.error('[QuotationController.downloadPdf] Error:', error.message);
-      return res.status(500).json({ success: false, message: 'Failed to retrieve the PDF document.' });
-    }
-  },
-
   // ===========================================================================
   // SPRINT 2 STEP 1 — Advanced read operations
+  // (uploadPdf / downloadPdf moved to quotation/quotationPdfController.js)
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
@@ -594,391 +436,10 @@ const QuotationController = {
   },
 
   // ===========================================================================
-  // SPRINT 2 STEP 2 — State machine enforcement and HU08 approval workflow
+  // SPRINT 2 STEP 2 — State machine + approval workflow
+  // (updateStatus, approveQuotation, getStateHistory moved to
+  //  quotation/quotationStateController.js)
   // ===========================================================================
-
-  // ---------------------------------------------------------------------------
-  // updateStatus — PUT /api/cotizaciones/:id/estado  (All roles, role-restricted)
-  //
-  // Enforces the formal state machine (Section 3.7.4 — ROLE_TRANSITIONS):
-  //   • Each role has a limited set of legal transitions per source state.
-  //   • Only Jefe can transition from 'En revision' to approval/rejection states.
-  //   • Transitioning to 'En revision' triggers a mandatory pre-flight check:
-  //     the quotation must have ≥1 line item, monto_total set, and fecha_validez set.
-  //   • Optimistic concurrency (AND estado = estadoActual) prevents races.
-  //
-  // Request body: { nuevo_estado: string, observacion?: string }
-  // ---------------------------------------------------------------------------
-  async updateStatus(req, res) {
-    const id                                          = parseInt(req.params.id, 10);
-    const { nuevo_estado, observacion, comentario_admin } = req.body;
-    const userRol                                     = req.user.rol;
-    const clientIp                                    = req.ip || req.socket?.remoteAddress || null;
-
-    // ── Basic validation ──────────────────────────────────────────────────────
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
-
-    if (!nuevo_estado || typeof nuevo_estado !== 'string') {
-      return res.status(422).json({ success: false, message: 'nuevo_estado is required and must be a string.' });
-    }
-
-    if (!QuotationModel.VALID_STATES.includes(nuevo_estado)) {
-      return res.status(422).json({
-        success: false,
-        message: `Invalid target state '${nuevo_estado}'. Valid states: [${QuotationModel.VALID_STATES.join(', ')}]`,
-      });
-    }
-
-    try {
-      // ── Fetch current state ────────────────────────────────────────────────
-      const quotation = await QuotationModel.findById(id);
-
-      if (!quotation) {
-        return res.status(404).json({
-          success: false,
-          message: `Quotation with ID ${id} was not found.`,
-        });
-      }
-
-      const estadoActual = quotation.estado;
-
-      if (estadoActual === nuevo_estado) {
-        return res.status(422).json({
-          success: false,
-          message: `The quotation is already in the '${estadoActual}' state. No change needed.`,
-        });
-      }
-
-      // ── Role-based transition guard ────────────────────────────────────────
-      // Returns { valid, reason, allowedTransitions } — no DB call needed.
-      const transitionCheck = QuotationModel.validateTransitionByRole(
-        estadoActual,
-        nuevo_estado,
-        userRol
-      );
-
-      if (!transitionCheck.valid) {
-        return res.status(403).json({
-          success:             false,
-          message:             transitionCheck.reason,
-          allowed_transitions: transitionCheck.allowedTransitions || [],
-        });
-      }
-
-      // ── Special pre-flight check for 'En revision' transition ─────────────
-      // The quotation must be complete before it can enter the approval queue.
-      if (nuevo_estado === 'En revision') {
-        const reviewErrors = await QuotationModel.validateForReview(id);
-
-        if (reviewErrors.length > 0) {
-          return res.status(422).json({
-            success: false,
-            message: 'The quotation does not meet all requirements for submission to review. ' +
-                     'Resolve the following issues and try again.',
-            errors:  reviewErrors,
-          });
-        }
-      }
-
-      // ── Execute the transition (optimistic concurrency) ───────────────────
-      // comentario_admin is forwarded only when the calling role is Administracion;
-      // it is silently ignored for other roles to prevent privilege escalation
-      // via field injection.
-      const adminComment = (userRol === 'Administracion' && comentario_admin != null)
-        ? String(comentario_admin).trim() || null
-        : null;
-
-      const updated = await QuotationModel.updateStatus(
-        id,
-        nuevo_estado,
-        estadoActual,
-        userRol,
-        adminComment
-      );
-
-      if (!updated) {
-        // affectedRows = 0 means the state changed between our read and this write
-        return res.status(409).json({
-          success: false,
-          message: 'State could not be updated. The quotation was modified concurrently. ' +
-                   'Refresh and try again.',
-        });
-      }
-
-      // ── Persist in the dedicated state history table (non-fatal) ────────────
-      // Audit logging failures must never mask a successfully committed transition.
-      try {
-        await QuotationModel.logStateHistory({
-          id_cotizacion:  id,
-          estado_anterior: estadoActual,
-          estado_nuevo:   nuevo_estado,
-          id_usuario:     req.user.id,
-          nombre_usuario: req.user.nombre_usuario,
-          rol_usuario:    userRol,
-          observacion:    observacion || null,
-          ip_origen:      clientIp,
-        });
-
-        await logEvent({
-          id_usuario:     req.user.id,
-          nombre_usuario: req.user.nombre_usuario,
-          accion:         AuditActions.CAMBIAR_ESTADO,
-          entidad:        'cotizaciones',
-          id_entidad:     id,
-          detalle: {
-            estado_anterior: estadoActual,
-            nuevo_estado,
-            observacion:     observacion || null,
-          },
-          ip_origen:  clientIp,
-          resultado:  'exito',
-        });
-      } catch (auditErr) {
-        console.warn('[QuotationController.updateStatus] Audit logging failed (non-fatal):', auditErr.message);
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: `Quotation state updated: '${estadoActual}' → '${nuevo_estado}'.`,
-        data:    {
-          id,
-          estado_anterior:     estadoActual,
-          nuevo_estado,
-          allowed_transitions: transitionCheck.allowedTransitions,
-        },
-      });
-    } catch (error) {
-      // FORBIDDEN_TRANSITION is thrown by model's defense-in-depth re-validation.
-      // We already handled it above via validateTransitionByRole; this catches
-      // any edge case where the controller check was somehow bypassed.
-      if (error.code === 'FORBIDDEN_TRANSITION') {
-        return res.status(403).json({
-          success:             false,
-          message:             error.message,
-          allowed_transitions: error.allowedTransitions || [],
-        });
-      }
-
-      console.error('[QuotationController.updateStatus] Error:', error.message);
-
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to update quotation status.',
-      });
-    }
-  },
-
-  // ---------------------------------------------------------------------------
-  // approveQuotation — POST /api/cotizaciones/:id/aprobar  (Roles: Jefe, SysAdmin — HU08)
-  //
-  // Dedicated approval/rejection endpoint. Distinct from updateStatus because:
-  //   1. It writes approval metadata (aprobado_por, fecha_aprobacion, obs_aprobacion).
-  //   2. It receives a boolean `aprobado` instead of a state string.
-  //   3. It mandates `observaciones` when rejecting (business rule).
-  //   4. It regenerates the PDF to reflect the updated approval status.
-  //
-  // Source-state constraint: NONE. Jefe and SysAdmin can approve or reject
-  // from ANY active state — 'Pendiente', 'En revision', or 'En espera'.
-  // This matches the updated HU08 approval-queue logic and ROLE_TRANSITIONS matrix.
-  //
-  // Request body:
-  //   {
-  //     "aprobado":      true | false,   (required)
-  //     "observaciones": "text"          (required when aprobado = false)
-  //   }
-  //
-  // The middleware authorize(['Jefe', 'SysAdmin']) already enforces the role
-  // before this method is called. The controller asserts it again as defense-in-depth.
-  // ---------------------------------------------------------------------------
-  async approveQuotation(req, res) {
-    const id       = parseInt(req.params.id, 10);
-    const clientIp = req.ip || req.socket?.remoteAddress || null;
-
-    // ── Basic validation ──────────────────────────────────────────────────────
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
-
-    const { aprobado, observaciones } = req.body;
-
-    // aprobado must be explicitly provided and must be a boolean
-    if (aprobado === undefined || aprobado === null) {
-      return res.status(422).json({
-        success: false,
-        message: "Field 'aprobado' is required. Send true to approve or false to reject.",
-      });
-    }
-
-    if (typeof aprobado !== 'boolean') {
-      return res.status(422).json({
-        success: false,
-        message: "Field 'aprobado' must be a boolean (true or false), not a string.",
-      });
-    }
-
-    // Rejection without justification is not permitted (Section 4.3 — business rule)
-    if (aprobado === false && (!observaciones || !String(observaciones).trim())) {
-      return res.status(422).json({
-        success: false,
-        message: "Field 'observaciones' is required and must not be empty when rejecting a quotation. " +
-                 "The Ejecutivo must understand why the quotation was rejected.",
-      });
-    }
-
-    // ── Controller-level high-privilege assertion (defense-in-depth after middleware) ──
-    // If the middleware is misconfigured, this line catches the gap before any
-    // approval data reaches the database.
-    if (!['Jefe', 'SysAdmin'].includes(req.user.rol)) {
-      return res.status(403).json({
-        success: false,
-        message: `Access denied. Only 'Jefe' or 'SysAdmin' roles can approve or reject quotations. ` +
-                 `Your role is '${req.user.rol}'.`,
-      });
-    }
-
-    try {
-      // ── Verify quotation exists ───────────────────────────────────────────
-      // Jefe and SysAdmin hold absolute authority: they can approve or reject
-      // a quotation from ANY state (Pendiente, En revision, En espera, etc.).
-      // The state restriction has been removed to unblock the HU08 workflow.
-      const quotation = await QuotationModel.findById(id);
-
-      if (!quotation) {
-        return res.status(404).json({
-          success: false,
-          message: `Quotation with ID ${id} was not found.`,
-        });
-      }
-
-      const estadoAnterior = quotation.estado;
-      const nuevoEstado    = aprobado ? 'Aprobada internamente' : 'Rechazada';
-      const obsText        = observaciones ? String(observaciones).trim() : null;
-
-      // ── Execute the approval write (optimistic concurrency on current state) ─
-      const approved = await QuotationModel.approve(id, req.user.id, aprobado, obsText, estadoAnterior);
-
-      if (!approved) {
-        // Another request changed the state between our findById and the UPDATE
-        return res.status(409).json({
-          success: false,
-          message: 'Approval could not be recorded. The quotation state changed concurrently. Refresh and try again.',
-        });
-      }
-
-      // ── Write to the state history table (non-fatal) ─────────────────────
-      // Audit logging failures must never mask a successfully committed approval.
-      try {
-        await QuotationModel.logStateHistory({
-          id_cotizacion:  id,
-          estado_anterior: estadoAnterior,
-          estado_nuevo:   nuevoEstado,
-          id_usuario:     req.user.id,
-          nombre_usuario: req.user.nombre_usuario,
-          rol_usuario:    req.user.rol,
-          observacion:    obsText,
-          ip_origen:      clientIp,
-        });
-
-        const auditAction = aprobado ? AuditActions.APROBAR : AuditActions.RECHAZAR;
-        await logEvent({
-          id_usuario:     req.user.id,
-          nombre_usuario: req.user.nombre_usuario,
-          accion:         auditAction,
-          entidad:        'cotizaciones',
-          id_entidad:     id,
-          detalle:        { aprobado, observaciones: obsText },
-          ip_origen:      clientIp,
-          resultado:      'exito',
-        });
-      } catch (auditErr) {
-        console.warn('[QuotationController.approveQuotation] Audit logging failed (non-fatal):', auditErr.message);
-      }
-
-      // ── PDF regeneration — only if no uploaded corporate PDF exists ─────────
-      // Business rule: if the Ejecutivo uploaded a corporate Excel-derived PDF
-      // (pdf_ruta is set and the file exists on disk), that file is the canonical
-      // document and must NOT be replaced by a PDFKit-generated fallback.
-      // We only regenerate when there is no uploaded file, so the approval status
-      // badge is reflected in the auto-generated document.
-      // Non-fatal: the approval is committed regardless of PDF outcome.
-      try {
-        const updatedQuotation = await QuotationModel.findById(id);
-        const hasUploadedPdf   = updatedQuotation.pdf_ruta &&
-          fs.existsSync(path.resolve(process.cwd(), updatedQuotation.pdf_ruta));
-
-        if (!hasUploadedPdf) {
-          const newPdfPath = await pdfService.generateQuotationPdf(updatedQuotation);
-          await QuotationModel.updatePdfPath(id, newPdfPath);
-        }
-      } catch (pdfErr) {
-        console.warn(
-          `[QuotationController] PDF regeneration after ${aprobado ? 'approval' : 'rejection'} failed (non-fatal):`,
-          pdfErr.message
-        );
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: aprobado
-          ? `Quotation COT#${id} approved successfully. State is now 'Aprobada internamente'.`
-          : `Quotation COT#${id} rejected. State is now 'Rechazada'.`,
-        data: {
-          id,
-          estado_anterior: estadoAnterior,
-          nuevo_estado:    nuevoEstado,
-          aprobado_por:    req.user.nombre_usuario,
-          observaciones:   obsText,
-        },
-      });
-    } catch (error) {
-      console.error('[QuotationController.approveQuotation] Error:', error.message);
-
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to process the approval decision.',
-      });
-    }
-  },
-
-  // ---------------------------------------------------------------------------
-  // getStateHistory — GET /api/cotizaciones/:id/historial  (All roles)
-  // Returns the full ordered state-change timeline for a quotation, combining
-  // the creation event (from bitacora_auditoria) with all subsequent transitions
-  // (from cotizacion_historial_estados). Section 4.3.
-  // ---------------------------------------------------------------------------
-  async getStateHistory(req, res) {
-    const id = parseInt(req.params.id, 10);
-
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
-
-    try {
-      // Verify the quotation exists before querying history
-      const quotation = await QuotationModel.findById(id);
-
-      if (!quotation) {
-        return res.status(404).json({
-          success: false,
-          message: `Quotation with ID ${id} was not found.`,
-        });
-      }
-
-      const history = await QuotationModel.findStateHistory(id);
-
-      return res.status(200).json({
-        success:             true,
-        quotation_reference: quotation.numero_correlativo,
-        total:               history.length,
-        data:                history,
-      });
-    } catch (error) {
-      console.error('[QuotationController.getStateHistory] Error:', error.message);
-      return res.status(500).json({ success: false, message: 'Failed to retrieve state history.' });
-    }
-  },
 
   // ---------------------------------------------------------------------------
   // patchComentarioAdmin — PATCH /api/cotizaciones/:id/comentario-admin
@@ -1050,23 +511,65 @@ const QuotationController = {
 
   // ---------------------------------------------------------------------------
   // getNotificaciones — GET /api/cotizaciones/notificaciones  (Role: Ejecutivo)
-  // Returns pending correction notifications for the authenticated Ejecutivo.
-  // A notification exists when a quotation was sent back to 'Pendiente' by
-  // Administracion or Jefe and is still awaiting correction.
+  // Returns two notification streams merged into a single response:
+  //   1. Correction notifications — quotations sent back to 'Pendiente'
+  //      (from cotizacion_historial_estados, existing behaviour)
+  //   2. Approval notifications   — quotations approved / sent to client by Jefe
+  //      (from the dedicated notificaciones table, new behaviour)
+  //
+  // Each row carries a `tipo` field so the frontend can style them differently:
+  //   tipo = 'correccion'    — from stream 1 (correction needed)
+  //   tipo = 'aprobacion'    — Jefe approved to 'Aprobada internamente'
+  //   tipo = 'envio_cliente' — Jefe sent to 'Enviada al cliente'
+  //
+  // Opening the modal triggers markNotificacionesLeidas so the badge resets
+  // for approval notifications (correction notifications clear naturally when
+  // the Ejecutivo re-submits the quote and it leaves 'Pendiente').
   // ---------------------------------------------------------------------------
   async getNotificaciones(req, res) {
     try {
-      // Only Ejecutivos receive personal correction notifications.
+      // Only Ejecutivos receive personal notifications.
       // Jefe / Admin see all state changes via the audit log.
       if (req.user.rol !== 'Ejecutivo') {
         return res.status(200).json({ success: true, total: 0, data: [] });
       }
 
-      const rows = await QuotationModel.findNotificacionesPendientes(req.user.id);
-      return res.status(200).json({ success: true, total: rows.length, data: rows });
+      // Fetch both notification streams in parallel
+      const [correcciones, aprobaciones] = await Promise.all([
+        QuotationModel.findNotificacionesPendientes(req.user.id),
+        QuotationModel.findNotificacionesEjecutivo(req.user.id),
+      ]);
+
+      // Tag correction rows so the frontend can distinguish them
+      const taggedCorrecciones = correcciones.map(r => ({ ...r, tipo: 'correccion' }));
+
+      const combined = [...taggedCorrecciones, ...aprobaciones]
+        .sort((a, b) => new Date(b.fecha_solicitud) - new Date(a.fecha_solicitud));
+
+      return res.status(200).json({
+        success: true,
+        total:   combined.length,
+        data:    combined,
+      });
     } catch (error) {
       console.error('[QuotationController.getNotificaciones] Error:', error.message);
       return res.status(500).json({ success: false, message: 'Failed to retrieve notifications.' });
+    }
+  },
+
+  // markNotificacionesLeidas — POST /api/cotizaciones/notificaciones/leer  (Ejecutivo)
+  // Marks all unread approval/envio notifications as read for the caller.
+  // Correction notifications are implicitly cleared when the quote is re-submitted.
+  async markNotificacionesLeidas(req, res) {
+    try {
+      if (req.user.rol !== 'Ejecutivo') {
+        return res.status(200).json({ success: true });
+      }
+      await QuotationModel.markNotificacionesLeidas(req.user.id);
+      return res.status(200).json({ success: true });
+    } catch (error) {
+      console.error('[QuotationController.markNotificacionesLeidas] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to mark notifications as read.' });
     }
   },
 };

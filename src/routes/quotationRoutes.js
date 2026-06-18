@@ -35,9 +35,12 @@ const path       = require('path');
 const fs         = require('fs');
 const rateLimit  = require('express-rate-limit');
 
-const QuotationController = require('../controllers/quotationController');
+const QuotationController      = require('../controllers/quotationController');
+const QuotationPdfController   = require('../controllers/quotation/quotationPdfController');
+const QuotationStateController = require('../controllers/quotation/quotationStateController');
 const { authenticate }    = require('../middlewares/authMiddleware');
 const authorize           = require('../middlewares/roleMiddleware');
+const resolveDelegacion   = require('../middlewares/delegacionMiddleware');
 const { validate }        = require('../validators/validate');
 const {
   createQuotationSchema,
@@ -56,17 +59,32 @@ const uploadDir = path.resolve(
   process.env.UPLOAD_DIR || 'uploads/cotizaciones'
 );
 
-// Ensure the destination directory exists at startup
+// Excel files are stored separately so auditors can download raw spreadsheets
+// without mixing them with generated PDF documents.
+const excelDir = path.resolve(process.cwd(), 'storage/excels');
+
+// Ensure both destination directories exist at startup
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
+if (!fs.existsSync(excelDir)) {
+  fs.mkdirSync(excelDir, { recursive: true });
+}
 
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, uploadDir),
-  filename:    (req, _file, cb) => {
-    // COT-<quotationId>-<unix_ms>.pdf — unique and traceable
+  destination: (_req, file, cb) => {
+    // Route Excel uploads to a dedicated audit directory
+    cb(null, file.fieldname === 'excel' ? excelDir : uploadDir);
+  },
+  filename: (req, file, cb) => {
     const quotationId = req.params.id || 'draft';
-    cb(null, `COT-${quotationId}-${Date.now()}.pdf`);
+    // Distinguish PDF vs Excel files in the stored filename
+    if (file.fieldname === 'excel') {
+      cb(null, `EXC-${quotationId}-${Date.now()}.xlsx`);
+    } else {
+      // Default: PDF
+      cb(null, `COT-${quotationId}-${Date.now()}.pdf`);
+    }
   },
 });
 
@@ -80,12 +98,28 @@ function pdfFileFilter(_req, file, cb) {
 
 const maxPdfBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024;
 
+// Dual-field upload: accepts 'pdf' (alias kept for backward compat) + 'excel'
+// The controller performs magic-number verification for each file after Multer writes them.
 const upload = multer({
+  storage,
+  // fileFilter is intentionally omitted here — both PDF and xlsx have different
+  // declared MIME types and each is verified post-write via magic-number checks
+  // in the controller.  Relying solely on declared MIME type (easily spoofed)
+  // would give false security while a single filter cannot serve two types.
+  limits: {
+    fileSize: maxPdfBytes,  // applies per-file
+    files:    2,            // at most one PDF + one Excel per request
+  },
+});
+
+// Legacy single-field uploader retained for the standalone POST /:id/pdf route
+// that accepts only a PDF via the 'archivo' field name.
+const uploadPdfSingle = multer({
   storage,
   fileFilter: pdfFileFilter,
   limits: {
-    fileSize: maxPdfBytes,  // Reject oversized files before reaching the controller
-    files:    1,            // Only one attachment per request
+    fileSize: maxPdfBytes,
+    files:    1,
   },
 });
 
@@ -114,7 +148,9 @@ const uploadLimiter = rateLimit({
 
 const allRoles      = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin'])];
 const writeRoles    = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin'])];
-const jefeOnly      = [authenticate, authorize(['Jefe', 'SysAdmin'])];
+// jefeOnly includes resolveDelegacion so that users with an active temporal
+// delegation (delegaciones_rol) are granted Jefe-level authority on this request.
+const jefeOnly      = [authenticate, resolveDelegacion, authorize(['Jefe', 'SysAdmin'])];
 const adminOnly     = [authenticate, authorize(['Administracion'])];
 const jefeAdminOnly = [authenticate, authorize(['Jefe', 'Administracion', 'SysAdmin'])];
 const ejecutivoOnly = [authenticate, authorize(['Ejecutivo'])];
@@ -194,13 +230,20 @@ router.get(
 );
 
 // GET /api/cotizaciones/notificaciones
-// Pending correction notifications for the authenticated Ejecutivo.
-// Returns quotations sent back to 'Pendiente' that still await rework.
+// Pending correction + approval notifications for the authenticated Ejecutivo.
 // Must be registered before /:id to avoid parameter collision.
 router.get(
   '/notificaciones',
   ...allRoles,
   QuotationController.getNotificaciones
+);
+
+// POST /api/cotizaciones/notificaciones/leer
+// Marks all unread approval notifications as read for the authenticated Ejecutivo.
+router.post(
+  '/notificaciones/leer',
+  ...allRoles,
+  QuotationController.markNotificacionesLeidas
 );
 
 // =============================================================================
@@ -314,7 +357,12 @@ router.get(
  * /api/cotizaciones:
  *   post:
  *     summary: Crear nueva cotización (HU03)
- *     description: Genera atómicamente el número correlativo, inserta la cabecera y los ítems de detalle en una sola transacción, y auto-genera el documento PDF.
+ *     description: |
+ *       Genera atómicamente el número correlativo, inserta la cabecera y los ítems de detalle
+ *       en una sola transacción, y auto-genera el documento PDF.
+ *       El cuerpo acepta todos los bloques del formulario proforma:
+ *       Metadatos, Cliente (resolución por id), Solicitante, Equipo y Detalle de ítems.
+ *       Para adjuntar el archivo .xlsx de auditoría use el endpoint POST /{id}/upload.
  *     tags: [Cotizaciones]
  *     security:
  *       - bearerAuth: []
@@ -328,32 +376,83 @@ router.get(
  *               - id_cliente
  *               - descripcion
  *               - fecha_emision
+ *               - detalles
  *             properties:
  *               id_cliente:
  *                 type: integer
- *                 example: 1
+ *                 example: 3
  *               descripcion:
  *                 type: string
- *                 example: Repuestos motor D13
+ *                 example: "Repuestos motor D13 — Excavadora CAT 336"
  *               fecha_emision:
  *                 type: string
  *                 format: date
- *                 example: "2026-06-08"
+ *                 example: "2026-06-17"
  *               monto_total:
  *                 type: number
  *                 format: float
+ *                 description: Ignorado cuando `detalles` está presente; el servidor recalcula desde los ítems.
  *                 example: 4500.00
  *               moneda:
  *                 type: string
  *                 enum: [USD, BOB]
- *                 default: USD
+ *                 default: BOB
+ *                 example: "BOB"
  *               observaciones:
  *                 type: string
+ *                 example: "Repuestos para mantenimiento preventivo 500 h"
  *               fecha_validez:
  *                 type: string
  *                 format: date
+ *                 example: "2026-07-17"
+ *               tipo_pedido:
+ *                 type: string
+ *                 description: Canal/tipo del pedido (aparece en box PEDIDO del PDF)
+ *                 example: "EMAIL"
+ *               tiempo_entrega:
+ *                 type: string
+ *                 description: Tiempo de entrega global (aparece en CONDICIONES DE LA OFERTA del PDF)
+ *                 example: "25 DÍAS CALENDARIO"
+ *               solicitante_no_solicitud:
+ *                 type: string
+ *                 description: "Nº de Solicitud / Nº de OC del solicitante interno"
+ *                 example: "OC-2026-0045"
+ *               solicitante_area:
+ *                 type: string
+ *                 description: Área o departamento del solicitante
+ *                 example: "Mantenimiento"
+ *               solicitante_celular:
+ *                 type: string
+ *                 description: Celular del solicitante
+ *                 example: "77012345"
+ *               solicitante_correo:
+ *                 type: string
+ *                 format: email
+ *                 description: Correo del solicitante
+ *                 example: "juan.perez@empresa.com"
+ *               equipo_marca:
+ *                 type: string
+ *                 description: Marca del equipo a reparar
+ *                 example: "Caterpillar"
+ *               equipo_tipo:
+ *                 type: string
+ *                 description: Tipo de equipo
+ *                 example: "Excavadora"
+ *               equipo_modelo:
+ *                 type: string
+ *                 description: Modelo del equipo
+ *                 example: "336"
+ *               equipo_serie:
+ *                 type: string
+ *                 description: Número de serie del equipo
+ *                 example: "CAT0336XXXXX"
+ *               equipo_motor:
+ *                 type: string
+ *                 description: Número de motor del equipo
+ *                 example: "C9.3"
  *               detalles:
  *                 type: array
+ *                 minItems: 1
  *                 items:
  *                   type: object
  *                   required:
@@ -363,10 +462,33 @@ router.get(
  *                   properties:
  *                     descripcion_item:
  *                       type: string
+ *                       example: "Filtro de aceite motor D13"
+ *                     codigo:
+ *                       type: string
+ *                       description: Código de parte del fabricante (Nº parte)
+ *                       example: "7E-6116"
+ *                     codigo_alternativo:
+ *                       type: string
+ *                       description: Código alternativo / código cruzado
+ *                       example: "P553191"
+ *                     unidad:
+ *                       type: string
+ *                       description: Unidad de medida
+ *                       example: "UND"
  *                     cantidad:
  *                       type: number
+ *                       example: 2
  *                     precio_unitario:
  *                       type: number
+ *                       example: 850.00
+ *                     marca_id:
+ *                       type: integer
+ *                       description: ID de marca del catálogo
+ *                       example: 1
+ *                     tiempo_entrega:
+ *                       type: string
+ *                       description: Tiempo de entrega específico para esta línea
+ *                       example: "15 DÍAS HÁBILES"
  *     responses:
  *       201:
  *         description: Cotización creada exitosamente. Incluye número correlativo y datos completos.
@@ -470,7 +592,7 @@ router.get(
 router.get(
   '/:id/historial',
   ...allRoles,
-  QuotationController.getStateHistory
+  QuotationStateController.getStateHistory
 );
 
 /**
@@ -534,12 +656,16 @@ router.get(
 // Role-restricted state machine transition.
 // Body: { nuevo_estado: string, observacion?: string }
 // Role matrix enforced: only Jefe can approve/reject (En revision → resolved).
+// resolveDelegacion runs before authorize so a delegated user is treated as Jefe
+// for the transition-matrix check inside QuotationStateController.updateStatus.
 // validate(): blocks invalid/malicious nuevo_estado values before controller.
 router.put(
   '/:id/estado',
-  ...allRoles,
+  authenticate,
+  resolveDelegacion,
+  authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin']),
   validate(updateStatusSchema),
-  QuotationController.updateStatus
+  QuotationStateController.updateStatus
 );
 
 /**
@@ -607,7 +733,7 @@ router.post(
   '/:id/aprobar',
   ...jefeOnly,
   validate(approveQuotationSchema),
-  QuotationController.approveQuotation
+  QuotationStateController.approveQuotation
 );
 
 /**
@@ -663,8 +789,23 @@ router.post(
   '/:id/pdf',
   ...ejecutivoOnly,
   uploadLimiter,
-  upload.single('archivo'),
-  QuotationController.uploadPdf
+  uploadPdfSingle.single('archivo'),
+  QuotationPdfController.uploadPdf
+);
+
+// POST /api/cotizaciones/:id/upload
+// Dual-file upload: accepts optional 'pdf' field and/or optional 'excel' field
+// in the same multipart request.  Magic-number verification is performed by
+// the controller after Multer writes the files to disk.
+router.post(
+  '/:id/upload',
+  ...ejecutivoOnly,
+  uploadLimiter,
+  upload.fields([
+    { name: 'pdf',   maxCount: 1 },
+    { name: 'excel', maxCount: 1 },
+  ]),
+  QuotationPdfController.uploadFiles
 );
 
 /**
@@ -708,7 +849,16 @@ router.post(
 router.get(
   '/:id/pdf',
   ...allRoles,
-  QuotationController.downloadPdf
+  QuotationPdfController.downloadPdf
+);
+
+// GET /api/cotizaciones/:id/excel
+// Stream the stored Excel spreadsheet to the client.
+// Requires a valid Bearer token — the blob is served only to authenticated sessions.
+router.get(
+  '/:id/excel',
+  ...allRoles,
+  QuotationPdfController.downloadExcel
 );
 
 /**

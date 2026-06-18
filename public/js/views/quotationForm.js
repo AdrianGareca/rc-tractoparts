@@ -70,10 +70,25 @@ class LineItemsSubject {
     this.#observers = this.#observers.filter(o => o !== observer);
   }
 
-  getItems() { return this.#items; }
+  /**
+   * Returns a shallow-copy snapshot of the items array.
+   * Callers receive independent array instances so that no external reference
+   * can mutate the internal #items state — the Subject is the single source of
+   * truth and must only be modified through addItem / removeItem / updateItem.
+   */
+  getItems() { return this.#items.map(i => ({ ...i })); }
 
   addItem() {
-    this.#items.push({ descripcion_item: '', cantidad: 1, precio_unitario: 0 });
+    this.#items.push({
+      descripcion_item:   '',
+      codigo:             '',
+      codigo_alternativo: '',
+      unidad:             'UND',
+      cantidad:           1,
+      precio_unitario:    0,
+      marca_id:           null,
+      tiempo_entrega:     '',
+    });
     this._notify();
     return this.#items.length - 1; // new index
   }
@@ -174,6 +189,7 @@ class FormMediator {
   #subject;          // LineItemsSubject (Observable)
   #container;        // Root DOM element of the form
   #uploadedFile = null;
+  #uploadedExcel = null;   // optional Excel spreadsheet attachment
   #brands = [];      // Cache of { id, nombre } loaded from GET /api/marcas
 
   constructor(container) {
@@ -288,9 +304,13 @@ class FormMediator {
           <div class="form-group">
             <label class="form-label" for="moneda">Moneda</label>
             <select class="form-control" id="moneda">
-              <option value="USD">USD — Dólar</option>
               <option value="BOB">BOB — Boliviano</option>
+              <option value="USD">USD — Dólar</option>
             </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="tipo_pedido">Tipo / Canal de Pedido</label>
+            <input class="form-control" type="text" id="tipo_pedido" placeholder="Ej: EMAIL, PRESENCIAL, TELÉFONO" maxlength="50" />
           </div>
           <div class="form-group">
             <label class="form-label" for="fecha_validez">
@@ -312,6 +332,74 @@ class FormMediator {
           </div>
         </div>
 
+        <!-- DATOS DEL SOLICITANTE -->
+        <details class="form-section-details" open>
+          <summary class="form-section-summary">Datos del Solicitante</summary>
+          <div class="form-row" style="margin-top:.75rem;">
+            <div class="form-group">
+              <label class="form-label" for="solicitante_no_solicitud">Nº Solicitud / OC</label>
+              <input class="form-control" type="text" id="solicitante_no_solicitud"
+                     placeholder="Ej: OC-2026-0045" maxlength="100" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="solicitante_area">Área / Departamento</label>
+              <input class="form-control" type="text" id="solicitante_area"
+                     placeholder="Ej: Mantenimiento" maxlength="100" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="solicitante_celular">Celular</label>
+              <input class="form-control" type="tel" id="solicitante_celular"
+                     placeholder="Ej: 77012345" maxlength="30" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="solicitante_correo">Correo</label>
+              <input class="form-control" type="email" id="solicitante_correo"
+                     placeholder="solicitante@empresa.com" maxlength="120" />
+            </div>
+          </div>
+        </details>
+
+        <!-- DATOS DEL EQUIPO -->
+        <details class="form-section-details" open>
+          <summary class="form-section-summary">Datos del Equipo</summary>
+          <div class="form-row" style="margin-top:.75rem;">
+            <div class="form-group">
+              <label class="form-label" for="equipo_marca">Marca</label>
+              <input class="form-control" type="text" id="equipo_marca"
+                     placeholder="Ej: Caterpillar" maxlength="80" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="equipo_tipo">Tipo</label>
+              <input class="form-control" type="text" id="equipo_tipo"
+                     placeholder="Ej: Excavadora" maxlength="80" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="equipo_modelo">Modelo</label>
+              <input class="form-control" type="text" id="equipo_modelo"
+                     placeholder="Ej: 336" maxlength="80" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="equipo_serie">Nº Serie <span style="color:#9ca3af;font-size:.8rem;font-weight:400;">(Opcional)</span></label>
+              <input class="form-control" type="text" id="equipo_serie"
+                     placeholder="Ej: CAT0336XXXXX" maxlength="80" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="equipo_motor">Nº Motor <span style="color:#9ca3af;font-size:.8rem;font-weight:400;">(Opcional)</span></label>
+              <input class="form-control" type="text" id="equipo_motor"
+                     placeholder="Ej: C9.3" maxlength="80" />
+            </div>
+          </div>
+        </details>
+
+        <!-- CONDICIONES LOGÍSTICAS -->
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="tiempo_entrega">Tiempo de Entrega (general)</label>
+            <input class="form-control" type="text" id="tiempo_entrega"
+                   placeholder="Ej: 25 DÍAS CALENDARIO" maxlength="100" />
+          </div>
+        </div>
+
         <!-- Line items — OBSERVER Subject changes trigger all three Observers -->
         <div class="line-items-section">
           <h4>Ítems de Detalle</h4>
@@ -319,13 +407,16 @@ class FormMediator {
             <table class="line-items-table">
               <thead>
               <tr>
-                <th style="width:28%">Descripción</th>
-                <th style="width:12%">Cód. Parte</th>
-                <th style="width:14%">Marca</th>
-                <th style="width:10%">Cantidad</th>
-                <th style="width:14%">Precio Unit.</th>
-                <th style="width:15%">Subtotal</th>
-                <th style="width:7%"></th>
+                <th style="width:22%">Descripción</th>
+                <th style="width:10%">Cód. Parte</th>
+                <th style="width:10%">Cód. Alt.</th>
+                <th style="width:11%">Marca</th>
+                <th style="width:7%">UM</th>
+                <th style="width:7%">Cantidad</th>
+                <th style="width:11%">Precio Unit.</th>
+                <th style="width:10%">Subtotal</th>
+                <th style="width:10%">T. Entrega</th>
+                <th style="width:2%"></th>
               </tr>
             </thead>
               <tbody id="items-body"></tbody>
@@ -364,6 +455,18 @@ class FormMediator {
           </div>
         </div>
 
+        <!-- Excel optional attachment -->
+        <div class="form-group" style="margin-top:1rem;">
+          <label class="form-label">📊 Planilla Excel de Auditoría (opcional)</label>
+          <div class="drop-zone" id="excel-drop-zone" style="border-color:#16a34a;">
+            <input type="file" id="excel-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+            <div class="drop-zone-icon">📊</div>
+            <p class="drop-zone-text">Arrastra un archivo .xlsx aquí o haz clic para seleccionar</p>
+            <p class="drop-zone-hint">Máximo 10 MB · Solo archivos .xlsx</p>
+            <p class="drop-zone-file hidden" id="excel-file-name"></p>
+          </div>
+        </div>
+
         <!-- General form alert -->
         <div class="form-alert" id="qf-alert" role="alert"></div>
 
@@ -396,10 +499,13 @@ class FormMediator {
     // double-quote injection into the value="…" attribute context).
     const safeAttr  = (v) => v != null ? String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;') : '';
     const safeCod   = safeAttr(itemData?.codigo           ?? '');
+    const safeCodAlt= safeAttr(itemData?.codigo_alternativo ?? '');
     const safeDesc  = safeAttr(itemData?.descripcion_item  ?? '');
     const safeCant  = itemData?.cantidad        ?? 1;
     const safePrice = itemData?.precio_unitario ?? 0;
     const safeMarca = itemData?.marca_id        ?? '';
+    const safeUnidadVal = itemData?.unidad ?? 'UND';
+    const safeTEnt  = safeAttr(itemData?.tiempo_entrega ?? '');
 
     // Build brand options HTML from cached brand list
     const brandOptions = this.#brands
@@ -417,6 +523,12 @@ class FormMediator {
                style="width:100%;font-size:.8rem;"
                title="Código de Parte del fabricante. Si ya existe en otra fila, las cantidades se suman automáticamente." />
       </td>
+      <td>
+        <input class="item-input" type="text" data-field="codigo_alternativo" data-idx="${index}"
+               value="${safeCodAlt}" placeholder="Ej: P553191" maxlength="100"
+               style="width:100%;font-size:.8rem;"
+               title="Código alternativo o código cruzado del fabricante." />
+      </td>
       <td class="item-marca-cell">
         <div style="display:flex;gap:4px;align-items:center;">
           <select class="form-control item-marca" data-field="marca_id" data-idx="${index}"
@@ -432,14 +544,28 @@ class FormMediator {
         </div>
       </td>
       <td>
+        <select class="form-control unit-select" name="detalles[][unidad]" data-field="unidad" data-idx="${index}"
+                style="width:80px;font-size:.8rem;padding:2px 4px;">
+          <option value="PZA"${safeUnidadVal === 'PZA' ? ' selected' : ''}>PZA (Piezas)</option>
+          <option value="GGO"${safeUnidadVal === 'GGO' ? ' selected' : ''}>GGO (Juegos)</option>
+          <option value="KIT"${safeUnidadVal === 'KIT' ? ' selected' : ''}>KIT (Kits)</option>
+          <option value="UND"${safeUnidadVal === 'UND' ? ' selected' : ''}>UND (Unidades)</option>
+        </select>
+      </td>
+      <td>
         <input class="item-input" type="number" data-field="cantidad" data-idx="${index}"
-               value="${safeCant}" min="0.0001" step="any" style="width:80px;" />
+               value="${safeCant}" min="0.0001" step="any" style="width:72px;" />
       </td>
       <td>
         <input class="item-input" type="number" data-field="precio_unitario" data-idx="${index}"
-               value="${safePrice}" min="0" step="any" style="width:110px;" />
+               value="${safePrice}" min="0" step="any" style="width:100px;" />
       </td>
       <td class="item-subtotal" data-item-subtotal="${index}">0.00</td>
+      <td>
+        <input class="item-input" type="text" data-field="tiempo_entrega" data-idx="${index}"
+               value="${safeTEnt}" placeholder="Ej: 15 días" maxlength="100"
+               style="width:100%;font-size:.8rem;" />
+      </td>
       <td>
         <button type="button" class="btn-remove-item" data-remove="${index}" title="Eliminar ítem">✕</button>
       </td>
@@ -455,23 +581,31 @@ class FormMediator {
     });
 
     // ── Part Number (Código de Parte) deduplication ─────────────────────────
-    // When the user leaves the Cód. Parte field and the typed code already
-    // exists in another row, merge the current row's quantity into that row
-    // and remove this row.  This enforces the heavy-machinery business rule:
-    //   "Multiple identical parts → single line item with summed quantity."
+    // Composite-key rule: merge only when BOTH (codigo, marca_id) match.
+    // In heavy-machinery catalogues, CAT and CUMMINS can share part numbers;
+    // those must remain as separate line items on the quotation.
     tr.querySelector('.item-codigo')?.addEventListener('blur', (e) => {
       const rawCodigo = e.target.value.trim();
       if (!rawCodigo) return;                     // blank — nothing to merge
       const normalised = rawCodigo.toUpperCase();
       const currentIdx = parseInt(e.target.dataset.idx, 10);
-      const items      = this.#subject.getItems();
 
-      // Find an existing row with the same code (case-insensitive)
+      // Retrieve a snapshot strictly from THIS form instance's Subject.
+      // getItems() returns a defensive copy — no data from any other quotation
+      // record, global array, or cached payload can ever bleed in here.
+      const items = this.#subject.getItems();
+
+      // Composite key: normalised code AND marca_id must both match.
+      // marca_id is null when no brand is selected; null === null is intentional
+      // (two unbranded rows with the same code still merge).
+      const currentMarca = items[currentIdx]?.marca_id ?? null;
+
       const dupeIdx = items.findIndex((item, i) =>
         i !== currentIdx &&
-        String(item.codigo || '').trim().toUpperCase() === normalised
+        String(item.codigo || '').trim().toUpperCase() === normalised &&
+        (item.marca_id ?? null) === currentMarca
       );
-      if (dupeIdx === -1) return;                 // unique code — no merge needed
+      if (dupeIdx === -1) return;                 // unique composite key — no merge needed
 
       // Merge: add this row's quantity to the existing row in the Subject
       const thisQty = parseFloat(items[currentIdx]?.cantidad) || 1;
@@ -482,9 +616,15 @@ class FormMediator {
       // Remove this (new) row and re-render; the dupe row will show merged qty
       this._onRemoveItem(currentIdx);
       showToast(
-        `Cód. Parte "${rawCodigo}" ya existe — cantidad fusionada: ${merged}.`,
+        `Cód. Parte "${rawCodigo}" ya existe con la misma marca — cantidad fusionada: ${merged}.`,
         'info'
       );
+    });
+
+    // Wire unit-of-measure select → Subject update
+    tr.querySelector('.unit-select')?.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.dataset.idx, 10);
+      this._onItemFieldChange(idx, 'unidad', e.target.value);
     });
 
     // Wire brand selector → Subject update
@@ -902,6 +1042,48 @@ class FormMediator {
       zone.classList.remove('dragover');
       onFile(e.dataTransfer.files[0]);
     });
+
+    // ── Excel drag-and-drop ──────────────────────────────────────────────────
+    const excelZone      = this.#container.querySelector('#excel-drop-zone');
+    const excelInput     = this.#container.querySelector('#excel-input');
+    const excelFileName  = this.#container.querySelector('#excel-file-name');
+    if (!excelZone || !excelInput) return;
+
+    const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    const onExcelFile = (file) => {
+      if (!file) return;
+      // Accept by extension (.xlsx) or declared MIME — the server re-validates via magic numbers
+      const isXlsx = file.name.toLowerCase().endsWith('.xlsx') || file.type === XLSX_MIME;
+      if (!isXlsx) {
+        showToast('Solo se aceptan archivos .xlsx (Excel OpenXML).', 'error');
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        showToast('El archivo Excel excede el tamaño máximo de 10 MB.', 'error');
+        return;
+      }
+      this.#uploadedExcel = file;
+      excelFileName.textContent = `✓ ${file.name}`;
+      excelFileName.classList.remove('hidden');
+    };
+
+    excelInput.addEventListener('change', (e) => {
+      if (e.target.files[0]) onExcelFile(e.target.files[0]);
+    });
+
+    excelZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      excelZone.classList.add('dragover');
+    });
+
+    excelZone.addEventListener('dragleave', () => excelZone.classList.remove('dragover'));
+
+    excelZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      excelZone.classList.remove('dragover');
+      onExcelFile(e.dataTransfer.files[0]);
+    });
   }
 
   // ── Private: form submission ───────────────────────────────────────────────
@@ -947,15 +1129,18 @@ class FormMediator {
 
     // Build the filtered detalles array — drop rows with no description
     const filteredDetalles = items.filter(i => i.descripcion_item?.trim()).map(i => ({
-      descripcion_item: i.descripcion_item.trim(),
-      codigo:           i.codigo ? String(i.codigo).trim() || null : null,
+      descripcion_item:   i.descripcion_item.trim(),
+      codigo:             i.codigo             ? String(i.codigo).trim()             || null : null,
+      codigo_alternativo: i.codigo_alternativo  ? String(i.codigo_alternativo).trim() || null : null,
+      unidad:             i.unidad             ? String(i.unidad).trim()             || null : null,
       // Pass the raw parsed value — do NOT fall back to 1 here.
       // A quantity of 0 is invalid (Zod rejects it as "must be greater than 0")
       // and the backend will return a descriptive 422 error.  Coercing 0 → 1
       // silently masks the input mistake and confuses the user.
-      cantidad:         parseFloat(i.cantidad),
-      precio_unitario:  parseFloat(i.precio_unitario) || 0,
-      marca_id:         i.marca_id                    || null,
+      cantidad:           parseFloat(i.cantidad),
+      precio_unitario:    parseFloat(i.precio_unitario) || 0,
+      marca_id:           i.marca_id                    || null,
+      tiempo_entrega:     i.tiempo_entrega ? String(i.tiempo_entrega).trim() || null : null,
     }));
 
     // Client-side guard: require at least one line item with a description
@@ -972,11 +1157,24 @@ class FormMediator {
       id_cliente,
       descripcion,
       fecha_emision,
-      moneda:        this.#container.querySelector('#moneda')?.value      || 'USD',
-      fecha_validez: fecha_validez || null,
-      observaciones: this.#container.querySelector('#observaciones')?.value.trim() || null,
-      monto_total:   subtotal > 0 ? subtotal : null,
-      detalles:      filteredDetalles,
+      moneda:                   this.#container.querySelector('#moneda')?.value                  || 'BOB',
+      tipo_pedido:              this.#container.querySelector('#tipo_pedido')?.value.trim()       || null,
+      fecha_validez:            fecha_validez || null,
+      observaciones:            this.#container.querySelector('#observaciones')?.value.trim()    || null,
+      tiempo_entrega:           this.#container.querySelector('#tiempo_entrega')?.value.trim()   || null,
+      monto_total:              subtotal > 0 ? subtotal : null,
+      // Solicitante block
+      solicitante_no_solicitud: this.#container.querySelector('#solicitante_no_solicitud')?.value.trim() || null,
+      solicitante_area:         this.#container.querySelector('#solicitante_area')?.value.trim()         || null,
+      solicitante_celular:      this.#container.querySelector('#solicitante_celular')?.value.trim()      || null,
+      solicitante_correo:       this.#container.querySelector('#solicitante_correo')?.value.trim()       || null,
+      // Equipo block
+      equipo_marca:             this.#container.querySelector('#equipo_marca')?.value.trim()   || null,
+      equipo_tipo:              this.#container.querySelector('#equipo_tipo')?.value.trim()    || null,
+      equipo_modelo:            this.#container.querySelector('#equipo_modelo')?.value.trim()  || null,
+      equipo_serie:             this.#container.querySelector('#equipo_serie')?.value.trim()   || null,
+      equipo_motor:             this.#container.querySelector('#equipo_motor')?.value.trim()   || null,
+      detalles:                 filteredDetalles,
     };
 
     // Disable button / show spinner
@@ -992,15 +1190,16 @@ class FormMediator {
       const response = await api.post('/api/cotizaciones', body);
       const quotation = response.data;
 
-      // Step 2 — Upload PDF if one was attached
-      if (this.#uploadedFile && quotation?.id) {
+      // Step 2 — Upload PDF and/or Excel if either was attached
+      if ((this.#uploadedFile || this.#uploadedExcel) && quotation?.id) {
         const formData = new FormData();
-        formData.append('archivo', this.#uploadedFile);
+        if (this.#uploadedFile)  formData.append('pdf',   this.#uploadedFile);
+        if (this.#uploadedExcel) formData.append('excel', this.#uploadedExcel);
         try {
-          await api.upload(`/api/cotizaciones/${quotation.id}/pdf`, formData);
-        } catch (pdfErr) {
+          await api.upload(`/api/cotizaciones/${quotation.id}/upload`, formData);
+        } catch (fileErr) {
           // Non-fatal: quotation was created; just warn the user
-          showToast(`Cotización creada, pero el PDF no pudo subirse: ${pdfErr.message}`, 'warning');
+          showToast(`Cotización creada, pero los archivos no pudieron subirse: ${fileErr.message}`, 'warning');
         }
       }
 

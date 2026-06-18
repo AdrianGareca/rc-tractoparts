@@ -89,7 +89,9 @@ const ROLE_TRANSITIONS = {
     'Aprobada internamente': ['Aceptada', 'Enviada al cliente', 'Rechazada', 'Archivada'],
     // 'Pendiente' added: allows Jefe to request changes when the quote has already
     // been sent to the client (asynchronous internal delivery model — HU-CambioPostEnvio).
-    'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Pendiente', 'Archivada'],
+    // 'En espera' added: Jefe may suspend a delivered quotation while waiting for
+    // client confirmation or external factors (HU-EsperaPostEnvio).
+    'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
     // Rechazada → can be reverted to Pendiente OR En revision by high-privilege roles
     // (HU-Revertir: allows re-injecting into the approval queue after sudden business changes)
     Rechazada:               ['Pendiente', 'En revision', 'Aprobada internamente', 'Archivada'],
@@ -284,9 +286,12 @@ const QuotationModel = {
     const sql = `
       INSERT INTO cotizaciones
         (numero_correlativo, id_cliente, id_ejecutivo, descripcion,
-         monto_total, moneda, estado, observaciones, fecha_emision, fecha_validez)
+         monto_total, moneda, estado, observaciones, fecha_emision, fecha_validez,
+         tipo_pedido, tiempo_entrega,
+         solicitante_no_solicitud, solicitante_area, solicitante_celular, solicitante_correo,
+         equipo_marca, equipo_tipo, equipo_modelo, equipo_serie, equipo_motor)
       VALUES
-        (?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const [result] = await connection.execute(sql, [
@@ -294,11 +299,22 @@ const QuotationModel = {
       data.id_cliente,
       data.id_ejecutivo,
       data.descripcion,
-      data.monto_total   || null,
-      data.moneda        || 'USD',
-      data.observaciones || null,
+      data.monto_total              || null,
+      data.moneda                   || 'BOB',
+      data.observaciones            || null,
       data.fecha_emision,
-      data.fecha_validez || null,
+      data.fecha_validez            || null,
+      data.tipo_pedido              || null,
+      data.tiempo_entrega           || null,
+      data.solicitante_no_solicitud || null,
+      data.solicitante_area         || null,
+      data.solicitante_celular      || null,
+      data.solicitante_correo       || null,
+      data.equipo_marca             || null,
+      data.equipo_tipo              || null,
+      data.equipo_modelo            || null,
+      data.equipo_serie             || null,
+      data.equipo_motor             || null,
     ]);
 
     return result.insertId;
@@ -310,8 +326,8 @@ const QuotationModel = {
   async createDetalles(connection, id_cotizacion, detalles) {
     if (!detalles || detalles.length === 0) return;
 
-    // 8 bound params per row: added codigo_parte for Part Number storage
-    const placeholders = detalles.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+    // 11 bound params per row
+    const placeholders = detalles.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
 
     const values = detalles.flatMap((item) => {
       const subtotal = parseFloat(
@@ -320,6 +336,15 @@ const QuotationModel = {
       // Truncate codigo to 50 chars max (mirrors VARCHAR(50) DB column)
       const codigoParte = item.codigo
         ? String(item.codigo).trim().substring(0, 50) || null
+        : null;
+      const codigoAlt = item.codigo_alternativo
+        ? String(item.codigo_alternativo).trim().substring(0, 100) || null
+        : null;
+      const unidad = item.unidad
+        ? String(item.unidad).trim().substring(0, 20) || 'UND'
+        : 'UND';
+      const tiempoEntrega = item.tiempo_entrega
+        ? String(item.tiempo_entrega).trim().substring(0, 100) || null
         : null;
       return [
         id_cotizacion,
@@ -330,12 +355,16 @@ const QuotationModel = {
         subtotal,
         item.marca_id       || null,
         codigoParte,
+        codigoAlt,
+        unidad,
+        tiempoEntrega,
       ];
     });
 
     await connection.execute(
       `INSERT INTO cotizacion_detalles
-         (id_cotizacion, id_producto, descripcion_item, cantidad, precio_unitario, subtotal, marca_id, codigo_parte)
+         (id_cotizacion, id_producto, descripcion_item, cantidad, precio_unitario, subtotal,
+          marca_id, codigo_parte, codigo_alternativo, unidad, tiempo_entrega)
        VALUES ${placeholders}`,
       values
     );
@@ -352,6 +381,9 @@ const QuotationModel = {
         c.id_cliente,
         cl.razon_social    AS cliente_nombre,
         cl.nit             AS cliente_nit,
+        cl.telefono        AS cliente_tel,
+        cl.direccion       AS cliente_dir,
+        cl.ciudad          AS cliente_ciudad,
         c.id_ejecutivo,
         u.nombre_completo   AS ejecutivo_nombre,
         c.descripcion,
@@ -359,6 +391,9 @@ const QuotationModel = {
         c.moneda,
         c.estado,
         c.pdf_ruta,
+        c.excel_ruta,
+        c.tipo_pedido,
+        c.tiempo_entrega,
         c.observaciones,
         c.fecha_emision,
         c.fecha_validez,
@@ -367,6 +402,15 @@ const QuotationModel = {
         c.fecha_aprobacion,
         c.obs_aprobacion,
         c.comentarios_admin,
+        c.solicitante_no_solicitud AS nro_solicitud,
+        c.solicitante_area         AS area_sol,
+        c.solicitante_celular      AS celular_sol,
+        c.solicitante_correo       AS correo_sol,
+        c.equipo_marca,
+        c.equipo_tipo,
+        c.equipo_modelo,
+        c.equipo_serie,
+        c.equipo_motor,
         c.creado_en,
         c.actualizado_en
       FROM cotizaciones c
@@ -375,9 +419,23 @@ const QuotationModel = {
       LIMIT 1
     `;
 
-    const [headerRows] = await pool.execute(sqlHeader, [id]);
-    if (!headerRows[0]) return null;
+    // Graceful degradation: if excel_ruta is absent on a legacy DB, retry
+    // with NULL so downstream code (PDF/Excel button rendering) degrades
+    // cleanly instead of crashing the entire detail view.
+    let headerRows;
+    try {
+      [headerRows] = await pool.execute(sqlHeader, [id]);
+    } catch (err) {
+      if (err.message && err.message.includes("Unknown column 'c.excel_ruta'")) {
+        console.warn('[QuotationModel.findById] excel_ruta column missing — retrying without it.');
+        const fallbackSql = sqlHeader.replace('        c.excel_ruta,\n', '        NULL AS excel_ruta,\n');
+        [headerRows] = await pool.execute(fallbackSql, [id]);
+      } else {
+        throw err;
+      }
+    }
 
+    if (!headerRows[0]) return null;
     const quotation = headerRows[0];
 
     const sqlDetalles = `
@@ -386,6 +444,9 @@ const QuotationModel = {
         d.id_producto,
         p.codigo          AS producto_codigo,
         d.codigo_parte,
+        d.codigo_alternativo,
+        d.unidad,
+        d.tiempo_entrega,
         d.descripcion_item,
         d.cantidad,
         d.precio_unitario,
@@ -417,6 +478,21 @@ const QuotationModel = {
   },
 
   // ---------------------------------------------------------------------------
+  // updateExcelPath — Persist the relative file path of the linked Excel sheet.
+  // Pass null to clear an existing reference.
+  // @param {number}      id        - Quotation primary key
+  // @param {string|null} excelRuta - Relative path or null
+  // @returns {boolean}             - true if the row was updated
+  // ---------------------------------------------------------------------------
+  async updateExcelPath(id, excelRuta) {
+    const [result] = await pool.execute(
+      'UPDATE cotizaciones SET excel_ruta = ? WHERE id = ?',
+      [excelRuta || null, id]
+    );
+    return result.affectedRows > 0;
+  },
+
+  // ---------------------------------------------------------------------------
   // updateComentarioAdmin — Persist the Administracion supervisor review comment.
   // Called both standalone (PATCH endpoint) and together with a state transition.
   // @param {number} id        - Quotation primary key
@@ -435,12 +511,15 @@ const QuotationModel = {
   // checkDuplicate — RF06: detect similar quotations within 30 days.
   // ---------------------------------------------------------------------------
   async checkDuplicate(id_cliente, descripcion) {
-    const descSnippet = descripcion.substring(0, 50);
+    // Escape LIKE metacharacters so user-supplied text (e.g. "50% off", "item_1")
+    // does not silently expand into a wildcard and produce false positives.
+    const escapeLike = (s) => s.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+    const descSnippet = escapeLike(descripcion.substring(0, 50));
     const [rows] = await pool.execute(
       `SELECT id, numero_correlativo, fecha_emision, estado
        FROM cotizaciones
        WHERE id_cliente = ?
-         AND descripcion  LIKE ?
+         AND descripcion  LIKE ? ESCAPE '\\\\'
          AND fecha_emision >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
        LIMIT 5`,
       [id_cliente, `%${descSnippet}%`]
@@ -470,7 +549,14 @@ const QuotationModel = {
 
     const { clause: whereClause, values: whereValues } = _buildWhereClause(filters);
 
-    const sql = `
+    // Primary query: includes excel_ruta column (present in all up-to-date schemas).
+    // If the column does not yet exist on a legacy staging database that has not
+    // been migrated, MySQL throws "Unknown column 'c.excel_ruta' in 'field list'".
+    // The catch block detects this specific error and retries with a fallback query
+    // that omits the column, mapping tiene_excel to a constant FALSE so callers
+    // receive a consistent row shape. Run the ALTER TABLE migration in init.sql to
+    // permanently resolve the issue on any affected database instance.
+    const buildSql = (includeExcel) => `
       SELECT
         c.id,
         c.numero_correlativo,
@@ -482,7 +568,10 @@ const QuotationModel = {
         c.monto_total,
         c.moneda,
         c.estado,
-        c.pdf_ruta IS NOT NULL AS tiene_pdf,
+        c.pdf_ruta   IS NOT NULL AS tiene_pdf,
+        ${includeExcel
+          ? 'c.excel_ruta IS NOT NULL AS tiene_excel,'
+          : 'FALSE                    AS tiene_excel,'}
         c.fecha_emision,
         c.fecha_validez,
         c.aprobado_por,
@@ -501,8 +590,20 @@ const QuotationModel = {
     // mysql2 v3 prepared statements mistype them as DOUBLE, causing
     // "Incorrect arguments to mysqld_stmt_execute". Both values are
     // validated integers (Math.min / Math.max / parseInt) so this is safe.
-    const [rows] = await pool.execute(sql, whereValues);
-    return rows;
+    try {
+      const [rows] = await pool.execute(buildSql(true), whereValues);
+      return rows;
+    } catch (err) {
+      // Graceful degradation: if the column is absent on a legacy DB, retry
+      // without it so the rest of the application continues to function.
+      if (err.message && err.message.includes("Unknown column 'c.excel_ruta'")) {
+        console.warn('[QuotationModel.findAll] excel_ruta column missing — retrying without it. ' +
+          'Run the ALTER TABLE migration in init.sql to fix this permanently.');
+        const [rows] = await pool.execute(buildSql(false), whereValues);
+        return rows;
+      }
+      throw err;
+    }
   },
 
   // ---------------------------------------------------------------------------
@@ -963,6 +1064,75 @@ const QuotationModel = {
   },
 
   // ---------------------------------------------------------------------------
+  // insertNotificacion — Writes a targeted notification into the `notificaciones`
+  // table. Called after Jefe approves ('Aprobada internamente') or sends the
+  // quotation to the client ('Enviada al cliente'). Non-fatal: callers wrap in
+  // try/catch so an INSERT failure never rolls back the main state transition.
+  //
+  // @param {Object} params
+  //   id_usuario     {number}  — Recipient Ejecutivo's user ID
+  //   id_cotizacion  {number}  — Quotation primary key
+  //   tipo           {string}  — 'aprobacion' | 'envio_cliente'
+  //   mensaje        {string}  — Human-readable message for the Ejecutivo
+  // ---------------------------------------------------------------------------
+  async insertNotificacion({ id_usuario, id_cotizacion, tipo, mensaje }) {
+    await pool.execute(
+      `INSERT INTO notificaciones (id_usuario, id_cotizacion, tipo, mensaje)
+       VALUES (?, ?, ?, ?)`,
+      [
+        parseInt(id_usuario,    10),
+        parseInt(id_cotizacion, 10),
+        tipo,
+        String(mensaje).substring(0, 1000), // cap to prevent runaway payloads
+      ]
+    );
+  },
+
+  // ---------------------------------------------------------------------------
+  // findNotificacionesEjecutivo — Returns all unread notifications from the
+  // `notificaciones` table that target the given Ejecutivo. Shapes each row to
+  // match the field names expected by getNotificaciones / notificationsView.js
+  // so the frontend can render both correction and approval alerts uniformly.
+  // ---------------------------------------------------------------------------
+  async findNotificacionesEjecutivo(id_ejecutivo) {
+    const sql = `
+      SELECT
+        n.id                AS notificacion_id,
+        n.tipo,
+        n.mensaje           AS observacion,
+        n.creado_en         AS fecha_solicitud,
+        c.id                AS id_cotizacion,
+        c.numero_correlativo,
+        cl.razon_social     AS cliente_nombre,
+        u.nombre_completo   AS solicitado_por,
+        u.nombre_completo   AS rol_solicitante
+      FROM notificaciones n
+      INNER JOIN cotizaciones c  ON c.id  = n.id_cotizacion
+      INNER JOIN clientes    cl  ON cl.id = c.id_cliente
+      INNER JOIN usuarios    u   ON u.id  = c.id_ejecutivo
+      WHERE n.id_usuario = ?
+        AND n.leida      = 0
+      ORDER BY n.creado_en DESC
+    `;
+
+    const [rows] = await pool.execute(sql, [parseInt(id_ejecutivo, 10)]);
+    return rows;
+  },
+
+  // ---------------------------------------------------------------------------
+  // markNotificacionesLeidas — Marks all unread notifications for a given
+  // Ejecutivo as read. Called when the Ejecutivo opens the notification modal
+  // so the badge count resets after they have acknowledged the alerts.
+  // ---------------------------------------------------------------------------
+  async markNotificacionesLeidas(id_ejecutivo) {
+    await pool.execute(
+      `UPDATE notificaciones SET leida = 1
+       WHERE id_usuario = ? AND leida = 0`,
+      [parseInt(id_ejecutivo, 10)]
+    );
+  },
+
+  // ---------------------------------------------------------------------------
   // getProgreso — Monthly analytics for Jefe / SysAdmin performance dashboard.
   // Returns three data sets in a single DB round-trip:
   //   1. total_mes_usd     — Sum of monto_total (USD) for the current month
@@ -1026,6 +1196,121 @@ const QuotationModel = {
         ratio_pct:        total > 0 ? ((aceptadas / total) * 100).toFixed(1) : '0.0',
       },
       por_ejecutivo: porEjecutivoRows,
+    };
+  },
+
+  // ===========================================================================
+  // getAdvancedReports — Deep business intelligence metrics (HU-BI01)
+  //
+  // Returns two analytics datasets shaped for the frontend BI dashboard:
+  //   • top_clientes     — Top 10 clients ranked by accepted/sent revenue
+  //   • leaderboard      — Per-executive leaderboard (all-time)
+  //
+  // Row-Level Security:
+  //   When ejecutivoId is supplied (non-null), ALL queries are filtered to
+  //   that specific ejecutivo only — no aggregate company-wide data leaks to
+  //   executives. Managers (null ejecutivoId) receive the full company view.
+  //
+  // @param {number|null} ejecutivoId — Pass req.user.id for Ejecutivo role,
+  //                                    null for Jefe / Administracion / SysAdmin.
+  // ===========================================================================
+  async getAdvancedReports(ejecutivoId = null) {
+    const isEjecutivo = ejecutivoId != null;
+
+    // ── Top 10 Clients ──────────────────────────────────────────────────────
+    // For Jefe/Admin: company-wide, all executives.
+    // For Ejecutivo: restricted to their own accepted/sent quotations.
+    const topClientesSql = isEjecutivo
+      ? `
+        SELECT
+          cl.razon_social                               AS cliente,
+          cl.nit                                        AS nit,
+          COUNT(c.id)                                   AS proformas_emitidas,
+          SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END) AS total_usd,
+          SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END) AS total_bob
+        FROM cotizaciones c
+        INNER JOIN clientes cl ON cl.id = c.id_cliente
+        WHERE c.estado IN ('Aceptada', 'Enviada al cliente')
+          AND c.id_ejecutivo = ?
+        GROUP BY c.id_cliente, cl.razon_social, cl.nit
+        ORDER BY total_usd DESC
+        LIMIT 10`
+      : `
+        SELECT
+          cl.razon_social                               AS cliente,
+          cl.nit                                        AS nit,
+          COUNT(c.id)                                   AS proformas_emitidas,
+          SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END) AS total_usd,
+          SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END) AS total_bob
+        FROM cotizaciones c
+        INNER JOIN clientes cl ON cl.id = c.id_cliente
+        WHERE c.estado IN ('Aceptada', 'Enviada al cliente')
+        GROUP BY c.id_cliente, cl.razon_social, cl.nit
+        ORDER BY total_usd DESC
+        LIMIT 10`;
+
+    const topClientesParams = isEjecutivo ? [ejecutivoId] : [];
+    const [topClientesRows] = await pool.execute(topClientesSql, topClientesParams);
+
+    // ── Executive Leaderboard ───────────────────────────────────────────────
+    // Aggregates all-time: total created, total approved by Jefe, total revenue.
+    // When the caller is an Ejecutivo, the leaderboard is scoped to themselves
+    // (returns a single-row personal summary rather than a company leaderboard).
+    const leaderboardSql = isEjecutivo
+      ? `
+        SELECT
+          u.nombre_completo                                                AS ejecutivo,
+          COUNT(c.id)                                                      AS total_creadas,
+          SUM(CASE WHEN c.estado IN ('Aprobada internamente',
+                                     'Enviada al cliente',
+                                     'Aceptada')         THEN 1 ELSE 0 END) AS total_aprobadas,
+          SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END)   AS total_usd,
+          SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END)   AS total_bob
+        FROM cotizaciones c
+        INNER JOIN usuarios u ON u.id = c.id_ejecutivo
+        WHERE c.id_ejecutivo = ?
+        GROUP BY c.id_ejecutivo, u.nombre_completo`
+      : `
+        SELECT
+          u.nombre_completo                                                AS ejecutivo,
+          COUNT(c.id)                                                      AS total_creadas,
+          SUM(CASE WHEN c.estado IN ('Aprobada internamente',
+                                     'Enviada al cliente',
+                                     'Aceptada')         THEN 1 ELSE 0 END) AS total_aprobadas,
+          SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END)   AS total_usd,
+          SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END)   AS total_bob
+        FROM cotizaciones c
+        INNER JOIN usuarios u ON u.id = c.id_ejecutivo
+        GROUP BY c.id_ejecutivo, u.nombre_completo
+        ORDER BY total_usd DESC`;
+
+    const leaderboardParams = isEjecutivo ? [ejecutivoId] : [];
+    const [leaderboardRows] = await pool.execute(leaderboardSql, leaderboardParams);
+
+    // Post-process leaderboard: compute approval rate safely (avoid / 0)
+    const leaderboard = leaderboardRows.map((row) => {
+      const creadas    = parseInt(row.total_creadas   || 0, 10);
+      const aprobadas  = parseInt(row.total_aprobadas || 0, 10);
+      const tasa       = creadas > 0 ? ((aprobadas / creadas) * 100).toFixed(1) : '0.0';
+      return {
+        ejecutivo:      row.ejecutivo,
+        total_creadas:  creadas,
+        total_aprobadas: aprobadas,
+        tasa_aprobacion: tasa,
+        total_usd:      parseFloat(row.total_usd || 0).toFixed(2),
+        total_bob:      parseFloat(row.total_bob || 0).toFixed(2),
+      };
+    });
+
+    return {
+      top_clientes: topClientesRows.map((r) => ({
+        cliente:           r.cliente,
+        nit:               r.nit ?? '—',
+        proformas_emitidas: parseInt(r.proformas_emitidas || 0, 10),
+        total_usd:         parseFloat(r.total_usd || 0).toFixed(2),
+        total_bob:         parseFloat(r.total_bob || 0).toFixed(2),
+      })),
+      leaderboard,
     };
   },
 

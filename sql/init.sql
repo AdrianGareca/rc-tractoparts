@@ -139,6 +139,10 @@ CREATE TABLE clientes (
   contacto     VARCHAR(100) DEFAULT NULL,
   email        VARCHAR(120) DEFAULT NULL,
   telefono     VARCHAR(30)  DEFAULT NULL,
+  direccion    VARCHAR(200) DEFAULT NULL
+    COMMENT 'Dirección postal o comercial del cliente',
+  ciudad       VARCHAR(100) DEFAULT NULL
+    COMMENT 'Ciudad donde opera el cliente',
   activo       TINYINT(1)   NOT NULL DEFAULT 1,
   creado_en    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -202,6 +206,12 @@ CREATE TABLE cotizaciones (
                        'Archivada'
                      ) NOT NULL DEFAULT 'Pendiente',
   pdf_ruta           VARCHAR(500)  DEFAULT NULL,
+  excel_ruta         VARCHAR(500)  DEFAULT NULL
+    COMMENT 'Relative path to the uploaded Excel spreadsheet; NULL when not yet generated',
+  tipo_pedido        VARCHAR(50)   DEFAULT NULL
+    COMMENT 'Tipo o canal del pedido (ej. EMAIL, PRESENCIAL, TELÉFONO) — aparece en el box de metadatos del PDF',
+  tiempo_entrega     VARCHAR(100)  DEFAULT NULL
+    COMMENT 'Tiempo estimado de entrega global de la cotización (ej. 25 DÍAS CALENDARIO)',
   observaciones      TEXT          DEFAULT NULL,
   fecha_emision      DATE          NOT NULL,
   fecha_validez      DATE          DEFAULT NULL,
@@ -210,6 +220,26 @@ CREATE TABLE cotizaciones (
   obs_aprobacion     TEXT          DEFAULT NULL,
   comentarios_admin  TEXT          DEFAULT NULL
     COMMENT 'Supervisor review comment written by Administracion role',
+  -- Requester block (physical sheet: DATOS DEL SOLICITANTE)
+  solicitante_no_solicitud VARCHAR(100)  DEFAULT NULL
+    COMMENT 'Nº de Solicitud / Nº de OC del solicitante interno',
+  solicitante_area         VARCHAR(100)  DEFAULT NULL
+    COMMENT 'Área o departamento del solicitante',
+  solicitante_celular      VARCHAR(30)   DEFAULT NULL
+    COMMENT 'Número de celular del solicitante',
+  solicitante_correo       VARCHAR(120)  DEFAULT NULL
+    COMMENT 'Correo electrónico del solicitante',
+  -- Equipment block (physical sheet: DATOS DEL EQUIPO)
+  equipo_marca             VARCHAR(80)   DEFAULT NULL
+    COMMENT 'Marca del equipo/maquinaria a reparar',
+  equipo_tipo              VARCHAR(80)   DEFAULT NULL
+    COMMENT 'Tipo de equipo (ej. Excavadora, Cargador Frontal)',
+  equipo_modelo            VARCHAR(80)   DEFAULT NULL
+    COMMENT 'Modelo del equipo',
+  equipo_serie             VARCHAR(80)   DEFAULT NULL
+    COMMENT 'Número de serie del equipo',
+  equipo_motor             VARCHAR(80)   DEFAULT NULL
+    COMMENT 'Número de motor del equipo',
   creado_en          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   actualizado_en     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -248,6 +278,12 @@ CREATE TABLE cotizacion_detalles (
     COMMENT 'Stored computed value (cantidad × precio_unitario) — immutable for financial audit.',
   codigo_parte     VARCHAR(50)    NULL
     COMMENT 'Manufacturer Part Number — ad-hoc when id_producto is NULL; mirrors productos.codigo when set.',
+  codigo_alternativo VARCHAR(100)  NULL
+    COMMENT 'Código alternativo del fabricante o código cruzado para la línea — aparece en columna PDF.',
+  unidad           VARCHAR(20)    NOT NULL DEFAULT 'UND'
+    COMMENT 'Unidad de medida del ítem (UND, KG, M, etc.).',
+  tiempo_entrega   VARCHAR(100)   NULL
+    COMMENT 'Tiempo de entrega específico para esta línea (ej. 15 DÍAS HÁBILES).',
   marca_id         INT UNSIGNED   NULL
     COMMENT 'FK to marcas.id — NULL means no brand assigned or brand was deleted.',
   -- Multi-quantity rows for the same codigo_parte are fully supported: no
@@ -320,6 +356,70 @@ CREATE TABLE cotizacion_historial_estados (
     FOREIGN KEY (id_cotizacion) REFERENCES cotizaciones (id) ON DELETE CASCADE  ON UPDATE CASCADE,
   CONSTRAINT fk_historial_usuario
     FOREIGN KEY (id_usuario)    REFERENCES usuarios      (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------------
+-- notificaciones — Targeted in-app notifications for the Ejecutivo feed.
+--
+-- Populated by the backend when the Jefe approves a quotation
+-- (estado → 'Aprobada internamente') or marks it 'Enviada al cliente'.
+-- The Ejecutivo polling endpoint reads from this table to surface the badge.
+--
+-- leida = 0 (unread) | 1 (read). The badge count reflects unread rows only.
+-- ---------------------------------------------------------------------------
+CREATE TABLE notificaciones (
+  id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_usuario      INT UNSIGNED NOT NULL,           -- recipient Ejecutivo
+  id_cotizacion   INT UNSIGNED NOT NULL,
+  tipo            ENUM('correccion','aprobacion','envio_cliente') NOT NULL DEFAULT 'aprobacion',
+  mensaje         TEXT         NOT NULL,
+  leida           TINYINT(1)   NOT NULL DEFAULT 0,
+  creado_en       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_notif_usuario_leida (id_usuario, leida),
+  CONSTRAINT fk_notif_usuario
+    FOREIGN KEY (id_usuario)    REFERENCES usuarios    (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_notif_cotizacion
+    FOREIGN KEY (id_cotizacion) REFERENCES cotizaciones (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =============================================================================
+-- 12. DELEGACIONES_ROL — Temporal Role Delegation
+--
+-- Allows a Jefe to temporarily grant their approval authority to another user
+-- (typically an Ejecutivo or Administracion member) while travelling.
+--
+-- The backend checks for an active delegation (activo = 1 AND NOW() BETWEEN
+-- fecha_inicio AND fecha_fin) before authorising approval operations.
+-- The id_usuario_jefe column is the source of truth: it records WHO delegated,
+-- so that every approval made by the delegado is traceable back to the Jefe.
+--
+-- Business rules:
+--   • Only one active delegation per delegado is honoured at a time (LIMIT 1).
+--   • fecha_fin must be strictly after fecha_inicio (enforced at application layer).
+--   • Deactivating a delegation (activo = 0) is an immediate hard-stop with no
+--     grace period; the delegado loses Jefe-level authority on the next request.
+-- =============================================================================
+
+CREATE TABLE delegaciones_rol (
+  id                   INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_usuario_jefe      INT UNSIGNED NOT NULL
+    COMMENT 'The Jefe who is granting delegation authority',
+  id_usuario_delegado  INT UNSIGNED NOT NULL
+    COMMENT 'The user receiving temporary Jefe-level authority',
+  fecha_inicio         DATETIME     NOT NULL
+    COMMENT 'Moment from which the delegation becomes effective (inclusive)',
+  fecha_fin            DATETIME     NOT NULL
+    COMMENT 'Moment at which the delegation expires (inclusive)',
+  activo               TINYINT(1)   NOT NULL DEFAULT 1
+    COMMENT '1 = active; set to 0 to immediately revoke without deleting the record',
+  creado_en            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_deleg_delegado_activo (id_usuario_delegado, activo),
+  CONSTRAINT fk_deleg_jefe
+    FOREIGN KEY (id_usuario_jefe)     REFERENCES usuarios (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_deleg_delegado
+    FOREIGN KEY (id_usuario_delegado) REFERENCES usuarios (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;

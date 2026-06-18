@@ -48,10 +48,18 @@ const detalleItemSchema = z.object({
   // Manufacturer Part Number (Código de Parte).
   // Optional: present when the technician knows the exact part code.
   // Stored in cotizacion_detalles.codigo_parte (VARCHAR 50).
-  // Multiple rows with the same codigo in one request are valid — the
-  // front-end merges them into a single row with a summed quantity; the
-  // backend imposes no unique constraint on this column so there are no
-  // duplicate-key errors regardless of how many identical codes are sent.
+  //
+  // Deduplication uses a COMPOSITE KEY of (codigo, marca_id).
+  // This is a CLIENT-SIDE concern: the quotation form only merges rows when
+  // BOTH the part code AND the selected brand are identical within the same
+  // editing session. The backend imposes NO unique constraint on (codigo_parte,
+  // marca_id) within a cotizacion, because:
+  //   • Different brands (e.g. CAT vs CUMMINS) may share part numbers — those
+  //     must be stored as separate line items.
+  //   • Each detalle row is validated independently; every INSERT is scoped
+  //     exclusively to the cotizacion_id of the current transaction.
+  //   • Multiple rows with the same codigo but different marca_id in a single
+  //     request are explicitly VALID and expected.
   codigo: z
     .string({ invalid_type_error: 'codigo must be a string.' })
     .trim()
@@ -79,6 +87,30 @@ const detalleItemSchema = z.object({
     .number({ invalid_type_error: 'marca_id must be a number.' })
     .int('marca_id must be an integer.')
     .positive('marca_id must be a positive integer.')
+    .optional()
+    .nullable(),
+
+  // Alternate / cross-reference part code (PDF column: CODIGO ALTERNATIVO)
+  codigo_alternativo: z
+    .string({ invalid_type_error: 'codigo_alternativo must be a string.' })
+    .trim()
+    .max(100, 'codigo_alternativo must not exceed 100 characters.')
+    .optional()
+    .nullable(),
+
+  // Unit of measure for this line item (PDF column: UNI)
+  unidad: z
+    .string({ invalid_type_error: 'unidad must be a string.' })
+    .trim()
+    .max(20, 'unidad must not exceed 20 characters.')
+    .optional()
+    .nullable(),
+
+  // Delivery time for this specific line (PDF column: TIEMPO DE ENTREGA)
+  tiempo_entrega: z
+    .string({ invalid_type_error: 'tiempo_entrega must be a string.' })
+    .trim()
+    .max(100, 'tiempo_entrega must not exceed 100 characters.')
     .optional()
     .nullable(),
 });
@@ -121,12 +153,109 @@ const createQuotationSchema = z.object({
     .refine((v) => VALID_CURRENCIES.includes(v), {
       message: `moneda must be one of: ${VALID_CURRENCIES.join(', ')}.`,
     })
-    .default('USD'),
+    // Bolivia operates natively in Bolivianos. Executives pre-calculate all
+    // prices in Excel in BOB. USD is still accepted for multi-currency records
+    // but must be explicit — defaulting to BOB prevents silent currency errors.
+    .default('BOB'),
 
   observaciones: z
     .string()
     .trim()
     .max(2000, 'observaciones must not exceed 2000 characters.')
+    .optional()
+    .nullable(),
+
+  // ---------------------------------------------------------------------------
+  // Requester block — DATOS DEL SOLICITANTE (physical sheet)
+  // ---------------------------------------------------------------------------
+  solicitante_no_solicitud: z
+    .string()
+    .trim()
+    .max(100, 'solicitante_no_solicitud must not exceed 100 characters.')
+    .optional()
+    .nullable(),
+
+  solicitante_area: z
+    .string()
+    .trim()
+    .max(100, 'solicitante_area must not exceed 100 characters.')
+    .optional()
+    .nullable(),
+
+  solicitante_celular: z
+    .string()
+    .trim()
+    .max(30, 'solicitante_celular must not exceed 30 characters.')
+    .optional()
+    .nullable(),
+
+  solicitante_correo: z
+    .string()
+    .trim()
+    .email('solicitante_correo must be a valid email address.')
+    .max(120, 'solicitante_correo must not exceed 120 characters.')
+    .optional()
+    .nullable(),
+
+  // ---------------------------------------------------------------------------
+  // Equipment block — DATOS DEL EQUIPO (physical sheet)
+  // ---------------------------------------------------------------------------
+  equipo_marca: z
+    .string()
+    .trim()
+    .max(80, 'equipo_marca must not exceed 80 characters.')
+    .optional()
+    .nullable(),
+
+  equipo_tipo: z
+    .string()
+    .trim()
+    .max(80, 'equipo_tipo must not exceed 80 characters.')
+    .optional()
+    .nullable(),
+
+  equipo_modelo: z
+    .string()
+    .trim()
+    .max(80, 'equipo_modelo must not exceed 80 characters.')
+    .optional()
+    .nullable(),
+
+  // Equipment serial number — fully optional; empty string is treated as absent.
+  equipo_serie: z.preprocess(
+    v => (v === '' ? null : v),
+    z.string()
+      .trim()
+      .max(80, 'equipo_serie must not exceed 80 characters.')
+      .nullable()
+      .optional()
+  ),
+
+  // Engine number — fully optional; empty string is treated as absent.
+  equipo_motor: z.preprocess(
+    v => (v === '' ? null : v),
+    z.string()
+      .trim()
+      .max(80, 'equipo_motor must not exceed 80 characters.')
+      .nullable()
+      .optional()
+  ),
+
+  // ---------------------------------------------------------------------------
+  // Quotation metadata fields (physical sheet metadata box)
+  // ---------------------------------------------------------------------------
+  tipo_pedido: z
+    .string()
+    .trim()
+    .max(50, 'tipo_pedido must not exceed 50 characters.')
+    .optional()
+    .nullable(),
+
+  // General delivery time for the entire quotation (appears in CONDICIONES block)
+  tiempo_entrega: z
+    .string()
+    .trim()
+    .max(100, 'tiempo_entrega must not exceed 100 characters.')
     .optional()
     .nullable(),
 

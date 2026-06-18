@@ -19,12 +19,15 @@ const ClientModel = {
   // Used by the frontend autocomplete dropdown.
   // ---------------------------------------------------------------------------
   async search(q = '') {
-    const like = `%${String(q).trim()}%`;
+    // Escape LIKE metacharacters so autocomplete queries like "50%" or "item_1"
+    // do not silently expand into SQL wildcards and over-match.
+    const escaped = String(q).trim().replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+    const like = `%${escaped}%`;
     const [rows] = await pool.execute(
       `SELECT id, razon_social, nit, contacto, email, telefono
          FROM clientes
         WHERE activo = 1
-          AND (razon_social LIKE ? OR nit LIKE ?)
+          AND (razon_social LIKE ? ESCAPE '\\\\' OR nit LIKE ? ESCAPE '\\\\')
         ORDER BY razon_social ASC
         LIMIT 20`,
       [like, like]

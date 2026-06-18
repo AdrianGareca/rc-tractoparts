@@ -139,10 +139,13 @@ const swaggerOptions = {
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'JWT',
-          description: 'Introduce tu token JWT en el formato: Bearer <token>',
+          description: 'Introduce tu token JWT. Pega SOLO el token sin el prefijo "Bearer".',
         },
       },
     },
+    // Apply bearerAuth globally so every endpoint shows the padlock icon
+    // and Swagger UI automatically injects the Authorization header.
+    security: [{ bearerAuth: [] }],
   },
   apis: [
     path.join(__dirname, 'routes', '*.js').replace(/\\/g, '/'),

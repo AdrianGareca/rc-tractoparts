@@ -41,7 +41,10 @@ function authorize(allowedRoles) {
       });
     }
 
-    const userRole = req.user.rol; // e.g. "Ejecutivo", "Administracion", "Jefe"
+    // Use the effective role if resolveDelegacion has already promoted it
+    // (e.g. a delegated Ejecutivo acting with temporary Jefe authority).
+    // Fall back to the token role when the delegation middleware was not run.
+    const userRole = req.user.rol_efectivo || req.user.rol;
 
     // Check whether the authenticated user's role is in the allowed list
     if (!allowedRoles.includes(userRole)) {

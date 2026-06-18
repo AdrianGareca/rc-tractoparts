@@ -30,101 +30,14 @@ import AuthSession           from '../services/authSession.js';
 import api, { showToast }   from '../services/apiClient.js';
 import { mountQuotationForm } from './quotationForm.js';
 
-// ─── Status helpers ───────────────────────────────────────────────────────────
-
-const STATE_BADGE = {
-  'Borrador':              'badge-borrador',
-  'Pendiente':             'badge-pendiente',
-  'En revision':           'badge-en-revision',
-  'En espera':             'badge-en-espera',
-  'Aprobada internamente': 'badge-aprobada',
-  'Enviada al cliente':    'badge-enviada',
-  'Aceptada':              'badge-aceptada',
-  'Rechazada':             'badge-rechazada',
-  'Archivada':             'badge-archivada',
-};
-
-const ROLE_BADGE = {
-  'Jefe':           'badge-role-jefe',
-  'Ejecutivo':      'badge-role-ejecutivo',
-  'Administracion': 'badge-role-admin',
-  'SysAdmin':       'badge-role-sysadmin',
-};
-
-const STAT_COLOR = {
-  'Pendiente':             '#F59E0B',
-  'En revision':           '#F97316',
-  'En espera':             '#6366F1',
-  'Aprobada internamente': '#10B981',
-  'Enviada al cliente':    '#3B82F6',
-  'Aceptada':              '#8B5CF6',
-  'Rechazada':             '#EF4444',
-};
-
-function badgeHtml(estado) {
-  const cls = STATE_BADGE[estado] ?? 'badge-borrador';
-  return `<span class="badge ${cls}">${estado}</span>`;
-}
-
-function roleBadgeHtml(rol) {
-  const cls = ROLE_BADGE[rol] ?? '';
-  return `<span class="badge ${cls}">${rol}</span>`;
-}
-
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return iso.slice(0, 10);
-}
-
-/**
- * escHtml — HTML-entity-encode a value before interpolating into innerHTML.
- * Prevents stored-XSS when rendering user-controlled strings (OWASP A03).
- * @param   {any} str  - Value to encode (null/undefined become empty string)
- * @returns {string}
- */
-function escHtml(str) {
-  if (str == null) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function fmtAmount(n, currency = 'USD') {
-  if (n == null) return '—';
-  return `${currency} ${Number(n).toFixed(2)}`;
-}
-
-// ---------------------------------------------------------------------------
-// _wirePdfButton
-// Attaches an authenticated PDF fetch handler to the #btn-ver-pdf button
-// rendered inside a modal body. Uses apiClient (which injects the Bearer
-// token) instead of a plain anchor navigation that would strip the header.
-// ---------------------------------------------------------------------------
-function _wirePdfButton(body, id) {
-  const btn = body.querySelector('#btn-ver-pdf');
-  if (!btn) return;
-  btn.addEventListener('click', async () => {
-    btn.disabled = true;
-    btn.textContent = '…';
-    try {
-      const response = await api.get(`/api/cotizaciones/${id}/pdf`);
-      const blob     = await response.blob();
-      const url      = URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      // Revoke the object URL after a short delay to free memory while
-      // still giving the new tab enough time to load the PDF.
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    } catch (err) {
-      showToast(err.data?.message || err.message || 'No se pudo cargar el PDF.', 'error');
-    } finally {
-      btn.disabled = false;
-      btn.textContent = '📄 Ver PDF Adjunto';
-    }
-  });
-}
+// ── Dashboard sub-modules ─────────────────────────────────────────────────────
+import {
+  STATE_BADGE, ROLE_BADGE, STAT_COLOR,
+  badgeHtml, roleBadgeHtml, fmtDate, escHtml, fmtAmount,
+} from './dashboard/helpers.js';
+import { wirePdfButton, wireExcelButton, buildTimelineHtml } from './dashboard/modules/timelineView.js';
+import { renderReportes, renderAdvancedReports } from './dashboard/modules/reportesView.js';
+import { refreshNotifBadge }               from './dashboard/modules/notificationsView.js';
 
 // ---------------------------------------------------------------------------
 // _buildProformaHTML
@@ -338,17 +251,25 @@ function _buildProformaHTML(q, id, viewMode) {
       <!-- Admin comment — read-only in Jefe mode -->
       ${adminCommentBlock}
 
-      <!-- PDF viewer button -->
-      ${q.pdf_ruta ? `
+      <!-- PDF + Excel viewer buttons -->
       <div class="proforma-pdf-bar">
+        ${q.pdf_ruta ? `
         <button class="btn btn-outline btn-sm" id="btn-ver-pdf" type="button">
           📄 Ver PDF Adjunto
         </button>
-        <span class="text-muted text-xs">Se abre en una nueva pestaña</span>
-      </div>` : `
-      <div class="proforma-pdf-bar">
-        <span class="text-muted text-sm">Sin documento PDF adjunto.</span>
-      </div>`}
+        <span class="text-muted text-xs">Se abre en una nueva pestaña</span>` : `
+        <span class="text-muted text-sm">Sin documento PDF adjunto.</span>`}
+        ${q.excel_ruta ? `
+        <button
+          type="button"
+          id="btn-ver-excel"
+          class="btn btn-sm"
+          style="display:inline-flex;align-items:center;gap:.35rem;
+                 background:#16a34a;color:#fff;border:1px solid #15803d;"
+        >
+          📊 Descargar Excel
+        </button>` : ''}
+      </div>
 
       ${jefeButtons}
       ${adminButtons}
@@ -509,6 +430,9 @@ class ExecutiveStrategy extends DashboardStrategy {
       <!-- Proformas del Día — daily intake widget -->
       <div id="proformas-hoy-section"></div>
 
+      <!-- Métricas personales BI — loaded after quotations -->
+      <div id="metrics-section"></div>
+
       <div class="card">
         <div class="card-header">
           <h3>Mis Cotizaciones</h3>
@@ -563,11 +487,27 @@ class ExecutiveStrategy extends DashboardStrategy {
       if (e.key === 'Enter') { this.#page = 1; this._loadQuotations(); }
     });
 
-    await Promise.all([this._loadSummary(), this._loadQuotations(), this._loadProformasHoy()]);
+    await Promise.all([
+      this._loadSummary(),
+      this._loadQuotations(),
+      this._loadProformasHoy(),
+      this._loadMetrics(),
+    ]);
   }
 
   async refresh() {
-    if (this.#container) await Promise.all([this._loadSummary(), this._loadQuotations(), this._loadProformasHoy()]);
+    if (this.#container) await Promise.all([
+      this._loadSummary(),
+      this._loadQuotations(),
+      this._loadProformasHoy(),
+      this._loadMetrics(),
+    ]);
+  }
+
+  async _loadMetrics() {
+    const section = document.getElementById('metrics-section');
+    if (!section) return;
+    await renderAdvancedReports(section);
   }
 
   async _loadProformasHoy() {
@@ -738,43 +678,9 @@ class ExecutiveStrategy extends DashboardStrategy {
 
       UI.openModal(`Cotización ${q.numero_correlativo}`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, false);
-        _wirePdfButton(body, id);
-
-        // ── Historial de Seguimiento — Chronological timeline ───────────────
-        if (history.length > 0) {
-          const timelineHtml = `
-            <div style="margin-top:1.5rem;border-top:1px solid var(--border);padding-top:1rem;">
-              <h4 style="margin-bottom:.75rem;font-size:.95rem;color:var(--text-secondary);">
-                🕐 Historial de Seguimiento
-              </h4>
-              <ol style="list-style:none;padding:0;margin:0;position:relative;">
-                ${history.map((h, i) => {
-                  const isFirst = i === 0;
-                  const label   = h.tipo_evento === 'creacion'
-                    ? 'Cotización creada'
-                    : `${escHtml(h.estado_anterior ?? '—')} → ${escHtml(h.estado_nuevo)}`;
-                  const fecha   = h.creado_en
-                    ? new Date(h.creado_en).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })
-                    : '—';
-                  const obs     = h.observacion ? ` <em style="color:var(--text-secondary);">Obs: ${escHtml(h.observacion)}</em>` : '';
-                  return `
-                    <li style="display:flex;gap:.75rem;margin-bottom:.75rem;align-items:flex-start;">
-                      <span style="flex-shrink:0;width:10px;height:10px;border-radius:50%;
-                                   margin-top:4px;background:${isFirst ? '#3B82F6' : '#6366F1'};"></span>
-                      <div style="font-size:.85rem;line-height:1.4;">
-                        <strong>${fecha}</strong> — ${label}<br>
-                        <span style="color:var(--text-secondary);">
-                          Usuario: ${escHtml(h.nombre_usuario ?? '—')}
-                          ${h.rol_usuario ? ` · Rol: ${escHtml(h.rol_usuario)}` : ''}
-                        </span>
-                        ${obs}
-                      </div>
-                    </li>`;
-                }).join('')}
-              </ol>
-            </div>`;
-          body.insertAdjacentHTML('beforeend', timelineHtml);
-        }
+        wirePdfButton(body, id);
+        wireExcelButton(body, id, q.numero_correlativo);
+        body.insertAdjacentHTML('beforeend', buildTimelineHtml(history));
       });
     } catch (err) {
       showToast(`No se pudo cargar la cotización: ${err.message}`, 'error');
@@ -877,104 +783,12 @@ class ManagerStrategy extends DashboardStrategy {
     }
   }
 
-  // ── Tab: Reportes ─────────────────────────────────────────────────────────
+  // ── Tab: Reportes — delegated to reportesView module ───────────────────────
 
   async _renderReportes(panel) {
-    panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
-    try {
-      const data    = await api.get('/api/reportes/progreso');
-      // Defensive destructure: guard against a degraded API response where
-      // data.data is null/undefined, which would otherwise throw:
-      // "Cannot destructure property 'volumen' of undefined"
-      const {
-        volumen      = {},
-        conversion   = {},
-        por_ejecutivo = [],
-      } = data.data ?? {};
-      const periodo = data.periodo ?? '—';
-
-      // Safe numeric defaults for every stat cell
-      const volUSD   = Number(volumen.total_mes_usd   ?? 0).toFixed(2);
-      const volBOB   = Number(volumen.total_mes_bob   ?? 0).toFixed(2);
-      const totalCot = volumen.total_cotizaciones ?? 0;
-      const ratioPct = conversion.ratio_pct       ?? '0.0';
-      const aceptadas  = conversion.total_aceptadas  ?? 0;
-      const rechazadas = conversion.total_rechazadas ?? 0;
-
-      const ratioColor = parseFloat(ratioPct) >= 50 ? '#10B981' : '#EF4444';
-
-      panel.innerHTML = `
-        <div class="card" style="margin-bottom:1rem;">
-          <div class="card-header">
-            <h3>📊 Dashboard de Rendimiento — ${escHtml(periodo)}</h3>
-          </div>
-          <div class="stats-grid" style="padding:1rem 1rem 0;">
-            <div class="stat-card" style="--stat-accent:#3B82F6;">
-              <div class="stat-card-value">${volUSD}</div>
-              <div class="stat-card-label">Volumen USD (mes)</div>
-            </div>
-            <div class="stat-card" style="--stat-accent:#8B5CF6;">
-              <div class="stat-card-value">${volBOB}</div>
-              <div class="stat-card-label">Volumen BOB (mes)</div>
-            </div>
-            <div class="stat-card" style="--stat-accent:#F59E0B;">
-              <div class="stat-card-value">${totalCot}</div>
-              <div class="stat-card-label">Cotizaciones (mes)</div>
-            </div>
-            <div class="stat-card" style="--stat-accent:${ratioColor};">
-              <div class="stat-card-value">${ratioPct}%</div>
-              <div class="stat-card-label">Tasa de Éxito</div>
-            </div>
-            <div class="stat-card" style="--stat-accent:#10B981;">
-              <div class="stat-card-value">${aceptadas}</div>
-              <div class="stat-card-label">Aceptadas (total)</div>
-            </div>
-            <div class="stat-card" style="--stat-accent:#EF4444;">
-              <div class="stat-card-value">${rechazadas}</div>
-              <div class="stat-card-label">Rechazadas (total)</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <h3>Rendimiento por Ejecutivo — ${escHtml(periodo)}</h3>
-          </div>
-          <div class="table-wrapper">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Ejecutivo</th>
-                  <th class="text-right">Total</th>
-                  <th class="text-right">Aceptadas</th>
-                  <th class="text-right">Rechazadas</th>
-                  <th class="text-right">Pendientes</th>
-                  <th class="text-right">En Revisión</th>
-                  <th class="text-right">Volumen USD</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${por_ejecutivo.length === 0
-                  ? `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted);">Sin datos para el mes actual.</td></tr>`
-                  : por_ejecutivo.map(e => `
-                    <tr>
-                      <td class="fw-600">${escHtml(e.ejecutivo)}</td>
-                      <td class="text-right">${e.total}</td>
-                      <td class="text-right" style="color:#10B981;">${e.aceptadas}</td>
-                      <td class="text-right" style="color:#EF4444;">${e.rechazadas}</td>
-                      <td class="text-right" style="color:#F59E0B;">${e.pendientes}</td>
-                      <td class="text-right" style="color:#F97316;">${e.en_revision}</td>
-                      <td class="text-right fw-600">USD ${Number(e.volumen_usd).toFixed(2)}</td>
-                    </tr>`).join('')
-                }
-              </tbody>
-            </table>
-          </div>
-        </div>`;
-    } catch (err) {
-      panel.innerHTML = `<div class="empty-state"><p>Error cargando reportes: ${escHtml(err.message)}</p></div>`;
-    }
+    await renderReportes(panel);
   }
+
 
   // ── Tab: Approval queue ────────────────────────────────────────────────────
 
@@ -1050,7 +864,8 @@ class ManagerStrategy extends DashboardStrategy {
 
       UI.openModal(`Proforma ${q.numero_correlativo} — Decisión de Jefe`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, true);
-        _wirePdfButton(body, id);
+        wirePdfButton(body, id);
+        wireExcelButton(body, id, q.numero_correlativo);
 
         // Wire the 4 state-machine action buttons
         body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () => {
@@ -1273,7 +1088,8 @@ class ManagerStrategy extends DashboardStrategy {
       const q    = data.data;
       UI.openModal(`Proforma ${correlativo ?? q.numero_correlativo}`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, 'jefe');
-        _wirePdfButton(body, id);
+        wirePdfButton(body, id);
+        wireExcelButton(body, id, correlativo ?? q.numero_correlativo);
         // Wire action buttons (same as approval detail)
         body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () => {
           this._confirmStateChange(id, 'Pendiente',
@@ -1698,6 +1514,7 @@ class AdminStrategy extends DashboardStrategy {
         <button class="tab-btn" data-tab="quotations">Todas las Cotizaciones</button>
         <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
         <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
+        <button class="tab-btn" data-tab="reportes">📊 Reportes</button>
       </div>
       <div id="admin-panel"></div>
     `;
@@ -1722,11 +1539,16 @@ class AdminStrategy extends DashboardStrategy {
     const panel = document.getElementById('admin-panel');
     if (!panel) return;
     switch (tab) {
-      case 'review':     await this._renderReviewQueue(panel); break;
-      case 'quotations': await this._renderAllQuotations(panel); break;
-      case 'users':      await this._renderUsers(panel);        break;
-      case 'audit':      await this._renderAuditLogs(panel);    break;
+      case 'review':     await this._renderReviewQueue(panel);    break;
+      case 'quotations': await this._renderAllQuotations(panel);  break;
+      case 'users':      await this._renderUsers(panel);          break;
+      case 'audit':      await this._renderAuditLogs(panel);      break;
+      case 'reportes':   await this._renderReportes(panel);       break;
     }
+  }
+
+  async _renderReportes(panel) {
+    await renderAdvancedReports(panel);
   }
 
   // ── Tab: Review queue (read + hold + comment) ─────────────────────────────
@@ -1802,7 +1624,8 @@ class AdminStrategy extends DashboardStrategy {
 
       UI.openModal(`Revisión Administrador — ${q.numero_correlativo}`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, 'admin');
-        _wirePdfButton(body, id);
+        wirePdfButton(body, id);
+        wireExcelButton(body, id, q.numero_correlativo);
 
         // Wire "Save comment only" button
         body.querySelector('#btn-save-comment')?.addEventListener('click', () => {
@@ -2329,53 +2152,9 @@ class DashboardController {
     });
   }
 
-  // ── Notification badge — pending corrections counter ─────────────────────
+  // ── Notification badge — delegated to notificationsView module ──────────────
   async _refreshNotifBadge() {
-    try {
-      const data  = await api.get('/api/cotizaciones/notificaciones');
-      const total = data.total ?? 0;
-      const btn   = document.getElementById('btn-notificaciones');
-      const badge = document.getElementById('notif-count');
-      if (!btn || !badge) return;
-
-      if (total > 0) {
-        btn.style.display    = 'inline-flex';
-        badge.textContent    = total > 99 ? '99+' : String(total);
-        btn.title            = `Tienes ${total} proforma${total > 1 ? 's' : ''} observada${total > 1 ? 's' : ''} pendiente${total > 1 ? 's' : ''} de corrección`;
-
-        // One-time click handler — open a quick notification summary modal
-        btn.onclick = () => {
-          api.get('/api/cotizaciones/notificaciones').then(d => {
-            const rows = d.data ?? [];
-            UI.openModal('🔔 Proformas Observadas Pendientes', (body) => {
-              body.innerHTML = `
-                <p class="text-sm" style="color:var(--text-secondary);margin-bottom:1rem;">
-                  Las siguientes cotizaciones requieren tu atención y correcciones:
-                </p>
-                <ul style="list-style:none;padding:0;margin:0;">
-                  ${rows.map(n => `
-                    <li style="padding:.6rem .75rem;border:1px solid var(--border);border-radius:6px;
-                                margin-bottom:.5rem;background:var(--bg-secondary);">
-                      <strong>${escHtml(n.numero_correlativo)}</strong>
-                      — ${escHtml(n.cliente_nombre ?? '—')}<br>
-                      <span class="text-sm" style="color:var(--text-secondary);">
-                        Solicitado por: ${escHtml(n.solicitado_por ?? '—')}
-                        · Rol: ${escHtml(n.rol_solicitante ?? '—')}
-                        · ${new Date(n.fecha_solicitud).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })}
-                      </span>
-                      ${n.observacion ? `<br><em class="text-sm" style="color:#F97316;">Obs: ${escHtml(n.observacion)}</em>` : ''}
-                    </li>`).join('')}
-                </ul>
-                <p class="text-sm text-muted" style="margin-top:1rem;">
-                  Abre la cotización desde "Mis Cotizaciones" para realizar las correcciones y reenviar a revisión.
-                </p>`;
-            });
-          }).catch(() => showToast('No se pudo cargar las notificaciones.', 'error'));
-        };
-      } else {
-        btn.style.display = 'none';
-      }
-    } catch (_) { /* non-fatal — badge failure must not break the dashboard */ }
+    await refreshNotifBadge(UI);
   }
 }
 

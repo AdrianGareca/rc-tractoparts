@@ -1,828 +1,1105 @@
 // =============================================================================
 // src/services/pdfService.js
-// Automated PDF Generation Service — RC Tractoparts Proforma Invoices
+// PDF Generation Service — RC Tractoparts Proforma Invoices  (layout v3)
 //
-// Generates a corporate-branded PDF for a quotation record using PDFKit.
-// The service receives the full quotation object (already fetched from the DB,
-// including the .detalles[] array) and writes a formatted A4 document to disk.
+// Generates a corporate-branded A4 PDF for a quotation record using PDFKit.
+// Layout faithfully mirrors the physical proforma scans:
+//   • Header  : Logo + brand strip (left) | Quotation info box (right)
+//   • Subtitle: Centred "PROFORMA REPUESTOS" title with navy dividers
+//   • Grid    : 3-column technical block (Cliente / Solicitante / Equipo)
+//   • Table   : 9-column items grid with light-pink header, es-BO number fmt
+//   • Totals  : SON-in-words line · Conditions · Bank data · Grand-total box
+//   • Footer  : Verified corporate contact info, right-aligned
 //
-// The public API is a single async function that wraps PDFKit's event-driven
-// stream in a Promise, resolving only when the 'finish' event fires on the
-// underlying WriteStream — guaranteeing the file is completely flushed to disk
-// before the caller persists the path in the database.
-//
-// Dependency: pdfkit — install with: npm install pdfkit
+// Fields added in future DB migrations (equipo_*, celular_sol, etc.) will
+// auto-populate; until then the PDF renders '—' as a graceful placeholder.
 // =============================================================================
 
 'use strict';
 
-const fs   = require('fs');
-const path = require('path');
+const fs          = require('fs');
+const path        = require('path');
 const PDFDocument = require('pdfkit');
 
 // =============================================================================
-// Design constants
+// Asset paths — resolved relative to this file's directory
 // =============================================================================
 
-// ---------------------------------------------------------------------------
-// Corporate color palette — RC Tractoparts (Heavy Machinery Import)
-// Dark Slate Navy + Burnt Orange convey industrial authority and precision.
-// ---------------------------------------------------------------------------
+const ASSETS_DIR  = path.join(__dirname, '..', 'assets', 'images');
+const LOGO_PATH   = path.join(ASSETS_DIR, 'rc_logo.png');
+const BRANDS_DIR  = path.join(ASSETS_DIR, 'brands');
+
+// Ordered list: filename → fallback display label
+const BRAND_DEFS = [
+  { file: 'volvo.png',      label: 'VOLVO'     },
+  { file: 'john_deere.png', label: 'JOHN DEERE' },
+  { file: 'komatsu.png',    label: 'KOMATSU'   },
+  { file: 'jcb.png',        label: 'JCB'       },
+  { file: 'cat.png',        label: 'CAT'       },
+  { file: 'case.png',       label: 'CASE'      },
+];
+
+// =============================================================================
+// Color palette
+// =============================================================================
+
 const C = {
-  NAVY:        '#1B2B4B',  // Primary: header banner, table header row, footer
-  NAVY_LIGHT:  '#253A5E',  // Logo placeholder box fill
-  NAVY_MID:    '#2D4A72',  // Table column dividers on dark backgrounds
-  ORANGE:      '#C85A0F',  // Accent: accent bar, total label, highlight
-  WHITE:       '#FFFFFF',  // Text on dark backgrounds
-  LIGHT_GRAY:  '#F7F8FA',  // Alternating table row fill, info box backgrounds
-  DARK_GRAY:   '#2D3748',  // Primary body text
-  MID_GRAY:    '#718096',  // Labels, row numbers, secondary text
-  BORDER_GRAY: '#E2E8F0',  // Table borders, section dividers
-  BLUE_GRAY:   '#A0AEC0',  // Muted text in the footer
-  STEEL:       '#CBD5E0',  // Contact details in the header
-  // Status badge background colors — one per state in the state machine
+  NAVY:        '#1B2B4B',   // Primary navy — headers, totals box
+  ORANGE:      '#C85A0F',   // Accent — dividers, total value, SON line border
+  WHITE:       '#FFFFFF',
+  LIGHT_GRAY:  '#F7F8FA',   // Alternating row fill, tinted backgrounds
+  DARK_GRAY:   '#2D3748',   // Primary body text
+  MID_GRAY:    '#6B7280',   // Labels, row numbers, secondary text
+  BORDER_GRAY: '#CBD5E0',   // Table borders, section dividers
+  BLUE_ACCENT: '#3B82F6',   // Left stripe on 3-column section headers
+  BLUE_BG:     '#EFF6FF',   // 3-column section header background
+  BLUE_TITLE:  '#1D4ED8',   // 3-column section header text
+  PINK_HEADER: '#FADADD',   // Items table header background (light pink/pastel)
+  PINK_TEXT:   '#4A1622',   // Items table header text (dark on pink)
+  ALT_ROW:     '#FFF8F8',   // Alternating row tint inside the items table
   STATUS: {
-    'Pendiente':             '#6B7280',  // neutral gray
-    'En revision':           '#D97706',  // amber
-    'Aprobada internamente': '#059669',  // emerald green
-    'Enviada al cliente':    '#2563EB',  // blue
-    'Aceptada':              '#059669',  // emerald green
-    'Rechazada':             '#DC2626',  // red
-    'Archivada':             '#6B7280',  // neutral gray
+    'Pendiente':             '#6B7280',
+    'En revision':           '#D97706',
+    'En espera':             '#D97706',
+    'Aprobada internamente': '#059669',
+    'Enviada al cliente':    '#2563EB',
+    'Aceptada':              '#059669',
+    'Rechazada':             '#DC2626',
+    'Archivada':             '#6B7280',
   },
 };
 
-// ---------------------------------------------------------------------------
-// Page geometry — A4 size in PostScript points (1 pt = 1/72 inch)
-// ---------------------------------------------------------------------------
-const PW     = 595.28;            // A4 page width in points
-const PH     = 841.89;            // A4 page height in points
-const MARGIN = 45;                // Uniform margin applied to all four sides
-const CW     = PW - MARGIN * 2;  // Usable content width: 505.28 pt
+// =============================================================================
+// Page geometry — A4 (595.28 × 841.89 pt)
+// =============================================================================
 
-// ---------------------------------------------------------------------------
-// Table column widths — must sum exactly to CW (505.28 pt)
-// The subtotal column absorbs the remainder to avoid rounding gaps.
-// ---------------------------------------------------------------------------
+const PW     = 595.28;
+const PH     = 841.89;
+const MARGIN = 36;
+const CW     = PW - MARGIN * 2;  // 523.28 pt usable content width
+
+// =============================================================================
+// 9-column items table
+// Widths must sum exactly to CW (523.28 pt).
+// Last column absorbs the remainder to prevent rounding gaps.
+// =============================================================================
+
 const COL = {
-  num:       28,                          // Row counter (#)
-  qty:       48,                          // Quantity
-  desc:      225,                         // Item description (wrappable)
-  unitPrice: 97,                          // Unit price (right-aligned)
-  subtotal:  CW - 28 - 48 - 225 - 97,    // 107.28 pt — Subtotal (right-aligned)
+  item:    20,
+  codigo:  48,
+  codAlt:  52,
+  desc:    130,
+  cant:    26,
+  uni:     26,
+  pUnit:   62,
+  pTotal:  62,
+  entrega: parseFloat((CW - 20 - 48 - 52 - 130 - 26 - 26 - 62 - 62).toFixed(2)), // 97.28
 };
 
-// X position of each column's left edge (pre-computed for reuse)
-const COL_X = {
-  num:       MARGIN,
-  qty:       MARGIN + COL.num,
-  desc:      MARGIN + COL.num + COL.qty,
-  unitPrice: MARGIN + COL.num + COL.qty + COL.desc,
-  subtotal:  MARGIN + COL.num + COL.qty + COL.desc + COL.unitPrice,
-};
+// Precomputed left-edge X of each column
+const COL_X = (() => {
+  let x = MARGIN;
+  const out = {};
+  for (const [k, w] of Object.entries(COL)) {
+    out[k] = x;
+    x += w;
+  }
+  return out;
+})();
 
-// Row height constants
-const TABLE_HEADER_H = 22;  // Fixed height of the column-header row
-const ROW_MIN_H      = 22;  // Minimum height for any data row (short descriptions)
-const ROW_PADDING    = 10;  // Top + bottom padding applied to each cell's text
-
-// Y threshold below which a new page is inserted to protect the footer
-const PAGE_BREAK_THRESHOLD = PH - MARGIN - 75;
+const TABLE_HEADER_H = 24;   // Height of the pink column-header row
+const ROW_MIN_H      = 20;   // Minimum data-row height
+const ROW_PADDING    = 8;    // Vertical padding inside each data row
+const PAGE_BREAK_Y   = PH - MARGIN - 100; // Y threshold that triggers a new page
 
 // =============================================================================
 // Utility helpers
 // =============================================================================
 
 // ---------------------------------------------------------------------------
-// formatCurrency
-// Formats a numeric amount with the appropriate currency symbol and two
-// decimal places using US-locale number formatting for the digit groups.
+// fmtNum — es-BO locale number format: thousands separator = '.' decimal = ','
+//          Example: 2100.5 → "2.100,50"
 // ---------------------------------------------------------------------------
-function formatCurrency(amount, moneda) {
-  if (amount == null || isNaN(parseFloat(amount))) return '—';
-
-  const formatted = parseFloat(amount).toLocaleString('en-US', {
+function fmtNum(amount) {
+  if (amount == null || amount === '' || isNaN(parseFloat(amount))) return '—';
+  return parseFloat(amount).toLocaleString('es-BO', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-
-  return moneda === 'BOB' ? `Bs. ${formatted}` : `$ ${formatted}`;
 }
 
 // ---------------------------------------------------------------------------
-// formatDate
-// Converts a MySQL DATE string (YYYY-MM-DD) or Date object to DD/MM/YYYY.
-// Appends 'T00:00:00' before parsing to prevent timezone shifting on
-// midnight-boundary dates when running in UTC environments.
+// fmtPrice — prepend currency symbol to the formatted number
 // ---------------------------------------------------------------------------
-function formatDate(dateVal) {
-  if (!dateVal) return '—';
-
-  const d = typeof dateVal === 'string'
-    ? new Date(`${dateVal}T00:00:00`)   // Prevent UTC-midnight drift
-    : new Date(dateVal);
-
-  if (isNaN(d.getTime())) return String(dateVal); // Fallback: return raw value
-
-  const dd   = String(d.getDate()).padStart(2, '0');
-  const mm   = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-
-  return `${dd}/${mm}/${yyyy}`;
+function fmtPrice(amount, moneda) {
+  const s = fmtNum(amount);
+  if (s === '—') return '—';
+  return moneda === 'BOB' ? `Bs. ${s}` : `$ ${s}`;
 }
 
 // ---------------------------------------------------------------------------
-// hLine — Draw a horizontal rule across the full content width
+// formatDate — YYYY-MM-DD / Date → DD/MM/YYYY, UTC-safe
 // ---------------------------------------------------------------------------
-function hLine(doc, y, color = C.BORDER_GRAY, lineWidth = 0.5) {
-  doc
-    .save()
+function formatDate(v) {
+  if (!v) return '—';
+  const d = typeof v === 'string' ? new Date(`${v}T00:00:00`) : new Date(v);
+  if (isNaN(d.getTime())) return String(v);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
+// ---------------------------------------------------------------------------
+// hLine — full-width horizontal rule between MARGIN edges
+// ---------------------------------------------------------------------------
+function hLine(doc, y, color = C.BORDER_GRAY, lw = 0.5) {
+  doc.save()
     .moveTo(MARGIN, y)
     .lineTo(PW - MARGIN, y)
-    .lineWidth(lineWidth)
+    .lineWidth(lw)
     .strokeColor(color)
     .stroke()
     .restore();
 }
 
-// ---------------------------------------------------------------------------
-// calcRowHeight
-// Measures the pixel height a description string will occupy inside its
-// column at the given font size, then adds padding to produce the full row
-// height. Returns at least ROW_MIN_H to keep short rows readable.
-// ---------------------------------------------------------------------------
-function calcRowHeight(doc, descriptionText, fontSize = 8.5) {
-  const innerWidth = COL.desc - ROW_PADDING; // Subtract cell padding from column width
-  doc.fontSize(fontSize);
-  const textH = doc.heightOfString(String(descriptionText || ''), { width: innerWidth });
-  return Math.max(ROW_MIN_H, textH + ROW_PADDING);
+// =============================================================================
+// Number → Spanish words  (used in the "SON:" totals line)
+// Example: numberToWordsES(3080.00) → "TRES MIL OCHENTA CON 00/100"
+// =============================================================================
+
+const _ONES = [
+  '', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO',
+  'NUEVE', 'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE',
+  'DIECISÉIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE',
+];
+const _TENS = [
+  '', '', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA',
+  'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA',
+];
+const _HUNS = [
+  '', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS',
+  'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS',
+];
+
+function _lt1000(n) {
+  if (n === 0) return '';
+  if (n === 100) return 'CIEN';
+  let s = '';
+  const h   = Math.floor(n / 100);
+  const rem = n % 100;
+  if (h) s += _HUNS[h];
+  if (h && rem) s += ' ';
+  if (rem > 0) {
+    if (rem < 20) {
+      s += _ONES[rem];
+    } else {
+      s += _TENS[Math.floor(rem / 10)];
+      if (rem % 10) s += ' Y ' + _ONES[rem % 10];
+    }
+  }
+  return s;
 }
 
-// ---------------------------------------------------------------------------
-// drawVerticalDividers
-// Renders thin vertical separator lines between table columns for the height
-// of a single row. Called by both the header row and each data row.
-// ---------------------------------------------------------------------------
-function drawVerticalDividers(doc, rowY, rowH, color = C.BORDER_GRAY) {
-  // The four X positions that separate the five columns
-  const divX = [COL_X.qty, COL_X.desc, COL_X.unitPrice, COL_X.subtotal];
+function _buildWords(n) {
+  if (n >= 1000) {
+    const t = Math.floor(n / 1000);
+    const r = n % 1000;
+    return (t === 1 ? 'MIL' : `${_lt1000(t)} MIL`) + (r > 0 ? ' ' + _lt1000(r) : '');
+  }
+  return _lt1000(n);
+}
 
-  divX.forEach((x) => {
-    doc
-      .save()
-      .moveTo(x, rowY)
-      .lineTo(x, rowY + rowH)
-      .lineWidth(0.4)
-      .strokeColor(color)
-      .stroke()
-      .restore();
-  });
+function numberToWordsES(amount) {
+  if (amount == null || isNaN(parseFloat(amount))) return 'CERO CON 00/100';
+  const abs   = Math.abs(parseFloat(amount));
+  const n     = Math.floor(abs);
+  const cents = Math.round((abs - n) * 100);
+  const cc    = String(cents).padStart(2, '0');
+  if (n === 0) return `CERO CON ${cc}/100`;
+
+  let w = '';
+  if (n >= 1000000) {
+    const m = Math.floor(n / 1000000);
+    w += m === 1 ? 'UN MILLÓN' : `${_lt1000(m)} MILLONES`;
+    const r = n % 1000000;
+    if (r > 0) w += ' ' + _buildWords(r);
+  } else {
+    w = _buildWords(n);
+  }
+  return `${w.trim()} CON ${cc}/100`;
 }
 
 // =============================================================================
 // Section drawers
-// Each function receives the PDFDocument and the current Y position,
-// renders its content, and returns the new Y position after its bottom edge.
+// Each draw* function receives (doc, ..., startY) and returns the Y position
+// immediately below its rendered content.
 // =============================================================================
 
 // ---------------------------------------------------------------------------
-// drawHeader
-// Navy banner across the full page width (bleeds to page edges, ignoring
-// margins). Left side carries company identity text; right side contains
-// a logo placeholder box ready to swap for an actual image asset.
+// renderWatermark
+// Paints a tilted "APROBADO" ink-stamp behind the items table on the current page.
+// Must be called AFTER drawing the header/grid sections (so those remain clean)
+// but BEFORE drawing the table rows (so text renders on top — painter's order).
+//
+// @param {PDFDocument} doc
+// @param {Object}      quotation
+// @param {number}      tableBodyY  — Top Y of the items table body; watermark is
+//                                    centred in the table area vertically.
 // ---------------------------------------------------------------------------
-function drawHeader(doc) {
-  const BANNER_H = 92;  // Height of the navy background rectangle
+function renderWatermark(doc, quotation, tableBodyY) {
+  const estado = (quotation.estado_nombre || quotation.estado || '').toUpperCase();
+  const shouldStamp = estado === 'CONFIRMADO'
+    || estado === 'APROBADA INTERNAMENTE'
+    || estado.includes('CONFIRM')
+    || estado.includes('APROBAD');
 
-  // Full-bleed navy background (x=0, not MARGIN)
+  if (!shouldStamp) return;
+
+  // Centre the stamp horizontally on the page and vertically in the table area
+  const centerX = PW / 2;
+  // Use table area mid-point when supplied; fall back to page centre for safety
+  const tableAreaH = PH - (tableBodyY ?? PH / 2) - MARGIN - 110;
+  const centerY    = tableBodyY != null
+    ? tableBodyY + Math.min(tableAreaH / 2, 140)
+    : PH / 2;
+
+  const STAMP_W = 230;
+  const STAMP_H = 76;
+  const STAMP_COLOR = '#C71585';   // Pinkish-magenta ink — matches physical stamp
+
+  doc.save();
+  doc.opacity(0.14);
+  doc.rotate(-30, { origin: [centerX, centerY] });
+
+  // Rounded-rectangle frame (distressed border look)
   doc
-    .rect(0, 0, PW, BANNER_H)
-    .fill(C.NAVY);
-
-  // ── Company name ───────────────────────────────────────────────────────────
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(21)
-    .fillColor(C.WHITE)
-    .text('RC TRACTOPARTS', MARGIN, 16, { lineBreak: false });
-
-  // ── Tagline / industry descriptor ─────────────────────────────────────────
-  doc
-    .font('Helvetica')
-    .fontSize(8.5)
-    .fillColor(C.BLUE_GRAY)
-    .text(
-      'Importaciones de Maquinaria Pesada y Repuestos',
-      MARGIN, 41,
-      { lineBreak: false }
-    );
-
-  // ── Contact line 1 ────────────────────────────────────────────────────────
-  doc
-    .font('Helvetica')
-    .fontSize(7.5)
-    .fillColor(C.STEEL)
-    .text(
-      'Santa Cruz de la Sierra, Bolivia  |  Tel: +591 3 000-0000  |  info@rctractoparts.com',
-      MARGIN, 54,
-      { lineBreak: false }
-    );
-
-  // ── Contact line 2 ────────────────────────────────────────────────────────
-  doc
-    .font('Helvetica')
-    .fontSize(7.5)
-    .fillColor(C.STEEL)
-    .text('www.rctractoparts.com', MARGIN, 67, { lineBreak: false });
-
-  // ── Logo placeholder ──────────────────────────────────────────────────────
-  const LOGO_X = PW - MARGIN - 98;
-  const LOGO_Y = 10;
-  const LOGO_W = 98;
-  const LOGO_H = 72;
-
-  // Placeholder box with a slightly lighter navy fill + border
-  doc
-    .rect(LOGO_X, LOGO_Y, LOGO_W, LOGO_H)
-    .fillAndStroke(C.NAVY_LIGHT, C.NAVY_MID);
-
-  // Horizontal rule inside the placeholder to suggest an image frame
-  doc
-    .moveTo(LOGO_X + 12, LOGO_Y + LOGO_H / 2)
-    .lineTo(LOGO_X + LOGO_W - 12, LOGO_Y + LOGO_H / 2)
-    .lineWidth(0.5)
-    .strokeColor('#3B5278')
+    .roundedRect(centerX - STAMP_W / 2, centerY - STAMP_H / 2, STAMP_W, STAMP_H, 6)
+    .lineWidth(6)
+    .strokeColor(STAMP_COLOR)
     .stroke();
 
-  // "LOGOTIPO" label centered inside the box
+  // Bold "APROBADO" text centred inside the frame
   doc
-    .font('Helvetica')
-    .fontSize(7)
-    .fillColor(C.MID_GRAY)
-    .text('LOGOTIPO', LOGO_X, LOGO_Y + LOGO_H / 2 + 5, {
-      width:     LOGO_W,
-      align:     'center',
-      lineBreak: false,
-    });
+    .font('Helvetica-Bold')
+    .fontSize(54)
+    .fillColor(STAMP_COLOR)
+    .text('APROBADO',
+      centerX - STAMP_W / 2,
+      centerY - 27,
+      { width: STAMP_W, align: 'center', lineBreak: false });
 
-  // ── Accent bar — orange stripe below the navy banner ──────────────────────
-  doc
-    .rect(0, BANNER_H, PW, 4)
-    .fill(C.ORANGE);
-
-  return BANNER_H + 4; // Y position immediately below the accent bar
+  doc.restore();
 }
 
 // ---------------------------------------------------------------------------
-// drawMetadataAndClient
-// Two-column block. Left column: client details. Right column: quotation
-// metadata (serial, dates, currency, estado badge).
-// Both columns share the same background box height for visual alignment.
+// drawHeader
+// Left side  : RC TRACTOPARTS logo (real image with text fallback) + brand strip.
+// Right side : Quotation info box with thin borders (Nº, PEDIDO, ESTADO, FECHA).
+// Returns Y immediately below the full header block.
 // ---------------------------------------------------------------------------
-function drawMetadataAndClient(doc, quotation, startY) {
-  const TOP    = startY + 14;
-  const COL_W  = (CW - 14) / 2;  // Each column is half the content width, 14pt gap
-  const LEFT_X = MARGIN;
-  const RIGHT_X = MARGIN + COL_W + 14;
+function drawHeader(doc, quotation) {
+  const y0      = MARGIN;
+  const LOGO_W  = 155;
+  const LOGO_H  = 72;
+  const BRAND_H = 15;
+  const GAP     = 4;
+  const BOX_W   = 185;
+  const BOX_H   = LOGO_H + GAP + BRAND_H;  // 91 pt — matches left block height
+  const BOX_X   = PW - MARGIN - BOX_W;
 
-  // ── Document type heading ─────────────────────────────────────────────────
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(13)
-    .fillColor(C.NAVY)
-    .text('PROFORMA / COTIZACIÓN COMERCIAL', MARGIN, TOP, { lineBreak: false });
-
-  const BOX_TOP = TOP + 22;   // Top of the info boxes, below the heading
-  const BOX_H   = 118;        // Height of both info boxes
-
-  // ── RIGHT COLUMN: quotation metadata ─────────────────────────────────────
-
-  // Box background
-  doc
-    .rect(RIGHT_X, BOX_TOP, COL_W, BOX_H)
-    .fillAndStroke(C.LIGHT_GRAY, C.BORDER_GRAY);
-
-  // Box header bar (navy)
-  doc
-    .rect(RIGHT_X, BOX_TOP, COL_W, 22)
-    .fill(C.NAVY);
-
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(7.5)
-    .fillColor(C.WHITE)
-    .text('DATOS DE LA COTIZACIÓN', RIGHT_X + 8, BOX_TOP + 7, { lineBreak: false });
-
-  // Metadata rows: label (bold, muted) + value (regular, dark)
-  const LABEL_W = 88;
-  const metaRows = [
-    ['N° Correlativo:', quotation.numero_correlativo || '—'],
-    ['Fecha de emisión:', formatDate(quotation.fecha_emision)],
-    [
-      'Fecha de validez:',
-      quotation.fecha_validez ? formatDate(quotation.fecha_validez) : 'Sin vencimiento',
-    ],
-    ['Moneda:', quotation.moneda === 'BOB' ? 'BOB — Bolivianos' : 'USD — Dólares'],
-  ];
-
-  let metaY = BOX_TOP + 29;
-
-  metaRows.forEach(([label, value]) => {
-    // Label
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(7.5)
-      .fillColor(C.MID_GRAY)
-      .text(label, RIGHT_X + 8, metaY, { width: LABEL_W, lineBreak: false });
-
-    // Value
-    doc
-      .font('Helvetica')
-      .fontSize(7.5)
-      .fillColor(C.DARK_GRAY)
-      .text(value, RIGHT_X + 8 + LABEL_W, metaY, {
-        width:     COL_W - LABEL_W - 16,
-        lineBreak: false,
-      });
-
-    metaY += 14; // Advance to the next metadata row
-  });
-
-  // Status badge — colored pill at the bottom of the metadata box
-  const statusColor = C.STATUS[quotation.estado] || C.MID_GRAY;
-
-  doc
-    .rect(RIGHT_X + 8, metaY + 2, COL_W - 16, 17)
-    .fill(statusColor);
-
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(7.5)
-    .fillColor(C.WHITE)
-    .text(
-      `ESTADO: ${(quotation.estado || '').toUpperCase()}`,
-      RIGHT_X + 8, metaY + 6,
-      { width: COL_W - 16, align: 'center', lineBreak: false }
-    );
-
-  // ── LEFT COLUMN: client details ───────────────────────────────────────────
-
-  doc
-    .rect(LEFT_X, BOX_TOP, COL_W, BOX_H)
-    .fillAndStroke(C.LIGHT_GRAY, C.BORDER_GRAY);
-
-  doc
-    .rect(LEFT_X, BOX_TOP, COL_W, 22)
-    .fill(C.NAVY);
-
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(7.5)
-    .fillColor(C.WHITE)
-    .text('CLIENTE / DESTINATARIO', LEFT_X + 8, BOX_TOP + 7, { lineBreak: false });
-
-  // Static client fields
-  const CLIENT_LABEL_W = 62;
-  const clientFields = [
-    ['Razón Social:', quotation.cliente_nombre   || '—'],
-    ['NIT / CI:',    quotation.cliente_nit       || '—'],
-    ['Ejecutivo:',   quotation.ejecutivo_nombre  || '—'],
-  ];
-
-  let clientY = BOX_TOP + 29;
-
-  clientFields.forEach(([label, value]) => {
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(7.5)
-      .fillColor(C.MID_GRAY)
-      .text(label, LEFT_X + 8, clientY, { width: CLIENT_LABEL_W, lineBreak: false });
-
-    doc
-      .font('Helvetica')
-      .fontSize(8)
-      .fillColor(C.DARK_GRAY)
-      .text(value, LEFT_X + 8 + CLIENT_LABEL_W, clientY, {
-        width:     COL_W - CLIENT_LABEL_W - 16,
-        lineBreak: false,
-      });
-
-    clientY += 16;
-  });
-
-  // Description field — may overflow into two lines
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(7.5)
-    .fillColor(C.MID_GRAY)
-    .text('Descripción:', LEFT_X + 8, clientY, { lineBreak: false });
-
-  clientY += 12;
-
-  doc
-    .font('Helvetica')
-    .fontSize(8)
-    .fillColor(C.DARK_GRAY)
-    .text(quotation.descripcion || '—', LEFT_X + 8, clientY, {
-      width:     COL_W - 16,
-      height:    26,        // Clamp to approximately 2 lines
-      ellipsis:  true,
-      lineBreak: true,
+  // ── Left: corporate logo (real image with text fallback) ──────────────────
+  if (fs.existsSync(LOGO_PATH)) {
+    doc.image(LOGO_PATH, MARGIN, y0, {
+      width:  LOGO_W,
+      height: LOGO_H,
+      fit:    [LOGO_W, LOGO_H],
+      align:  'center',
+      valign: 'center',
     });
+  } else {
+    // Text fallback when image asset is not yet deployed
+    doc
+      .rect(MARGIN, y0, LOGO_W, LOGO_H)
+      .lineWidth(0.8)
+      .fillAndStroke('#ECF5FB', C.BORDER_GRAY);
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(15)
+      .fillColor(C.NAVY)
+      .text('RC TRACTOPARTS', MARGIN + 6, y0 + 14,
+        { width: LOGO_W - 12, align: 'center', lineBreak: false });
+    doc
+      .font('Helvetica')
+      .fontSize(6.5)
+      .fillColor(C.MID_GRAY)
+      .text('Importaciones · Repuestos · Maquinaria Pesada',
+        MARGIN + 4, y0 + 34, { width: LOGO_W - 8, align: 'center', lineBreak: false });
+    doc
+      .font('Helvetica')
+      .fontSize(6)
+      .fillColor(C.MID_GRAY)
+      .text('Santa Cruz de la Sierra — Bolivia',
+        MARGIN + 4, y0 + 46, { width: LOGO_W - 8, align: 'center', lineBreak: false });
+  }
 
-  return BOX_TOP + BOX_H + 18; // Y below both columns + inter-section gap
+  // ── Left: partner brand strip (real images with text fallback) ─────────────
+  const brandY  = y0 + LOGO_H + GAP;
+  const brandCW = LOGO_W / BRAND_DEFS.length;  // ≈ 25.83 pt per cell
+  const IMG_PAD = 3;
+
+  // Draw a single thin border around the entire strip (no colored cell fills —
+  // clean proforma aesthetic matching the physical printed sheet).
+  doc
+    .rect(MARGIN, brandY, LOGO_W, BRAND_H)
+    .lineWidth(0.5)
+    .fillAndStroke(C.WHITE, C.BORDER_GRAY);
+
+  BRAND_DEFS.forEach(({ file, label }, i) => {
+    const bx      = MARGIN + i * brandCW;
+    const imgPath = path.join(BRANDS_DIR, file);
+
+    // Thin vertical divider between logos (except before first)
+    if (i > 0) {
+      doc
+        .moveTo(bx, brandY)
+        .lineTo(bx, brandY + BRAND_H)
+        .lineWidth(0.3)
+        .strokeColor(C.BORDER_GRAY)
+        .stroke();
+    }
+
+    if (fs.existsSync(imgPath)) {
+      doc.image(imgPath, bx + IMG_PAD, brandY + IMG_PAD, {
+        width:  brandCW - IMG_PAD * 2,
+        height: BRAND_H - IMG_PAD * 2,
+        fit:    [brandCW - IMG_PAD * 2, BRAND_H - IMG_PAD * 2],
+        align:  'center',
+        valign: 'center',
+      });
+    } else {
+      // Text fallback when brand image asset is not yet deployed
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(4.5)
+        .fillColor(C.NAVY)
+        .text(label, bx, brandY + (BRAND_H - 4.5) / 2,
+          { width: brandCW, align: 'center', lineBreak: false });
+    }
+  });
+
+  // ── Right: quotation info box ─────────────────────────────────────────────
+  doc
+    .rect(BOX_X, y0, BOX_W, BOX_H)
+    .lineWidth(0.8)
+    .fillAndStroke(C.WHITE, C.DARK_GRAY);
+
+  // Box title bar (navy)
+  doc.rect(BOX_X, y0, BOX_W, 18).fill(C.NAVY);
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(7)
+    .fillColor(C.WHITE)
+    .text('DATOS DE COTIZACIÓN', BOX_X + 4, y0 + 5,
+      { width: BOX_W - 8, align: 'center', lineBreak: false });
+
+  const infoRows = [
+    ['Nº COTIZACIÓN', quotation.numero_correlativo || '—'],
+    ['PEDIDO',        (quotation.tipo_pedido || 'EMAIL').toUpperCase()],
+    ['ESTADO',        (quotation.estado      || 'CONFIRMADO').toUpperCase()],
+    ['FECHA CONFIRM.', formatDate(quotation.fecha_aprobacion || quotation.fecha_emision)],
+  ];
+
+  const LABELW = 78;
+  const rowH   = Math.floor((BOX_H - 18) / infoRows.length);  // ≈ 18 pt
+  let   ry     = y0 + 20;
+
+  infoRows.forEach(([lbl, val], i) => {
+    if (i % 2 === 1) {
+      doc.rect(BOX_X + 1, ry, BOX_W - 2, rowH).fill(C.LIGHT_GRAY);
+    }
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(6.5)
+      .fillColor(C.MID_GRAY)
+      .text(lbl, BOX_X + 6, ry + (rowH - 7) / 2,
+        { width: LABELW, lineBreak: false });
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(7.5)
+      .fillColor(C.DARK_GRAY)
+      .text(String(val), BOX_X + LABELW + 4, ry + (rowH - 7.5) / 2,
+        { width: BOX_W - LABELW - 10, lineBreak: false });
+    // Row bottom divider
+    doc
+      .moveTo(BOX_X, ry + rowH)
+      .lineTo(BOX_X + BOX_W, ry + rowH)
+      .lineWidth(0.3)
+      .strokeColor(C.BORDER_GRAY)
+      .stroke();
+    ry += rowH;
+  });
+
+  return y0 + BOX_H + 8;  // Y immediately below the header block
+}
+
+// ---------------------------------------------------------------------------
+// drawSubtitle
+// Centred "PROFORMA REPUESTOS" title framed by two navy horizontal rules.
+// No diagonal stamps or watermarks are rendered.
+// ---------------------------------------------------------------------------
+function drawSubtitle(doc, startY) {
+  const y = startY + 4;
+  hLine(doc, y, C.NAVY, 0.8);
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(12)
+    .fillColor(C.NAVY)
+    .text('PROFORMA REPUESTOS', MARGIN, y + 5,
+      { width: CW, align: 'center', lineBreak: false });
+
+  hLine(doc, y + 21, C.NAVY, 0.8);
+
+  return y + 28;
+}
+
+// ---------------------------------------------------------------------------
+// drawThreeColumnGrid
+// Three equal-width columns with light-blue accent section headers:
+//   1. DATOS GENERALES DEL CLIENTE  (Cliente, NIT, Dirección, Ciudad, Teléfono)
+//   2. DATOS DEL SOLICITANTE        (Nombre, Nº Solicitud/OC, Área, Celular, Correo)
+//   3. DATOS DEL EQUIPO             (MARCA, TIPO, MODELO, SERIE, MOTOR)
+//
+// Fields absent from the current DB schema render as '—' until the
+// corresponding columns are added via migration.
+// ---------------------------------------------------------------------------
+function drawThreeColumnGrid(doc, quotation, startY) {
+  const y0      = startY + 6;
+  const GAP     = 6;
+  const COLW    = (CW - GAP * 2) / 3;   // ≈ 170.43 pt
+  const TITLE_H = 16;
+  const ROW_H   = 14;
+  const ROWS    = 5;
+  const BOX_H   = TITLE_H + ROWS * ROW_H + 4;  // 90 pt
+
+  const colDefs = [
+    {
+      title:  'DATOS GENERALES DEL CLIENTE',
+      x:      MARGIN,
+      fields: [
+        ['Cliente',   quotation.cliente_nombre  || '—'],
+        ['NIT',       quotation.cliente_nit     || '—'],
+        ['Dirección', quotation.cliente_dir     || '—'],
+        ['Ciudad',    quotation.cliente_ciudad  || '—'],
+        ['Teléfono',  quotation.cliente_tel     || '—'],
+      ],
+    },
+    {
+      title:  'DATOS DEL SOLICITANTE',
+      x:      MARGIN + COLW + GAP,
+      fields: [
+        ['Nombre',       quotation.ejecutivo_nombre || '—'],
+        ['Nº Solic./OC', quotation.nro_solicitud   || '—'],
+        ['Área',         quotation.area_sol        || '—'],
+        ['Celular',      quotation.celular_sol     || '—'],
+        ['Correo',       quotation.correo_sol      || '—'],
+      ],
+    },
+    {
+      title:  'DATOS DEL EQUIPO',
+      x:      MARGIN + (COLW + GAP) * 2,
+      fields: [
+        ['MARCA',  quotation.equipo_marca  || '—'],
+        ['TIPO',   quotation.equipo_tipo   || '—'],
+        ['MODELO', quotation.equipo_modelo || '—'],
+        ['SERIE',  quotation.equipo_serie  || '—'],
+        ['MOTOR',  quotation.equipo_motor  || '—'],
+      ],
+    },
+  ];
+
+  colDefs.forEach(({ title, x, fields }) => {
+    // Clean white box with thin border — no colored section headers (physical proforma aesthetic)
+    doc
+      .rect(x, y0, COLW, BOX_H)
+      .lineWidth(0.5)
+      .fillAndStroke(C.WHITE, C.BORDER_GRAY);
+
+    // Section title: navy bold text directly on white, separated by a fine rule
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(6.5)
+      .fillColor(C.NAVY)
+      .text(title, x + 6, y0 + (TITLE_H - 6.5) / 2,
+        { width: COLW - 10, lineBreak: false });
+
+    // Thin separator below title (orange accent matches the physical proforma)
+    doc
+      .moveTo(x, y0 + TITLE_H)
+      .lineTo(x + COLW, y0 + TITLE_H)
+      .lineWidth(0.8)
+      .strokeColor(C.ORANGE)
+      .stroke();
+
+    // Field rows
+    const LWID = 52;
+    let fy = y0 + TITLE_H + 2;
+    fields.forEach(([lbl, val]) => {
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(6.5)
+        .fillColor(C.MID_GRAY)
+        .text(`${lbl}:`, x + 6, fy + 2,
+          { width: LWID, lineBreak: false });
+      doc
+        .font('Helvetica')
+        .fontSize(6.5)
+        .fillColor(C.DARK_GRAY)
+        .text(String(val), x + LWID + 8, fy + 2,
+          { width: COLW - LWID - 14, lineBreak: false });
+      fy += ROW_H;
+    });
+  });
+
+  return y0 + BOX_H + 8;
 }
 
 // ---------------------------------------------------------------------------
 // drawTableHeaderRow
-// Renders the navy column header row and returns the Y position after it.
-// Extracted as a standalone function so it can be re-called on new pages.
+// Renders the light-pink column-header row for the items table.
+// Re-called on each new page after a page break.
+// Returns Y immediately below the header row.
 // ---------------------------------------------------------------------------
 function drawTableHeaderRow(doc, y) {
-  // Navy background for the header row
+  // Pink/pastel background fill
+  doc.rect(MARGIN, y, CW, TABLE_HEADER_H).fill(C.PINK_HEADER);
+  // Outer border stroke
   doc
     .rect(MARGIN, y, CW, TABLE_HEADER_H)
-    .fill(C.NAVY);
+    .lineWidth(0.6)
+    .strokeColor(C.BORDER_GRAY)
+    .stroke();
 
-  // Column header labels — positioned and aligned per column
   const headers = [
-    { label: '#',           x: COL_X.num,       w: COL.num,       align: 'center' },
-    { label: 'CANT.',       x: COL_X.qty,       w: COL.qty,       align: 'center' },
-    { label: 'DESCRIPCIÓN', x: COL_X.desc,      w: COL.desc,      align: 'left'   },
-    { label: 'P. UNITARIO', x: COL_X.unitPrice, w: COL.unitPrice, align: 'right'  },
-    { label: 'SUBTOTAL',    x: COL_X.subtotal,  w: COL.subtotal,  align: 'right'  },
+    { label: 'ITEM',        x: COL_X.item,    w: COL.item,    align: 'center' },
+    { label: 'CÓDIGO',      x: COL_X.codigo,  w: COL.codigo,  align: 'center' },
+    { label: 'CÓD. ALT.',   x: COL_X.codAlt,  w: COL.codAlt,  align: 'center' },
+    { label: 'DESCRIPCIÓN', x: COL_X.desc,    w: COL.desc,    align: 'left'   },
+    { label: 'CANT.',       x: COL_X.cant,    w: COL.cant,    align: 'right'  },
+    { label: 'UNI',         x: COL_X.uni,     w: COL.uni,     align: 'center' },
+    { label: 'P. UNIT.',    x: COL_X.pUnit,   w: COL.pUnit,   align: 'right'  },
+    { label: 'P. TOTAL',    x: COL_X.pTotal,  w: COL.pTotal,  align: 'right'  },
+    { label: 'T. ENTREGA',  x: COL_X.entrega, w: COL.entrega, align: 'center' },
   ];
 
   headers.forEach(({ label, x, w, align }) => {
     doc
       .font('Helvetica-Bold')
-      .fontSize(7.5)
-      .fillColor(C.WHITE)
-      .text(label, x + 4, y + 7, { width: w - 8, align, lineBreak: false });
+      .fontSize(6.5)
+      .fillColor(C.PINK_TEXT)
+      .text(label, x + 2, y + (TABLE_HEADER_H - 6.5) / 2,
+        { width: w - 4, align, lineBreak: false });
   });
 
-  // Vertical dividers between header cells (slightly lighter than the background)
-  drawVerticalDividers(doc, y, TABLE_HEADER_H, C.NAVY_MID);
+  // Vertical column dividers
+  [
+    COL_X.codigo, COL_X.codAlt, COL_X.desc, COL_X.cant,
+    COL_X.uni, COL_X.pUnit, COL_X.pTotal, COL_X.entrega,
+  ].forEach((dx) => {
+    doc
+      .moveTo(dx, y)
+      .lineTo(dx, y + TABLE_HEADER_H)
+      .lineWidth(0.3)
+      .strokeColor(C.BORDER_GRAY)
+      .stroke();
+  });
 
-  return y + TABLE_HEADER_H; // Return Y immediately below the header row
+  return y + TABLE_HEADER_H;
+}
+
+// ---------------------------------------------------------------------------
+// _calcRowHeight — dynamic row height from description text wrapping
+// ---------------------------------------------------------------------------
+function _calcRowHeight(doc, text, fs = 7.5) {
+  doc.fontSize(fs);
+  const h = doc.heightOfString(String(text || ''), { width: COL.desc - 8 });
+  return Math.max(ROW_MIN_H, h + ROW_PADDING);
 }
 
 // ---------------------------------------------------------------------------
 // drawItemsTable
-// Renders the full line-items grid. Each row's height is calculated
-// dynamically from the description text to avoid overlap on long entries.
-// Inserts a page break (with a repeated table header) when remaining page
-// space is insufficient for the next row.
+// 9-column line-items grid.  Row height adapts to description wrapping.
+// Inserts a page break (repeating header) when remaining space is tight.
+// Columns: ITEM · CÓDIGO · CÓD.ALT. · DESCRIPCIÓN · CANT. · UNI
+//          · PRECIO UNITARIO · PRECIO TOTAL · TIEMPO DE ENTREGA
+// Numeric columns are right-aligned with es-BO locale format (e.g. 2.100,00).
 // ---------------------------------------------------------------------------
 function drawItemsTable(doc, quotation, startY) {
   const detalles = Array.isArray(quotation.detalles) ? quotation.detalles : [];
 
-  // ── Section title ──────────────────────────────────────────────────────────
+  // Section title with orange underline
   doc
     .font('Helvetica-Bold')
-    .fontSize(9)
+    .fontSize(8)
     .fillColor(C.NAVY)
     .text('DETALLE DE ÍTEMS COTIZADOS', MARGIN, startY, { lineBreak: false });
-
-  // Orange underline beneath the section title
   doc
-    .moveTo(MARGIN, startY + 13)
-    .lineTo(PW - MARGIN, startY + 13)
+    .moveTo(MARGIN, startY + 12)
+    .lineTo(PW - MARGIN, startY + 12)
     .lineWidth(1.2)
     .strokeColor(C.ORANGE)
     .stroke();
 
-  let y = startY + 20;
+  let y          = startY + 18;
+  const headerY  = y;            // Y of the first table header row
+  y              = drawTableHeaderRow(doc, y);
 
-  // Draw the initial column header row
-  y = drawTableHeaderRow(doc, y);
-
-  // ── Empty state ────────────────────────────────────────────────────────────
+  // Empty state
   if (detalles.length === 0) {
-    doc
-      .rect(MARGIN, y, CW, 28)
-      .fill(C.LIGHT_GRAY);
-
-    doc
-      .font('Helvetica')
-      .fontSize(9)
-      .fillColor(C.MID_GRAY)
-      .text('Sin ítems registrados en esta cotización.', MARGIN, y + 9, {
-        width: CW,
-        align: 'center',
-        lineBreak: false,
-      });
-
-    return y + 40; // Return Y with extra gap after the empty row
-  }
-
-  // ── Data rows ──────────────────────────────────────────────────────────────
-  detalles.forEach((item, index) => {
-    // Calculate row height from description text wrapping at the desc column width
-    const rowH = calcRowHeight(doc, item.descripcion_item, 8.5);
-
-    // Page break check: if the row won't fit, open a new page and re-draw header
-    if (y + rowH > PAGE_BREAK_THRESHOLD) {
-      doc.addPage();
-      drawFooter(doc, quotation);          // Paint footer on the completed page
-      y = MARGIN + 8;                      // Reset Y to the top of the new page
-      y = drawTableHeaderRow(doc, y);      // Re-draw column headers
-    }
-
-    // Alternating row fill: even rows = white, odd rows = light gray
-    const rowFill = index % 2 === 0 ? C.WHITE : C.LIGHT_GRAY;
-
-    doc
-      .rect(MARGIN, y, CW, rowH)
-      .fill(rowFill);
-
-    // Bottom border (thin) to visually separate rows
-    doc
-      .save()
-      .moveTo(MARGIN, y + rowH)
-      .lineTo(MARGIN + CW, y + rowH)
-      .lineWidth(0.3)
-      .strokeColor(C.BORDER_GRAY)
-      .stroke()
-      .restore();
-
-    // Vertical center offset for single-line cells
-    // (multi-line desc cells use their own top-aligned y + 6 offset)
-    const cellTextY = y + (rowH - 8.5) / 2;
-
-    // Cell: row number
+    doc.rect(MARGIN, y, CW, 26).fill(C.LIGHT_GRAY);
     doc
       .font('Helvetica')
       .fontSize(8)
       .fillColor(C.MID_GRAY)
-      .text(
-        String(index + 1),
-        COL_X.num + 4, cellTextY,
-        { width: COL.num - 8, align: 'center', lineBreak: false }
-      );
+      .text('Sin ítems registrados en esta cotización.',
+        MARGIN, y + 8, { width: CW, align: 'center', lineBreak: false });
+    return y + 38;
+  }
 
-    // Cell: quantity (formatted to avoid unnecessary trailing zeros)
-    const qtyValue = parseFloat(item.cantidad);
-    const qtyDisplay = Number.isInteger(qtyValue)
-      ? String(qtyValue)
-      : qtyValue.toLocaleString('en-US', { maximumFractionDigits: 4 });
+  const dataStartY = y;  // Top of first data row (used for outer border)
 
+  detalles.forEach((item, idx) => {
+    const rowH = _calcRowHeight(doc, item.descripcion_item);
+
+    // Page break guard
+    if (y + rowH > PAGE_BREAK_Y) {
+      // Draw the outer border for rows rendered so far on this page
+      doc
+        .rect(MARGIN, headerY, CW, y - headerY)
+        .lineWidth(0.6)
+        .strokeColor(C.BORDER_GRAY)
+        .stroke();
+      doc.addPage();
+      drawFooter(doc, quotation);
+      y = MARGIN + 8;
+      y = drawTableHeaderRow(doc, y);
+    }
+
+    // Alternating row background
+    const fill = idx % 2 === 0 ? C.WHITE : C.ALT_ROW;
+    doc.rect(MARGIN, y, CW, rowH).fill(fill);
+
+    // Bottom row separator
+    doc
+      .moveTo(MARGIN, y + rowH)
+      .lineTo(MARGIN + CW, y + rowH)
+      .lineWidth(0.25)
+      .strokeColor(C.BORDER_GRAY)
+      .stroke();
+
+    const ty = y + (rowH - 7.5) / 2;  // Vertical centre for single-line cells
+
+    // ITEM #
     doc
       .font('Helvetica')
-      .fontSize(8.5)
-      .fillColor(C.DARK_GRAY)
-      .text(
-        qtyDisplay,
-        COL_X.qty + 4, cellTextY,
-        { width: COL.qty - 8, align: 'center', lineBreak: false }
-      );
+      .fontSize(7)
+      .fillColor(C.MID_GRAY)
+      .text(String(idx + 1), COL_X.item + 2, ty,
+        { width: COL.item - 4, align: 'center', lineBreak: false });
 
-    // Cell: description — top-aligned, wraps naturally across multiple lines
+    // CÓDIGO (codigo_parte preferred; fallback to producto_codigo)
+    const codigo = item.codigo_parte || item.producto_codigo || '—';
     doc
       .font('Helvetica')
-      .fontSize(8.5)
+      .fontSize(7)
       .fillColor(C.DARK_GRAY)
-      .text(
-        String(item.descripcion_item || '—'),
-        COL_X.desc + 5, y + 6,           // 5pt left padding, 6pt top padding
-        { width: COL.desc - 10, lineBreak: true }
-      );
+      .text(codigo, COL_X.codigo + 2, ty,
+        { width: COL.codigo - 4, align: 'center', lineBreak: false });
 
-    // Cell: unit price (right-aligned within column)
+    // CÓDIGO ALTERNATIVO — not yet stored in DB; renders placeholder
     doc
       .font('Helvetica')
-      .fontSize(8.5)
-      .fillColor(C.DARK_GRAY)
-      .text(
-        formatCurrency(item.precio_unitario, quotation.moneda),
-        COL_X.unitPrice + 4, cellTextY,
-        { width: COL.unitPrice - 8, align: 'right', lineBreak: false }
-      );
+      .fontSize(7)
+      .fillColor(C.MID_GRAY)
+      .text(item.codigo_alternativo || '—', COL_X.codAlt + 2, ty,
+        { width: COL.codAlt - 4, align: 'center', lineBreak: false });
 
-    // Cell: subtotal (right-aligned, bold — draws the eye to line totals)
+    // DESCRIPCIÓN — top-aligned, wraps
+    doc
+      .font('Helvetica')
+      .fontSize(7.5)
+      .fillColor(C.DARK_GRAY)
+      .text(String(item.descripcion_item || '—'), COL_X.desc + 4, y + 5,
+        { width: COL.desc - 8, lineBreak: true });
+
+    // CANT. — right-aligned, es-BO format
+    const qtyVal = parseFloat(item.cantidad);
+    const qtyStr = Number.isInteger(qtyVal)
+      ? String(qtyVal)
+      : fmtNum(qtyVal);
+    doc
+      .font('Helvetica')
+      .fontSize(7.5)
+      .fillColor(C.DARK_GRAY)
+      .text(qtyStr, COL_X.cant + 2, ty,
+        { width: COL.cant - 4, align: 'right', lineBreak: false });
+
+    // UNI
+    doc
+      .font('Helvetica')
+      .fontSize(7)
+      .fillColor(C.MID_GRAY)
+      .text(item.unidad || 'UND', COL_X.uni + 1, ty,
+        { width: COL.uni - 2, align: 'center', lineBreak: false });
+
+    // PRECIO UNITARIO — right-aligned, es-BO
+    doc
+      .font('Helvetica')
+      .fontSize(7.5)
+      .fillColor(C.DARK_GRAY)
+      .text(fmtPrice(item.precio_unitario, quotation.moneda), COL_X.pUnit + 2, ty,
+        { width: COL.pUnit - 4, align: 'right', lineBreak: false });
+
+    // PRECIO TOTAL — bold, right-aligned, es-BO
     doc
       .font('Helvetica-Bold')
-      .fontSize(8.5)
+      .fontSize(7.5)
       .fillColor(C.DARK_GRAY)
-      .text(
-        formatCurrency(item.subtotal, quotation.moneda),
-        COL_X.subtotal + 4, cellTextY,
-        { width: COL.subtotal - 8, align: 'right', lineBreak: false }
-      );
+      .text(fmtPrice(item.subtotal, quotation.moneda), COL_X.pTotal + 2, ty,
+        { width: COL.pTotal - 4, align: 'right', lineBreak: false });
+
+    // TIEMPO DE ENTREGA — not yet stored per line; renders placeholder
+    doc
+      .font('Helvetica')
+      .fontSize(7)
+      .fillColor(C.MID_GRAY)
+      .text(item.tiempo_entrega || '—', COL_X.entrega + 2, ty,
+        { width: COL.entrega - 4, align: 'center', lineBreak: false });
 
     // Vertical column dividers for this row
-    drawVerticalDividers(doc, y, rowH);
+    [
+      COL_X.codigo, COL_X.codAlt, COL_X.desc, COL_X.cant,
+      COL_X.uni, COL_X.pUnit, COL_X.pTotal, COL_X.entrega,
+    ].forEach((dx) => {
+      doc
+        .moveTo(dx, y)
+        .lineTo(dx, y + rowH)
+        .lineWidth(0.25)
+        .strokeColor(C.BORDER_GRAY)
+        .stroke();
+    });
 
-    y += rowH; // Advance to next row
+    y += rowH;
   });
 
-  // Outer border rectangle enclosing all data rows
+  // Outer border enclosing the entire table (header + all data rows)
   doc
-    .rect(MARGIN, startY + 20 + TABLE_HEADER_H, CW, y - (startY + 20 + TABLE_HEADER_H))
-    .lineWidth(0.8)
+    .rect(MARGIN, headerY, CW, y - headerY)
+    .lineWidth(0.6)
     .strokeColor(C.BORDER_GRAY)
     .stroke();
 
-  return y + 14; // Return Y below the table with a small gap
+  return y + 10;
 }
 
 // ---------------------------------------------------------------------------
-// drawTotals
-// Right-aligned totals block. Computes the grand total from line item
-// subtotals when detalles are present; falls back to the stored monto_total
-// for header-only quotations. The grand total row uses the navy + orange
-// treatment to make it visually dominant.
+// drawTotalsAndConditions
+// Full-width "SON:" line (amount-in-words) followed by a two-column block:
+//   Left  (~55 % of CW): CONDICIONES DE LA OFERTA + DATOS BANCARIOS
+//   Right (~45 % of CW): Subtotal row (if items exist) + navy TOTAL box
 // ---------------------------------------------------------------------------
-function drawTotals(doc, quotation, startY) {
-  const detalles   = Array.isArray(quotation.detalles) ? quotation.detalles : [];
-  const TOTALS_W   = 230;
-  const TOTALS_X   = PW - MARGIN - TOTALS_W;
+function drawTotalsAndConditions(doc, quotation, startY) {
+  const detalles = Array.isArray(quotation.detalles) ? quotation.detalles : [];
 
-  // Compute sum from line items; fall back to stored monto_total if no items
   const computedTotal = detalles.reduce(
-    (sum, item) => sum + parseFloat(item.subtotal || 0),
+    (s, item) => s + parseFloat(item.subtotal || 0),
     0
   );
-
   const displayTotal = detalles.length > 0
     ? computedTotal
     : parseFloat(quotation.monto_total || 0);
 
-  let y = startY;
+  const currencyLabel = quotation.moneda === 'BOB' ? 'BOLIVIANOS' : 'DÓLARES AMERICANOS';
+  const totalWords    = numberToWordsES(displayTotal);
 
-  // ── Subtotal row (only shown when line items are present) ─────────────────
-  if (detalles.length > 0) {
-    doc
-      .font('Helvetica')
-      .fontSize(9)
-      .fillColor(C.MID_GRAY)
-      .text('Subtotal:', TOTALS_X, y, { width: 105, align: 'right', lineBreak: false });
+  let y = startY + 6;
 
-    doc
-      .font('Helvetica')
-      .fontSize(9)
-      .fillColor(C.DARK_GRAY)
-      .text(
-        formatCurrency(computedTotal, quotation.moneda),
-        TOTALS_X + 115, y,
-        { width: TOTALS_W - 115, align: 'right', lineBreak: false }
-      );
-
-    y += 16;
-
-    hLine(doc, y, C.BORDER_GRAY, 0.5);
-    y += 6;
-  }
-
-  // ── Grand total highlighted box ────────────────────────────────────────────
-  const TOTAL_BOX_H = 30;
+  // ── SON: line ─────────────────────────────────────────────────────────────
+  const SON_H = 20;
+  doc.rect(MARGIN, y, CW, SON_H).fill('#FFF3E0');
+  doc
+    .moveTo(MARGIN, y)
+    .lineTo(PW - MARGIN, y)
+    .lineWidth(0.6)
+    .strokeColor(C.ORANGE)
+    .stroke();
+  doc
+    .moveTo(MARGIN, y + SON_H)
+    .lineTo(PW - MARGIN, y + SON_H)
+    .lineWidth(0.6)
+    .strokeColor(C.ORANGE)
+    .stroke();
 
   doc
-    .rect(TOTALS_X, y, TOTALS_W, TOTAL_BOX_H)
-    .fill(C.NAVY);
+    .font('Helvetica-Bold')
+    .fontSize(7.5)
+    .fillColor(C.NAVY)
+    .text('SON:', MARGIN + 6, y + (SON_H - 7.5) / 2, { lineBreak: false });
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(7.5)
+    .fillColor(C.DARK_GRAY)
+    .text(`${totalWords} ${currencyLabel}`,
+      MARGIN + 30, y + (SON_H - 7.5) / 2,
+      { width: CW - 36, lineBreak: false });
 
-  // "TOTAL:" label (left side of the box, white text)
+  y += SON_H + 8;
+
+  // ── Two-column block ──────────────────────────────────────────────────────
+  const LEFT_W  = CW * 0.55;       // ≈ 287.8 pt
+  const RIGHT_W = CW - LEFT_W - 6; // ≈ 229.5 pt
+  const RIGHT_X = MARGIN + LEFT_W + 6;
+
+  // LEFT COLUMN ── CONDICIONES DE LA OFERTA ──────────────────────────────────
+  let ly = y;
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(7)
+    .fillColor(C.NAVY)
+    .text('CONDICIONES DE LA OFERTA', MARGIN + 4, ly + 5,
+      { width: LEFT_W - 10, lineBreak: false });
+  doc
+    .moveTo(MARGIN, ly + 15)
+    .lineTo(MARGIN + LEFT_W, ly + 15)
+    .lineWidth(0.6)
+    .strokeColor(C.BORDER_GRAY)
+    .stroke();
+  ly += 18;
+
+  const validezStr = quotation.fecha_validez
+    ? `HASTA EL ${formatDate(quotation.fecha_validez)}`
+    : '15 DÍAS CALENDARIO';
+  // Use per-quotation tiempo_entrega if provided, else fall back to default
+  const entregaStr = quotation.tiempo_entrega || '25 DÍAS CALENDARIO';
+
+  const condiciones = [
+    ['Tiempo de entrega:', entregaStr],
+    ['Forma de pago:',     '60% ANTICIPO Y SALDO CONTRA ENTREGA'],
+    ['Validez de oferta:', validezStr],
+  ];
+
+  condiciones.forEach(([lbl, val]) => {
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(7)
+      .fillColor(C.MID_GRAY)
+      .text(lbl, MARGIN + 4, ly + 2, { width: 78, lineBreak: false });
+    doc
+      .font('Helvetica')
+      .fontSize(7)
+      .fillColor(C.DARK_GRAY)
+      .text(val, MARGIN + 84, ly + 2,
+        { width: LEFT_W - 88, lineBreak: false });
+    ly += 12;
+  });
+
+  ly += 4;
+
+  // LEFT COLUMN ── DATOS BANCARIOS ───────────────────────────────────────────
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(7)
+    .fillColor(C.NAVY)
+    .text('DATOS BANCARIOS', MARGIN + 4, ly + 5,
+      { width: LEFT_W - 10, lineBreak: false });
+  doc
+    .moveTo(MARGIN, ly + 15)
+    .lineTo(MARGIN + LEFT_W, ly + 15)
+    .lineWidth(0.6)
+    .strokeColor(C.BORDER_GRAY)
+    .stroke();
+  ly += 18;
+
+  const bancoData = [
+    ['Beneficiario:', 'ROCA IMPORTACIONES S.R.L.'],
+    ['Entidad:',      'BANCO UNION S.A.'],
+    ['Cuenta Cte:',   '1-000-00-66027513'],
+  ];
+
+  bancoData.forEach(([lbl, val]) => {
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(7)
+      .fillColor(C.MID_GRAY)
+      .text(lbl, MARGIN + 4, ly + 2, { width: 60, lineBreak: false });
+    doc
+      .font('Helvetica')
+      .fontSize(7)
+      .fillColor(C.DARK_GRAY)
+      .text(val, MARGIN + 66, ly + 2,
+        { width: LEFT_W - 70, lineBreak: false });
+    ly += 12;
+  });
+
+  // RIGHT COLUMN ── Totals ───────────────────────────────────────────────────
+  let ry = y;
+
+  // Subtotal row (only if there are line items)
+  if (detalles.length > 0) {
+    doc.rect(RIGHT_X, ry, RIGHT_W, 18).fill(C.LIGHT_GRAY);
+    doc
+      .font('Helvetica')
+      .fontSize(7.5)
+      .fillColor(C.MID_GRAY)
+      .text('Subtotal:', RIGHT_X + 6, ry + 5,
+        { width: RIGHT_W / 2 - 6, lineBreak: false });
+    doc
+      .font('Helvetica')
+      .fontSize(7.5)
+      .fillColor(C.DARK_GRAY)
+      .text(fmtPrice(computedTotal, quotation.moneda),
+        RIGHT_X + RIGHT_W / 2, ry + 5,
+        { width: RIGHT_W / 2 - 4, align: 'right', lineBreak: false });
+    ry += 18;
+  }
+
+  // Grand total — navy box with orange value text
+  const TBOX_H = 28;
+  doc.rect(RIGHT_X, ry, RIGHT_W, TBOX_H).fill(C.NAVY);
   doc
     .font('Helvetica-Bold')
     .fontSize(9)
     .fillColor(C.WHITE)
-    .text('TOTAL:', TOTALS_X + 10, y + 10, { lineBreak: false });
-
-  // Amount value (right side of the box, orange accent)
+    .text('TOTAL:', RIGHT_X + 8, ry + (TBOX_H - 9) / 2, { lineBreak: false });
   doc
     .font('Helvetica-Bold')
     .fontSize(12)
     .fillColor(C.ORANGE)
-    .text(
-      formatCurrency(displayTotal, quotation.moneda),
-      TOTALS_X + 10, y + 8,
-      { width: TOTALS_W - 20, align: 'right', lineBreak: false }
-    );
+    .text(fmtPrice(displayTotal, quotation.moneda),
+      RIGHT_X + 8, ry + (TBOX_H - 12) / 2,
+      { width: RIGHT_W - 16, align: 'right', lineBreak: false });
+  ry += TBOX_H + 4;
 
-  y += TOTAL_BOX_H;
-
-  // ── Currency note ──────────────────────────────────────────────────────────
-  const currencyNote = quotation.moneda === 'BOB'
-    ? 'Valores expresados en Bolivianos (BOB).'
-    : 'Valores expresados en Dólares Americanos (USD).';
-
-  doc
-    .font('Helvetica')
-    .fontSize(7)
-    .fillColor(C.MID_GRAY)
-    .text(currencyNote, TOTALS_X, y + 5, {
-      width:     TOTALS_W,
-      align:     'right',
-      lineBreak: false,
-    });
-
-  return y + 22; // Return Y below the totals block
-}
-
-// ---------------------------------------------------------------------------
-// drawObservations
-// Renders the quotation's initial observations text in a light-background
-// box. If the field is empty or null, this section is skipped entirely.
-// ---------------------------------------------------------------------------
-function drawObservations(doc, quotation, startY) {
-  const notes = (quotation.observaciones || '').trim();
-  if (!notes) return startY; // Nothing to render — skip the section
-
-  let y = startY + 10;
-
-  // Section title + orange rule
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(9)
-    .fillColor(C.NAVY)
-    .text('OBSERVACIONES Y CONDICIONES', MARGIN, y, { lineBreak: false });
-
-  doc
-    .moveTo(MARGIN, y + 13)
-    .lineTo(PW - MARGIN, y + 13)
-    .lineWidth(1)
-    .strokeColor(C.ORANGE)
-    .stroke();
-
-  y += 20;
-
-  // Calculate the notes box height from the actual text content
-  doc.fontSize(8.5);
-  const textH  = doc.heightOfString(notes, { width: CW - 16 });
-  const boxH   = Math.min(textH + 16, 90); // Cap at 90pt to protect the footer
-
-  // Notes box with light background and border
-  doc
-    .rect(MARGIN, y, CW, boxH)
-    .fillAndStroke(C.LIGHT_GRAY, C.BORDER_GRAY);
-
-  doc
-    .font('Helvetica')
-    .fontSize(8.5)
-    .fillColor(C.DARK_GRAY)
-    .text(notes, MARGIN + 8, y + 8, {
-      width:     CW - 16,
-      height:    boxH - 16,
-      ellipsis:  true,    // Truncate with "…" if the cap clips the text
-      lineBreak: true,
-    });
-
-  return y + boxH + 12; // Return Y below the notes box
-}
-
-// ---------------------------------------------------------------------------
-// drawFooter
-// Fixed navy bar anchored to the absolute bottom of the page, regardless of
-// content height. Contains the generation timestamp, the serial number
-// centered as a reference, and a confidentiality notice.
-// ---------------------------------------------------------------------------
-function drawFooter(doc, quotation) {
-  const FOOTER_H = 34;
-  const footerY  = PH - FOOTER_H;  // Absolute bottom position
-
-  // Full-bleed navy background
-  doc
-    .rect(0, footerY, PW, FOOTER_H)
-    .fill(C.NAVY);
-
-  // Generation timestamp — left side
-  const generatedAt = new Date().toLocaleString('es-BO', {
-    timeZone:  'America/La_Paz',
-    dateStyle: 'long',
-    timeStyle: 'short',
-  });
-
-  doc
-    .font('Helvetica')
-    .fontSize(7)
-    .fillColor(C.BLUE_GRAY)
-    .text(
-      `Generado el ${generatedAt}`,
-      MARGIN, footerY + 8,
-      { lineBreak: false }
-    );
-
-  // Correlativo reference — horizontally centered
-  doc
-    .font('Helvetica-Bold')
-    .fontSize(8)
-    .fillColor(C.WHITE)
-    .text(
-      quotation.numero_correlativo || '',
-      0, footerY + 8,
-      { width: PW, align: 'center', lineBreak: false }
-    );
-
-  // Confidentiality notice — right side
+  // Currency denomination note
   doc
     .font('Helvetica')
     .fontSize(6.5)
     .fillColor(C.MID_GRAY)
     .text(
-      'Documento confidencial — RC Tractoparts',
-      MARGIN, footerY + 20,
-      { width: CW, align: 'right', lineBreak: false }
-    );
+      quotation.moneda === 'BOB'
+        ? 'Valores en Bolivianos (BOB).'
+        : 'Valores en Dólares Americanos (USD).',
+      RIGHT_X, ry,
+      { width: RIGHT_W, align: 'right', lineBreak: false });
+
+  return Math.max(ly, ry + 12) + 8;
+}
+
+// ---------------------------------------------------------------------------
+// drawObservations
+// Optional notes box.  Skipped entirely when observaciones is blank.
+// ---------------------------------------------------------------------------
+function drawObservations(doc, quotation, startY) {
+  const notes = (quotation.observaciones || '').trim();
+  if (!notes) return startY;
+
+  let y = startY + 8;
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(8)
+    .fillColor(C.NAVY)
+    .text('OBSERVACIONES', MARGIN, y, { lineBreak: false });
+  doc
+    .moveTo(MARGIN, y + 12)
+    .lineTo(PW - MARGIN, y + 12)
+    .lineWidth(1)
+    .strokeColor(C.ORANGE)
+    .stroke();
+  y += 18;
+
+  doc.fontSize(7.5);
+  const textH = doc.heightOfString(notes, { width: CW - 16 });
+  const boxH  = Math.min(textH + 16, 80);
+
+  doc
+    .rect(MARGIN, y, CW, boxH)
+    .fillAndStroke(C.LIGHT_GRAY, C.BORDER_GRAY);
+  doc
+    .font('Helvetica')
+    .fontSize(7.5)
+    .fillColor(C.DARK_GRAY)
+    .text(notes, MARGIN + 8, y + 8, {
+      width:     CW - 16,
+      height:    boxH - 16,
+      ellipsis:  true,
+      lineBreak: true,
+    });
+
+  return y + boxH + 10;
+}
+
+// ---------------------------------------------------------------------------
+// drawFooter
+// Fixed to the absolute bottom of each page.
+// Corporate contact info block strictly right-aligned, as per verified specs.
+// ---------------------------------------------------------------------------
+function drawFooter(doc, quotation) {
+  const FOOTER_H = 38;
+  const footerY  = PH - FOOTER_H;
+
+  // Orange top accent stripe (3 pt)
+  doc.rect(0, footerY - 3, PW, 3).fill(C.ORANGE);
+
+  // Navy footer background
+  doc.rect(0, footerY, PW, FOOTER_H).fill(C.NAVY);
+
+  // Left: generation timestamp
+  const generatedAt = new Date().toLocaleString('es-BO', {
+    timeZone:  'America/La_Paz',
+    dateStyle: 'long',
+    timeStyle: 'short',
+  });
+  doc
+    .font('Helvetica')
+    .fontSize(6.5)
+    .fillColor('#A0AEC0')
+    .text(`Generado: ${generatedAt}`, MARGIN, footerY + 8, { lineBreak: false });
+
+  // Centre: correlativo reference
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(8)
+    .fillColor(C.WHITE)
+    .text(quotation.numero_correlativo || '',
+      0, footerY + 8, { width: PW, align: 'center', lineBreak: false });
+
+  // Right: corporate contact block (verified specs)
+  doc
+    .font('Helvetica')
+    .fontSize(6.5)
+    .fillColor('#CBD5E0')
+    .text('79855624 - 72182960  |  rctractoparts@gmail.com',
+      MARGIN, footerY + 8,
+      { width: CW, align: 'right', lineBreak: false });
+
+  doc
+    .font('Helvetica')
+    .fontSize(5.5)
+    .fillColor('#718096')
+    .text(
+      'Av. Cristóbal de Mendoza 2do Anillo, Edif. Adventura Local #23 — Santa Cruz - Bolivia',
+      MARGIN, footerY + 19,
+      { width: CW, align: 'right', lineBreak: false });
+
+  doc
+    .font('Helvetica')
+    .fontSize(6)
+    .fillColor('#718096')
+    .text('Documento confidencial — RC Tractoparts',
+      MARGIN, footerY + 28,
+      { width: CW, align: 'right', lineBreak: false });
 }
 
 // =============================================================================
@@ -831,102 +1108,81 @@ function drawFooter(doc, quotation) {
 
 // ---------------------------------------------------------------------------
 // generateQuotationPdf
-// The single public function of this module. Receives the full quotation
-// object (as returned by QuotationModel.findById — including detalles[]),
-// orchestrates the layout, writes the file to disk, and resolves with the
-// relative file path once the WriteStream's 'finish' event confirms the
-// bytes have been completely flushed.
+// Receives the full quotation object (QuotationModel.findById — with .detalles[]),
+// orchestrates the layout sections, writes the file to disk and resolves with
+// the relative file path once the WriteStream 'finish' event fires.
 //
-// @param   {Object} quotation - Full quotation object with .detalles[]
-// @returns {Promise<string>}  - Relative path to the written PDF file
+// @param   {Object} quotation  Full quotation including .detalles[]
+// @returns {Promise<string>}   Relative path to the written PDF file
 // ---------------------------------------------------------------------------
 async function generateQuotationPdf(quotation) {
   return new Promise((resolve, reject) => {
     try {
-      // -----------------------------------------------------------------------
-      // 1. Resolve the output directory and create it if it does not exist
-      // -----------------------------------------------------------------------
+      // 1. Resolve output directory
       const uploadDir = path.resolve(
         process.cwd(),
         process.env.UPLOAD_DIR || 'uploads/cotizaciones'
       );
-
       if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true }); // Create all missing parent dirs
+        fs.mkdirSync(uploadDir, { recursive: true });
       }
 
-      // Build a unique filename: <correlativo>-<unix_ms>.pdf
-      // The timestamp suffix prevents overwriting a previous version on regeneration.
       const filename     = `${quotation.numero_correlativo}-${Date.now()}.pdf`;
       const absolutePath = path.join(uploadDir, filename);
-
-      // Relative path stored in the database (portable across deploy environments)
       const relativePath = path.join(
         process.env.UPLOAD_DIR || 'uploads/cotizaciones',
         filename
       );
 
-      // -----------------------------------------------------------------------
-      // 2. Initialize the PDFKit document
-      // -----------------------------------------------------------------------
+      // 2. Initialise PDFKit document
       const doc = new PDFDocument({
-        size:        'A4',
+        size:          'A4',
         autoFirstPage: true,
-        margins: {
-          top:    MARGIN,
-          bottom: MARGIN,
-          left:   MARGIN,
-          right:  MARGIN,
-        },
+        margins:       { top: MARGIN, bottom: MARGIN + 45, left: MARGIN, right: MARGIN },
         info: {
           Title:    `Cotización ${quotation.numero_correlativo}`,
           Author:   'RC Tractoparts — Sistema de Gestión de Cotizaciones',
-          Subject:  'Proforma / Cotización Comercial',
+          Subject:  'Proforma Repuestos',
           Keywords: `cotización, proforma, rc tractoparts, ${quotation.numero_correlativo}`,
-          Creator:  'RC Tractoparts SGC v2.0',
+          Creator:  'RC Tractoparts SGC v3.0',
         },
-        // Compress the PDF content stream for a smaller output file
         compress: true,
       });
 
-      // -----------------------------------------------------------------------
-      // 3. Pipe the document to the write stream
-      //    Promise lifecycle is tied exclusively to stream events, not doc events,
-      //    because the 'finish' event on the WriteStream is the reliable signal
-      //    that all bytes have been flushed to the OS file system.
-      // -----------------------------------------------------------------------
+      // 3. Pipe to write stream — resolve/reject driven by stream events
       const writeStream = fs.createWriteStream(absolutePath);
-
       doc.pipe(writeStream);
+      writeStream.on('finish', () => resolve(relativePath));
+      writeStream.on('error',  (err) => reject(err));
 
-      writeStream.on('finish', () => resolve(relativePath)); // File fully written
-      writeStream.on('error',  (err) => reject(err));        // Disk write failure
+      // 4. Render layout sections top-to-bottom
+      // Header, subtitle, and 3-col grid are drawn first so the watermark
+      // (painted next) stays visually inside the items table area.
+      let y = drawHeader(doc, quotation);
+      y     = drawSubtitle(doc, y);
+      y     = drawThreeColumnGrid(doc, quotation, y);
 
-      // -----------------------------------------------------------------------
-      // 4. Render document sections in top-to-bottom order
-      //    Each draw* call returns the new Y position for the next section.
-      // -----------------------------------------------------------------------
-      let y = drawHeader(doc);
-      y = drawMetadataAndClient(doc, quotation, y);
-      y = drawItemsTable(doc, quotation, y);
-      y = drawTotals(doc, quotation, y);
-      y = drawObservations(doc, quotation, y);
+      // Watermark is painted HERE — after the top sections (which stay clean)
+      // but before the items table rows so all line-item text renders on top
+      // (PDFKit draws in painter's order).  tableBodyY is passed so the stamp
+      // is centred dynamically within the items block, not at the page centre.
+      renderWatermark(doc, quotation, y + 42);  // +42 accounts for table title + header row
 
-      // Footer is painted at a fixed absolute Y (bottom of page), not at 'y'
+      y     = drawItemsTable(doc, quotation, y);
+      y     = drawTotalsAndConditions(doc, quotation, y);
+      /* y = */ drawObservations(doc, quotation, y);
+
+      // Footer is painted at a fixed absolute Y — not part of the flow
       drawFooter(doc, quotation);
 
-      // -----------------------------------------------------------------------
-      // 5. Finalize — flushes all buffered content to the pipe and closes it.
-      //    This triggers the WriteStream's 'finish' event, resolving the Promise.
-      // -----------------------------------------------------------------------
+      // 5. Finalise — triggers 'finish' on the write stream
       doc.end();
 
     } catch (layoutError) {
-      // Catch synchronous errors that occur during drawing (e.g. missing fields,
-      // invalid data types passed to PDFKit methods).
       reject(layoutError);
     }
   });
 }
 
 module.exports = { generateQuotationPdf };
+

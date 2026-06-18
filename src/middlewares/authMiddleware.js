@@ -37,7 +37,16 @@ function authenticate(req, res, next) {
   }
 
   // 2. Isolate the token string after "Bearer "
-  const token = authHeader.split(' ')[1];
+  let token = authHeader.split(' ')[1];
+
+  // Defensive guard: Swagger UI with scheme:'bearer' prepends "Bearer " automatically.
+  // If the user pasted the full "Bearer <jwt>" string into the Swagger UI field,
+  // the header arrives as "Bearer Bearer <jwt>" and split(' ')[1] would be the
+  // literal string "Bearer" instead of the JWT.  Strip the redundant prefix here
+  // so both paste styles (raw token / prefixed token) work correctly.
+  if (token && token.toLowerCase().startsWith('bearer ')) {
+    token = token.slice(7).trim();
+  }
 
   // 3. Check if this token has been explicitly revoked (logout scenario)
   if (revokedTokens.has(token)) {
