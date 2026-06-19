@@ -14,8 +14,6 @@
 
 'use strict';
 
-const fs                         = require('fs');
-const path                       = require('path');
 const QuotationModel             = require('../../models/QuotationModel');
 const { logEvent, AuditActions } = require('../../utils/auditLog');
 const pdfService                 = require('../../services/pdfService');
@@ -372,19 +370,15 @@ const QuotationStateController = {
         console.warn('[QuotationStateController.approveQuotation] Post-commit re-fetch failed (non-fatal):', fetchErr.message);
       }
 
-      // ── PDF regeneration — only if no uploaded corporate PDF exists ─────────
-      // Business rule: if the Ejecutivo uploaded a corporate Excel-derived PDF
-      // (pdf_ruta is set and the file exists on disk), that file is the canonical
-      // document and must NOT be replaced by a PDFKit-generated fallback.
+      // ── PDF regeneration — always regenerate on approval/rejection ──────────
+      // Approval is a key lifecycle event: the PDF must always reflect the new
+      // estado (Aprobada internamente / Rechazada). We unconditionally regenerate
+      // so the status badge and APROBADO stamp are always current, regardless of
+      // whether a prior auto-generated PDF already existed at pdf_ruta.
       if (postApprovalQuotation) {
         try {
-          const hasUploadedPdf = postApprovalQuotation.pdf_ruta &&
-            fs.existsSync(path.resolve(process.cwd(), postApprovalQuotation.pdf_ruta));
-
-          if (!hasUploadedPdf) {
-            const newPdfPath = await pdfService.generateQuotationPdf(postApprovalQuotation);
-            await QuotationModel.updatePdfPath(id, newPdfPath);
-          }
+          const newPdfPath = await pdfService.generateQuotationPdf(postApprovalQuotation);
+          await QuotationModel.updatePdfPath(id, newPdfPath);
         } catch (pdfErr) {
           console.warn(
             `[QuotationStateController] PDF regeneration after ${aprobado ? 'approval' : 'rejection'} failed (non-fatal):`,

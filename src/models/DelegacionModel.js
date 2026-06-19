@@ -29,6 +29,20 @@ const DelegacionModel = {
   // @returns {Promise<Object|null>}
   // ---------------------------------------------------------------------------
   async findActiveDelegacion(id_usuario_delegado) {
+    // The connection pool is configured with timezone '+00:00' (UTC) and the
+    // frontend datetime-local inputs send Bolivia local time strings (e.g.
+    // "2026-06-18T10:00") which are stored as-is.  MySQL's NOW() runs in UTC
+    // (4 hours ahead of Bolivia / America/La_Paz, UTC-4), so comparing NOW()
+    // against locally-stored times causes delegations to expire instantly.
+    //
+    // Fix: compute the current Bolivia local time in Node.js using the IANA
+    // timezone database and pass it as a bound parameter.  The sv-SE locale
+    // reliably returns an ISO-like "YYYY-MM-DD HH:mm:ss" string; .slice(0,19)
+    // ensures exactly that format for MySQL DATETIME comparison.
+    const nowBolivia = new Date()
+      .toLocaleString('sv-SE', { timeZone: 'America/La_Paz' })
+      .slice(0, 19);  // → "2026-06-18 10:00:30"
+
     const [rows] = await pool.execute(
       `SELECT
          d.id,
@@ -41,10 +55,10 @@ const DelegacionModel = {
        JOIN   usuarios u ON u.id = d.id_usuario_jefe
        WHERE  d.id_usuario_delegado = ?
          AND  d.activo = 1
-         AND  NOW() BETWEEN d.fecha_inicio AND d.fecha_fin
+         AND  ? BETWEEN d.fecha_inicio AND d.fecha_fin
        ORDER  BY d.fecha_fin DESC
        LIMIT  1`,
-      [id_usuario_delegado]
+      [id_usuario_delegado, nowBolivia]
     );
 
     return rows[0] || null;
@@ -130,7 +144,7 @@ const DelegacionModel = {
       `SELECT u.id, u.nombre_completo, u.nombre_usuario
        FROM   usuarios u
        JOIN   roles    r ON r.id = u.id_rol
-       WHERE  r.nombre = 'Ejecutivo'
+       WHERE  r.nombre IN ('Ejecutivo', 'Administracion')
          AND  u.activo = 1
        ORDER  BY u.nombre_completo ASC`
     );

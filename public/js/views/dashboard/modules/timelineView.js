@@ -18,10 +18,18 @@ import { escHtml }        from '../helpers.js';
 // rendered inside a modal body. Uses apiClient (which injects the Bearer
 // token) instead of a plain anchor navigation that would strip the header.
 //
-// @param {HTMLElement}    body  — Modal body containing #btn-ver-pdf
-// @param {number|string}  id   — Quotation ID for the endpoint URL
+// The Blob is wrapped in a File object with a meaningful name so that
+// Chrome's PDF viewer tab title and the "Save As" dialog both show the
+// quotation correlativo instead of a raw UUID.
+//
+// The object URL is revoked after 60 s — long enough for any network
+// speed to finish loading the PDF before the URL is garbage-collected.
+//
+// @param {HTMLElement}    body        — Modal body containing #btn-ver-pdf
+// @param {number|string}  id          — Quotation ID for the endpoint URL
+// @param {string}         [correlativo] — Quotation number used as filename
 // ---------------------------------------------------------------------------
-export function wirePdfButton(body, id) {
+export function wirePdfButton(body, id, correlativo) {
   const btn = body.querySelector('#btn-ver-pdf');
   if (!btn) return;
   btn.addEventListener('click', async () => {
@@ -30,11 +38,17 @@ export function wirePdfButton(body, id) {
     try {
       const response = await api.get(`/api/cotizaciones/${id}/pdf`);
       const blob     = await response.blob();
-      const url      = URL.createObjectURL(blob);
+      // Wrap in File so the browser's PDF viewer uses the correlativo as the
+      // document title and suggested save-name instead of a UUID fragment.
+      const safeName = correlativo
+        ? `Cotizacion_${correlativo.replace(/[^\w\-\.]/g, '_')}.pdf`
+        : `Cotizacion_${id}.pdf`;
+      const file = new File([blob], safeName, { type: 'application/pdf' });
+      const url  = URL.createObjectURL(file);
       window.open(url, '_blank', 'noopener,noreferrer');
-      // Revoke the object URL after a short delay to free memory while
-      // still giving the new tab enough time to load the PDF.
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      // 60 s gives even slow connections ample time to load before the
+      // object URL is released and the browser memory is freed.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       showToast(err.data?.message || err.message || 'No se pudo cargar el PDF.', 'error');
     } finally {

@@ -262,8 +262,6 @@ function drawLogoWatermark(doc) {
   doc.save();
   doc.opacity(0.06);     // 6% — visible branding, zero legibility impact
   doc.image(LOGO_PATH, wx, wy, {
-    width:  WM_SIZE,
-    height: WM_SIZE,
     fit:    [WM_SIZE, WM_SIZE],
     align:  'center',
     valign: 'center',
@@ -347,8 +345,6 @@ function drawHeader(doc, quotation) {
   // ── Left: corporate logo (real image with text fallback) ──────────────────
   if (fs.existsSync(LOGO_PATH)) {
     doc.image(LOGO_PATH, MARGIN, y0, {
-      width:  LOGO_W,
-      height: LOGO_H,
       fit:    [LOGO_W, LOGO_H],
       align:  'center',
       valign: 'center',
@@ -401,8 +397,6 @@ function drawHeader(doc, quotation) {
 
     if (fs.existsSync(imgPath)) {
       doc.image(imgPath, bx + IMG_PAD, brandY + IMG_PAD, {
-        width:  brandCW - IMG_PAD * 2,
-        height: BRAND_H - IMG_PAD * 2,
         fit:    [brandCW - IMG_PAD * 2, BRAND_H - IMG_PAD * 2],
         align:  'center',
         valign: 'center',
@@ -438,7 +432,7 @@ function drawHeader(doc, quotation) {
     ['PEDIDO',        (quotation.tipo_pedido || 'EMAIL').toUpperCase()],
     // Store raw DB estado so the STATUS color palette can be resolved in the
     // render loop; the display string is uppercased there before painting.
-    ['ESTADO',        quotation.estado || 'Pendiente'],
+    ['ESTADO',        quotation.estado || '—'],
     ['FECHA CONFIRM.', formatDate(quotation.fecha_aprobacion || quotation.fecha_emision)],
   ];
 
@@ -1095,10 +1089,20 @@ function drawObservations(doc, quotation, startY) {
 // drawFooter
 // Fixed to the absolute bottom of each page.
 // Corporate contact info block strictly right-aligned, as per verified specs.
+//
+// IMPORTANT: text is drawn below the normal content area (footerY ≈ 804 pt on
+// A4).  PDFKit triggers an auto-page-break when doc.text() is called at a Y
+// position past (page height − bottom margin).  We zero the bottom margin
+// before drawing and restore it afterward so no phantom extra pages appear.
 // ---------------------------------------------------------------------------
 function drawFooter(doc, quotation) {
   const FOOTER_H = 38;
   const footerY  = PH - FOOTER_H;
+
+  // Save and zero the bottom margin so text at absolute footer coordinates
+  // (804–832 pt) cannot trigger PDFKit's auto-page-break logic.
+  const savedBottomMargin = doc.page.margins.bottom;
+  doc.page.margins.bottom = 0;
 
   // Orange top accent stripe (3 pt)
   doc.rect(0, footerY - 3, PW, 3).fill(C.ORANGE);
@@ -1140,7 +1144,7 @@ function drawFooter(doc, quotation) {
     .fontSize(5.5)
     .fillColor('#718096')
     .text(
-      'Av. Cristóbal de Mendoza 2do Anillo, Edif. Adventura Local #23 — Santa Cruz - Bolivia',
+      'Av. El Trompillo 2do Anillo, Edif. Torre Empresarial Los Laureles, Piso 9. Santa Cruz - Bolivia.',
       MARGIN, footerY + 19,
       { width: CW, align: 'right', lineBreak: false });
 
@@ -1151,6 +1155,9 @@ function drawFooter(doc, quotation) {
     .text('Documento confidencial — RC Tractoparts',
       MARGIN, footerY + 28,
       { width: CW, align: 'right', lineBreak: false });
+
+  // Restore the bottom margin so subsequent content flow is unaffected.
+  doc.page.margins.bottom = savedBottomMargin;
 }
 
 // =============================================================================

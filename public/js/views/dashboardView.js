@@ -684,7 +684,7 @@ class ExecutiveStrategy extends DashboardStrategy {
 
       UI.openModal(`Cotización ${q.numero_correlativo}`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, false);
-        wirePdfButton(body, id);
+        wirePdfButton(body, id, q.numero_correlativo);
         wireExcelButton(body, id, q.numero_correlativo);
         body.insertAdjacentHTML('beforeend', buildTimelineHtml(history));
       });
@@ -872,7 +872,7 @@ class ManagerStrategy extends DashboardStrategy {
 
       UI.openModal(`Proforma ${q.numero_correlativo} — Decisión de Jefe`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, true);
-        wirePdfButton(body, id);
+        wirePdfButton(body, id, q.numero_correlativo);
         wireExcelButton(body, id, q.numero_correlativo);
 
         // Wire the 4 state-machine action buttons
@@ -1096,7 +1096,7 @@ class ManagerStrategy extends DashboardStrategy {
       const q    = data.data;
       UI.openModal(`Proforma ${correlativo ?? q.numero_correlativo}`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, 'jefe');
-        wirePdfButton(body, id);
+        wirePdfButton(body, id, correlativo ?? q.numero_correlativo);
         wireExcelButton(body, id, correlativo ?? q.numero_correlativo);
         // Wire action buttons (same as approval detail)
         body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () => {
@@ -1632,7 +1632,7 @@ class AdminStrategy extends DashboardStrategy {
 
       UI.openModal(`Revisión Administrador — ${q.numero_correlativo}`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, 'admin');
-        wirePdfButton(body, id);
+        wirePdfButton(body, id, q.numero_correlativo);
         wireExcelButton(body, id, q.numero_correlativo);
 
         // Wire "Save comment only" button
