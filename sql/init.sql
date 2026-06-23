@@ -31,9 +31,12 @@
 --   12. cotizacion_historial_estados
 --   13. Seed data
 --
--- NOTE: Development password hashes below are PLACEHOLDERS.
---       Run  `node scripts/seed-users.js --execute`  after init to replace
---       them with properly derived bcrypt hashes for each test account.
+-- NOTE: The usuarios table is seeded with the three INITIAL PRODUCTION accounts
+--       (SysAdmin, Jefe, Administradora). Their bcrypt hashes are real and were
+--       generated with bcryptjs (cost 10). To rotate a password, generate a new
+--       hash and replace it inline — see the "RAW PASSWORD" comments in section 2.
+--       All Sales Executive ('Ejecutivo') accounts are created later, manually,
+--       from inside the platform by any of these three privileged accounts.
 -- =============================================================================
 
 SET NAMES utf8mb4;
@@ -91,19 +94,29 @@ CREATE TABLE usuarios (
     ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Development / test seed accounts.
--- IMPORTANT: The hashes below are PLACEHOLDER values.
---   Run `node scripts/seed-users.js --execute` to overwrite with proper hashes.
---   Passwords defined in seed-users.js: jefe->'jefe123', admin->'admin123',
---   sysadmin->'sysadmin123', ejecutivos->'ejecutivo123'.
+-- =============================================================================
+-- INITIAL PRODUCTION ACCOUNTS  (exactly three — no test/fake users)
+-- =============================================================================
+-- The login identifier is `nombre_usuario`. Hashes are real bcrypt (cost 10).
+--
+-- RAW PASSWORDS (rotate in production — regenerate the hash and replace inline):
+--   id_rol reference → 1=Ejecutivo, 2=Administracion, 3=Jefe, 4=SysAdmin
+--
+--   1) admin@rctractoparts.com  (SysAdmin)      RAW PASSWORD: Admin#RC2026
+--   2) ronald                   (Jefe / Chief)  RAW PASSWORD: Ronald#RC2026
+--   3) angelica                 (Administradora) RAW PASSWORD: Angelica#RC2026
+--
+-- To change a password: run
+--   node -e "require('bcryptjs').hash('NEW_PASSWORD',10).then(console.log)"
+-- and paste the resulting hash over the corresponding password_hash below.
+--
+-- Sales Executives ('Ejecutivo', id_rol=1) are NOT seeded here; they are created
+-- on demand from within the platform by any of the three accounts below
+-- (POST /api/usuarios is authorized for Jefe, Administracion and SysAdmin).
 INSERT INTO usuarios (id, nombre_completo, nombre_usuario, password_hash, id_rol) VALUES
-  (1, 'Carlos Ejecutivo',      'ejecutivo1',  '$2b$10$uN8G6c6K7pYhR6D3e8G6Ou7Bv4K3M2v1A4R5t6Y7u8I9o0P1q2W3e', 1),
-  (2, 'Elena Ejecutivo',       'elena_ejec',  '$2b$10$uN8G6c6K7pYhR6D3e8G6Ou7Bv4K3M2v1A4R5t6Y7u8I9o0P1q2W3e', 1),
-  (3, 'Carlos Administracion', 'carlos_admin','$2b$10$uN8G6c6K7pYhR6D3e8G6Ou7Bv4K3M2v1A4R5t6Y7u8I9o0P1q2W3e', 2),
-  (4, 'Admin del Sistema',     'admin',       '$2b$10$uN8G6c6K7pYhR6D3e8G6Ou7Bv4K3M2v1A4R5t6Y7u8I9o0P1q2W3e', 2),
-  (5, 'Jefe del Sistema',      'jefe',        '$2b$10$uN8G6c6K7pYhR6D3e8G6Ou7Bv4K3M2v1A4R5t6Y7u8I9o0P1q2W3e', 3),
-  (6, 'Adrian Jefe',           'jefe1',       '$2b$10$uN8G6c6K7pYhR6D3e8G6Ou7Bv4K3M2v1A4R5t6Y7u8I9o0P1q2W3e', 3),
-  (7, 'System Administrator',  'sysadmin',    '$2b$10$uN8G6c6K7pYhR6D3e8G6Ou7Bv4K3M2v1A4R5t6Y7u8I9o0P1q2W3e', 4);
+  (1, 'Master Admin', 'admin@rctractoparts.com', '$2a$10$9thlUvAa55IvprZJI77Hy.MnsgWkQPCrLahCQLJGmg79XocDGeYMm', 4), -- SysAdmin
+  (2, 'Ronald',       'ronald',                  '$2a$10$ZVlZ5jhQxYwXSCIiPYYdG.UsnafoQHa3a.231NwTVDN/CFb7Qpi9m', 3), -- Jefe
+  (3, 'Angélica',     'angelica',                '$2a$10$ClB54.CipxhexdK2.8GZbeH0R5kc5nIOmv5Zeqg21rjNjOoHmN95i', 2); -- Administradora
 
 -- =============================================================================
 -- 3. MARCAS  (Spare Part Brands Catalog)
