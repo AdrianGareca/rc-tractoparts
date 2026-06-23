@@ -7,8 +7,8 @@
 
 'use strict';
 
-const BrandModel                 = require('../models/BrandModel');
-const { logEvent, AuditActions } = require('../utils/auditLog');
+const BrandModel   = require('../models/BrandModel');
+const { logEvent } = require('../utils/auditLog');
 
 const BrandController = {
 

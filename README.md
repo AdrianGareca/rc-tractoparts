@@ -510,13 +510,20 @@ JWT_EXPIRES_IN=8h
 
 ---
 
-### Step 3 — Initialize the Database (Single Source of Truth)
+### Step 3 — Initialize the Database (Automated, Single Source of Truth)
 
-`sql/init.sql` is the **sole canonical database definition**. It absorbs and supersedes all former migration scripts (`migration_add_sysadmin_role.sql`, `migration_add_en_espera.sql`, `migration_add_comentarios_admin.sql`, `migration_add_marcas.sql`). Execute it once on a fresh MySQL instance:
+`sql/init.sql` is the **sole canonical database definition**. It absorbs and supersedes all former migration scripts (`migration_add_sysadmin_role.sql`, `migration_add_en_espera.sql`, `migration_add_comentarios_admin.sql`, `migration_add_marcas.sql`) — there are no standalone migration files to run.
 
-1. Open **MySQL Workbench** and connect to your local server.
-2. Navigate to **File → Open SQL Script** and select `sql/init.sql`.
-3. Execute the full script with `Ctrl + Shift + Enter` (or click the lightning bolt ⚡ icon).
+Initialization is now fully automated by `sql/init.js` and exposed through a single npm script. With a valid `.env` in place, run:
+
+```bash
+npm install
+npm run db:init
+```
+
+`npm run db:init` (→ `node sql/init.js`) opens a one-shot admin connection with `multipleStatements` enabled, reads `sql/init.sql`, and executes the entire master script in a single round-trip. The SQL is self-contained: it issues its own `DROP DATABASE` / `CREATE DATABASE` / `USE`, so the bootstrap connection deliberately does **not** pre-select a database and does **not** reuse the locked-down application pool.
+
+> ⚠️ **Destructive:** `db:init` drops and recreates the `rc_tractoparts` database from scratch. Never run it against a database that holds data you need.
 
 The script performs the following in FK-safe execution order:
 
@@ -524,32 +531,45 @@ The script performs the following in FK-safe execution order:
 |---|---|
 | 0 | Drop and recreate the `rc_tractoparts` database with `utf8mb4_unicode_ci` collation |
 | 1 | Create `roles` table; seed all 4 canonical roles |
-| 2 | Create `usuarios` table with brute-force lockout fields; seed placeholder accounts |
-| 3 | Create `marcas` table; seed 8 default heavy-machinery brands |
-| 4 | Create `clientes` table; seed 2 sample clients |
+| 2 | Create `usuarios` table with brute-force lockout fields; seed the 3 official production accounts |
+| 3 | Create `marcas` table; seed default heavy-machinery brands (CAT, John Deere, Volvo, Komatsu, JCB, CASE, …) |
+| 4 | Create `clientes`, `productos`, quotation, audit, history and notification tables; seed the serial counter and sample clients |
+
+> Need a fresh test database too? Point `DB_NAME` at `rc_tractoparts_test` (or run the SQL manually) and re-run `npm run db:init` against it before executing the integration suite.
 
 ---
 
-### Step 4 — Seed Proper Password Hashes
+### Step 4 — Official Production Seed Accounts
 
-The placeholder `password_hash` values in `sql/init.sql` are not real bcrypt hashes. After running the schema script, replace them with properly-derived hashes:
+`sql/init.sql` seeds the **three official production accounts inline** with real bcrypt hashes (no follow-up hashing step is required). These are the only accounts that ship with the system:
+
+| # | Username | Role | Default Password |
+|---|---|---|---|
+| 1 | `admin@rctractoparts.com` | **SysAdmin** (`id_rol = 4`) | `Admin#RC2026` |
+| 2 | `ronald` | **Jefe** (`id_rol = 3`) | `Ronald#RC2026` |
+| 3 | `angelica` | **Administradora** (`id_rol = 2`) | `Angelica#RC2026` |
+
+> **How Sales Executives are created:** `Ejecutivo` (`id_rol = 1`) accounts are **never seeded**. They are provisioned at runtime through the application by an authorized user (`Jefe`, `Administracion`, or `SysAdmin`) via `POST /api/usuarios`. This keeps the seed surface minimal and ensures every executive account has an accountable creator in the audit trail.
+
+> **Security Note:** Change every default production password immediately after the first login. The credentials above exist solely to bootstrap a fresh deployment.
+
+The legacy `scripts/seed-users.js` helper remains in the repo as an optional development-only utility for spinning up extra throwaway accounts (`node scripts/seed-users.js --execute`). It is **not** part of the standard production bootstrap — `npm run db:init` alone produces a fully usable system.
+
+---
+
+### Step 5 — Verify Code Quality (ESLint)
+
+The codebase is held to a **zero-warning** ESLint standard. Before starting the server or opening a pull request, confirm the source tree is spotless:
 
 ```bash
-node scripts/seed-users.js --execute
+npm run lint
 ```
 
-Default development credentials after seeding:
-
-| Username | Password | Role |
-|---|---|---|
-| `jefe` | `jefe123` | Jefe |
-| `admin` | `admin123` | Administracion |
-| `sysadmin` | `sysadmin123` | SysAdmin |
-| `ejecutivo1` | `ejecutivo123` | Ejecutivo |
+A clean run prints no output and exits `0` (0 errors, 0 warnings). Any reported issue must be resolved — warnings are treated as build-blocking.
 
 ---
 
-### Step 5 — Start the Server
+### Step 6 — Start the Server
 
 ```bash
 # Development (hot-reload via nodemon)
@@ -564,7 +584,7 @@ Interactive Swagger documentation: `http://localhost:3000/api-docs`.
 
 ---
 
-### Step 6 — Run the Test Suite
+### Step 7 — Run the Test Suite
 
 ```bash
 # Run all test suites (unit + integration)
@@ -636,40 +656,32 @@ Badge resets to 0
 
 ### 8.2 Dynamic Status PDF Generation Engine
 
-**Purpose:** Generates a corporate-grade proforma PDF at quotation creation time and on demand via re-generation. Each PDF carries a centered, high-transparency watermark reflecting the current quotation state (`PENDIENTE`, `APROBADA INTERNAMENTE`, `RECHAZADA`, etc.).
+**Purpose:** Generates a corporate-grade proforma PDF that always reflects the quotation's **current** state. The document carries a navy `DATOS DE COTIZACIÓN` info card (with a color-coded `ESTADO` row) and, once a quotation reaches `Aprobada internamente` / `Aceptada`, a tilted magenta **APROBADO** ink-stamp behind the items table.
 
 **Key Files:**
 
 | File | Role |
 |---|---|
-| `src/services/pdfService.js` | Core PDFKit document builder |
-| `src/controllers/quotation/quotationPdfController.js` | HTTP handlers: upload, download, re-generate |
-| `src/assets/images/` | Logo and brand image assets served at `/assets/images/` |
+| `src/services/pdfService.js` | Core PDFKit builder — `generateQuotationPdf()` + `purgeQuotationPdf()` |
+| `src/controllers/quotation/quotationPdfController.js` | HTTP handlers: upload, download (state-named filename) |
+| `src/controllers/quotation/quotationStateController.js` | Drives regeneration + purge on every transition/approval |
+| `src/assets/images/` | Logo and partner-brand assets served at `/assets/images/` |
 
-**Watermark logic:**
+**Brand strip (`drawBrandStrip`):** Each partner logo (CAT, John Deere, Volvo, Komatsu, JCB, CASE) is opened once to read its intrinsic pixel dimensions, scaled with a hand-computed `object-fit: contain` (uniform max height, width clamped to the slot), and drawn with a **single** `doc.image()` call using explicit `{ width, height }`. This guarantees correct aspect ratio with no stretching, clipping, overflow, or tiling/mirroring artifacts.
 
-The watermark is drawn using PDFKit's graphics API:
+**Download filename convention:** `buildPdfDownloadName()` produces a header- and filesystem-safe stem of the form `[N° COTIZACIÓN]_[ESTADO].pdf` — accents stripped, spaces and special characters collapsed to `_`. Example: `COT-2026-0007_APROBADA_INTERNAMENTE.pdf`. The estado segment always mirrors the quotation's live state at download time.
 
-```js
-// Centered, rotated, low-opacity state watermark
-doc.save()
-   .rotate(-45, { origin: [pageWidth / 2, pageHeight / 2] })
-   .fillColor('#808080').opacity(0.10)
-   .fontSize(80).font('Helvetica-Bold')
-   .text(estado.toUpperCase(), 0, pageHeight / 2 - 40, { align: 'center', width: pageWidth })
-   .restore();
-```
+#### Strict Single-PDF Lifecycle (Automatic Purge)
 
-**State → Watermark color mapping:**
+A quotation may only ever own **one physical PDF on disk at any time.** Because the `ESTADO` card and the `APROBADO` stamp are baked into the file, the PDF is regenerated on every successful status transition (`Pendiente → En revisión → Aprobada internamente → Enviada al cliente → Aceptada`, etc.) and on every approval/rejection.
 
-| Estado | Watermark Color | Opacity |
-|---|---|---|
-| Pendiente | Gray `#808080` | 10 % |
-| Aprobada internamente | Emerald `#10B981` | 10 % |
-| Enviada al cliente | Blue `#3B82F6` | 10 % |
-| Rechazada | Red `#EF4444` | 10 % |
-| Aceptada | Green `#16A34A` | 10 % |
-| Archivada | Dark gray `#374151` | 8 % |
+To prevent storage accumulation, the state controller calls `pdfService.purgeQuotationPdf(oldPdfRuta)` **before** generating the replacement:
+
+1. Look up the existing `pdf_ruta` recorded in the database for the quotation.
+2. If a file exists at that path, physically delete it with `fs.promises.unlink()` (`purgeQuotationPdf` — idempotent, non-throwing; an already-missing file is treated as success).
+3. **Only after the old file is purged**, generate the fresh PDF for the new state and persist the new `pdf_ruta` via `updatePdfPath()`.
+
+The purge step is best-effort and isolated: a failed deletion is logged but never rolls back a committed state transition. The net effect is a clean storage footprint of exactly one up-to-date PDF per quotation.
 
 ---
 
@@ -767,67 +779,13 @@ NODE_ENV=test
 DB_NAME_TEST=rc_tractoparts_test
 ```
 
-Bootstrap the test database:
+Bootstrap the test database by pointing `DB_NAME` at the test schema and running the automated initializer (which seeds the 3 official accounts inline):
 
 ```bash
-mysql -u root -p rc_tractoparts_test < sql/init.sql
-node scripts/seed-users.js --execute
+DB_NAME=rc_tractoparts_test npm run db:init
 ```
 
 The test suites automatically isolate their data using `beforeAll`/`afterAll` hooks that insert and clean up test fixtures within transactions. The rate limiter is automatically bypassed in `NODE_ENV=test` mode.
-
----
-
-*Last updated: 2026-06-22 — Persistent Notifications, Comprehensive QA expansion*
-| 5 | Create `productos` table with `marca_id FK → marcas(id)` (3NF) |
-| 6 | Create `cotizaciones_correlativo` serial-counter table |
-| 7 | Create `cotizaciones` table with full 8-value state ENUM |
-| 8 | Create `cotizacion_detalles` with CASCADE delete and dual-brand FK |
-| 9 | Create `auditoria` table |
-| 10 | Create `bitacora_auditoria` table |
-| 11 | Create `cotizacion_historial_estados` table |
-| 12 | Insert seed data (serial counter, sample clients) |
-
----
-
-### Step 4 — Hydrate Cryptographic Password Hashes
-
-The `init.sql` seed accounts contain **placeholder** bcrypt strings. The seeder script derives properly-salted hashes from each account's canonical development password and writes them back to the database:
-
-```bash
-node scripts/seed-users.js --execute
-```
-
-After execution, the following development accounts are available:
-
-| Role | Username | Development Password |
-|---|---|---|
-| Ejecutivo | `ejecutivo1` | `ejecutivo123` |
-| Ejecutivo | `elena_ejec` | `ejecutivo123` |
-| Administracion | `carlos_admin` | `admin123` |
-| Administracion | `admin` | `admin123` |
-| Jefe | `jefe` | `jefe123` |
-| Jefe | `jefe1` | `jefe123` |
-| SysAdmin | `sysadmin` | `sysadmin123` |
-
-> **Production Note:** All development passwords must be replaced with strong, unique credentials before any production deployment. The seeder script is a development utility only.
-
----
-
-### Step 5 — Install Dependencies & Launch
-
-```bash
-npm install
-npm run dev
-```
-
-The API server starts on `http://localhost:3000` (or the `PORT` value configured in `.env`).
-
-| Endpoint | URL |
-|---|---|
-| REST API base | `http://localhost:3000/api` |
-| Swagger interactive documentation | `http://localhost:3000/api-docs` |
-| SPA Dashboard | `http://localhost:3000/dashboard.html` |
 
 ---
 
@@ -908,5 +866,7 @@ npm run test:integration
 **RC Tractoparts — Departamento de Sistemas**
 
 *UTEPSA · Carrera de Ingeniería de Sistemas · Santa Cruz de la Sierra, Bolivia*
+
+*Last updated: 2026-06-23 — Automated `npm run db:init`, official production seed accounts, strict single-PDF lifecycle, zero-warning ESLint.*
 
 </div>

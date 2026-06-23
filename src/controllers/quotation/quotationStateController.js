@@ -166,9 +166,14 @@ const QuotationStateController = {
       // internamente'), we re-fetch the quotation with its new estado and
       // overwrite the stored PDF on every successful transition. Non-fatal:
       // a regeneration failure must never roll back a committed state change.
+      //
+      // SINGLE-PDF INVARIANT: a quotation may only ever own ONE physical file.
+      // We purge the previously stored PDF from disk BEFORE generating the new
+      // one, so storage never accumulates a trail of stale state PDFs.
       try {
         const refreshed = await QuotationModel.findById(id);
         if (refreshed) {
+          await pdfService.purgeQuotationPdf(refreshed.pdf_ruta);
           const newPdfPath = await pdfService.generateQuotationPdf(refreshed);
           await QuotationModel.updatePdfPath(id, newPdfPath);
         }
@@ -365,8 +370,12 @@ const QuotationStateController = {
       // estado (Aprobada internamente / Rechazada). We unconditionally regenerate
       // so the status badge and APROBADO stamp are always current, regardless of
       // whether a prior auto-generated PDF already existed at pdf_ruta.
+      //
+      // SINGLE-PDF INVARIANT: purge the previously stored file from disk BEFORE
+      // generating the replacement so a quotation never owns more than one PDF.
       if (postApprovalQuotation) {
         try {
+          await pdfService.purgeQuotationPdf(postApprovalQuotation.pdf_ruta);
           const newPdfPath = await pdfService.generateQuotationPdf(postApprovalQuotation);
           await QuotationModel.updatePdfPath(id, newPdfPath);
         } catch (pdfErr) {

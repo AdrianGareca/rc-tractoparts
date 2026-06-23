@@ -732,8 +732,6 @@ function drawItemsTable(doc, quotation, startY) {
     return y + 38;
   }
 
-  const dataStartY = y;  // Top of first data row (used for outer border)
-
   detalles.forEach((item, idx) => {
     const rowH = _calcRowHeight(doc, item.descripcion_item);
 
@@ -1281,5 +1279,44 @@ async function generateQuotationPdf(quotation) {
   });
 }
 
-module.exports = { generateQuotationPdf };
+// ---------------------------------------------------------------------------
+// purgeQuotationPdf
+// Physically deletes a previously generated/stored PDF from disk so that a
+// quotation never accumulates more than ONE physical file across its lifecycle.
+//
+// Call this with the EXISTING pdf_ruta (as stored in the DB) BEFORE generating
+// the replacement PDF for a new state. The path is resolved relative to the
+// process CWD — exactly how generateQuotationPdf() and downloadPdf() resolve it.
+//
+// Idempotent and non-throwing by contract: a null/blank path, or a file that is
+// already gone (ENOENT), resolves quietly to `false`. Any other unexpected
+// error is swallowed and logged, never propagated — purging is a best-effort
+// housekeeping step that must never roll back a committed state transition.
+//
+// @param   {string|null} relativePath  pdf_ruta value from the DB
+// @returns {Promise<boolean>}           true if a file was actually deleted
+// ---------------------------------------------------------------------------
+async function purgeQuotationPdf(relativePath) {
+  if (!relativePath || typeof relativePath !== 'string' || !relativePath.trim()) {
+    return false;
+  }
+
+  const absolutePath = path.resolve(process.cwd(), relativePath);
+
+  try {
+    await fs.promises.unlink(absolutePath);
+    return true;
+  } catch (err) {
+    // ENOENT — the file is already absent, which satisfies the invariant.
+    if (err.code !== 'ENOENT') {
+      console.warn(
+        `[pdfService.purgeQuotationPdf] Could not delete old PDF '${absolutePath}' (non-fatal):`,
+        err.message
+      );
+    }
+    return false;
+  }
+}
+
+module.exports = { generateQuotationPdf, purgeQuotationPdf };
 

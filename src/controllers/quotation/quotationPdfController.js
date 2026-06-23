@@ -84,7 +84,7 @@ const QuotationPdfController = {
             message: 'File content is not a valid PDF (magic-number mismatch). Upload rejected.',
           });
         }
-      } catch (magicErr) {
+      } catch {
         // If we cannot read the file for any reason, reject to be safe
         await fs.promises.unlink(uploadedAbsPath).catch(() => {});
         return res.status(422).json({
