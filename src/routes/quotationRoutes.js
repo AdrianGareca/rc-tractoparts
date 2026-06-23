@@ -915,7 +915,6 @@ router.patch(
 // Must be a 4-argument Express error middleware and must be declared AFTER
 // all routes so it only catches errors that bubbled up from within this router.
 // =============================================================================
-// eslint-disable-next-line no-unused-vars
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     // e.g. LIMIT_FILE_SIZE, LIMIT_UNEXPECTED_FILE

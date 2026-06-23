@@ -146,10 +146,6 @@ const SORTABLE_COLUMNS = {
   ejecutivo_nombre:   'u.nombre_completo',
 };
 
-// Mandatory fields checked before a quotation can be submitted for review
-// (Section 4.3 — HU: Validación de borrador antes de enviar a revisión)
-const REVIEW_REQUIRED_FIELDS = ['monto_total', 'fecha_validez'];
-
 // =============================================================================
 // PRIVATE HELPERS
 // =============================================================================

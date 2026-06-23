@@ -18,8 +18,6 @@
 
 'use strict';
 
-const { ZodError } = require('zod');
-
 // ---------------------------------------------------------------------------
 // validate
 // @param {import('zod').ZodSchema} schema  - Zod schema to parse req.body against

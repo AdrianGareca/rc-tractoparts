@@ -73,7 +73,7 @@ function authenticate(req, res, next) {
     req.token = token;
 
     next(); // Proceed to the next middleware or controller
-  } catch (error) {
+  } catch {
     // Both TokenExpiredError and JsonWebTokenError are treated as 401
     return res.status(401).json({
       success: false,

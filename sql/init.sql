@@ -102,7 +102,7 @@ CREATE TABLE usuarios (
 -- RAW PASSWORDS (rotate in production — regenerate the hash and replace inline):
 --   id_rol reference → 1=Ejecutivo, 2=Administracion, 3=Jefe, 4=SysAdmin
 --
---   1) admin@rctractoparts.com  (SysAdmin)      RAW PASSWORD: Admin#RC2026
+--   1) SysAdmin                 (SysAdmin)      RAW PASSWORD: Admin#RC2026
 --   2) ronald                   (Jefe / Chief)  RAW PASSWORD: Ronald#RC2026
 --   3) angelica                 (Administradora) RAW PASSWORD: Angelica#RC2026
 --
@@ -114,7 +114,7 @@ CREATE TABLE usuarios (
 -- on demand from within the platform by any of the three accounts below
 -- (POST /api/usuarios is authorized for Jefe, Administracion and SysAdmin).
 INSERT INTO usuarios (id, nombre_completo, nombre_usuario, password_hash, id_rol) VALUES
-  (1, 'Master Admin', 'admin@rctractoparts.com', '$2a$10$9thlUvAa55IvprZJI77Hy.MnsgWkQPCrLahCQLJGmg79XocDGeYMm', 4), -- SysAdmin
+  (1, 'Master Admin', 'SysAdmin', '$2a$10$9thlUvAa55IvprZJI77Hy.MnsgWkQPCrLahCQLJGmg79XocDGeYMm', 4), -- SysAdmin
   (2, 'Ronald',       'ronald',                  '$2a$10$ZVlZ5jhQxYwXSCIiPYYdG.UsnafoQHa3a.231NwTVDN/CFb7Qpi9m', 3), -- Jefe
   (3, 'Angélica',     'angelica',                '$2a$10$ClB54.CipxhexdK2.8GZbeH0R5kc5nIOmv5Zeqg21rjNjOoHmN95i', 2); -- Administradora
 
