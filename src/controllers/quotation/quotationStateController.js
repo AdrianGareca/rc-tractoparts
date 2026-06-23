@@ -160,6 +160,25 @@ const QuotationStateController = {
         console.warn('[QuotationStateController.updateStatus] Audit logging failed (non-fatal):', auditErr.message);
       }
 
+      // ── Live PDF regeneration after every successful transition ─────────────
+      // The PDF's "ESTADO" card must always reflect the CURRENT state. Rather
+      // than keeping a frozen file (which would stay stuck on, e.g., 'Aprobada
+      // internamente'), we re-fetch the quotation with its new estado and
+      // overwrite the stored PDF on every successful transition. Non-fatal:
+      // a regeneration failure must never roll back a committed state change.
+      try {
+        const refreshed = await QuotationModel.findById(id);
+        if (refreshed) {
+          const newPdfPath = await pdfService.generateQuotationPdf(refreshed);
+          await QuotationModel.updatePdfPath(id, newPdfPath);
+        }
+      } catch (pdfErr) {
+        console.warn(
+          `[QuotationStateController.updateStatus] PDF regeneration after transition to '${nuevo_estado}' failed (non-fatal):`,
+          pdfErr.message
+        );
+      }
+
       // ── Approval notification for Ejecutivo ────────────────────────────────
       // When the Jefe (or SysAdmin) sends a quotation to the client or marks it
       // accepted, notify the owning Ejecutivo so they can follow up promptly.

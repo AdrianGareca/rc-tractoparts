@@ -9,8 +9,8 @@
     "test": "jest --runInBand --forceExit",
     "test:unit": "jest tests/unit --runInBand",
     "test:integration": "jest tests/integration --runInBand --forceExit",
-    "db:init": "node -e \"require('./sql/init').run()\"",
-    "db:migrate": "echo 'Run manually: mysql -u <user> -p rc_tractoparts < sql/migrate_sprint2_estados.sql'",
+    "db:init": "node sql/init.js",
+    "db:migrate": "echo 'No standalone migrations: sql/init.sql is the single source of truth. Run: npm run db:init'",
     "seed": "node scripts/seed-users.js",
     "seed:execute": "node scripts/seed-users.js --execute",
     "lint": "eslint src/**/*.js"

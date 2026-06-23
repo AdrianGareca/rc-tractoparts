@@ -66,11 +66,17 @@ const ROLE_TRANSITIONS = {
   Administracion: {
     // Administracion can submit, place on hold, or cancel — but NOT approve or reject.
     // Approval authority belongs exclusively to the Jefe (business rule: role hierarchy).
+    // Post-approval, however, Administracion DOES drive the commercial lifecycle
+    // forward: once a quotation is 'Aprobada internamente' it may be sent to the
+    // client and then marked accepted/rejected. These are delivery/outcome steps,
+    // not approval decisions, so they do not breach the Jefe's exclusive approval
+    // authority. This unblocks the linear flow
+    // Pendiente → Aprobada internamente → Enviada al cliente → Aceptada.
     Pendiente:               ['En revision', 'En espera', 'Archivada'],
     'En revision':           ['En espera', 'Pendiente', 'Archivada'],   // Can hold or retract
     'En espera':             ['En revision', 'Pendiente', 'Archivada'], // Can resume or retract
-    'Aprobada internamente': ['Archivada'],     // Read-only; can only archive
-    'Enviada al cliente':    ['Archivada'],     // Read-only; can only archive
+    'Aprobada internamente': ['Enviada al cliente', 'Archivada'],       // Forward to client or archive
+    'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],    // Record client outcome
     Rechazada:               ['Pendiente', 'Archivada'],               // Allow rework cycle
     Aceptada:                ['Archivada'],
     Archivada:               [],

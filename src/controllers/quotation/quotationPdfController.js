@@ -21,6 +21,29 @@ const QuotationModel             = require('../../models/QuotationModel');
 const { logEvent, AuditActions } = require('../../utils/auditLog');
 const pdfService                 = require('../../services/pdfService');
 
+// ---------------------------------------------------------------------------
+// buildPdfDownloadName
+// Produces a professional, header/filesystem-safe download stem of the form
+//   [N° COTIZACIÓN]_[ESTADO]   e.g. "COT-2026-0007_APROBADA_INTERNAMENTE"
+// (the ".pdf" extension is appended by the caller).
+//   • correlativo: word chars and hyphens preserved (COT-2026-0007 stays intact),
+//     anything else collapsed to '_' to defeat Content-Disposition header injection.
+//   • estado: accents stripped, uppercased, non-alphanumerics → '_', edges trimmed,
+//     so "Enviada al cliente" → "ENVIADA_AL_CLIENTE".
+// ---------------------------------------------------------------------------
+function buildPdfDownloadName(quotation, id) {
+  const correlativo = String(quotation.numero_correlativo || `COT-${id}`)
+    .replace(/[^\w\-]/g, '_');
+
+  const estado = String(quotation.estado || 'SIN_ESTADO')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')  // strip accents
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')                        // non-alnum → underscore
+    .replace(/^_+|_+$/g, '');                           // trim leading/trailing _
+
+  return `${correlativo}_${estado}`;
+}
+
 const QuotationPdfController = {
 
   // ---------------------------------------------------------------------------
@@ -136,9 +159,10 @@ const QuotationPdfController = {
         return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
       }
 
-      // B2: sanitize correlativo for use in HTTP header — strip any chars outside
-      // the safe token/quoted-string set to prevent header injection.
-      const safePdfName = (quotation.numero_correlativo || String(id)).replace(/[^\w\-\.]/g, '_');
+      // Professional, header-safe download name: [N° COTIZACIÓN]_[ESTADO]
+      // e.g. COT-2026-0007_APROBADA_INTERNAMENTE.pdf — always reflects the
+      // quotation's current live state.
+      const safePdfName = buildPdfDownloadName(quotation, id);
 
       // ── Priority 1: serve the uploaded corporate PDF if it exists on disk ──
       if (quotation.pdf_ruta) {

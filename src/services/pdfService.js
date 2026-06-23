@@ -336,10 +336,8 @@ function drawHeader(doc, quotation) {
   const y0      = MARGIN;
   const LOGO_W  = 155;
   const LOGO_H  = 72;
-  const BRAND_H = 22;          // open-layout brand strip height
-  const GAP     = 4;
   const BOX_W   = 185;
-  const BOX_H   = LOGO_H + GAP + BRAND_H;  // 98 pt — matches left block height
+  const BOX_H   = 98;          // info-box height (top-right metadata block)
   const BOX_X   = PW - MARGIN - BOX_W;
 
   // ── Left: corporate logo (real image with text fallback) ──────────────────
@@ -374,43 +372,6 @@ function drawHeader(doc, quotation) {
       .text('Santa Cruz de la Sierra — Bolivia',
         MARGIN + 4, y0 + 46, { width: LOGO_W - 8, align: 'center', lineBreak: false });
   }
-
-  // ── Left: partner brand strip — open layout, no cubito borders ────────────
-  // Each brand renders freely (image or bold text fallback) in an equal slot.
-  // No outer rect and no inter-cell dividers: clean, readable, airy aesthetic.
-  // (BRAND_H is declared at the top of drawHeader alongside LOGO_H)
-  const brandY  = y0 + LOGO_H + GAP;
-  const brandCW = LOGO_W / BRAND_DEFS.length;  // ≈ 25.83 pt per slot
-  const IMG_PAD = 3;
-
-  // Single hairline rule below the strip to separate it from the subtitle
-  doc
-    .moveTo(MARGIN, brandY + BRAND_H)
-    .lineTo(MARGIN + LOGO_W, brandY + BRAND_H)
-    .lineWidth(0.4)
-    .strokeColor(C.BORDER_GRAY)
-    .stroke();
-
-  BRAND_DEFS.forEach(({ file, label }, i) => {
-    const bx      = MARGIN + i * brandCW;
-    const imgPath = path.join(BRANDS_DIR, file);
-
-    if (fs.existsSync(imgPath)) {
-      doc.image(imgPath, bx + IMG_PAD, brandY + IMG_PAD, {
-        fit:    [brandCW - IMG_PAD * 2, BRAND_H - IMG_PAD * 2],
-        align:  'center',
-        valign: 'center',
-      });
-    } else {
-      // Elegant text fallback: bold navy, larger font, vertically centered
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(5.5)
-        .fillColor(C.NAVY)
-        .text(label, bx, brandY + (BRAND_H - 5.5) / 2,
-          { width: brandCW, align: 'center', lineBreak: false });
-    }
-  });
 
   // ── Right: quotation info box ─────────────────────────────────────────────
   doc
@@ -470,7 +431,81 @@ function drawHeader(doc, quotation) {
     ry += rowH;
   });
 
-  return y0 + BOX_H + 8;  // Y immediately below the header block
+  // ── Partner brand strip — full-width row beneath the header block ──────────
+  // Rendered across the whole content width so each logo gets a generous,
+  // equal-width slot (≈ 87 pt) instead of being crammed under the 155 pt logo.
+  const stripY = y0 + BOX_H + 8;
+  return drawBrandStrip(doc, stripY);
+}
+
+// ---------------------------------------------------------------------------
+// drawBrandStrip
+// Full-width partner-brand row. Each brand occupies an equal-width slot
+// (flexbox "space-between" equivalent).
+//
+// DUPLICATED-LOGO FIX:
+//   The previous implementation used `doc.image(path, x, y, { fit, align,
+//   valign })`. The combination of `fit` with `align/valign` made certain
+//   wide PNGs (notably John Deere and CAT) render duplicated / tiled inside
+//   their slot. The robust fix is to NOT rely on `fit`+alignment at all:
+//   we open each image once, compute the EXACT contained width/height that
+//   preserves the original aspect ratio (object-fit: contain, by hand), then
+//   issue a SINGLE doc.image() call with explicit { width, height }. Exact
+//   dimensions + one draw call = no scaling ambiguity and no tiling artifacts.
+// Returns Y immediately below the strip.
+// ---------------------------------------------------------------------------
+function drawBrandStrip(doc, startY) {
+  const STRIP_H  = 30;                       // uniform max height for every logo
+  const SLOT_PAD = 8;                        // horizontal breathing room per slot
+  const slotW    = CW / BRAND_DEFS.length;   // ≈ 87.2 pt — equal slots
+  const maxImgW  = slotW - SLOT_PAD * 2;     // max width available inside a slot
+
+  // Hairline rule above the strip to separate it from the header block
+  doc
+    .moveTo(MARGIN, startY)
+    .lineTo(PW - MARGIN, startY)
+    .lineWidth(0.4)
+    .strokeColor(C.BORDER_GRAY)
+    .stroke();
+
+  const rowY = startY + 6;
+
+  BRAND_DEFS.forEach(({ file, label }, i) => {
+    const slotX   = MARGIN + i * slotW;
+    const imgPath = path.join(BRANDS_DIR, file);
+
+    if (fs.existsSync(imgPath)) {
+      // Open the image once to read its intrinsic pixel dimensions.
+      const img   = doc.openImage(imgPath);
+      const ratio = img.width / img.height;
+
+      // object-fit: contain — scale to the uniform max height, then clamp the
+      // width so ultra-wide logos (e.g. Komatsu 5:1) never spill past the slot.
+      let drawH = STRIP_H;
+      let drawW = drawH * ratio;
+      if (drawW > maxImgW) {
+        drawW = maxImgW;
+        drawH = drawW / ratio;
+      }
+
+      // Centre the (correctly proportioned) image inside its slot.
+      const drawX = slotX + (slotW - drawW) / 2;
+      const drawY = rowY  + (STRIP_H - drawH) / 2;
+
+      // Exactly one draw call, with explicit aspect-correct width AND height.
+      doc.image(img, drawX, drawY, { width: drawW, height: drawH });
+    } else {
+      // Text fallback when an image asset is not yet deployed
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .fillColor(C.NAVY)
+        .text(label, slotX, rowY + (STRIP_H - 8) / 2,
+          { width: slotW, align: 'center', lineBreak: false });
+    }
+  });
+
+  return rowY + STRIP_H + 6;
 }
 
 // ---------------------------------------------------------------------------
