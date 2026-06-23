@@ -39,7 +39,6 @@ const userRoutes        = require('./routes/userRoutes');
 const clientRoutes      = require('./routes/clientRoutes');
 const brandRoutes       = require('./routes/brandRoutes');
 const reportesRoutes    = require('./routes/reportesRoutes');
-const delegacionRoutes  = require('./routes/delegacionRoutes');
 
 const app = express();
 
@@ -183,7 +182,6 @@ app.use('/api/usuarios',      userRoutes);         // CRUD /api/usuarios (Jefe o
 app.use('/api/clientes',      clientRoutes);       // GET|POST /api/clientes (all roles)
 app.use('/api/marcas',        brandRoutes);        // GET|POST /api/marcas (brand catalog)
 app.use('/api/reportes',      reportesRoutes);     // GET /api/reportes/progreso (Jefe/SysAdmin)
-app.use('/api/delegaciones',  delegacionRoutes);   // CRUD /api/delegaciones (Jefe/SysAdmin)
 
 // Health-check endpoint
 app.get('/health', (req, res) => {

@@ -38,7 +38,6 @@ import {
 import { wirePdfButton, wireExcelButton, buildTimelineHtml } from './dashboard/modules/timelineView.js';
 import { renderReportes, renderAdvancedReports } from './dashboard/modules/reportesView.js';
 import { refreshNotifBadge, requestNotifPermission, startNotifPolling } from './dashboard/modules/notificationsView.js';
-import { renderDelegacionPanel } from './dashboard/modules/delegacionView.js';
 
 // ---------------------------------------------------------------------------
 // _buildProformaHTML
@@ -756,7 +755,6 @@ class ManagerStrategy extends DashboardStrategy {
         <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
         <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
         <button class="tab-btn" data-tab="reportes">📊 Reportes</button>
-        <button class="tab-btn" data-tab="delegacion">🔑 Delegación</button>
       </div>
       <div id="manager-panel"></div>
     `;
@@ -787,7 +785,6 @@ class ManagerStrategy extends DashboardStrategy {
       case 'users':      await this._renderUsers(panel);           break;
       case 'audit':      await this._renderAuditLogs(panel);       break;
       case 'reportes':   await this._renderReportes(panel);        break;
-      case 'delegacion': await renderDelegacionPanel(panel);       break;
     }
   }
 

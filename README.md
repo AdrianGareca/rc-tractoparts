@@ -589,38 +589,7 @@ Ensure the test database is bootstrapped with the same `sql/init.sql` script und
 
 ## 8. Advanced Core Modules
 
-### 8.1 Role Delegation Engine
-
-**Purpose:** Allows a `Jefe` to temporarily transfer their approval authority to an `Ejecutivo` for a bounded time window — useful when the department head is travelling or unavailable.
-
-**Key Files:**
-
-| File | Role |
-|---|---|
-| `sql/init.sql` → `delegaciones_rol` table | Schema: stores delegator, delegate, start/end datetime, revocation flag |
-| `src/models/DelegacionModel.js` | Data access: `findActiveDelegacion`, `createDelegacion`, `revocarDelegacion`, `findByJefe`, `findEjecutivos` |
-| `src/middlewares/delegacionMiddleware.js` | Request-time resolver: promotes `req.user.rol_efectivo` to `'Jefe'` when an active delegation exists |
-| `src/controllers/delegacionController.js` | CRUD endpoint handlers |
-| `src/routes/delegacionRoutes.js` | REST routes at `/api/delegaciones` |
-| `public/js/views/dashboard/modules/delegacionView.js` | SPA management panel (dropdown, datetime pickers, history table, revoke button) |
-
-**How it works:**
-
-1. The `Jefe` opens the **🔑 Delegación** tab in their dashboard.
-2. They select an `Ejecutivo` from the dropdown (populated via `GET /api/delegaciones/ejecutivos`), choose `fecha_inicio` and `fecha_fin` datetime values, and click **Activar Delegación Temporal**.
-3. The frontend `POST`s to `/api/delegaciones`; the backend inserts a row into `delegaciones_rol`.
-4. On every subsequent request by the delegated `Ejecutivo`, `delegacionMiddleware` performs a `NOW() BETWEEN fecha_inicio AND fecha_fin` DB check. If an active record exists, `req.user.rol_efectivo` is set to `'Jefe'`.
-5. All role-guarded endpoints use `req.user.rol_efectivo` (not the base `req.user.rol`) via `roleMiddleware`, granting the delegated user full Jefe-level authority.
-6. The original `req.user.rol` is never mutated — audit logs always distinguish a real Jefe from a delegated one.
-
-**Security guarantees:**
-- The DB clock (MySQL `NOW()`) performs the time-window check, eliminating client-clock drift.
-- An `activo = 0` flag allows immediate revocation without deleting the audit record.
-- Only the Jefe who created a delegation can revoke it (`WHERE id_usuario_jefe = ?` guard in the model).
-
----
-
-### 8.2 Persistent Async Notifications Engine
+### 8.1 Persistent Async Notifications Engine
 
 **Purpose:** Surfaces approval events to `Ejecutivos` as persistent, unread-until-acknowledged in-app notifications. Unlike ephemeral alerts, these survive page reloads and use a badge counter pattern identical to WhatsApp Web.
 
@@ -665,7 +634,7 @@ Badge resets to 0
 
 ---
 
-### 8.3 Dynamic Status PDF Generation Engine
+### 8.2 Dynamic Status PDF Generation Engine
 
 **Purpose:** Generates a corporate-grade proforma PDF at quotation creation time and on demand via re-generation. Each PDF carries a centered, high-transparency watermark reflecting the current quotation state (`PENDIENTE`, `APROBADA INTERNAMENTE`, `RECHAZADA`, etc.).
 
@@ -720,13 +689,13 @@ doc.save()
 | `POST` | `/` | Ejecutivo, Admin | Create quotation (atomic + auto-PDF) |
 | `GET` | `/` | All | Paginated + filtered quotation list |
 | `GET` | `/resumen` | All | Count grouped by estado |
-| `GET` | `/pendientes-aprobacion` | Jefe (+ delegated) | Approval queue |
+| `GET` | `/pendientes-aprobacion` | Jefe | Approval queue |
 | `GET` | `/notificaciones` | Ejecutivo | Unread notifications |
 | `POST` | `/notificaciones/leer` | Ejecutivo | Mark all notifications as read |
 | `GET` | `/:id` | All | Full quotation detail + line items |
 | `GET` | `/:id/historial` | All | State transition timeline |
 | `PUT` | `/:id/estado` | All (role-constrained) | Change state via state machine |
-| `POST` | `/:id/aprobar` | Jefe (+ delegated) | Approve or reject |
+| `POST` | `/:id/aprobar` | Jefe | Approve or reject |
 | `PATCH` | `/:id/comentario-admin` | Admin | Set supervisor comment |
 | `POST` | `/:id/pdf` | Ejecutivo, Admin | Upload PDF |
 | `GET` | `/:id/pdf` | All | Download PDF |
@@ -740,15 +709,6 @@ doc.save()
 | `POST` | `/` | Jefe, Admin | Create user |
 | `PUT` | `/:id` | Jefe, Admin | Update user |
 | `DELETE` | `/:id` | Jefe | Soft-deactivate user |
-
-### Delegations — `/api/delegaciones`
-
-| Method | Path | Roles | Description |
-|---|---|---|---|
-| `GET` | `/ejecutivos` | Jefe | List Ejecutivo candidates for dropdown |
-| `GET` | `/` | Jefe | List own delegation records |
-| `POST` | `/` | Jefe | Create temporal delegation |
-| `DELETE` | `/:id` | Jefe | Revoke delegation (soft-delete) |
 
 ### Clients — `/api/clientes`
 
@@ -781,7 +741,7 @@ doc.save()
 | Subtotals & Totals | `tests/unit/calcularTotales.test.js` | Unit | UT-01 through UT-08 |
 | Validation Edge Cases | `tests/unit/validationEdgeCases.test.js` | Unit | Schema boundary conditions |
 | Concurrency | `tests/integration/correlativo.concurrencia.test.js` | Integration | 20 simultaneous POST requests produce unique correlatives |
-| New Features | `tests/integration/newFeatures.test.js` | Integration | Delegation engine, admin notes, notification persistence |
+| New Features | `tests/integration/newFeatures.test.js` | Integration | Admin notes, notification persistence |
 
 ### Running Tests
 
@@ -818,7 +778,7 @@ The test suites automatically isolate their data using `beforeAll`/`afterAll` ho
 
 ---
 
-*Last updated: 2026-06-18 — Sprint 3 — Role Delegation Engine, Persistent Notifications, Comprehensive QA expansion*
+*Last updated: 2026-06-22 — Persistent Notifications, Comprehensive QA expansion*
 | 5 | Create `productos` table with `marca_id FK → marcas(id)` (3NF) |
 | 6 | Create `cotizaciones_correlativo` serial-counter table |
 | 7 | Create `cotizaciones` table with full 8-value state ENUM |

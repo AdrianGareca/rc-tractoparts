@@ -3,8 +3,6 @@
 // New Features Integration Test Suite
 //
 // Test blocks:
-//   NF-01 — Delegation Window: within timeline → rol_efectivo promoted to 'Jefe'
-//   NF-02 — Delegation Window: outside timeline → rol_efectivo stays at base role
 //   NF-03 — Admin Notes Access: Ejecutivo can read comentarios_admin via GET /:id
 //   NF-04 — Persistent Notifications: items stay unread (leida=0) until explicit
 //            call to POST /api/cotizaciones/notificaciones/leer
@@ -33,7 +31,6 @@ let testJefeId;
 let testEjecutivoId;
 let testClienteId;
 let testCotizacionId;
-let testDelegacionId;
 
 const JEFE_USER     = 'test_jefe_nf01';
 const EJEC_USER     = 'test_ejec_nf01';
@@ -44,7 +41,6 @@ const TEST_PASSWORD = 'TestNF01Password!';
 // ---------------------------------------------------------------------------
 beforeAll(async () => {
   // Clean up any leftover fixtures from previous runs
-  await pool.execute('DELETE FROM delegaciones_rol WHERE id_usuario_jefe IN (SELECT id FROM usuarios WHERE nombre_usuario IN (?, ?))', [JEFE_USER, EJEC_USER]);
   await pool.execute('DELETE FROM notificaciones WHERE id_usuario IN (SELECT id FROM usuarios WHERE nombre_usuario IN (?, ?))', [JEFE_USER, EJEC_USER]);
   await pool.execute('DELETE FROM bitacora_auditoria WHERE nombre_usuario IN (?, ?)', [JEFE_USER, EJEC_USER]);
   await pool.execute('DELETE FROM cotizacion_detalles WHERE id_cotizacion IN (SELECT id FROM cotizaciones WHERE id_ejecutivo IN (SELECT id FROM usuarios WHERE nombre_usuario = ?))', [EJEC_USER]);
@@ -97,97 +93,12 @@ beforeAll(async () => {
 // ---------------------------------------------------------------------------
 afterAll(async () => {
   // Remove test fixtures
-  await pool.execute('DELETE FROM delegaciones_rol WHERE id_usuario_jefe = ?', [testJefeId]);
   await pool.execute('DELETE FROM notificaciones WHERE id_usuario = ?', [testEjecutivoId]);
   await pool.execute('DELETE FROM cotizacion_detalles WHERE id_cotizacion = ?', [testCotizacionId ?? 0]);
   await pool.execute('DELETE FROM cotizaciones WHERE id_ejecutivo = ?', [testEjecutivoId]);
   await pool.execute('DELETE FROM usuarios WHERE id IN (?, ?)', [testJefeId, testEjecutivoId]);
   await pool.execute('DELETE FROM clientes WHERE id = ?', [testClienteId]);
   await pool.end();
-});
-
-// =============================================================================
-// NF-01 — Delegation Window: active delegation upgrades rol_efectivo to 'Jefe'
-// =============================================================================
-describe('NF-01 — Delegation Window (within timeline)', () => {
-  beforeAll(async () => {
-    // Create a delegation that starts 1 hour in the past and ends 1 hour in the future
-    const inicio = new Date(Date.now() - 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
-    const fin    = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
-
-    const [res] = await pool.execute(
-      `INSERT INTO delegaciones_rol (id_usuario_jefe, id_usuario_delegado, fecha_inicio, fecha_fin, activo)
-       VALUES (?, ?, ?, ?, 1)`,
-      [testJefeId, testEjecutivoId, inicio, fin]
-    );
-    testDelegacionId = res.insertId;
-  });
-
-  test('NF-01a: delegated Ejecutivo can access approval queue (Jefe-only endpoint)', async () => {
-    // GET /api/cotizaciones/pendientes-aprobacion requires Jefe authority.
-    // With an active delegation, the middleware should promote rol_efectivo → 'Jefe'.
-    const res = await request(app)
-      .get('/api/cotizaciones/pendientes-aprobacion')
-      .set('Authorization', `Bearer ${tokenEjecutivo}`);
-
-    // 200 = delegation was honoured; 403 = middleware failed to promote
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-  });
-
-  test('NF-01b: delegation row exists with activo=1 and NOW() within window', async () => {
-    const [rows] = await pool.execute(
-      `SELECT id, activo
-       FROM delegaciones_rol
-       WHERE id = ? AND activo = 1 AND NOW() BETWEEN fecha_inicio AND fecha_fin`,
-      [testDelegacionId]
-    );
-    expect(rows.length).toBe(1);
-    expect(rows[0].activo).toBe(1);
-  });
-
-  afterAll(async () => {
-    // Deactivate the delegation so NF-02 can run cleanly
-    await pool.execute('UPDATE delegaciones_rol SET activo = 0 WHERE id = ?', [testDelegacionId]);
-  });
-});
-
-// =============================================================================
-// NF-02 — Delegation Window: outside timeline → access denied
-// =============================================================================
-describe('NF-02 — Delegation Window (outside timeline / revoked)', () => {
-  test('NF-02a: Ejecutivo without active delegation is denied Jefe-only endpoint', async () => {
-    // Delegation was revoked in NF-01 afterAll, so Ejecutivo has base role only
-    const res = await request(app)
-      .get('/api/cotizaciones/pendientes-aprobacion')
-      .set('Authorization', `Bearer ${tokenEjecutivo}`);
-
-    expect(res.status).toBe(403);
-  });
-
-  test('NF-02b: future-dated delegation does NOT grant immediate access', async () => {
-    // Insert delegation starting 2 hours in the FUTURE
-    const inicio = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
-    const fin    = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
-
-    await pool.execute(
-      `INSERT INTO delegaciones_rol (id_usuario_jefe, id_usuario_delegado, fecha_inicio, fecha_fin, activo)
-       VALUES (?, ?, ?, ?, 1)`,
-      [testJefeId, testEjecutivoId, inicio, fin]
-    );
-
-    const res = await request(app)
-      .get('/api/cotizaciones/pendientes-aprobacion')
-      .set('Authorization', `Bearer ${tokenEjecutivo}`);
-
-    expect(res.status).toBe(403);
-
-    // Clean up
-    await pool.execute(
-      'DELETE FROM delegaciones_rol WHERE id_usuario_jefe = ? AND id_usuario_delegado = ? AND fecha_inicio > NOW()',
-      [testJefeId, testEjecutivoId]
-    );
-  });
 });
 
 // =============================================================================
@@ -314,80 +225,5 @@ describe('NF-04 — Persistent Notifications (leida = 0 persistence)', () => {
     if (notifId) {
       await pool.execute('DELETE FROM notificaciones WHERE id = ?', [notifId]);
     }
-  });
-});
-
-// =============================================================================
-// NF-05 — Delegation API: CRUD via HTTP endpoints
-// =============================================================================
-describe('NF-05 — Delegation REST API (CRUD)', () => {
-  let createdDelegacionId;
-
-  test('NF-05a: GET /api/delegaciones/ejecutivos returns the test Ejecutivo', async () => {
-    const res = await request(app)
-      .get('/api/delegaciones/ejecutivos')
-      .set('Authorization', `Bearer ${tokenJefe}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-    expect(Array.isArray(res.body.data)).toBe(true);
-    const found = res.body.data.find(e => e.id === testEjecutivoId);
-    expect(found).toBeDefined();
-  });
-
-  test('NF-05b: POST /api/delegaciones creates a valid delegation', async () => {
-    const inicio = new Date(Date.now() + 60 * 1000).toISOString().slice(0, 19);
-    const fin    = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString().slice(0, 19);
-
-    const res = await request(app)
-      .post('/api/delegaciones')
-      .set('Authorization', `Bearer ${tokenJefe}`)
-      .send({ id_usuario_delegado: testEjecutivoId, fecha_inicio: inicio, fecha_fin: fin });
-
-    expect(res.status).toBe(201);
-    expect(res.body.success).toBe(true);
-    expect(res.body.data).toHaveProperty('id');
-    createdDelegacionId = res.body.data.id;
-  });
-
-  test('NF-05c: POST /api/delegaciones rejects when fecha_fin <= fecha_inicio', async () => {
-    const now = new Date().toISOString().slice(0, 19);
-    const res = await request(app)
-      .post('/api/delegaciones')
-      .set('Authorization', `Bearer ${tokenJefe}`)
-      .send({ id_usuario_delegado: testEjecutivoId, fecha_inicio: now, fecha_fin: now });
-
-    expect(res.status).toBe(422);
-    expect(res.body.success).toBe(false);
-  });
-
-  test('NF-05d: Ejecutivo is denied POST /api/delegaciones (role check)', async () => {
-    const inicio = new Date(Date.now() + 60 * 1000).toISOString().slice(0, 19);
-    const fin    = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString().slice(0, 19);
-
-    const res = await request(app)
-      .post('/api/delegaciones')
-      .set('Authorization', `Bearer ${tokenEjecutivo}`)
-      .send({ id_usuario_delegado: testEjecutivoId, fecha_inicio: inicio, fecha_fin: fin });
-
-    expect(res.status).toBe(403);
-  });
-
-  test('NF-05e: DELETE /api/delegaciones/:id revokes the delegation', async () => {
-    if (!createdDelegacionId) return;
-
-    const res = await request(app)
-      .delete(`/api/delegaciones/${createdDelegacionId}`)
-      .set('Authorization', `Bearer ${tokenJefe}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
-
-    // Confirm it's now activo=0 in DB
-    const [rows] = await pool.execute(
-      'SELECT activo FROM delegaciones_rol WHERE id = ?',
-      [createdDelegacionId]
-    );
-    expect(rows[0].activo).toBe(0);
   });
 });

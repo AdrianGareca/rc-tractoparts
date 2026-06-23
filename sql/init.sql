@@ -383,45 +383,6 @@ CREATE TABLE notificaciones (
     FOREIGN KEY (id_cotizacion) REFERENCES cotizaciones (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- =============================================================================
--- 12. DELEGACIONES_ROL — Temporal Role Delegation
---
--- Allows a Jefe to temporarily grant their approval authority to another user
--- (typically an Ejecutivo or Administracion member) while travelling.
---
--- The backend checks for an active delegation (activo = 1 AND NOW() BETWEEN
--- fecha_inicio AND fecha_fin) before authorising approval operations.
--- The id_usuario_jefe column is the source of truth: it records WHO delegated,
--- so that every approval made by the delegado is traceable back to the Jefe.
---
--- Business rules:
---   • Only one active delegation per delegado is honoured at a time (LIMIT 1).
---   • fecha_fin must be strictly after fecha_inicio (enforced at application layer).
---   • Deactivating a delegation (activo = 0) is an immediate hard-stop with no
---     grace period; the delegado loses Jefe-level authority on the next request.
--- =============================================================================
-
-CREATE TABLE delegaciones_rol (
-  id                   INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  id_usuario_jefe      INT UNSIGNED NOT NULL
-    COMMENT 'The Jefe who is granting delegation authority',
-  id_usuario_delegado  INT UNSIGNED NOT NULL
-    COMMENT 'The user receiving temporary Jefe-level authority',
-  fecha_inicio         DATETIME     NOT NULL
-    COMMENT 'Moment from which the delegation becomes effective (inclusive)',
-  fecha_fin            DATETIME     NOT NULL
-    COMMENT 'Moment at which the delegation expires (inclusive)',
-  activo               TINYINT(1)   NOT NULL DEFAULT 1
-    COMMENT '1 = active; set to 0 to immediately revoke without deleting the record',
-  creado_en            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  KEY idx_deleg_delegado_activo (id_usuario_delegado, activo),
-  CONSTRAINT fk_deleg_jefe
-    FOREIGN KEY (id_usuario_jefe)     REFERENCES usuarios (id) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT fk_deleg_delegado
-    FOREIGN KEY (id_usuario_delegado) REFERENCES usuarios (id) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =============================================================================

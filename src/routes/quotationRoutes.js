@@ -40,7 +40,6 @@ const QuotationPdfController   = require('../controllers/quotation/quotationPdfC
 const QuotationStateController = require('../controllers/quotation/quotationStateController');
 const { authenticate }    = require('../middlewares/authMiddleware');
 const authorize           = require('../middlewares/roleMiddleware');
-const resolveDelegacion   = require('../middlewares/delegacionMiddleware');
 const { validate }        = require('../validators/validate');
 const {
   createQuotationSchema,
@@ -148,13 +147,9 @@ const uploadLimiter = rateLimit({
 
 const allRoles      = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin'])];
 const writeRoles    = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin'])];
-// jefeOnly includes resolveDelegacion so that users with an active temporal
-// delegation (delegaciones_rol) are granted Jefe-level authority on this request.
-const jefeOnly      = [authenticate, resolveDelegacion, authorize(['Jefe', 'SysAdmin'])];
+const jefeOnly      = [authenticate, authorize(['Jefe', 'SysAdmin'])];
 const adminOnly     = [authenticate, authorize(['Administracion'])];
-// jefeAdminOnly also includes resolveDelegacion so that a delegated Ejecutivo
-// (rol_efectivo = 'Jefe') can access supervisor-level routes (e.g. approval queue).
-const jefeAdminOnly = [authenticate, resolveDelegacion, authorize(['Jefe', 'Administracion', 'SysAdmin'])];
+const jefeAdminOnly = [authenticate, authorize(['Jefe', 'Administracion', 'SysAdmin'])];
 const ejecutivoOnly = [authenticate, authorize(['Ejecutivo'])];
 
 /**
@@ -658,13 +653,10 @@ router.get(
 // Role-restricted state machine transition.
 // Body: { nuevo_estado: string, observacion?: string }
 // Role matrix enforced: only Jefe can approve/reject (En revision → resolved).
-// resolveDelegacion runs before authorize so a delegated user is treated as Jefe
-// for the transition-matrix check inside QuotationStateController.updateStatus.
 // validate(): blocks invalid/malicious nuevo_estado values before controller.
 router.put(
   '/:id/estado',
   authenticate,
-  resolveDelegacion,
   authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin']),
   validate(updateStatusSchema),
   QuotationStateController.updateStatus

@@ -35,10 +35,7 @@ const QuotationStateController = {
   async updateStatus(req, res) {
     const id                                          = parseInt(req.params.id, 10);
     const { nuevo_estado, observacion, comentario_admin } = req.body;
-    // Use the effective role: resolveDelegacion may have promoted the user to
-    // 'Jefe' for this request if they have an active temporal delegation.
-    // req.user.rol is preserved unchanged — it reflects the token/DB role.
-    const userRol    = req.user.rol_efectivo || req.user.rol;
+    const userRol    = req.user.rol;
     const clientIp   = req.ip || req.socket?.remoteAddress || null;
 
     // ── Basic validation ──────────────────────────────────────────────────────
@@ -109,10 +106,7 @@ const QuotationStateController = {
       }
 
       // ── Execute the transition (optimistic concurrency) ───────────────────
-      // comentario_admin is forwarded only when the ORIGINAL token role is Administracion;
-      // a delegated user acting as Jefe must not be able to write admin review comments.
-      // We intentionally check req.user.rol (not userRol) to prevent privilege escalation
-      // via field injection by a delegated user.
+      // comentario_admin is forwarded only when the caller's role is Administracion.
       const adminComment = (req.user.rol === 'Administracion' && comentario_admin != null)
         ? String(comentario_admin).trim() || null
         : null;
@@ -136,12 +130,6 @@ const QuotationStateController = {
 
       // ── Persist in the dedicated state history table (non-fatal) ────────────
       // Audit logging failures must never mask a successfully committed transition.
-      // Build delegation context for the audit trail (only when acting as delegate)
-      const delegacionAudit = req.user.delegacion
-        ? { delegado_de_jefe_id: req.user.delegacion.id_usuario_jefe,
-            delegado_de_jefe:    req.user.delegacion.jefe_nombre }
-        : undefined;
-
       try {
         await QuotationModel.logStateHistory({
           id_cotizacion:   id,
@@ -149,12 +137,8 @@ const QuotationStateController = {
           estado_nuevo:    nuevo_estado,
           id_usuario:      req.user.id,
           nombre_usuario:  req.user.nombre_usuario,
-          // Log effective role so the history clearly shows 'Jefe' even when
-          // the actor holds the role via temporal delegation.
           rol_usuario:     userRol,
-          observacion:     req.user.delegacion
-            ? `[Delegado de ${req.user.delegacion.jefe_nombre}] ${observacion || ''}`.trim()
-            : (observacion || null),
+          observacion:     observacion || null,
           ip_origen:       clientIp,
         });
 
@@ -168,7 +152,6 @@ const QuotationStateController = {
             estado_anterior: estadoActual,
             nuevo_estado,
             observacion:     observacion || null,
-            ...(delegacionAudit && { delegacion: delegacionAudit }),
           },
           ip_origen:  clientIp,
           resultado:  'exito',
@@ -284,9 +267,7 @@ const QuotationStateController = {
     }
 
     // ── Controller-level high-privilege assertion (defense-in-depth after middleware) ──
-    // Accepts both the native role AND an effective role elevated by a temporal delegation.
-    const rolEfectivo = req.user.rol_efectivo || req.user.rol;
-    if (!['Jefe', 'SysAdmin'].includes(rolEfectivo)) {
+    if (!['Jefe', 'SysAdmin'].includes(req.user.rol)) {
       return res.status(403).json({
         success: false,
         message: `Access denied. Only 'Jefe' or 'SysAdmin' roles can approve or reject quotations. ` +
@@ -317,12 +298,6 @@ const QuotationStateController = {
         });
       }
 
-      // Build delegation context for the audit trail
-      const delegacionAuditAprov = req.user.delegacion
-        ? { delegado_de_jefe_id: req.user.delegacion.id_usuario_jefe,
-            delegado_de_jefe:    req.user.delegacion.jefe_nombre }
-        : undefined;
-
       // ── Write to the state history table (non-fatal) ─────────────────────
       try {
         await QuotationModel.logStateHistory({
@@ -331,11 +306,8 @@ const QuotationStateController = {
           estado_nuevo:    nuevoEstado,
           id_usuario:      req.user.id,
           nombre_usuario:  req.user.nombre_usuario,
-          // Effective role is 'Jefe' for delegated users — record it faithfully.
-          rol_usuario:     rolEfectivo,
-          observacion:     req.user.delegacion
-            ? `[Delegado de ${req.user.delegacion.jefe_nombre}] ${obsText || ''}`.trim() || null
-            : obsText,
+          rol_usuario:     req.user.rol,
+          observacion:     obsText,
           ip_origen:       clientIp,
         });
 
@@ -349,7 +321,6 @@ const QuotationStateController = {
           detalle: {
             aprobado,
             observaciones: obsText,
-            ...(delegacionAuditAprov && { delegacion: delegacionAuditAprov }),
           },
           ip_origen:      clientIp,
           resultado:      'exito',
