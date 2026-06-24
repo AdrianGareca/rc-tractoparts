@@ -696,13 +696,17 @@ const QuotationModel = {
   // structured result object. The controller uses this before calling updateStatus
   // so it can return a specific HTTP 403 with an actionable error message.
   //
-  // @param {string} estadoActual - Current state of the quotation
-  // @param {string} nuevoEstado  - Target state requested by the caller
-  // @param {string} rol          - Calling user's role name
+  // @param {string}  estadoActual          - Current state of the quotation
+  // @param {string}  nuevoEstado           - Target state requested by the caller
+  // @param {string}  rol                   - Calling user's role name
+  // @param {boolean} canApproveQuotations  - Delegación de Funciones flag for the
+  //                                          calling user (usuarios.can_approve_quotations).
+  //                                          Defaults to false so all existing
+  //                                          callers keep their exact behavior.
   //
   // @returns {{ valid: boolean, reason?: string, allowedTransitions?: string[] }}
   // ---------------------------------------------------------------------------
-  validateTransitionByRole(estadoActual, nuevoEstado, rol) {
+  validateTransitionByRole(estadoActual, nuevoEstado, rol, canApproveQuotations = false) {
     const roleMatrix = ROLE_TRANSITIONS[rol];
 
     // Rol desconocido — no debería llegar aquí si el middleware de autenticación está activo
@@ -714,6 +718,27 @@ const QuotationModel = {
     }
 
     const allowedFromState = roleMatrix[estadoActual] || [];
+
+    // ── Dynamic Function Delegation (Delegación de Funciones) ──────────────────
+    // A transition to 'Aprobada internamente' is authorized when the caller is a
+    // Jefe (id_rol 3), Administracion (id_rol 2) or SysAdmin (superuser) — OR any
+    // user holding the delegated can_approve_quotations flag — provided the source
+    // state is one of the legitimate pre-approval states. This is strictly
+    // ADDITIVE: it only ever GRANTS the single 'Aprobada internamente' target and
+    // never removes a transition the base role already had, so the audited core
+    // lifecycle is preserved.
+    const APPROVAL_SOURCE_STATES = ['Pendiente', 'En revision', 'En espera'];
+    const isDelegatedApproval =
+      nuevoEstado === 'Aprobada internamente' &&
+      APPROVAL_SOURCE_STATES.includes(estadoActual) &&
+      (rol === 'Jefe' || rol === 'Administracion' || rol === 'SysAdmin' || canApproveQuotations === true);
+
+    if (isDelegatedApproval) {
+      return {
+        valid:              true,
+        allowedTransitions: Array.from(new Set([...allowedFromState, 'Aprobada internamente'])),
+      };
+    }
 
     if (!allowedFromState.includes(nuevoEstado)) {
       // Mensaje de error específico: distinguir "sin transiciones posibles" de "destino incorrecto"
@@ -804,11 +829,12 @@ const QuotationModel = {
   // @param {string}  estadoActual    - Current state (optimistic concurrency lock)
   // @param {string}  rol             - Calling user's role (for re-validation)
   // @param {string|null} comentarioAdmin - Optional admin comment to persist alongside the transition
+  // @param {boolean} canApproveQuotations - Delegación de Funciones flag (forwarded to the guard)
   // @returns {boolean}               - true if the row was updated
   // ---------------------------------------------------------------------------
-  async updateStatus(id, nuevoEstado, estadoActual, rol, comentarioAdmin = null) {
+  async updateStatus(id, nuevoEstado, estadoActual, rol, comentarioAdmin = null, canApproveQuotations = false) {
     // Defense-in-depth: re-validate the role-based transition inside the model
-    const check = this.validateTransitionByRole(estadoActual, nuevoEstado, rol);
+    const check = this.validateTransitionByRole(estadoActual, nuevoEstado, rol, canApproveQuotations);
 
     if (!check.valid) {
       const err = new Error(check.reason);

@@ -60,6 +60,7 @@ const UserModel = {
         u.id_rol,
         r.nombre AS rol,
         u.activo,
+        u.can_approve_quotations,
         u.ultimo_acceso,
         u.creado_en
       FROM usuarios u
@@ -87,6 +88,7 @@ const UserModel = {
         u.id_rol,
         r.nombre AS rol,
         u.activo,
+        u.can_approve_quotations,
         u.ultimo_acceso,
         u.creado_en
       FROM usuarios u
@@ -102,13 +104,18 @@ const UserModel = {
   // create
   // Insert a new user. The password must already be hashed by the service layer.
   //
-  // @param   {Object} data - { nombre_completo, nombre_usuario, password_hash, id_rol }
+  // @param   {Object} data - { nombre_completo, nombre_usuario, password_hash, id_rol,
+  //                            can_approve_quotations? }
   // @returns {number}      - insertId of the new record
+  //
+  // can_approve_quotations defaults to 0 (no delegation). The controller is the
+  // sole authority that decides whether to forward a non-zero value — see the
+  // anti-escalation guard in userController.createUser.
   // ---------------------------------------------------------------------------
-  async create({ nombre_completo, nombre_usuario, password_hash, id_rol }) {
+  async create({ nombre_completo, nombre_usuario, password_hash, id_rol, can_approve_quotations = 0 }) {
     const sql = `
-      INSERT INTO usuarios (nombre_completo, nombre_usuario, password_hash, id_rol)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO usuarios (nombre_completo, nombre_usuario, password_hash, id_rol, can_approve_quotations)
+      VALUES (?, ?, ?, ?, ?)
     `;
 
     const [result] = await pool.execute(sql, [
@@ -116,6 +123,7 @@ const UserModel = {
       nombre_usuario,
       password_hash,
       id_rol,
+      can_approve_quotations ? 1 : 0,
     ]);
 
     return result.insertId; // Return the new user's primary key
@@ -177,7 +185,7 @@ const UserModel = {
   // @returns {boolean}   - true if any row was affected
   // ---------------------------------------------------------------------------
   async update(id, data) {
-    const allowedFields = ['nombre_completo', 'id_rol', 'activo', 'password_hash'];
+    const allowedFields = ['nombre_completo', 'id_rol', 'activo', 'password_hash', 'can_approve_quotations'];
 
     // Build a dynamic SET clause for only the provided fields
     const setClauses = [];
@@ -200,26 +208,6 @@ const UserModel = {
     const [result] = await pool.execute(sql, values);
 
     return result.affectedRows > 0;
-  },
-
-  // ---------------------------------------------------------------------------
-  // hasCotizaciones
-  // Check whether a user has associated quotations.
-  // If true, the user must be deactivated (soft delete) instead of deleted.
-  //
-  // @param  {number}  id - User primary key
-  // @returns {boolean}
-  // ---------------------------------------------------------------------------
-  async hasCotizaciones(id) {
-    const sql = `
-      SELECT COUNT(*) AS total
-      FROM cotizaciones
-      WHERE id_ejecutivo = ?
-      LIMIT 1
-    `;
-
-    const [rows] = await pool.execute(sql, [id]);
-    return rows[0].total > 0;
   },
 };
 

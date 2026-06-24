@@ -1232,7 +1232,8 @@ class ManagerStrategy extends DashboardStrategy {
                     <td>
                       <div class="table-actions">
                         <button class="btn btn-ghost btn-sm" data-user-edit="${u.id}"
-                                data-nombre="${u.nombre_completo}" data-rol="${u.id_rol}">Editar</button>
+                                data-nombre="${u.nombre_completo}" data-rol="${u.id_rol}"
+                                data-canapprove="${u.can_approve_quotations ? 1 : 0}">Editar</button>
                         ${u.activo ? `
                         <button class="btn btn-danger btn-sm" data-user-deact="${u.id}"
                                 data-uname="${u.nombre_usuario}">Desactivar</button>` : ''}
@@ -1249,7 +1250,7 @@ class ManagerStrategy extends DashboardStrategy {
 
       panel.querySelectorAll('[data-user-edit]').forEach(btn =>
         btn.addEventListener('click', () =>
-          this._showEditUserModal(btn.dataset.userEdit, btn.dataset.nombre, btn.dataset.rol)));
+          this._showEditUserModal(btn.dataset.userEdit, btn.dataset.nombre, btn.dataset.rol, btn.dataset.canapprove)));
 
       panel.querySelectorAll('[data-user-deact]').forEach(btn =>
         btn.addEventListener('click', () =>
@@ -1261,6 +1262,8 @@ class ManagerStrategy extends DashboardStrategy {
   }
 
   _showCreateUserModal() {
+    // Delegación de Funciones — only Jefe/Administracion/SysAdmin may set the flag.
+    const canDelegate = ['Jefe', 'Administracion', 'SysAdmin'].includes(AuthSession.getRole());
     UI.openModal('Crear Nuevo Usuario', (body) => {
       body.innerHTML = `
         <div class="form-row">
@@ -1287,6 +1290,13 @@ class ManagerStrategy extends DashboardStrategy {
             </select>
           </div>
         </div>
+        ${canDelegate ? `
+        <div class="form-group">
+          <label class="form-label checkbox-label">
+            <input type="checkbox" id="nu-canapprove" />
+            <span>Delegación de Funciones: Permitir aprobar cotizaciones</span>
+          </label>
+        </div>` : ''}
         <div class="form-alert" id="nu-alert"></div>
         <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
           <button class="btn btn-ghost" id="nu-cancel">Cancelar</button>
@@ -1307,9 +1317,12 @@ class ManagerStrategy extends DashboardStrategy {
           return;
         }
 
+        const payload = { nombre_completo: nombre, nombre_usuario: usuario, password, id_rol };
+        if (canDelegate) payload.can_approve_quotations = !!body.querySelector('#nu-canapprove')?.checked;
+
         const btn = body.querySelector('#nu-confirm');
         CommandInvoker.run(
-          new CreateUserCommand({ nombre_completo: nombre, nombre_usuario: usuario, password, id_rol }),
+          new CreateUserCommand(payload),
           {
             btn,
             successMsg: `Usuario "${usuario}" creado exitosamente.`,
@@ -1324,7 +1337,10 @@ class ManagerStrategy extends DashboardStrategy {
     });
   }
 
-  _showEditUserModal(id, nombre, idRol) {
+  _showEditUserModal(id, nombre, idRol, canApprove) {
+    // Delegación de Funciones — only Jefe/Administracion/SysAdmin may set the flag.
+    const canDelegate = ['Jefe', 'Administracion', 'SysAdmin'].includes(AuthSession.getRole());
+    const isDelegated = String(canApprove) === '1' || canApprove === true;
     UI.openModal('Editar Usuario', (body) => {
       body.innerHTML = `
         <div class="form-group">
@@ -1339,6 +1355,13 @@ class ManagerStrategy extends DashboardStrategy {
             <option value="3" ${idRol == 3 ? 'selected' : ''}>Jefe</option>
           </select>
         </div>
+        ${canDelegate ? `
+        <div class="form-group">
+          <label class="form-label checkbox-label">
+            <input type="checkbox" id="eu-canapprove" ${isDelegated ? 'checked' : ''} />
+            <span>Delegación de Funciones: Permitir aprobar cotizaciones</span>
+          </label>
+        </div>` : ''}
         <div class="form-group">
           <label class="form-label" for="eu-password">Nueva Contraseña (dejar vacío para no cambiar)</label>
           <input class="form-control" type="password" id="eu-password" />
@@ -1356,6 +1379,7 @@ class ManagerStrategy extends DashboardStrategy {
         };
         const pw = body.querySelector('#eu-password')?.value;
         if (pw) updateData.password = pw;
+        if (canDelegate) updateData.can_approve_quotations = !!body.querySelector('#eu-canapprove')?.checked;
 
         const btn = body.querySelector('#eu-confirm');
         CommandInvoker.run(new UpdateUserCommand(id, updateData), {
@@ -1767,7 +1791,8 @@ class AdminStrategy extends DashboardStrategy {
                     <td>
                       <div class="table-actions">
                         <button class="btn btn-ghost btn-sm" data-user-edit="${u.id}"
-                                data-nombre="${u.nombre_completo}" data-rol="${u.id_rol}">Editar</button>
+                                data-nombre="${u.nombre_completo}" data-rol="${u.id_rol}"
+                                data-canapprove="${u.can_approve_quotations ? 1 : 0}">Editar</button>
                         ${u.activo ? `
                         <button class="btn btn-danger btn-sm" data-user-deact="${u.id}"
                                 data-uname="${u.nombre_usuario}">Desactivar</button>` : ''}
@@ -1782,7 +1807,7 @@ class AdminStrategy extends DashboardStrategy {
       panel.querySelector('#btn-create-user-admin')?.addEventListener('click', () => this._showCreateUserModal());
       panel.querySelectorAll('[data-user-edit]').forEach(btn =>
         btn.addEventListener('click', () =>
-          this._showEditUserModal(btn.dataset.userEdit, btn.dataset.nombre, btn.dataset.rol)));
+          this._showEditUserModal(btn.dataset.userEdit, btn.dataset.nombre, btn.dataset.rol, btn.dataset.canapprove)));
       panel.querySelectorAll('[data-user-deact]').forEach(btn =>
         btn.addEventListener('click', () =>
           this._confirmDeactivateUser(btn.dataset.userDeact, btn.dataset.uname)));
@@ -1793,6 +1818,8 @@ class AdminStrategy extends DashboardStrategy {
   }
 
   _showCreateUserModal() {
+    // Delegación de Funciones — only Jefe/Administracion/SysAdmin may set the flag.
+    const canDelegate = ['Jefe', 'Administracion', 'SysAdmin'].includes(AuthSession.getRole());
     UI.openModal('Crear Nuevo Usuario', (body) => {
       body.innerHTML = `
         <div class="form-row">
@@ -1819,6 +1846,13 @@ class AdminStrategy extends DashboardStrategy {
             </select>
           </div>
         </div>
+        ${canDelegate ? `
+        <div class="form-group">
+          <label class="form-label checkbox-label">
+            <input type="checkbox" id="nu2-canapprove" />
+            <span>Delegación de Funciones: Permitir aprobar cotizaciones</span>
+          </label>
+        </div>` : ''}
         <div class="form-alert" id="nu2-alert"></div>
         <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
           <button class="btn btn-ghost" id="nu2-cancel">Cancelar</button>
@@ -1837,9 +1871,12 @@ class AdminStrategy extends DashboardStrategy {
           alertEl.className   = 'form-alert show alert-error';
           return;
         }
+        const payload = { nombre_completo: nombre, nombre_usuario: usuario, password, id_rol };
+        if (canDelegate) payload.can_approve_quotations = !!body.querySelector('#nu2-canapprove')?.checked;
+
         const btn = body.querySelector('#nu2-confirm');
         CommandInvoker.run(
-          new CreateUserCommand({ nombre_completo: nombre, nombre_usuario: usuario, password, id_rol }),
+          new CreateUserCommand(payload),
           {
             btn,
             successMsg: `Usuario "${usuario}" creado exitosamente.`,
@@ -1854,7 +1891,10 @@ class AdminStrategy extends DashboardStrategy {
     });
   }
 
-  _showEditUserModal(id, nombre, idRol) {
+  _showEditUserModal(id, nombre, idRol, canApprove) {
+    // Delegación de Funciones — only Jefe/Administracion/SysAdmin may set the flag.
+    const canDelegate = ['Jefe', 'Administracion', 'SysAdmin'].includes(AuthSession.getRole());
+    const isDelegated = String(canApprove) === '1' || canApprove === true;
     UI.openModal('Editar Usuario', (body) => {
       body.innerHTML = `
         <div class="form-group">
@@ -1869,6 +1909,13 @@ class AdminStrategy extends DashboardStrategy {
             <option value="3" ${idRol == 3 ? 'selected' : ''}>Jefe</option>
           </select>
         </div>
+        ${canDelegate ? `
+        <div class="form-group">
+          <label class="form-label checkbox-label">
+            <input type="checkbox" id="eu2-canapprove" ${isDelegated ? 'checked' : ''} />
+            <span>Delegación de Funciones: Permitir aprobar cotizaciones</span>
+          </label>
+        </div>` : ''}
         <div class="form-group">
           <label class="form-label" for="eu2-password">Nueva Contraseña (dejar vacío para no cambiar)</label>
           <input class="form-control" type="password" id="eu2-password" />
@@ -1886,6 +1933,7 @@ class AdminStrategy extends DashboardStrategy {
         };
         const pw = body.querySelector('#eu2-password')?.value;
         if (pw) updateData.password = pw;
+        if (canDelegate) updateData.can_approve_quotations = !!body.querySelector('#eu2-canapprove')?.checked;
         const btn = body.querySelector('#eu2-confirm');
         CommandInvoker.run(new UpdateUserCommand(id, updateData), {
           btn,

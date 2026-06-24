@@ -15,6 +15,7 @@
 'use strict';
 
 const QuotationModel             = require('../../models/QuotationModel');
+const UserModel                  = require('../../models/UserModel');
 const { logEvent, AuditActions } = require('../../utils/auditLog');
 const pdfService                 = require('../../services/pdfService');
 
@@ -67,6 +68,17 @@ const QuotationStateController = {
 
       const estadoActual = quotation.estado;
 
+      // ── Dynamic Function Delegation lookup ─────────────────────────────────
+      // Read the caller's can_approve_quotations flag straight from the DB so a
+      // freshly-granted delegation takes effect immediately (no re-login needed).
+      // Only relevant when the target is the delegated 'Aprobada internamente'
+      // state, so we skip the extra query otherwise.
+      let canApproveDelegated = false;
+      if (nuevo_estado === 'Aprobada internamente') {
+        const actingUser = await UserModel.findById(req.user.id);
+        canApproveDelegated = Boolean(actingUser?.can_approve_quotations);
+      }
+
       if (estadoActual === nuevo_estado) {
         return res.status(422).json({
           success: false,
@@ -79,7 +91,8 @@ const QuotationStateController = {
       const transitionCheck = QuotationModel.validateTransitionByRole(
         estadoActual,
         nuevo_estado,
-        userRol
+        userRol,
+        canApproveDelegated
       );
 
       if (!transitionCheck.valid) {
@@ -116,7 +129,8 @@ const QuotationStateController = {
         nuevo_estado,
         estadoActual,
         userRol,
-        adminComment
+        adminComment,
+        canApproveDelegated
       );
 
       if (!updated) {

@@ -460,6 +460,24 @@ img { max-width: 100%; display: block; }
   letter-spacing: .06em;
 }
 
+/* Delegación de Funciones — inline checkbox + caption (overrides block .form-label) */
+.form-label.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+  margin-bottom: 0;
+}
+.form-label.checkbox-label input[type="checkbox"] {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
 .form-control {
   width: 100%;
   padding: .6rem .85rem;

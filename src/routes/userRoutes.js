@@ -44,7 +44,7 @@ const jefeOnly      = [authenticate, authorize(['Jefe', 'SysAdmin'])];
  *       401:
  *         description: Token ausente o inválido.
  *       403:
- *         description: Rol insuficiente (requiere Jefe).
+ *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
  *       500:
  *         description: Error interno del servidor.
  */
@@ -86,13 +86,22 @@ router.get('/', ...userMgmtRoles, UserController.listUsers);
  *               id_rol:
  *                 type: integer
  *                 example: 2
+ *               can_approve_quotations:
+ *                 type: boolean
+ *                 description: >-
+ *                   Delegación de Funciones. Permite que el usuario transicione
+ *                   cotizaciones a 'Aprobada internamente' aunque su rol base no lo
+ *                   permita. Solo puede ser establecido por Jefe, Administracion o
+ *                   SysAdmin; para cualquier otro emisor el campo se ignora
+ *                   (protección anti-escalamiento). Por defecto false.
+ *                 example: false
  *     responses:
  *       201:
  *         description: Usuario creado exitosamente.
  *       401:
  *         description: Token ausente o inválido.
  *       403:
- *         description: Rol insuficiente (requiere Jefe).
+ *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
  *       422:
  *         description: Datos de entrada inválidos.
  *       500:
@@ -123,7 +132,7 @@ router.post('/', ...userMgmtRoles, UserController.createUser);
  *       401:
  *         description: Token ausente o inválido.
  *       403:
- *         description: Rol insuficiente (requiere Jefe).
+ *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
  *       404:
  *         description: Usuario no encontrado.
  *       500:
@@ -162,6 +171,12 @@ router.get('/:id', ...userMgmtRoles, UserController.getUserById);
  *                 type: integer
  *               activo:
  *                 type: boolean
+ *               can_approve_quotations:
+ *                 type: boolean
+ *                 description: >-
+ *                   Delegación de Funciones. Solo aplicado cuando el emisor es Jefe,
+ *                   Administracion o SysAdmin; en caso contrario el cambio se descarta
+ *                   (protección anti-escalamiento).
  *               password:
  *                 type: string
  *                 format: password
@@ -171,7 +186,7 @@ router.get('/:id', ...userMgmtRoles, UserController.getUserById);
  *       401:
  *         description: Token ausente o inválido.
  *       403:
- *         description: Rol insuficiente (requiere Jefe).
+ *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
  *       404:
  *         description: Usuario no encontrado.
  *       422:

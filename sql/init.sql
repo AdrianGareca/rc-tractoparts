@@ -82,6 +82,8 @@ CREATE TABLE usuarios (
   password_hash     VARCHAR(255)     NOT NULL,
   id_rol            TINYINT UNSIGNED NOT NULL,
   activo            TINYINT(1)       NOT NULL DEFAULT 1,
+  can_approve_quotations TINYINT(1)  NOT NULL DEFAULT 0
+    COMMENT 'Delegación de Funciones: 1 = user may transition quotations to "Aprobada internamente" even when their base role normally cannot. Settable only by Jefe/Administracion/SysAdmin.',
   intentos_fallidos TINYINT UNSIGNED NOT NULL DEFAULT 0,
   bloqueado_hasta   DATETIME         DEFAULT NULL,
   ultimo_acceso     DATETIME         DEFAULT NULL,

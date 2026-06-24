@@ -10,6 +10,23 @@ const bcrypt    = require('bcryptjs');
 const UserModel = require('../models/UserModel');
 const { logEvent, AuditActions } = require('../utils/auditLog');
 
+// Roles permitted to grant/revoke "Delegación de Funciones"
+// (can_approve_quotations). Jefe (id_rol 3) and Administracion (id_rol 2) per
+// the business rule; SysAdmin (id_rol 4) is included as the system-wide
+// superuser that already holds a strict superset of the Jefe's authority.
+// Any other initiator has the field stripped from the payload (anti-escalation).
+const DELEGATION_AUTHORIZED_ROLES = ['Jefe', 'Administracion', 'SysAdmin'];
+
+// resolveDelegationFlag — anti-escalation helper.
+// Returns 1/0 when the initiator is authorized AND the field was supplied;
+// returns undefined when the field must be ignored (not supplied, or the
+// initiator lacks authority — preventing API-level privilege escalation).
+function resolveDelegationFlag(reqUserRol, rawValue) {
+  if (rawValue === undefined) return undefined;
+  if (!DELEGATION_AUTHORIZED_ROLES.includes(reqUserRol)) return undefined;
+  return rawValue ? 1 : 0;
+}
+
 const UserController = {
 
   // ---------------------------------------------------------------------------
@@ -81,11 +98,16 @@ const UserController = {
       const bcryptRounds  = parseInt(process.env.BCRYPT_ROUNDS, 10) || 12;
       const password_hash = await bcrypt.hash(password, bcryptRounds);
 
+      // Anti-escalation: only authorized initiators may set the delegation flag.
+      // For everyone else the value is stripped and the column keeps its DEFAULT 0.
+      const canApprove = resolveDelegationFlag(req.user.rol, req.body.can_approve_quotations);
+
       const newUserId = await UserModel.create({
         nombre_completo: String(nombre_completo).trim(),
         nombre_usuario:  String(nombre_usuario).trim().toLowerCase(),
         password_hash,
         id_rol:          parseInt(id_rol, 10),
+        can_approve_quotations: canApprove === undefined ? 0 : canApprove,
       });
 
       await logEvent({
@@ -145,6 +167,13 @@ const UserController = {
       if (req.body.nombre_completo != null) updateData.nombre_completo = String(req.body.nombre_completo).trim();
       if (req.body.id_rol          != null) updateData.id_rol          = parseInt(req.body.id_rol, 10);
       if (req.body.activo          != null) updateData.activo          = req.body.activo ? 1 : 0;
+
+      // Dynamic Function Delegation — anti-escalation guard. The flag is applied
+      // only when the initiator is Jefe/Administracion/SysAdmin; any attempt by
+      // an unauthorized initiator to alter can_approve_quotations is silently
+      // dropped so it can never be used as a privilege-escalation injection.
+      const canApprove = resolveDelegationFlag(req.user.rol, req.body.can_approve_quotations);
+      if (canApprove !== undefined) updateData.can_approve_quotations = canApprove;
 
       // Password reset: hash the new password if provided
       if (req.body.password) {
