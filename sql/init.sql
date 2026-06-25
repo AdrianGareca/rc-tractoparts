@@ -84,6 +84,8 @@ CREATE TABLE usuarios (
   activo            TINYINT(1)       NOT NULL DEFAULT 1,
   can_approve_quotations TINYINT(1)  NOT NULL DEFAULT 0
     COMMENT 'Delegación de Funciones: 1 = user may transition quotations to "Aprobada internamente" even when their base role normally cannot. Settable only by Jefe/Administracion/SysAdmin.',
+  token_version     INT UNSIGNED     NOT NULL DEFAULT 0
+    COMMENT 'Persistent session/token revocation counter. Embedded in each JWT and bumped on logout so revocations survive server restarts. A token is valid only when its token_version matches this column.',
   intentos_fallidos TINYINT UNSIGNED NOT NULL DEFAULT 0,
   bloqueado_hasta   DATETIME         DEFAULT NULL,
   ultimo_acceso     DATETIME         DEFAULT NULL,

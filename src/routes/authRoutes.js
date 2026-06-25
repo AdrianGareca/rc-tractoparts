@@ -29,7 +29,9 @@ const loginLimiter = rateLimit({
     success: false,
     message: 'Too many login attempts from this IP. Please try again in 15 minutes.',
   },
-  skip: () => process.env.NODE_ENV === 'test',
+  // Bypass in test AND local development so credential testing isn't locked out
+  // after 5 attempts. Production keeps the strict brute-force protection.
+  skip: () => ['test', 'development'].includes(process.env.NODE_ENV),
 });
 
 /**

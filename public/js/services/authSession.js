@@ -84,6 +84,15 @@ class _SessionManager {
   getUsername()    { return this.getUser()?.nombre_usuario  ?? null; }
 
   // ---------------------------------------------------------------------------
+  // canApproveQuotations
+  // Delegación de Funciones — true when the logged-in user holds the delegated
+  // can_approve_quotations flag (returned by /api/auth/login). Used purely to
+  // decide whether to render the "Aprobar Internamente" action in the UI;
+  // the server independently re-verifies the flag on every transition.
+  // ---------------------------------------------------------------------------
+  canApproveQuotations() { return this.getUser()?.can_approve_quotations === true; }
+
+  // ---------------------------------------------------------------------------
   // _decodePayload (private-by-convention)
   // Decodes the base64url-encoded JWT payload segment WITHOUT signature
   // verification. Safe for client-side expiry checks only.

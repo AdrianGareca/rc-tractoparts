@@ -234,6 +234,138 @@ const QuotationController = {
   },
 
   // ---------------------------------------------------------------------------
+  // updateQuotation — PUT /api/cotizaciones/:id  (Role: Ejecutivo, owner only)
+  //
+  // Repairs the "Solicitar Cambios" workflow: when a quotation is sent back to
+  // 'Pendiente', the owning Ejecutivo can now edit the SAME record (header +
+  // line items) instead of creating a brand-new one. A client who only wants
+  // 3 of 10 items has the rest removed via replaceDetalles.
+  //
+  // Guards (defense-in-depth on top of the route middleware):
+  //   • Quotation must exist                       → 404
+  //   • Caller must own it (id_ejecutivo === user) → 403
+  //   • State must be 'Pendiente'                  → 409 (editing is a draft-only op)
+  //
+  // Atomic flow: BEGIN → UPDATE header → replace detalles → COMMIT
+  //              → regenerate PDF (single-PDF invariant) → audit.
+  // ---------------------------------------------------------------------------
+  async updateQuotation(req, res) {
+    const id       = parseInt(req.params.id, 10);
+    const clientIp = req.ip || req.socket?.remoteAddress || null;
+
+    if (isNaN(id) || id < 1) {
+      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
+    }
+
+    const { id_cliente, descripcion, fecha_emision, detalles = [] } = req.body;
+
+    let connection;
+    try {
+      const existing = await QuotationModel.findById(id);
+
+      if (!existing) {
+        return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
+      }
+
+      // Ownership guard — an executive may only edit their OWN quotations.
+      if (existing.id_ejecutivo !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. You can only edit quotations that you own.',
+        });
+      }
+
+      // State guard — editing is a draft-only operation. Once a quotation has
+      // moved past 'Pendiente' it is locked; the lifecycle must drive it instead.
+      if (existing.estado !== 'Pendiente') {
+        return res.status(409).json({
+          success: false,
+          message: `Only quotations in 'Pendiente' state can be edited. This quotation is '${existing.estado}'. ` +
+                   `Ask a Jefe/Administrador to return it to 'Pendiente' (Solicitar Cambios) first.`,
+        });
+      }
+
+      // Recalculate the header total server-side from the line items so the
+      // stored total always matches the actual detail rows (client value ignored).
+      const calculatedTotal = parseFloat(
+        detalles.reduce((sum, item) =>
+          sum + parseFloat(item.cantidad) * parseFloat(item.precio_unitario), 0).toFixed(2)
+      );
+
+      connection = await pool.getConnection();
+      await connection.beginTransaction();
+
+      await QuotationModel.updateEditableHeader(connection, id, {
+        id_cliente:               parseInt(id_cliente, 10),
+        descripcion:              String(descripcion).trim(),
+        monto_total:              calculatedTotal,
+        moneda:                   req.body.moneda || existing.moneda || 'BOB',
+        observaciones:            req.body.observaciones,
+        fecha_emision,
+        fecha_validez:            req.body.fecha_validez,
+        tipo_pedido:              req.body.tipo_pedido,
+        tiempo_entrega:           req.body.tiempo_entrega,
+        solicitante_no_solicitud: req.body.solicitante_no_solicitud,
+        solicitante_area:         req.body.solicitante_area,
+        solicitante_celular:      req.body.solicitante_celular,
+        solicitante_correo:       req.body.solicitante_correo,
+        equipo_marca:             req.body.equipo_marca,
+        equipo_tipo:              req.body.equipo_tipo,
+        equipo_modelo:            req.body.equipo_modelo,
+        equipo_serie:             req.body.equipo_serie,
+        equipo_motor:             req.body.equipo_motor,
+      });
+
+      await QuotationModel.replaceDetalles(connection, id, detalles);
+
+      await connection.commit();
+
+      // ── Post-commit: refetch, regenerate PDF (single-PDF invariant), audit ──
+      const updatedQuotation = await QuotationModel.findById(id);
+
+      try {
+        await pdfService.purgeQuotationPdf(updatedQuotation.pdf_ruta);
+        const newPdfPath = await pdfService.generateQuotationPdf(updatedQuotation);
+        await QuotationModel.updatePdfPath(id, newPdfPath);
+        updatedQuotation.pdf_ruta = newPdfPath;
+      } catch (pdfErr) {
+        console.warn('[QuotationController.updateQuotation] PDF regeneration failed (non-fatal):', pdfErr.message);
+      }
+
+      try {
+        await logEvent({
+          id_usuario:     req.user.id,
+          nombre_usuario: req.user.nombre_usuario,
+          accion:         AuditActions.EDITAR_COTIZACION,
+          entidad:        'cotizaciones',
+          id_entidad:     id,
+          detalle:        { numero_correlativo: existing.numero_correlativo, item_count: detalles.length },
+          ip_origen:      clientIp,
+          resultado:      'exito',
+        });
+      } catch (auditErr) {
+        console.warn('[QuotationController.updateQuotation] Audit logging failed (non-fatal):', auditErr.message);
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Quotation updated successfully.',
+        data:    updatedQuotation,
+      });
+    } catch (error) {
+      if (connection) {
+        try { await connection.rollback(); } catch (rbErr) {
+          console.error('[QuotationController.updateQuotation] Rollback error:', rbErr.message);
+        }
+      }
+      console.error('[QuotationController.updateQuotation] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to update quotation.' });
+    } finally {
+      if (connection) connection.release();
+    }
+  },
+
+  // ---------------------------------------------------------------------------
   // getQuotationById — GET /api/cotizaciones/:id  (All roles)
   // ---------------------------------------------------------------------------
   async getQuotationById(req, res) {

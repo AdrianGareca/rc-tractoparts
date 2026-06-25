@@ -93,6 +93,26 @@ class LineItemsSubject {
     return this.#items.length - 1; // new index
   }
 
+  /**
+   * Seed a pre-filled item (used in edit mode to hydrate existing line items).
+   * Returns the new index. Missing fields fall back to sane defaults so the
+   * row renders identically to a freshly-added one.
+   */
+  addItemData(item = {}) {
+    this.#items.push({
+      descripcion_item:   item.descripcion_item   ?? '',
+      codigo:             item.codigo             ?? '',
+      codigo_alternativo: item.codigo_alternativo ?? '',
+      unidad:             item.unidad             ?? 'UND',
+      cantidad:           item.cantidad           ?? 1,
+      precio_unitario:    item.precio_unitario    ?? 0,
+      marca_id:           item.marca_id           ?? null,
+      tiempo_entrega:     item.tiempo_entrega     ?? '',
+    });
+    this._notify();
+    return this.#items.length - 1;
+  }
+
   removeItem(index) {
     this.#items.splice(index, 1);
     this._notify();
@@ -191,10 +211,14 @@ class FormMediator {
   #uploadedFile = null;
   #uploadedExcel = null;   // optional Excel spreadsheet attachment
   #brands = [];      // Cache of { id, nombre } loaded from GET /api/marcas
+  #editData = null;  // Existing quotation when mounted in EDIT mode (else null)
+  #editId   = null;  // Quotation id when editing (else null)
 
-  constructor(container) {
+  constructor(container, quotation = null) {
     this.#container = container;
     this.#subject   = new LineItemsSubject();
+    this.#editData  = quotation;
+    this.#editId    = quotation?.id ?? null;
   }
 
   // ── Public mount entry point ───────────────────────────────────────────────
@@ -222,8 +246,29 @@ class FormMediator {
     this.#subject.subscribe(new IvaObserver(elIva));
     this.#subject.subscribe(new GrandTotalObserver(elSubtotal, elTotal));
 
-    // Seed one empty row
-    this._appendRow(this.#subject.addItem(), itemsBody);
+    // Seed rows: hydrate from the existing quotation when editing, otherwise
+    // start with a single blank row.
+    const editDetalles = this.#editData?.detalles ?? [];
+    if (this.#editId && editDetalles.length > 0) {
+      editDetalles.forEach((d) => {
+        const mapped = {
+          descripcion_item:   d.descripcion_item,
+          codigo:             d.codigo_parte ?? d.producto_codigo ?? '',
+          codigo_alternativo: d.codigo_alternativo ?? '',
+          unidad:             d.unidad ?? 'UND',
+          cantidad:           Number(d.cantidad),
+          precio_unitario:    Number(d.precio_unitario),
+          marca_id:           d.marca_id != null ? Number(d.marca_id) : null,
+          tiempo_entrega:     d.tiempo_entrega ?? '',
+        };
+        this._appendRow(this.#subject.addItemData(mapped), itemsBody, mapped);
+      });
+    } else {
+      this._appendRow(this.#subject.addItem(), itemsBody);
+    }
+
+    // Pre-fill header fields when editing
+    if (this.#editId) this._populateHeaderForEdit();
 
     // Wire "+ Add item" button
     this.#container.querySelector('#btn-add-item')?.addEventListener('click', () => {
@@ -250,6 +295,48 @@ class FormMediator {
       e.preventDefault();
       await this._handleSubmit(onSuccess);
     });
+  }
+
+  // ── Private: hydrate header fields from the existing quotation (edit mode) ──
+
+  _populateHeaderForEdit() {
+    const q   = this.#editData;
+    const set = (sel, val) => {
+      const el = this.#container.querySelector(sel);
+      if (el != null && val != null) el.value = val;
+    };
+    // Normalize a DB date (Date object or ISO/datetime string) to YYYY-MM-DD for
+    // a native <input type="date">.
+    const toDateInput = (v) => {
+      if (!v) return '';
+      if (typeof v === 'string') return v.slice(0, 10);
+      try { return new Date(v).toISOString().slice(0, 10); } catch { return ''; }
+    };
+
+    // Client selector: show the resolved name, store the numeric id in the hidden field.
+    set('#cliente-search', q.cliente_nombre ?? '');
+    set('#id_cliente',     q.id_cliente != null ? String(q.id_cliente) : '');
+
+    set('#descripcion',   q.descripcion ?? '');
+    set('#fecha_emision', toDateInput(q.fecha_emision));
+    set('#fecha_validez', toDateInput(q.fecha_validez));
+    set('#moneda',        q.moneda ?? 'BOB');
+    set('#tipo_pedido',   q.tipo_pedido ?? '');
+    set('#observaciones', q.observaciones ?? '');
+    set('#tiempo_entrega', q.tiempo_entrega ?? '');
+
+    // Solicitante block (findById aliases these column names)
+    set('#solicitante_no_solicitud', q.nro_solicitud ?? q.solicitante_no_solicitud ?? '');
+    set('#solicitante_area',         q.area_sol      ?? q.solicitante_area ?? '');
+    set('#solicitante_celular',      q.celular_sol   ?? q.solicitante_celular ?? '');
+    set('#solicitante_correo',       q.correo_sol    ?? q.solicitante_correo ?? '');
+
+    // Equipo block
+    set('#equipo_marca',  q.equipo_marca ?? '');
+    set('#equipo_tipo',   q.equipo_tipo ?? '');
+    set('#equipo_modelo', q.equipo_modelo ?? '');
+    set('#equipo_serie',  q.equipo_serie ?? '');
+    set('#equipo_motor',  q.equipo_motor ?? '');
   }
 
   // ── Private: build form HTML ───────────────────────────────────────────────
@@ -474,7 +561,7 @@ class FormMediator {
         <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem;">
           <button type="button" id="btn-cancel" class="btn btn-ghost">Cancelar</button>
           <button type="submit" id="btn-submit" class="btn btn-primary">
-            <span class="btn-label">Crear Cotización</span>
+            <span class="btn-label">${this.#editId ? 'Guardar Cambios' : 'Crear Cotización'}</span>
             <span class="spinner hidden btn-spinner"></span>
           </button>
         </div>
@@ -1181,13 +1268,16 @@ class FormMediator {
     btnSubmit.disabled = true;
     const label  = btnSubmit.querySelector('.btn-label');
     const spinner= btnSubmit.querySelector('.btn-spinner');
-    if (label)  label.textContent = 'Creando...';
+    const originalLabel = this.#editId ? 'Guardar Cambios' : 'Crear Cotización';
+    if (label)  label.textContent = this.#editId ? 'Guardando...' : 'Creando...';
     if (spinner)spinner.classList.remove('hidden');
     alert.className = 'form-alert';
 
     try {
-      // Step 1 — Create the quotation record
-      const response = await api.post('/api/cotizaciones', body);
+      // Step 1 — Create OR update the quotation record
+      const response = this.#editId
+        ? await api.put(`/api/cotizaciones/${this.#editId}`, body)
+        : await api.post('/api/cotizaciones', body);
       const quotation = response.data;
 
       // Step 2 — Upload PDF and/or Excel if either was attached
@@ -1207,7 +1297,7 @@ class FormMediator {
 
     } catch (err) {
       btnSubmit.disabled = false;
-      if (label)  label.textContent = 'Crear Cotización';
+      if (label)  label.textContent = originalLabel;
       if (spinner)spinner.classList.add('hidden');
 
       // Surface server-side Zod field errors
@@ -1229,7 +1319,7 @@ class FormMediator {
 // Mounts the quotation form into the given container element.
 // Returns a cleanup function that removes event listeners when the form closes.
 // =============================================================================
-export function mountQuotationForm(container, { onSuccess, onCancel } = {}) {
-  const mediator = new FormMediator(container);
+export function mountQuotationForm(container, { onSuccess, onCancel, quotation = null } = {}) {
+  const mediator = new FormMediator(container, quotation);
   mediator.render(onSuccess, onCancel);
 }
