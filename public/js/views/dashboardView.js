@@ -445,6 +445,11 @@ class ExecutiveStrategy extends DashboardStrategy {
   #page    = 1;
   #sortBy  = 'creado_en';
   #sortOrd = 'DESC';
+  // Dashboard partitioning: 'mias' = quotations owned by the logged-in user,
+  // 'equipo' = the rest of the team's. #allRows caches the last server fetch so
+  // switching tabs re-partitions IN MEMORY without a new DB query.
+  #scope   = 'mias';
+  #allRows = [];
 
   constructor(user) { super(); this.#user = user; }
 
@@ -462,8 +467,19 @@ class ExecutiveStrategy extends DashboardStrategy {
 
       <div class="card">
         <div class="card-header">
-          <h3>Mis Cotizaciones</h3>
+          <h3>Cotizaciones</h3>
           <button class="btn btn-primary btn-sm" id="btn-new-quotation">+ Nueva Cotización</button>
+        </div>
+
+        <!-- Scope segmented control: personal workspace vs. team activity.
+             Switching is purely client-side (re-partitions the cached array). -->
+        <div class="tab-bar" id="exec-scope-tabs" style="margin-bottom:1rem;">
+          <button class="tab-btn active" data-scope="mias" type="button">
+            Mis Cotizaciones <span class="badge" data-scope-count="mias">0</span>
+          </button>
+          <button class="tab-btn" data-scope="equipo" type="button">
+            Cotizaciones del Equipo <span class="badge" data-scope-count="equipo">0</span>
+          </button>
         </div>
 
         <!-- Filter bar -->
@@ -512,6 +528,17 @@ class ExecutiveStrategy extends DashboardStrategy {
 
     document.getElementById('filter-q')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { this.#page = 1; this._loadQuotations(); }
+    });
+
+    // Scope tabs — pure in-memory re-partition, NO server round-trip.
+    this.#container.querySelectorAll('#exec-scope-tabs .tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (this.#scope === btn.dataset.scope) return;
+        this.#scope = btn.dataset.scope;
+        this.#container.querySelectorAll('#exec-scope-tabs .tab-btn')
+          .forEach((b) => b.classList.toggle('active', b === btn));
+        this._renderQuotationsTable();
+      });
     });
 
     await Promise.all([
@@ -604,6 +631,9 @@ class ExecutiveStrategy extends DashboardStrategy {
     } catch (_) { /* non-fatal */ }
   }
 
+  // Fetches the company quotation set ONCE per refresh (server-side estado/q
+  // filters still apply) and caches it. Partitioning into "Mis" / "Equipo" and
+  // tab switching are then handled entirely in memory by _renderQuotationsTable.
   async _loadQuotations() {
     const section = document.getElementById('quotations-section');
     if (!section) return;
@@ -613,8 +643,10 @@ class ExecutiveStrategy extends DashboardStrategy {
     const estado = document.getElementById('filter-estado')?.value ?? '';
     const q      = document.getElementById('filter-q')?.value.trim() ?? '';
 
+    // limit=200 mirrors the API's hard cap (QuotationModel.findAll) so a single
+    // fetch covers the full working set; both partitions are derived client-side.
     const params = new URLSearchParams({
-      page: this.#page, limit: 15,
+      page: 1, limit: 200,
       sort_by: this.#sortBy, sort_order: this.#sortOrd,
       ...(estado && { estado }),
       ...(q && { q }),
@@ -622,72 +654,99 @@ class ExecutiveStrategy extends DashboardStrategy {
 
     try {
       const data = await api.get(`/api/cotizaciones?${params}`);
-      const rows = data.data ?? [];
-
-      if (rows.length === 0) {
-        section.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">📋</div>
-            <h4>Sin cotizaciones</h4>
-            <p>No se encontraron cotizaciones con los filtros aplicados.</p>
-          </div>`;
-        document.getElementById('pagination-footer').innerHTML = '';
-        return;
-      }
-
-      section.innerHTML = `
-        <div class="table-wrapper">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>N° Correlativo</th><th>Cliente</th>
-                <th>Fecha</th><th>Monto</th>
-                <th>Estado</th><th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map(r => `
-                <tr>
-                  <td class="fw-600">${r.numero_correlativo}</td>
-                  <td>${r.cliente_nombre ? escHtml(r.cliente_nombre) : r.id_cliente}</td>
-                  <td>${fmtDate(r.fecha_emision)}</td>
-                  <td>${fmtAmount(r.monto_total, r.moneda)}</td>
-                  <td>${badgeHtml(r.estado)}</td>
-                  <td>
-                    <div class="table-actions">
-                      <button class="btn btn-ghost btn-sm" data-action="view" data-id="${r.id}">Ver</button>
-                      <button class="btn btn-ghost btn-sm" data-action="status" data-id="${r.id}" data-estado="${r.estado}">Estado</button>
-                    </div>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>`;
-
-      // Row action listeners
-      section.querySelectorAll('[data-action="view"]').forEach(btn => {
-        btn.addEventListener('click', () => this._viewQuotation(btn.dataset.id));
-      });
-      section.querySelectorAll('[data-action="status"]').forEach(btn => {
-        btn.addEventListener('click', () =>
-          this._changeStatus(btn.dataset.id, btn.dataset.estado, btn));
-      });
-
-      // Pagination
-      const p = data.pagination;
-      document.getElementById('pagination-footer').innerHTML = p ? `
-        <span class="pagination-info">Página ${p.page} de ${p.totalPages} · ${p.totalRecords} registros</span>
-        <button class="btn btn-ghost btn-sm" ${!p.hasPrev ? 'disabled' : ''} data-pg="${p.page - 1}">‹ Ant.</button>
-        <button class="btn btn-ghost btn-sm" ${!p.hasNext ? 'disabled' : ''} data-pg="${p.page + 1}">Sig. ›</button>
-      ` : '';
-
-      document.getElementById('pagination-footer')?.querySelectorAll('[data-pg]').forEach(btn => {
-        btn.addEventListener('click', () => { this.#page = parseInt(btn.dataset.pg, 10); this._loadQuotations(); });
-      });
-
+      this.#allRows = data.data ?? [];
+      this._renderQuotationsTable();
     } catch (err) {
       section.innerHTML = `<div class="empty-state"><p>Error cargando cotizaciones: ${escHtml(err.message)}</p></div>`;
+    }
+  }
+
+  // Renders the table for the active scope from the cached array. No DB query.
+  _renderQuotationsTable() {
+    const section = document.getElementById('quotations-section');
+    if (!section) return;
+
+    const myId   = Number(this.#user.id);
+    const mine   = this.#allRows.filter((r) => Number(r.id_ejecutivo) === myId);
+    const team   = this.#allRows.filter((r) => Number(r.id_ejecutivo) !== myId);
+
+    // Keep the tab badges in sync with the cached dataset.
+    const setCount = (scope, n) => {
+      const el = this.#container.querySelector(`[data-scope-count="${scope}"]`);
+      if (el) el.textContent = n;
+    };
+    setCount('mias', mine.length);
+    setCount('equipo', team.length);
+
+    const isTeam = this.#scope === 'equipo';
+    const rows   = isTeam ? team : mine;
+    // 'Estado' row action is hidden for standard/delegated Ejecutivos — their
+    // status changes flow through the "Ver" modal (proper UX). Management roles
+    // inside this strategy (e.g. Administracion) retain the quick action.
+    const showStatusBtn = this.#user.rol !== 'Ejecutivo';
+
+    const footer = document.getElementById('pagination-footer');
+
+    if (rows.length === 0) {
+      section.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📋</div>
+          <h4>${isTeam ? 'Sin cotizaciones del equipo' : 'Sin cotizaciones propias'}</h4>
+          <p>${isTeam
+            ? 'No hay cotizaciones de otros miembros del equipo con los filtros aplicados.'
+            : 'Aún no has registrado cotizaciones con los filtros aplicados.'}</p>
+        </div>`;
+      if (footer) footer.innerHTML = '';
+      return;
+    }
+
+    section.innerHTML = `
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>N° Correlativo</th><th>Cliente</th>
+              ${isTeam ? '<th>Ejecutivo</th>' : ''}
+              <th>Fecha</th><th>Monto</th>
+              <th>Estado</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r) => `
+              <tr>
+                <td class="fw-600">${r.numero_correlativo}</td>
+                <td>${r.cliente_nombre ? escHtml(r.cliente_nombre) : r.id_cliente}</td>
+                ${isTeam ? `<td>${escHtml(r.ejecutivo_nombre ?? '—')}</td>` : ''}
+                <td>${fmtDate(r.fecha_emision)}</td>
+                <td>${fmtAmount(r.monto_total, r.moneda)}</td>
+                <td>${badgeHtml(r.estado)}</td>
+                <td>
+                  <div class="table-actions">
+                    <button class="btn btn-ghost btn-sm" data-action="view" data-id="${r.id}">Ver</button>
+                    ${showStatusBtn
+                      ? `<button class="btn btn-ghost btn-sm" data-action="status" data-id="${r.id}" data-estado="${r.estado}">Estado</button>`
+                      : ''}
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+    section.querySelectorAll('[data-action="view"]').forEach((btn) => {
+      btn.addEventListener('click', () => this._viewQuotation(btn.dataset.id));
+    });
+    section.querySelectorAll('[data-action="status"]').forEach((btn) => {
+      btn.addEventListener('click', () =>
+        this._changeStatus(btn.dataset.id, btn.dataset.estado, btn));
+    });
+
+    if (footer) {
+      footer.innerHTML = `
+        <span class="pagination-info">
+          Mostrando ${rows.length} ${isTeam ? 'del equipo' : 'propia(s)'} · ${this.#allRows.length} en total
+        </span>`;
     }
   }
 
