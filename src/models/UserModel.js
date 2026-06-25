@@ -31,6 +31,8 @@ const UserModel = {
         u.id_rol,
         r.nombre        AS rol,       -- role name string used in JWT payload
         u.activo,
+        u.can_approve_quotations,     -- Delegación de Funciones (surfaced to the session for UI gating)
+        u.token_version,              -- Persistent revocation counter (survives server restart)
         u.intentos_fallidos,
         u.bloqueado_hasta,
         u.ultimo_acceso
@@ -173,6 +175,40 @@ const UserModel = {
     `;
 
     await pool.execute(sql, [maxAttempts, lockMinutes, id]);
+  },
+
+  // ---------------------------------------------------------------------------
+  // getTokenVersion
+  // Returns the current persistent session/token version for a user, or null if
+  // the user no longer exists. Consumed by the auth middleware on every request
+  // to validate that a JWT has not been invalidated by a logout (RNF — secure
+  // session teardown that survives server restarts).
+  //
+  // @param  {number} id - User primary key
+  // @returns {number|null}
+  // ---------------------------------------------------------------------------
+  async getTokenVersion(id) {
+    const [rows] = await pool.execute(
+      'SELECT token_version FROM usuarios WHERE id = ? LIMIT 1',
+      [id]
+    );
+    return rows[0] ? rows[0].token_version : null;
+  },
+
+  // ---------------------------------------------------------------------------
+  // incrementTokenVersion
+  // Atomically bumps the user's token_version, instantly invalidating every JWT
+  // previously issued to that user (all active sessions/devices). Called on
+  // logout. Because the counter lives in the database, the revocation persists
+  // across server restarts — unlike a volatile in-memory set.
+  //
+  // @param {number} id - User primary key
+  // ---------------------------------------------------------------------------
+  async incrementTokenVersion(id) {
+    await pool.execute(
+      'UPDATE usuarios SET token_version = token_version + 1 WHERE id = ?',
+      [id]
+    );
   },
 
   // ---------------------------------------------------------------------------

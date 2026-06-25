@@ -198,17 +198,19 @@ const QuotationStateController = {
         );
       }
 
-      // ── Approval notification for Ejecutivo ────────────────────────────────
-      // When the Jefe (or SysAdmin) sends a quotation to the client or marks it
-      // accepted, notify the owning Ejecutivo so they can follow up promptly.
+      // ── Notification for the owning Ejecutivo ──────────────────────────────
+      // Fires whenever a quotation reaches 'Enviada al cliente' or 'Aceptada',
+      // REGARDLESS of who drove the transition (Jefe, SysAdmin, Administracion,
+      // or a delegated Ejecutivo). The owner is notified so they can follow up.
+      // Self-notification is skipped — the actor already knows about their action.
       if (['Enviada al cliente', 'Aceptada'].includes(nuevo_estado) &&
-          ['Jefe', 'SysAdmin'].includes(userRol)) {
+          quotation.id_ejecutivo !== req.user.id) {
         try {
           const tipoMap = { 'Enviada al cliente': 'envio_cliente', 'Aceptada': 'aprobacion' };
           const mensaje = nuevo_estado === 'Enviada al cliente'
             ? `La cotización #${quotation.numero_correlativo} ` +
               `para ${quotation.cliente_nombre ?? String(quotation.id_cliente)} ` +
-              `ha sido enviada al cliente por el Jefe. Ya puedes enviarla.`
+              `ha sido enviada al cliente. Ya puedes darle seguimiento.`
             : `La cotización #${quotation.numero_correlativo} ` +
               `para ${quotation.cliente_nombre ?? String(quotation.id_cliente)} ` +
               `ha sido aceptada. ¡Cierre de venta registrado!`;

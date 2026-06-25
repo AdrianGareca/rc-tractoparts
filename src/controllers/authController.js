@@ -129,6 +129,10 @@ const AuthController = {
         id:             user.id,
         nombre_usuario: user.nombre_usuario,
         rol:            user.rol,   // Always the string name from the roles table JOIN
+        // Persistent revocation stamp. The auth middleware compares this against
+        // usuarios.token_version on every request, so a logout (which bumps the
+        // counter) invalidates this token even after a server restart.
+        token_version:  user.token_version ?? 0,
       };
 
       const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
@@ -156,6 +160,11 @@ const AuthController = {
             nombre_completo: user.nombre_completo,
             nombre_usuario:  user.nombre_usuario,
             rol:             user.rol,
+            // Delegación de Funciones flag — the SPA stores this in AuthSession to
+            // conditionally render the "Aprobar Internamente" action for delegated
+            // executives. Authorization is still enforced server-side (the state
+            // controller re-reads the flag fresh from the DB).
+            can_approve_quotations: Boolean(user.can_approve_quotations),
           },
         },
       });
@@ -178,7 +187,17 @@ const AuthController = {
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
     try {
+      // Fast path: drop the exact token into the in-memory revocation set so it
+      // is rejected immediately within this running process.
       revokeToken(req.token);
+
+      // Durable path: bump the user's token_version so EVERY token issued to this
+      // user is invalidated and the revocation survives a server restart.
+      try {
+        await UserModel.incrementTokenVersion(req.user.id);
+      } catch (versionErr) {
+        console.warn('[AuthController.logout] token_version bump failed (non-fatal):', versionErr.message);
+      }
 
       await logEvent({
         id_usuario:    req.user.id,

@@ -52,8 +52,12 @@ import { refreshNotifBadge, requestNotifPermission, startNotifPolling } from './
 //     'admin'             — Administrador view: comment textarea + "En Espera" button
 // ---------------------------------------------------------------------------
 function _buildProformaHTML(q, id, viewMode) {
-  const jefeMode  = viewMode === true  || viewMode === 'jefe';
-  const adminMode = viewMode === 'admin';
+  const jefeMode     = viewMode === true  || viewMode === 'jefe';
+  const adminMode    = viewMode === 'admin';
+  // 'delegate' — read-only Executive view PLUS a single "Aprobar Internamente"
+  // action, shown only to executives holding the delegated can_approve_quotations
+  // flag (Delegación de Funciones). It deliberately exposes nothing else.
+  const delegateMode = viewMode === 'delegate';
 
   const detalles = q.detalles ?? [];
   const subtotal = detalles.reduce((sum, d) => sum + parseFloat(d.subtotal || 0), 0);
@@ -83,7 +87,10 @@ function _buildProformaHTML(q, id, viewMode) {
   const canAceptar      = jefeMode && ['Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
   const canRechazar     = jefeMode && !['Aceptada', 'Archivada', 'Rechazada'].includes(q.estado);
   const canHold         = jefeMode && ['Pendiente', 'En revision', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
-  const canRetract      = jefeMode && ['En revision', 'En espera', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
+  // 'Aprobada internamente' is intentionally excluded: the Jefe ROLE_TRANSITIONS
+  // matrix has NO 'Aprobada internamente' → 'Pendiente' edge, so offering
+  // "Solicitar Cambios" there would always 403. Aligns the UI with the backend.
+  const canRetract      = jefeMode && ['En revision', 'En espera', 'Enviada al cliente'].includes(q.estado);
   // High-privilege revert: only Jefe/SysAdmin can revert a Rechazada quotation
   const canRevertir = jefeMode && q.estado === 'Rechazada';
 
@@ -152,6 +159,20 @@ function _buildProformaHTML(q, id, viewMode) {
           ⏸ Poner en Espera con Comentario
         </button>
       </div>
+    </div>` : '';
+
+  // Delegated-executive action — a single "Aprobar Internamente" button, rendered
+  // only in delegate mode and only from a legitimate pre-approval source state.
+  // Mirrors exactly what the backend additive delegation branch will accept.
+  const delegateButtons = (delegateMode && ['Pendiente', 'En revision', 'En espera'].includes(q.estado)) ? `
+    <div class="approval-actions" style="border-top:2px solid #16a34a;margin-top:1.5rem;padding-top:1.25rem;">
+      <h4 class="approval-actions-title" style="color:#15803d;">🔑 Delegación de Funciones</h4>
+      <p class="text-sm" style="color:var(--text-secondary);margin-bottom:.75rem;">
+        Cuentas con autorización delegada para aprobar internamente esta cotización.
+      </p>
+      <button class="btn btn-success" id="btn-aprobar-delegado">
+        ✅ Aprobar Internamente
+      </button>
     </div>` : '';
 
   // Read-only admin comment block — shown to ALL authenticated roles when a
@@ -278,6 +299,7 @@ function _buildProformaHTML(q, id, viewMode) {
 
       ${jefeButtons}
       ${adminButtons}
+      ${delegateButtons}
     </div>
   `;
 }
@@ -450,7 +472,7 @@ class ExecutiveStrategy extends DashboardStrategy {
             <label class="form-label">Estado</label>
             <select class="form-control" id="filter-estado" style="min-width:140px;">
               <option value="">Todos</option>
-              <option>Borrador</option><option>Pendiente</option>
+              <option>Pendiente</option>
               <option>En revision</option><option>En espera</option>
               <option>Aprobada internamente</option>
               <option>Enviada al cliente</option><option>Aceptada</option>
@@ -681,8 +703,33 @@ class ExecutiveStrategy extends DashboardStrategy {
       const q       = quotData.value.data;
       const history = histData.status === 'fulfilled' ? (histData.value.data ?? []) : [];
 
+      // Delegación de Funciones — render the "Aprobar Internamente" action only
+      // when this executive holds the delegated flag. From a pre-approval state
+      // _buildProformaHTML('delegate') adds the single approve button.
+      const delegated  = AuthSession.canApproveQuotations();
+      // Editable only while the quotation is still a 'Pendiente' draft owned by
+      // this executive (matches the backend PUT /:id ownership + state guard).
+      const isOwner    = q.id_ejecutivo === this.#user.id;
+      const editable   = isOwner && q.estado === 'Pendiente';
+
       UI.openModal(`Cotización ${q.numero_correlativo}`, (body) => {
-        body.innerHTML = _buildProformaHTML(q, id, false);
+        body.innerHTML = _buildProformaHTML(q, id, delegated ? 'delegate' : false);
+
+        if (editable) {
+          body.insertAdjacentHTML('afterbegin', `
+            <div style="display:flex;justify-content:flex-end;margin-bottom:1rem;">
+              <button class="btn btn-primary btn-sm" id="btn-editar-cotizacion">✏️ Editar Cotización</button>
+            </div>`);
+          body.querySelector('#btn-editar-cotizacion')?.addEventListener('click', () =>
+            this._editQuotation(q));
+        }
+
+        if (delegated) {
+          body.querySelector('#btn-aprobar-delegado')?.addEventListener('click', () => {
+            this._confirmDelegatedApproval(id);
+          });
+        }
+
         wirePdfButton(body, id, q.numero_correlativo);
         wireExcelButton(body, id, q.numero_correlativo);
         body.insertAdjacentHTML('beforeend', buildTimelineHtml(history));
@@ -692,9 +739,63 @@ class ExecutiveStrategy extends DashboardStrategy {
     }
   }
 
+  // ── Delegated approval confirmation (Delegación de Funciones) ────────────────
+  // Transitions the quotation to 'Aprobada internamente' via the standard state
+  // endpoint. The backend authorizes this only because the executive carries the
+  // can_approve_quotations flag (re-read fresh from the DB server-side).
+  _confirmDelegatedApproval(id) {
+    UI.openModal('Aprobar Internamente', (body) => {
+      body.innerHTML = `
+        <div class="confirm-dialog">
+          <h4>✅ ¿Confirmar aprobación interna?</h4>
+          <p class="text-sm" style="color:var(--text-secondary);">
+            Estás usando tu autorización delegada para aprobar esta cotización.
+          </p>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="del-obs">Observación (opcional)</label>
+          <textarea class="form-control" id="del-obs" rows="2"></textarea>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+          <button class="btn btn-ghost" id="del-cancel">Cancelar</button>
+          <button class="btn btn-success" id="del-confirm">✅ Sí, Aprobar</button>
+        </div>`;
+
+      body.querySelector('#del-cancel')?.addEventListener('click', UI.closeModal);
+      body.querySelector('#del-confirm')?.addEventListener('click', () => {
+        const obs = body.querySelector('#del-obs')?.value.trim() ?? '';
+        const btn = body.querySelector('#del-confirm');
+        CommandInvoker.run(new ChangeStatusCommand(id, 'Aprobada internamente', obs), {
+          btn,
+          successMsg: 'Cotización aprobada internamente.',
+          onSuccess:  () => { UI.closeModal(); this.refresh(); },
+        });
+      });
+    });
+  }
+
+  // ── Edit an existing 'Pendiente' quotation (Solicitar Cambios workflow) ──────
+  // Mounts the shared quotation form in edit mode, pre-populated with the current
+  // header + line items, and PUTs the changes to PUT /api/cotizaciones/:id.
+  _editQuotation(q) {
+    UI.openModal(`Editar Cotización ${q.numero_correlativo}`, (body) => {
+      mountQuotationForm(body, {
+        quotation: q,
+        onSuccess: (updated) => {
+          UI.closeModal();
+          showToast(`Cotización ${updated?.numero_correlativo ?? q.numero_correlativo} actualizada.`, 'success');
+          this.refresh();
+        },
+        onCancel: () => UI.closeModal(),
+      });
+    });
+  }
+
   _changeStatus(id, currentStatus, triggerBtn) {
+    // Mirrors QuotationModel.VALID_STATES exactly. 'Borrador' is a display-only
+    // badge, NOT a valid ENUM/transition target — sending it returns 422.
     const VALID_STATES = [
-      'Borrador','Pendiente','En revision','En espera',
+      'Pendiente','En revision','En espera',
       'Aprobada internamente','Enviada al cliente',
       'Aceptada','Rechazada','Archivada',
     ];

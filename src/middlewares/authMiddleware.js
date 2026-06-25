@@ -14,17 +14,20 @@
 'use strict';
 
 const jwt = require('jsonwebtoken'); // JWT signing and verification
+const UserModel = require('../models/UserModel'); // Persistent token_version lookup
 
-// In-memory revoked token store — tokens are added here on logout.
-// This set is cleared on server restart; acceptable for an 8-hour JWT lifetime.
-// For multi-instance deployments, replace with a shared Redis store.
+// In-memory revoked token store — tokens are added here on logout for instant,
+// same-process rejection. This is only a fast path: durable revocation that
+// survives a server restart is enforced via the persistent usuarios.token_version
+// counter checked below. For multi-instance deployments, the token_version check
+// already works cluster-wide because it reads the shared database.
 const revokedTokens = new Set();
 
 // ---------------------------------------------------------------------------
 // authenticate
 // Express middleware: verify Bearer JWT and attach req.user
 // ---------------------------------------------------------------------------
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
   // 1. Extract the Authorization header and validate its format
   const authHeader = req.headers['authorization'];
 
@@ -61,7 +64,35 @@ function authenticate(req, res, next) {
     //    jwt.verify throws JsonWebTokenError or TokenExpiredError on failure.
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 5. Attach decoded user data to the request object for downstream use.
+    // 5. Durable revocation check — compare the token's version stamp against the
+    //    current persistent counter in the database. A logout bumps the counter,
+    //    so any token minted before that logout is rejected here even after the
+    //    server has been restarted (the in-memory set above would have been lost).
+    //    Fail-open on DB errors: the token is already cryptographically valid, so
+    //    a transient DB hiccup must not lock every user out (availability).
+    try {
+      const currentVersion = await UserModel.getTokenVersion(payload.id);
+
+      if (currentVersion === null) {
+        // User no longer exists — reject.
+        return res.status(401).json({
+          success: false,
+          message: 'Token has been revoked. Please log in again.',
+        });
+      }
+
+      const tokenVersion = payload.token_version ?? 0;
+      if (tokenVersion !== currentVersion) {
+        return res.status(401).json({
+          success: false,
+          message: 'Session has been ended. Please log in again.',
+        });
+      }
+    } catch (versionErr) {
+      console.warn('[authMiddleware] token_version check skipped (non-fatal):', versionErr.message);
+    }
+
+    // 6. Attach decoded user data to the request object for downstream use.
     //    Controllers and role middleware read req.user — never trust the raw body.
     req.user = {
       id:             payload.id,             // INT — primary key in usuarios
@@ -69,7 +100,7 @@ function authenticate(req, res, next) {
       rol:            payload.rol,            // VARCHAR — role name (Ejecutivo, Jefe, etc.)
     };
 
-    // 6. Attach the raw token so the logout controller can revoke it
+    // 7. Attach the raw token so the logout controller can revoke it
     req.token = token;
 
     next(); // Proceed to the next middleware or controller

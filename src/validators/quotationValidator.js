@@ -116,9 +116,11 @@ const detalleItemSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// createQuotationSchema — POST /api/cotizaciones
+// quotationShape — the shared field definitions for a full quotation payload.
+// Extracted so POST (create) and PUT (edit) enforce IDENTICAL rules without
+// duplication. Both wrap this in z.object() + the same fecha refinement.
 // ---------------------------------------------------------------------------
-const createQuotationSchema = z.object({
+const quotationShape = {
   id_cliente: z
     .number({ required_error: 'id_cliente is required.', invalid_type_error: 'id_cliente must be a number.' })
     .int('id_cliente must be an integer.')
@@ -263,17 +265,32 @@ const createQuotationSchema = z.object({
     .array(detalleItemSchema)
     .min(1, 'A quotation must contain at least one line item.')
     .max(200, 'A quotation may not have more than 200 line items.'),
-}).refine(
+};
+
+// Shared cross-field rule: fecha_validez must be on/after fecha_emision.
+const fechaValidezRefinement = [
   (data) => {
-    // fecha_validez must be equal to or after fecha_emision (both present)
     if (!data.fecha_validez || !data.fecha_emision) return true;
     return data.fecha_validez >= data.fecha_emision;
   },
   {
     message: 'fecha_validez must be on or after fecha_emision.',
     path: ['fecha_validez'],
-  }
-);
+  },
+];
+
+// ---------------------------------------------------------------------------
+// createQuotationSchema — POST /api/cotizaciones
+// ---------------------------------------------------------------------------
+const createQuotationSchema = z.object(quotationShape).refine(...fechaValidezRefinement);
+
+// ---------------------------------------------------------------------------
+// updateQuotationSchema — PUT /api/cotizaciones/:id  (Executive edit, Pendiente only)
+// Identical contract to creation: the edit form resubmits the full header + the
+// complete replacement set of line items. The controller enforces ownership and
+// the 'Pendiente'-only state guard; this schema enforces field-level safety.
+// ---------------------------------------------------------------------------
+const updateQuotationSchema = z.object(quotationShape).refine(...fechaValidezRefinement);
 
 // ---------------------------------------------------------------------------
 // updateStatusSchema — PUT /api/cotizaciones/:id/estado
@@ -321,6 +338,7 @@ const approveQuotationSchema = z.object({
 
 module.exports = {
   createQuotationSchema,
+  updateQuotationSchema,
   updateStatusSchema,
   approveQuotationSchema,
 };

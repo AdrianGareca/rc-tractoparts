@@ -96,8 +96,10 @@ const globalLimiter = rateLimit({
     success: false,
     message: 'Too many requests from this IP. Please try again later.',
   },
-  // Skip rate limiting in test environments to avoid breaking integration tests
-  skip: () => process.env.NODE_ENV === 'test',
+  // Skip rate limiting in test AND local development so integration tests and
+  // rapid manual/Swagger testing don't hit 429s. Production (and any non-dev/test
+  // NODE_ENV) stays fully rate-limited.
+  skip: () => ['test', 'development'].includes(process.env.NODE_ENV),
 });
 
 app.use(globalLimiter);

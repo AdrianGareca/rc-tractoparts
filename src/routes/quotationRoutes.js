@@ -43,6 +43,7 @@ const authorize           = require('../middlewares/roleMiddleware');
 const { validate }        = require('../validators/validate');
 const {
   createQuotationSchema,
+  updateQuotationSchema,
   updateStatusSchema,
   approveQuotationSchema,
 } = require('../validators/quotationValidator');
@@ -550,6 +551,110 @@ router.get(
   '/:id',
   ...allRoles,
   QuotationController.getQuotationById
+);
+
+/**
+ * @swagger
+ * /api/cotizaciones/{id}:
+ *   put:
+ *     summary: Editar una cotización en estado 'Pendiente' (Ejecutivo propietario)
+ *     description: |
+ *       Reemplaza la cabecera y el conjunto COMPLETO de ítems de una cotización
+ *       existente. Habilita el flujo "Solicitar Cambios": cuando una cotización
+ *       es devuelta a 'Pendiente', el Ejecutivo propietario corrige el MISMO
+ *       registro (por ejemplo, eliminando ítems que el cliente ya no desea) en
+ *       lugar de crear una cotización nueva.
+ *
+ *       Restricciones (defensa en profundidad sobre el middleware de rol):
+ *         • La cotización debe existir (404).
+ *         • El llamante debe ser el Ejecutivo propietario (403).
+ *         • El estado debe ser 'Pendiente' (409).
+ *
+ *       El total se recalcula en el servidor a partir de los ítems y el PDF se
+ *       regenera automáticamente (invariante de PDF único).
+ *     tags: [Cotizaciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la cotización a editar
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - id_cliente
+ *               - descripcion
+ *               - fecha_emision
+ *               - detalles
+ *             properties:
+ *               id_cliente:
+ *                 type: integer
+ *                 example: 1
+ *               descripcion:
+ *                 type: string
+ *                 example: "Repuestos motor CAT 336 (revisado)"
+ *               fecha_emision:
+ *                 type: string
+ *                 format: date
+ *                 example: "2026-06-24"
+ *               fecha_validez:
+ *                 type: string
+ *                 format: date
+ *               moneda:
+ *                 type: string
+ *                 enum: [USD, BOB]
+ *               observaciones:
+ *                 type: string
+ *               detalles:
+ *                 type: array
+ *                 description: Conjunto completo de reemplazo de ítems (los anteriores se eliminan).
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - descripcion_item
+ *                     - cantidad
+ *                     - precio_unitario
+ *                   properties:
+ *                     descripcion_item:
+ *                       type: string
+ *                     cantidad:
+ *                       type: number
+ *                     precio_unitario:
+ *                       type: number
+ *     responses:
+ *       200:
+ *         description: Cotización actualizada y PDF regenerado.
+ *       400:
+ *         description: ID inválido.
+ *       401:
+ *         description: Token ausente o inválido.
+ *       403:
+ *         description: No es el propietario de la cotización.
+ *       404:
+ *         description: Cotización no encontrada.
+ *       409:
+ *         description: La cotización no está en estado 'Pendiente' (no editable).
+ *       422:
+ *         description: Datos de entrada inválidos.
+ *       500:
+ *         description: Error interno del servidor.
+ */
+// PUT /api/cotizaciones/:id
+// Executive-owner edit of a 'Pendiente' quotation (Solicitar Cambios workflow).
+// validate(): enforces the same field rules as creation before the controller.
+// Ownership + 'Pendiente'-only state are enforced inside the controller.
+router.put(
+  '/:id',
+  ...ejecutivoOnly,
+  validate(updateQuotationSchema),
+  QuotationController.updateQuotation
 );
 
 /**

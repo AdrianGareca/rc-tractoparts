@@ -373,6 +373,78 @@ const QuotationModel = {
   },
 
   // ---------------------------------------------------------------------------
+  // updateEditableHeader — Update the editable header fields of an existing
+  // quotation inside a caller-managed transaction. Used by the Executive edit
+  // flow (PUT /:id). Identity fields (numero_correlativo, id_ejecutivo, estado)
+  // and approval metadata are deliberately NOT touchable here.
+  // ---------------------------------------------------------------------------
+  async updateEditableHeader(connection, id, data) {
+    const sql = `
+      UPDATE cotizaciones SET
+        id_cliente               = ?,
+        descripcion              = ?,
+        monto_total              = ?,
+        moneda                   = ?,
+        observaciones            = ?,
+        fecha_emision            = ?,
+        fecha_validez            = ?,
+        tipo_pedido              = ?,
+        tiempo_entrega           = ?,
+        solicitante_no_solicitud = ?,
+        solicitante_area         = ?,
+        solicitante_celular      = ?,
+        solicitante_correo       = ?,
+        equipo_marca             = ?,
+        equipo_tipo              = ?,
+        equipo_modelo            = ?,
+        equipo_serie             = ?,
+        equipo_motor             = ?
+      WHERE id = ?
+    `;
+
+    const [result] = await connection.execute(sql, [
+      data.id_cliente,
+      data.descripcion,
+      data.monto_total              ?? null,
+      data.moneda                   || 'BOB',
+      data.observaciones            || null,
+      data.fecha_emision,
+      data.fecha_validez            || null,
+      data.tipo_pedido              || null,
+      data.tiempo_entrega           || null,
+      data.solicitante_no_solicitud || null,
+      data.solicitante_area         || null,
+      data.solicitante_celular      || null,
+      data.solicitante_correo       || null,
+      data.equipo_marca             || null,
+      data.equipo_tipo              || null,
+      data.equipo_modelo            || null,
+      data.equipo_serie             || null,
+      data.equipo_motor             || null,
+      id,
+    ]);
+
+    return result.affectedRows > 0;
+  },
+
+  // ---------------------------------------------------------------------------
+  // replaceDetalles — Atomically swap ALL line items of a quotation inside a
+  // caller-managed transaction: delete the existing rows, then bulk-insert the
+  // new set. Used by the Executive edit flow so a client who only wants 3 of 10
+  // items can have the others removed. Reuses createDetalles for the INSERT so
+  // sanitation/coercion rules stay in one place.
+  // ---------------------------------------------------------------------------
+  async replaceDetalles(connection, id_cotizacion, detalles) {
+    await connection.execute(
+      'DELETE FROM cotizacion_detalles WHERE id_cotizacion = ?',
+      [id_cotizacion]
+    );
+    if (detalles && detalles.length > 0) {
+      await this.createDetalles(connection, id_cotizacion, detalles);
+    }
+  },
+
+  // ---------------------------------------------------------------------------
   // findById — Full quotation detail including line items and approval metadata.
   // ---------------------------------------------------------------------------
   async findById(id) {
