@@ -448,8 +448,9 @@ class ExecutiveStrategy extends DashboardStrategy {
   // Dashboard partitioning: 'mias' = quotations owned by the logged-in user,
   // 'equipo' = the rest of the team's. #allRows caches the last server fetch so
   // switching tabs re-partitions IN MEMORY without a new DB query.
-  #scope   = 'mias';
-  #allRows = [];
+  #scope          = 'mias';
+  #allRows        = [];
+  #loadAbortCtrl  = null;
 
   constructor(user) { super(); this.#user = user; }
 
@@ -638,6 +639,11 @@ class ExecutiveStrategy extends DashboardStrategy {
     const section = document.getElementById('quotations-section');
     if (!section) return;
 
+    // Cancel any in-flight request before firing a new one
+    this.#loadAbortCtrl?.abort();
+    this.#loadAbortCtrl = new AbortController();
+    const { signal } = this.#loadAbortCtrl;
+
     section.innerHTML = '<div class="page-loading"><div class="spinner"></div><span>Cargando…</span></div>';
 
     const estado = document.getElementById('filter-estado')?.value ?? '';
@@ -653,10 +659,11 @@ class ExecutiveStrategy extends DashboardStrategy {
     });
 
     try {
-      const data = await api.get(`/api/cotizaciones?${params}`);
+      const data = await api.get(`/api/cotizaciones?${params}`, { signal });
       this.#allRows = data.data ?? [];
       this._renderQuotationsTable();
     } catch (err) {
+      if (err.name === 'AbortError') return;
       section.innerHTML = `<div class="empty-state"><p>Error cargando cotizaciones: ${escHtml(err.message)}</p></div>`;
     }
   }
@@ -2192,6 +2199,13 @@ class DashboardController {
 
     const user = AuthSession.getUser();
     const role = AuthSession.getRole();
+
+    // Guard — user object missing or corrupted (storage eviction / logout race)
+    if (!user?.id) {
+      AuthSession.clearSession();
+      window.location.href = '/';
+      return;
+    }
 
     // Populate identity elements
     this._populateIdentity(user, role);

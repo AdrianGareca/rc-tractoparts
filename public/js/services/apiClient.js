@@ -17,7 +17,7 @@ import AuthSession from './authSession.js';
 // ---------------------------------------------------------------------------
 // _request — internal engine for all HTTP methods
 // ---------------------------------------------------------------------------
-async function _request(method, endpoint, body = null, isFormData = false) {
+async function _request(method, endpoint, body = null, isFormData = false, signal = null) {
   const headers = {};
   const token   = AuthSession.getToken();
 
@@ -26,9 +26,8 @@ async function _request(method, endpoint, body = null, isFormData = false) {
 
   const options = { method, headers };
 
-  if (body) {
-    options.body = isFormData ? body : JSON.stringify(body);
-  }
+  if (body)   options.body   = isFormData ? body : JSON.stringify(body);
+  if (signal) options.signal = signal;
 
   const response = await fetch(endpoint, options);
 
@@ -61,7 +60,7 @@ async function _request(method, endpoint, body = null, isFormData = false) {
 // Public API surface — thin wrappers per HTTP verb
 // ---------------------------------------------------------------------------
 const api = {
-  get:    (endpoint)           => _request('GET',    endpoint),
+  get:    (endpoint, { signal } = {}) => _request('GET', endpoint, null, false, signal),
   post:   (endpoint, body)     => _request('POST',   endpoint, body),
   put:    (endpoint, body)     => _request('PUT',    endpoint, body),
   patch:  (endpoint, body)     => _request('PATCH',  endpoint, body),

@@ -295,7 +295,7 @@ const QuotationController = {
       connection = await pool.getConnection();
       await connection.beginTransaction();
 
-      await QuotationModel.updateEditableHeader(connection, id, {
+      const headerUpdated = await QuotationModel.updateEditableHeader(connection, id, {
         id_cliente:               parseInt(id_cliente, 10),
         descripcion:              String(descripcion).trim(),
         monto_total:              calculatedTotal,
@@ -315,6 +315,14 @@ const QuotationController = {
         equipo_serie:             req.body.equipo_serie,
         equipo_motor:             req.body.equipo_motor,
       });
+
+      if (!headerUpdated) {
+        await connection.rollback();
+        return res.status(409).json({
+          success: false,
+          message: "Quotation state changed concurrently. It is no longer 'Pendiente'. Refresh and try again.",
+        });
+      }
 
       await QuotationModel.replaceDetalles(connection, id, detalles);
 

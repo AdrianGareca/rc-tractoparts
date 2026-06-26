@@ -261,6 +261,9 @@ CREATE TABLE cotizaciones (
   actualizado_en     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_cotizaciones_correlativo (numero_correlativo),
+  KEY idx_cot_estado        (estado),
+  KEY idx_cot_fecha_emision (fecha_emision),
+  KEY idx_cot_creado_en     (creado_en),
   CONSTRAINT fk_cot_cliente
     FOREIGN KEY (id_cliente)   REFERENCES clientes (id) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT fk_cot_ejecutivo
