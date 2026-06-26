@@ -399,7 +399,7 @@ const QuotationModel = {
         equipo_modelo            = ?,
         equipo_serie             = ?,
         equipo_motor             = ?
-      WHERE id = ?
+      WHERE id = ? AND estado = 'Pendiente'
     `;
 
     const [result] = await connection.execute(sql, [

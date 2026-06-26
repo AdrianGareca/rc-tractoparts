@@ -1,3 +1,4 @@
+/* @type {module} */
 // =============================================================================
 // public/js/services/authSession.js
 // CREATIONAL PATTERN: SINGLETON
