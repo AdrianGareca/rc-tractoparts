@@ -30,4 +30,7 @@ storage/
 
 .claude/
 
-Sistema_Cotizaciones_Cap1-4.docx/
+Sistema_Cotizaciones_Cap1-4.docx
+
+*.doc
+*.docx
