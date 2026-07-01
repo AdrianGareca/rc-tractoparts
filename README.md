@@ -1,15 +1,40 @@
 # RC Tractoparts — Quotation Management System
 
+> 🇪🇸 ¿Prefieres leer esto en español? → [README en Español](README.es.md)
+
+![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen?logo=node.js)
+![Express](https://img.shields.io/badge/Express-4.x-blue?logo=express)
+![MySQL](https://img.shields.io/badge/MySQL-8.x-orange?logo=mysql)
+![License](https://img.shields.io/badge/License-UNLICENSED-red)
+![Tests](https://img.shields.io/badge/Tests-Jest%20%2B%20Supertest-yellow?logo=jest)
+
 REST API and lightweight web client for managing **quotations (proformas)** at RC Tractoparts, a heavy-machinery spare-parts importer in Santa Cruz, Bolivia. The system covers the full quotation lifecycle: client/brand catalogs, atomic correlativo generation, a role-based approval state machine, corporate-branded PDF generation, file uploads (PDF + Excel), in-app notifications, auditing, and business-intelligence reports.
 
-The backend is a Node.js + Express REST API backed by MySQL. The frontend is a vanilla-JavaScript (ES Modules) single-page client served as static files by the same Express process.
+The backend is a Node.js + Express REST API backed by MySQL. The frontend is a vanilla-JavaScript (ES Modules) single-page application (SPA) served as static files by the same Express process — no build step required.
+
+---
+
+## Table of Contents
+
+1. [Project Overview](#1-project-overview)
+2. [System Architecture & Tech Stack](#2-system-architecture--tech-stack)
+3. [Project Directory Tree](#3-project-directory-tree)
+4. [Prerequisites](#4-prerequisites)
+5. [Installation & Local Setup](#5-installation--local-setup)
+6. [Local Execution](#6-local-execution)
+7. [Functional Overview](#7-functional-overview)
+8. [Frontend Architecture](#8-frontend-architecture)
+9. [Security Model](#9-security-model)
+10. [Tests](#10-tests)
+11. [License](#license)
 
 ---
 
 ## 1. Project Overview
 
 - **Purpose:** Replace manual proforma spreadsheets with a controlled, audited workflow — executives build quotations, managers approve them, and the system emits a consistent branded PDF for the client.
-- **Users / roles:** `Ejecutivo`, `Administracion`, `Jefe`, `SysAdmin`, plus a per-user `can_approve_quotations` delegation flag.
+- **Company:** RC Tractoparts — importer of heavy-machinery spare parts (Volvo, Komatsu, John Deere, JCB, CAT, CASE) based in Santa Cruz, Bolivia.
+- **Users / roles:** `Ejecutivo`, `Administracion`, `Jefe`, `SysAdmin`, plus a per-user `can_approve_quotations` delegation flag (Delegación de Funciones).
 - **Key invariants:** every state change is role-validated and audited; each quotation owns exactly **one** physical PDF (regenerated on every meaningful change); all SQL is parameterized; the correlativo serial is generated atomically under a row lock.
 
 ---
@@ -246,6 +271,29 @@ npm test                  # Full Jest run (integration parts need the test DB)
 | **Reports** | `GET /api/reportes/progreso` (Jefe/SysAdmin), `GET /api/reportes/advanced` (row-level security for Ejecutivo) | Restricted |
 | **System** | `GET /health` | Public |
 
+## 7. Functional Overview
+
+### Web client (served from `public/`)
+
+- **Login** (`index.html`) — username/password, JWT stored client-side via `authSession`.
+- **Dashboard** (`dashboard.html`) — role-aware views: quotation list/filters, quotation form, approval queue, notifications, timeline/history, and BI reports.
+
+### REST API surface
+
+| Area | Endpoints | Access |
+|---|---|---|
+| **Auth** | `POST /api/auth/login`, `POST /api/auth/logout` | Public / authenticated |
+| **Quotations** | `GET /` (paginated+filtered), `POST /`, `GET /:id`, `PUT /:id` (owner, Pendiente only), `GET /resumen`, `GET /pendientes-aprobacion`, `GET /:id/historial` | All authenticated roles (writes role-scoped) |
+| **Quotation state** | `PUT /:id/estado` (role state machine), `POST /:id/aprobar` (Jefe/SysAdmin), `PATCH /:id/comentario-admin` (Administracion) | Role-restricted |
+| **Quotation files** | `POST /:id/pdf`, `POST /:id/upload` (PDF+Excel), `GET /:id/pdf`, `GET /:id/excel` | Ejecutivo upload / all download |
+| **Notifications** | `GET /api/cotizaciones/notificaciones`, `POST /…/notificaciones/leer` | Ejecutivo |
+| **Users** | `GET /`, `POST /`, `GET /:id`, `PUT /:id` (Jefe/Administracion/SysAdmin), `DELETE /:id` soft-delete (Jefe/SysAdmin) | Management roles |
+| **Clients** | `GET /api/clientes` (autocomplete), `POST /api/clientes` | All roles |
+| **Brands** | `GET /api/marcas`, `POST /api/marcas` | Quote-creating roles |
+| **Reports** | `GET /api/reportes/progreso` (Jefe/SysAdmin), `GET /api/reportes/advanced` (row-level security for Ejecutivo) | Restricted |
+| **System** | `GET /health` | Public |
+| **API Docs** | `GET /api-docs` | Public (Swagger UI) |
+
 ### Cross-cutting behavior
 
 - **Security:** Helmet headers, configurable CORS allowlist, global rate limiting (with stricter limits on login and uploads), 5 MB JSON body cap, and a hardened global error handler that never leaks stack traces or internals on 5xx.
@@ -253,6 +301,80 @@ npm test                  # Full Jest run (integration parts need the test DB)
 - **Validation:** Zod schemas sanitize and type-coerce every write at the boundary; unknown keys are stripped.
 - **Auditing:** significant actions are written to `bitacora_auditoria` / `auditoria`; per-quotation state transitions are recorded in `cotizacion_historial_estados`.
 - **PDF engine:** generates an A4 corporate proforma (logo, partner-brand strip, client/requester/equipment grid, line-item table with es-BO number formatting, amount-in-words, bank data, and an `APROBADO` stamp on approved quotations). Uploaded files are validated by magic number, not just declared MIME type.
+- **Notifications:** Ejecutivo users receive persistent in-app notifications on quotation state changes; unread items remain visible until explicitly acknowledged via `POST /…/notificaciones/leer`.
+
+---
+
+## 8. Frontend Architecture
+
+The frontend is a vanilla JavaScript SPA using ES Modules — no transpiler or bundler required. Design patterns applied:
+
+**Strategy Pattern** — role-based rendering is delegated to concrete strategy objects chosen at login time:
+- `ExecutiveStrategy` — Ejecutivo / Administracion: summary stats, own quotation table, "Nueva Cotización" action.
+- `ManagerStrategy` — Jefe: global overview, pending-approval queue, User CRUD panel, Audit Logs workspace.
+
+**Command Pattern** — critical mutations are encapsulated as Command objects with a single `execute()` method:
+- `ApproveQuotationCommand` — `POST /:id/aprobar`
+- `ChangeStatusCommand` — `PUT /:id/estado`
+- `DeactivateUserCommand` — `DELETE /api/usuarios/:id`
+- `CreateUserCommand` — `POST /api/usuarios`
+
+**Module breakdown:**
+
+| Module | Responsibility |
+|---|---|
+| `apiClient.js` | Axios-style fetch wrapper, automatic JWT injection, toast feedback |
+| `authSession.js` | JWT storage and role-decoding utilities |
+| `dashboardView.js` | Main controller, strategy selection, Command invoker |
+| `quotationForm.js` | Multi-step quotation creation / editing form |
+| `dashboard/helpers.js` | Shared formatters, badge builders, escape utils |
+| `dashboard/modules/timelineView.js` | State history timeline, PDF/Excel download buttons |
+| `dashboard/modules/reportesView.js` | BI charts and leaderboard tables |
+| `dashboard/modules/notificationsView.js` | Notification badge polling and read marking |
+
+---
+
+## 9. Security Model
+
+| Layer | Mechanism |
+|---|---|
+| Transport | HTTPS recommended behind a reverse proxy (Nginx) |
+| Headers | `helmet` — CSP, X-Frame-Options, HSTS, etc. |
+| CORS | Allowlist-based; origins configured via `CORS_ORIGIN` env var |
+| Rate limiting | Global + stricter on `/api/auth/login` and file uploads |
+| Authentication | HS256 JWT, 8h expiry, `token_version` revocation |
+| Authorization | Role-based (`ROLE_TRANSITIONS` matrix) + per-user delegation flag |
+| Input validation | Zod schemas at every write boundary; unknown keys stripped |
+| SQL injection | 100% parameterized queries via `mysql2` promise pool |
+| File uploads | Magic-number validation (not MIME type); size-capped by multer |
+| Brute force | Lockout after `MAX_LOGIN_ATTEMPTS` failures for `LOCK_DURATION_MINUTES` |
+| Error handling | Global handler; stack traces / internals never exposed on 5xx |
+| Auditing | All significant actions logged to `bitacora_auditoria` |
+
+---
+
+## 10. Tests
+
+```bash
+npm run test:unit         # Unit tests — NO database required
+npm run test:integration  # Integration tests — REQUIRES rc_tractoparts_test DB
+npm test                  # Full Jest run (integration parts need the test DB)
+```
+
+**Test suites:**
+
+| File | Type | What it covers |
+|---|---|---|
+| `tests/unit/calcularTotales.test.js` | Unit | Line-item total and grand-total calculation logic |
+| `tests/unit/validationEdgeCases.test.js` | Unit | Zod schema edge cases and boundary validation |
+| `tests/integration/correlativo.concurrencia.test.js` | Integration | Atomic correlativo generation under concurrent requests |
+| `tests/integration/newFeatures.test.js` | Integration | Admin notes visibility (NF-03) + persistent notifications (NF-04) |
+
+> Integration tests connect to the database named by `DB_NAME_TEST` in `.env` when `NODE_ENV=test`. Initialize that database before running them:
+> ```bash
+> # In .env: DB_NAME_TEST=rc_tractoparts_test
+> # Then run db:init once for the test DB (update DB_NAME temporarily, or connect manually)
+> ```
 
 ---
 
