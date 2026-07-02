@@ -40,7 +40,14 @@ const VALID_CURRENCIES = ['USD', 'BOB'];
 // Must mirror the allowed values used by the frontend dropdown and the PDF
 // header renderer exactly.
 // ---------------------------------------------------------------------------
-const VALID_ENTITIES = ['RC Tractoparts', 'Roca Importaciones S.R.L.'];
+const VALID_ENTITIES = [
+  'Empresa unipersonal de Ronald Roca Cartagena',
+  'Roca Importaciones S.R.L.',
+  'RC Tractoparts', // LEGACY: superseded by "Empresa unipersonal de Ronald Roca
+                    // Cartagena"; retained so pre-rename rows still validate on
+                    // edit/re-save without violating the allow-list (mirrors the
+                    // 'Aceptada' → 'Confirmada' legacy-tolerance pattern).
+];
 
 // ---------------------------------------------------------------------------
 // detalleItemSchema — individual line item inside a quotation
@@ -168,15 +175,16 @@ const quotationShape = {
     // but must be explicit — defaulting to BOB prevents silent currency errors.
     .default('BOB'),
 
-  // Issuing business entity (razón social emisora). Constrained to the two
-  // legal entities the company invoices under; defaults to RC Tractoparts.
+  // Issuing business entity (razón social emisora). Constrained to the legal
+  // entities the company invoices under; defaults to the primary entity
+  // "Empresa unipersonal de Ronald Roca Cartagena".
   entidad_emisora: z
     .string()
     .trim()
     .refine((v) => VALID_ENTITIES.includes(v), {
       message: `entidad_emisora must be one of: ${VALID_ENTITIES.join(', ')}.`,
     })
-    .default('RC Tractoparts'),
+    .default('Empresa unipersonal de Ronald Roca Cartagena'),
 
   observaciones: z
     .string()

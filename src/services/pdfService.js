@@ -329,6 +329,22 @@ function renderWatermark(doc, quotation, tableBodyY) {
 }
 
 // ---------------------------------------------------------------------------
+// normalizeEntidad
+// Resolves the issuing-entity string for display. Empty/blank values fall back
+// to the primary legal name, and the LEGACY value "RC Tractoparts" (stored on
+// pre-rename records) is mapped gracefully to the current legal name so old
+// quotations print the correct header without any data migration.
+//
+// @param   {string|null|undefined} raw  quotation.entidad_emisora
+// @returns {string}
+// ---------------------------------------------------------------------------
+const PRIMARY_ENTIDAD = 'Empresa unipersonal de Ronald Roca Cartagena';
+function normalizeEntidad(raw) {
+  const value = (raw && String(raw).trim()) || PRIMARY_ENTIDAD;
+  return value === 'RC Tractoparts' ? PRIMARY_ENTIDAD : value;
+}
+
+// ---------------------------------------------------------------------------
 // drawHeader
 // Left side  : RC TRACTOPARTS logo (real image with text fallback) + brand strip.
 // Right side : Quotation info box with thin borders (Nº, PEDIDO, ESTADO, FECHA).
@@ -344,9 +360,15 @@ function drawHeader(doc, quotation) {
 
   // ── Left: corporate logo (real image with text fallback) ──────────────────
   if (fs.existsSync(LOGO_PATH)) {
+    // Align LEFT (not center): the logo is a wide landscape image that, when
+    // fitted by height into the [LOGO_W, LOGO_H] box, is narrower than LOGO_W.
+    // With align:'center' PDFKit padded the extra horizontal space on both
+    // sides, pushing the visible logo ~12 pt to the right and breaking the
+    // left-edge alignment with the entity text block below (anchored at MARGIN).
+    // align:'left' pins the logo's left edge exactly on MARGIN (x = 36).
     doc.image(LOGO_PATH, MARGIN, y0, {
       fit:    [LOGO_W, LOGO_H],
-      align:  'center',
+      align:  'left',
       valign: 'center',
     });
   } else {
@@ -381,8 +403,7 @@ function drawHeader(doc, quotation) {
   // brand-strip divider begins at y0 + BOX_H + 8 = 142 pt, so all text below is
   // rendered between y ≈ 110 and y ≈ 136 — never overlapping the logo (above),
   // the info box (right of BOX_X) or the brand strip (below).
-  const entidad   = (quotation.entidad_emisora && String(quotation.entidad_emisora).trim())
-    || 'RC Tractoparts';
+  const entidad   = normalizeEntidad(quotation.entidad_emisora);
   const emisorX   = MARGIN;
   const emisorW   = BOX_X - MARGIN - 10;      // ≈ 328 pt — stops short of the info box
   let   emisorY   = y0 + LOGO_H + 2;          // ≈ 110 pt — just below the logo
@@ -1239,6 +1260,19 @@ function drawFooter(doc, quotation) {
 // Receives the full quotation object (QuotationModel.findById — with .detalles[]),
 // orchestrates the layout sections, writes the file to disk and resolves with
 // the relative file path once the WriteStream 'finish' event fires.
+//
+// ⚠️  DEPLOYMENT / STORAGE RISK — EPHEMERAL FILESYSTEM
+// ---------------------------------------------------------------------------
+// This function PERSISTS the generated PDF to the server's LOCAL DISK
+// (uploads/cotizaciones) via fs.createWriteStream and stores only the relative
+// path in the DB (cotizaciones.pdf_ruta). On ephemeral-filesystem platforms
+// (Render, Heroku, most container PaaS), the local disk is WIPED on every
+// deploy, restart, or dyno recycle — so previously generated PDFs (and the
+// uploaded Excel files handled by quotationPdfController.uploadFiles) will
+// silently 404 after a restart even though pdf_ruta/excel_ruta still point at
+// them. PLANNED ARCHITECTURE CHANGE: stream the PDF straight to the HTTP
+// response as a Buffer for downloads and/or offload persistence to durable
+// object storage (S3, Cloudflare R2, GCS) instead of the local FS.
 //
 // @param   {Object} quotation  Full quotation including .detalles[]
 // @returns {Promise<string>}   Relative path to the written PDF file

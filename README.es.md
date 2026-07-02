@@ -26,14 +26,17 @@ El backend es una API REST en Node.js + Express respaldada por MySQL. El fronten
 8. [Arquitectura del Frontend](#8-arquitectura-del-frontend)
 9. [Modelo de Seguridad](#9-modelo-de-seguridad)
 10. [Pruebas](#10-pruebas)
-11. [Licencia](#licencia)
+11. [Entidad de Negocio y Nomenclatura Legal](#11-entidad-de-negocio-y-nomenclatura-legal)
+12. [Refactorizaciones de PDF y Descargas](#12-refactorizaciones-de-pdf-y-descargas)
+13. [Consideraciones de Despliegue en Producción y Almacenamiento](#13-consideraciones-de-despliegue-en-producción-y-almacenamiento)
+14. [Licencia](#licencia)
 
 ---
 
 ## 1. Descripción General
 
 - **Propósito:** Reemplazar las hojas de cálculo de proformas manuales con un flujo de trabajo controlado y auditado: los ejecutivos construyen cotizaciones, los jefes las aprueban, y el sistema genera un PDF corporativo consistente para el cliente.
-- **Empresa:** RC Tractoparts — importador de repuestos para maquinaria pesada (Volvo, Komatsu, John Deere, JCB, CAT, CASE) con sede en Santa Cruz, Bolivia.
+- **Empresa:** La entidad emisora principal es **Empresa unipersonal de Ronald Roca Cartagena** (anteriormente con la marca "RC Tractoparts"), permaneciendo **Roca Importaciones S.R.L.** activa como segunda entidad emisora. Importador de repuestos para maquinaria pesada (Volvo, Komatsu, John Deere, JCB, CAT, CASE) con sede en Santa Cruz, Bolivia. Ver [§11 Entidad de Negocio y Nomenclatura Legal](#11-entidad-de-negocio-y-nomenclatura-legal) para el detalle completo del refactor de renombrado y la tolerancia a datos heredados.
 - **Usuarios / roles:** `Ejecutivo`, `Administracion`, `Jefe`, `SysAdmin`, más un indicador de delegación por usuario `can_approve_quotations` (Delegación de Funciones).
 - **Invariantes clave:** cada cambio de estado es validado por rol y auditado; cada cotización posee exactamente **un** PDF físico (regenerado en cada cambio relevante); todo el SQL es parametrizado; el correlativo se genera atómicamente bajo bloqueo de fila.
 
@@ -70,6 +73,10 @@ El backend es una API REST en Node.js + Express respaldada por MySQL. El fronten
 ```
 Pendiente → En revision → En espera → Aprobada internamente → Enviada al cliente → Confirmada / Rechazada → Archivada
 ```
+
+La columna `cotizaciones.entidad_emisora` (razón social emisora impresa en el encabezado de cada PDF) se almacena como **`VARCHAR(150)`**, con amplio margen para el nombre legal de 44 caracteres `Empresa unipersonal de Ronald Roca Cartagena`.
+
+> **Nota histórica:** el estado de cotización confirmada fue renombrado de `Aceptada` a `Confirmada`. Una migración en `sql/init.sql` reescribe las filas heredadas `Aceptada` (y sus entradas de historial) a `Confirmada`, y el valor se conserva en listas de permitidos tolerantes para que los datos previos al renombrado nunca rompan la validación.
 
 ---
 
@@ -355,6 +362,59 @@ npm test                  # Jest completo (integración requiere la BD de test)
 
 ---
 
+## 11. Entidad de Negocio y Nomenclatura Legal
+
+El nombre de la entidad de negocio principal fue cambiado oficialmente de **"RC Tractoparts"** a **"Empresa unipersonal de Ronald Roca Cartagena"**. Este refactor se aplicó de forma consistente en **todas las capas** del stack:
+
+| Capa | Ubicación | Cambio |
+|---|---|---|
+| Base de datos | `sql/init.sql` | El valor por defecto de `cotizaciones.entidad_emisora` es `'Empresa unipersonal de Ronald Roca Cartagena'`, almacenado como `VARCHAR(150)` |
+| Validación backend | `src/validators/quotationValidator.js` | La lista de permitidos `VALID_ENTITIES` usa el nuevo nombre legal como valor principal |
+| Selector frontend | `public/js/views/quotationForm.js` | El desplegable/hidratación de entidad emisora usa por defecto el nuevo nombre legal |
+| Encabezados PDF / Excel | `src/services/pdfService.js` | El texto del encabezado de la proforma PDF renderiza el nuevo nombre legal |
+
+- **Segunda entidad sin cambios:** `Roca Importaciones S.R.L.` permanece activa y sin cambios como segunda entidad emisora seleccionable.
+- **Mapeo tolerante de datos heredados:** el sistema implementa un patrón de mapeo en tiempo de ejecución para que los registros heredados que aún contienen la cadena `'RC Tractoparts'` sean tolerados sin romper la validación ni la hidratación de la UI:
+  - `quotationValidator.js` mantiene `'RC Tractoparts'` en la lista de permitidos `VALID_ENTITIES`, de modo que las filas previas al renombrado siguen validando al editar/re-guardar.
+  - `pdfService.js` expone `normalizeEntidad()`, que mapea cualquier valor almacenado `'RC Tractoparts'` (o vacío) a `Empresa unipersonal de Ronald Roca Cartagena` al momento de imprimir — las cotizaciones antiguas renderizan el encabezado correcto **sin ninguna migración de datos**.
+
+> Esto refleja el mismo enfoque de tolerancia a datos heredados usado para el renombrado de estado `Aceptada` → `Confirmada` (ver [§2](#2-arquitectura-del-sistema-y-stack-tecnológico)).
+
+---
+
+## 12. Refactorizaciones de PDF y Descargas
+
+### Corrección de alineación del logo (`src/services/pdfService.js`)
+
+La alineación del logo de marca principal en `drawHeader()` se cambió de `align: 'center'` a `align: 'left'`. El logo es una imagen apaisada ancha que, al ajustarse por altura dentro de su caja, queda más angosta que el ancho de la caja; con `align: 'center'` PDFKit rellenaba el espacio horizontal sobrante a ambos lados, empujando el logo visible **~12 pt hacia la derecha**. Cambiar a `align: 'left'` fija el borde izquierdo del logo exactamente en `x = MARGIN = 36`, alineándolo limpiamente con el bloque de texto de dirección y datos de contacto que se renderiza justo debajo.
+
+### Refactor del manejador de descargas con nombre limpio (`public/js/views/dashboard/modules/timelineView.js`)
+
+El enfoque de descarga heredado usaba `window.open(blobUrl)` sobre una URL `blob:` cruda, lo que hacía que los navegadores guardaran los PDFs con un nombre de archivo UUID aleatorio ilegible (ej. `32cb1a0d-…`), rompiendo el flujo de los ejecutivos de "descargar y enviar al cliente por WhatsApp".
+
+Esto fue reemplazado completamente por una técnica de **inyección dinámica de etiqueta ancla** (`document.createElement('a')` con el atributo `download` establecido). Ahora tanto los **PDFs como los archivos Excel** se descargan forzando el identificador alfanumérico real y limpio de la cotización como nombre de archivo (ej. `COT-2026-0001.pdf`). El correlativo se sanitiza antes de usarse para bloquear cualquier carácter de inyección de rutas/cabeceras.
+
+---
+
+## 13. Consideraciones de Despliegue en Producción y Almacenamiento
+
+**Arquitectura actual — disco local persistente:** los PDFs generados y los adjuntos Excel subidos se escriben en el **sistema de archivos local** mediante streams de filesystem:
+
+- PDFs → `uploads/cotizaciones/`
+- Hojas Excel → `storage/excels/`
+
+Ambos directorios son ubicaciones de runtime, gitignored. Este modelo funciona de forma confiable en un servidor tradicional o VM con disco persistente.
+
+> ⚠️ **Advertencia de despliegue efímero/serverless**
+>
+> En plataformas con **sistemas de archivos efímeros** — como **Render** o **Heroku** — cualquier archivo escrito en disco local es **borrado en cada reinicio de instancia, redespliegue o reciclaje de dyno**. Los PDFs de cotizaciones y adjuntos Excel guardados localmente **se perderán**, y los endpoints de descarga comenzarán a devolver 404 para archivos generados previamente.
+>
+> **Para producción en dichas plataformas, haz una de las siguientes opciones:**
+> - Usar **almacenamiento de objetos** dedicado (ej. **DigitalOcean Spaces**, AWS S3, o cualquier bucket compatible con S3) y persistir referencias a archivos en lugar de rutas locales, **o**
+> - Cambiar a **buffers de streaming en memoria**, generando el PDF/Excel bajo demanda y transmitiéndolo directamente al cliente sin tocar el disco.
+
+---
+
 ## Licencia
 
-UNLICENSED — © RC Tractoparts, Departamento de Sistemas.
+UNLICENSED — © Empresa unipersonal de Ronald Roca Cartagena (anteriormente RC Tractoparts), Departamento de Sistemas.

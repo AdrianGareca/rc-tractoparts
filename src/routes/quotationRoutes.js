@@ -52,6 +52,16 @@ const router = express.Router();
 
 // =============================================================================
 // Multer — PDF upload storage and validation
+//
+// ⚠️  DEPLOYMENT / STORAGE RISK — EPHEMERAL FILESYSTEM
+// Multer here uses diskStorage: uploaded PDFs (uploads/cotizaciones) and Excel
+// spreadsheets (storage/excels) are written to the server's LOCAL DISK, and
+// only their relative paths are persisted in the DB (pdf_ruta / excel_ruta).
+// On ephemeral-filesystem hosts (Render, Heroku, most container PaaS) that disk
+// is WIPED on every deploy/restart, so these files vanish while the DB still
+// references them (dead links / 404s). PLANNED ARCHITECTURE CHANGE: migrate
+// uploads to durable object storage (S3, Cloudflare R2, GCS) or use
+// multer.memoryStorage() and stream buffers straight to durable storage.
 // =============================================================================
 
 const uploadDir = path.resolve(

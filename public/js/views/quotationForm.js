@@ -321,7 +321,13 @@ class FormMediator {
     set('#fecha_emision', toDateInput(q.fecha_emision));
     set('#fecha_validez', toDateInput(q.fecha_validez));
     set('#moneda',        q.moneda ?? 'BOB');
-    set('#entidad_emisora', q.entidad_emisora ?? 'RC Tractoparts');
+    // Gracefully map the legacy business name to its current legal name so the
+    // dropdown resolves to a real <option> when editing a pre-rename record.
+    const emisoraRaw = q.entidad_emisora ?? 'Empresa unipersonal de Ronald Roca Cartagena';
+    set('#entidad_emisora',
+      emisoraRaw === 'RC Tractoparts'
+        ? 'Empresa unipersonal de Ronald Roca Cartagena'
+        : emisoraRaw);
     set('#tipo_pedido',   q.tipo_pedido ?? '');
     set('#observaciones', q.observaciones ?? '');
     set('#tiempo_entrega', q.tiempo_entrega ?? '');
@@ -399,7 +405,7 @@ class FormMediator {
           <div class="form-group">
             <label class="form-label" for="entidad_emisora">Entidad Emisora *</label>
             <select class="form-control" id="entidad_emisora">
-              <option value="RC Tractoparts">RC Tractoparts</option>
+              <option value="Empresa unipersonal de Ronald Roca Cartagena">Empresa unipersonal de Ronald Roca Cartagena</option>
               <option value="Roca Importaciones S.R.L.">Roca Importaciones S.R.L.</option>
             </select>
           </div>
@@ -1253,7 +1259,7 @@ class FormMediator {
       descripcion,
       fecha_emision,
       moneda:                   this.#container.querySelector('#moneda')?.value                  || 'BOB',
-      entidad_emisora:          this.#container.querySelector('#entidad_emisora')?.value          || 'RC Tractoparts',
+      entidad_emisora:          this.#container.querySelector('#entidad_emisora')?.value          || 'Empresa unipersonal de Ronald Roca Cartagena',
       tipo_pedido:              this.#container.querySelector('#tipo_pedido')?.value.trim()       || null,
       fecha_validez:            fecha_validez || null,
       observaciones:            this.#container.querySelector('#observaciones')?.value.trim()    || null,

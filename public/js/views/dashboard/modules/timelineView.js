@@ -18,12 +18,13 @@ import { escHtml }        from '../helpers.js';
 // rendered inside a modal body. Uses apiClient (which injects the Bearer
 // token) instead of a plain anchor navigation that would strip the header.
 //
-// The Blob is wrapped in a File object with a meaningful name so that
-// Chrome's PDF viewer tab title and the "Save As" dialog both show the
-// quotation correlativo instead of a raw UUID.
+// The Blob is downloaded via the anchor "download" trick with the quotation
+// correlativo forced as the filename (e.g. "COT-2026-0007.pdf"). Previously the
+// PDF was opened with window.open() on a raw blob: URL, which made the browser's
+// "Save As" dialog suggest the blob's random UUID instead of a meaningful name —
+// breaking the executives' "download & send to client via WhatsApp" workflow.
 //
-// The object URL is revoked after 60 s — long enough for any network
-// speed to finish loading the PDF before the URL is garbage-collected.
+// The object URL is revoked shortly after the click so browser memory is freed.
 //
 // @param {HTMLElement}    body        — Modal body containing #btn-ver-pdf
 // @param {number|string}  id          — Quotation ID for the endpoint URL
@@ -38,17 +39,23 @@ export function wirePdfButton(body, id, correlativo) {
     try {
       const response = await api.get(`/api/cotizaciones/${id}/pdf`);
       const blob     = await response.blob();
-      // Wrap in File so the browser's PDF viewer uses the correlativo as the
-      // document title and suggested save-name instead of a UUID fragment.
-      const safeName = correlativo
-        ? `Cotizacion_${correlativo.replace(/[^\w\-\.]/g, '_')}.pdf`
+      // Force the real quotation code as the download filename so the browser
+      // never prompts a raw blob UUID. Sanitize to word chars/hyphens to keep
+      // COT-2026-0007 intact while blocking any path/header-injection chars.
+      const fileName = correlativo
+        ? `${String(correlativo).replace(/[^\w\-]/g, '_')}.pdf`
         : `Cotizacion_${id}.pdf`;
-      const file = new File([blob], safeName, { type: 'application/pdf' });
-      const url  = URL.createObjectURL(file);
-      window.open(url, '_blank', 'noopener,noreferrer');
-      // 60 s gives even slow connections ample time to load before the
-      // object URL is released and the browser memory is freed.
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const url  = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href  = url;
+      link.setAttribute('download', fileName);
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Short delay before releasing the URL guarantees the download has been
+      // handed off to the browser's download manager.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch (err) {
       showToast(err.data?.message || err.message || 'No se pudo cargar el PDF.', 'error');
     } finally {
@@ -81,10 +88,13 @@ export function wireExcelButton(body, id, correlativo) {
       const response = await api.get(`/api/cotizaciones/${id}/excel`);
       const blob     = await response.blob();
       const url      = URL.createObjectURL(blob);
-      // Trigger browser download with the correlativo filename
+      // Trigger browser download with the sanitized correlativo as filename
+      const fileName = correlativo
+        ? `${String(correlativo).replace(/[^\w\-]/g, '_')}.xlsx`
+        : `Cotizacion_${id}.xlsx`;
       const anchor   = document.createElement('a');
       anchor.href    = url;
-      anchor.download = `${correlativo ?? id}.xlsx`;
+      anchor.download = fileName;
       anchor.style.display = 'none';
       document.body.appendChild(anchor);
       anchor.click();

@@ -134,7 +134,7 @@ const QuotationController = {
         descripcion:              String(descripcion).trim(),
         monto_total:              calculatedTotal,
         moneda:                   moneda || 'BOB',
-        entidad_emisora:          entidad_emisora || 'RC Tractoparts',
+        entidad_emisora:          entidad_emisora || 'Empresa unipersonal de Ronald Roca Cartagena',
         observaciones:            observaciones            || null,
         fecha_emision,
         fecha_validez:            fecha_validez            || null,

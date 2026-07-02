@@ -310,7 +310,7 @@ const QuotationModel = {
       data.descripcion,
       data.monto_total              || null,
       data.moneda                   || 'BOB',
-      data.entidad_emisora          || 'RC Tractoparts',
+      data.entidad_emisora          || 'Empresa unipersonal de Ronald Roca Cartagena',
       data.observaciones            || null,
       data.fecha_emision,
       data.fecha_validez            || null,
@@ -416,7 +416,7 @@ const QuotationModel = {
       data.descripcion,
       data.monto_total              ?? null,
       data.moneda                   || 'BOB',
-      data.entidad_emisora          || 'RC Tractoparts',
+      data.entidad_emisora          || 'Empresa unipersonal de Ronald Roca Cartagena',
       data.observaciones            || null,
       data.fecha_emision,
       data.fecha_validez            || null,
@@ -524,7 +524,7 @@ const QuotationModel = {
       }
       if (msg.includes("Unknown column 'c.entidad_emisora'")) {
         console.warn('[QuotationModel.findById] entidad_emisora column missing — retrying with default.');
-        fallbackSql = fallbackSql.replace('        c.entidad_emisora,\n', "        'RC Tractoparts' AS entidad_emisora,\n");
+        fallbackSql = fallbackSql.replace('        c.entidad_emisora,\n', "        'Empresa unipersonal de Ronald Roca Cartagena' AS entidad_emisora,\n");
         patched = true;
       }
       if (patched) {

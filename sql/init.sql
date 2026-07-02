@@ -212,8 +212,8 @@ CREATE TABLE cotizaciones (
   descripcion        TEXT          NOT NULL,
   monto_total        DECIMAL(15,2) DEFAULT NULL,
   moneda             CHAR(3)       NOT NULL DEFAULT 'USD',
-  entidad_emisora    VARCHAR(150)  NOT NULL DEFAULT 'RC Tractoparts'
-    COMMENT 'Razón social emisora de la proforma: "RC Tractoparts" o "Roca Importaciones S.R.L." — se imprime en el encabezado del PDF',
+  entidad_emisora    VARCHAR(150)  NOT NULL DEFAULT 'Empresa unipersonal de Ronald Roca Cartagena'
+    COMMENT 'Razón social emisora de la proforma: "Empresa unipersonal de Ronald Roca Cartagena" o "Roca Importaciones S.R.L." — se imprime en el encabezado del PDF. VARCHAR(150) holds the 44-char legal name with ample headroom; the legacy value "RC Tractoparts" remains valid for pre-rename rows.',
   estado             ENUM(
                        'Pendiente',
                        'En revision',

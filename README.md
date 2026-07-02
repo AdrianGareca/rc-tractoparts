@@ -26,14 +26,17 @@ The backend is a Node.js + Express REST API backed by MySQL. The frontend is a v
 8. [Frontend Architecture](#8-frontend-architecture)
 9. [Security Model](#9-security-model)
 10. [Tests](#10-tests)
-11. [License](#license)
+11. [Business Entity & Legal Naming](#11-business-entity--legal-naming)
+12. [PDF & Download Handler Refactors](#12-pdf--download-handler-refactors)
+13. [Production Deployment & Storage Considerations](#13-production-deployment--storage-considerations)
+14. [License](#license)
 
 ---
 
 ## 1. Project Overview
 
 - **Purpose:** Replace manual proforma spreadsheets with a controlled, audited workflow — executives build quotations, managers approve them, and the system emits a consistent branded PDF for the client.
-- **Company:** RC Tractoparts — importer of heavy-machinery spare parts (Volvo, Komatsu, John Deere, JCB, CAT, CASE) based in Santa Cruz, Bolivia.
+- **Company:** The primary issuing legal entity is **Empresa unipersonal de Ronald Roca Cartagena** (formerly branded "RC Tractoparts"), with **Roca Importaciones S.R.L.** remaining active as the second issuing entity. An importer of heavy-machinery spare parts (Volvo, Komatsu, John Deere, JCB, CAT, CASE) based in Santa Cruz, Bolivia. See [§11 Business Entity & Legal Naming](#11-business-entity--legal-naming) for the full rename refactor and legacy-tolerance details.
 - **Users / roles:** `Ejecutivo`, `Administracion`, `Jefe`, `SysAdmin`, plus a per-user `can_approve_quotations` delegation flag (Delegación de Funciones).
 - **Key invariants:** every state change is role-validated and audited; each quotation owns exactly **one** physical PDF (regenerated on every meaningful change); all SQL is parameterized; the correlativo serial is generated atomically under a row lock.
 
@@ -65,8 +68,12 @@ The backend is a Node.js + Express REST API backed by MySQL. The frontend is a v
 
 **Database tables** (`sql/init.sql`): `roles`, `usuarios`, `marcas`, `clientes`, `productos`, `cotizaciones_correlativo`, `cotizaciones`, `cotizacion_detalles`, `auditoria`, `bitacora_auditoria`, `cotizacion_historial_estados`, `notificaciones`.
 
+The `cotizaciones.entidad_emisora` column (the issuing business name printed on each PDF header) is stored as **`VARCHAR(150)`**, providing ample headroom for the 44-character legal name `Empresa unipersonal de Ronald Roca Cartagena`.
+
 **Quotation state machine** (enforced per role in `QuotationModel.ROLE_TRANSITIONS`):
 `Pendiente → En revision → En espera → Aprobada internamente → Enviada al cliente → Confirmada / Rechazada → Archivada`.
+
+> **Historical note:** the confirmed-quotation status was renamed from `Aceptada` to `Confirmada`. A migration in `sql/init.sql` rewrites legacy `Aceptada` rows (and their history entries) to `Confirmada`, and the value is retained in tolerant allow-lists so pre-rename data never breaks validation.
 
 ---
 
@@ -378,6 +385,59 @@ npm test                  # Full Jest run (integration parts need the test DB)
 
 ---
 
+## 11. Business Entity & Legal Naming
+
+The primary business entity name was officially changed from **"RC Tractoparts"** to **"Empresa unipersonal de Ronald Roca Cartagena"**. This refactor was applied consistently across **all layers** of the stack:
+
+| Layer | Where | Change |
+|---|---|---|
+| Database | `sql/init.sql` | `cotizaciones.entidad_emisora` default is `'Empresa unipersonal de Ronald Roca Cartagena'`, stored as `VARCHAR(150)` |
+| Backend validation | `src/validators/quotationValidator.js` | `VALID_ENTITIES` allow-list uses the new legal name as the primary value |
+| Frontend selector | `public/js/views/quotationForm.js` | Issuing-entity dropdown/hydration defaults to the new legal name |
+| PDF / Excel headers | `src/services/pdfService.js` | PDF proforma header text renders the new legal name |
+
+- **Second entity unchanged:** `Roca Importaciones S.R.L.` remains active and is unchanged as the second selectable issuing entity.
+- **Graceful legacy mapping:** the system implements a runtime mapping pattern so that legacy records still containing the `'RC Tractoparts'` string are tolerated without breaking validation or UI hydration:
+  - `quotationValidator.js` keeps `'RC Tractoparts'` in the `VALID_ENTITIES` allow-list, so pre-rename rows still validate on edit/re-save.
+  - `pdfService.js` exposes `normalizeEntidad()`, which maps any stored `'RC Tractoparts'` value (or blank) to `Empresa unipersonal de Ronald Roca Cartagena` at print time — old quotations render the correct header **without any data migration**.
+
+> This mirrors the same legacy-tolerance approach used for the `Aceptada` → `Confirmada` state rename (see [§2](#2-system-architecture--tech-stack)).
+
+---
+
+## 12. PDF & Download Handler Refactors
+
+### Logo alignment fix (`src/services/pdfService.js`)
+
+The primary brand logo alignment in `drawHeader()` was changed from `align: 'center'` to `align: 'left'`. The logo is a wide landscape image that, when fitted by height into its box, is narrower than the box width; with `align: 'center'` PDFKit padded the extra horizontal space on both sides, pushing the visible logo **~12 pt to the right**. Switching to `align: 'left'` pins the logo's left edge exactly at `x = MARGIN = 36`, aligning it cleanly with the address and contact-details text block rendered directly below it.
+
+### Clean-filename download handler refactor (`public/js/views/dashboard/modules/timelineView.js`)
+
+The legacy download approach used `window.open(blobUrl)` on a raw `blob:` URL, which caused browsers to save PDFs with an unreadable random UUID filename (e.g. `32cb1a0d-…`), breaking the executives' "download & send to client via WhatsApp" workflow.
+
+This was completely replaced by a **dynamic anchor-tag injection** technique (`document.createElement('a')` with the `download` attribute set). Now both **PDFs and Excel files** download while enforcing the real, clean quotation alphanumeric identifier as the filename (e.g. `COT-2026-0001.pdf`). The correlativo is sanitized before use to block any path/header-injection characters.
+
+---
+
+## 13. Production Deployment & Storage Considerations
+
+**Current architecture — local persistent disk:** generated PDFs and uploaded Excel attachments are written to the **local filesystem** via filesystem streams:
+
+- PDFs → `uploads/cotizaciones/`
+- Excel spreadsheets → `storage/excels/`
+
+Both directories are runtime, gitignored locations. This model works reliably on a traditional server or VM with a persistent disk.
+
+> ⚠️ **Ephemeral/serverless deployment warning**
+>
+> On platforms with **ephemeral filesystems** — such as **Render** or **Heroku** — any files written to local disk are **wiped on every instance restart, redeploy, or dyno cycling**. Quotation PDFs and Excel attachments saved locally **will be lost**, and download endpoints will start returning 404s for previously generated files.
+>
+> **For production on such platforms, do one of the following:**
+> - Use dedicated **object storage** (e.g. **DigitalOcean Spaces**, AWS S3, or any S3-compatible bucket) and persist file references instead of local paths, **or**
+> - Switch to **in-memory streaming buffers**, generating the PDF/Excel on demand and streaming it directly to the client without touching disk.
+
+---
+
 ## License
 
-UNLICENSED — © RC Tractoparts, Departamento de Sistemas.
+UNLICENSED — © Empresa unipersonal de Ronald Roca Cartagena (formerly RC Tractoparts), Departamento de Sistemas.
