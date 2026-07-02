@@ -23,11 +23,11 @@
   --text-muted:   #64748B; /* slate-500 */
 
   /* Accent — Status colors */
-  --clr-green:  #10B981;   /* emerald-500 — Aprobada, Aceptada */
+  --clr-green:  #10B981;   /* emerald-500 — Aprobada, Confirmada */
   --clr-amber:  #F59E0B;   /* amber-400   — Pendiente */
   --clr-orange: #F97316;   /* orange-500  — En revision */
   --clr-blue:   #3B82F6;   /* blue-500    — Enviada al cliente / primary action */
-  --clr-violet: #8B5CF6;   /* violet-500  — Aceptada (client) */
+  --clr-violet: #8B5CF6;   /* violet-500  — Confirmada (client) */
   --clr-red:    #EF4444;   /* red-500     — Rechazada / danger */
   --clr-gray:   #6B7280;   /* gray-500    — Archivada / draft */
 
@@ -48,9 +48,15 @@
   --shadow-sm:  0 1px 3px rgba(0,0,0,.4);
   --shadow-md:  0 4px 12px rgba(0,0,0,.5);
   --shadow-lg:  0 12px 32px rgba(0,0,0,.6);
+  /* Elevated hover shadow + colored accent glow for interactive elements */
+  --shadow-hover: 0 8px 22px rgba(0,0,0,.55);
+  --glow-primary: 0 4px 14px rgba(59,130,246,.45);
+  --glow-success: 0 4px 14px rgba(16,185,129,.40);
+  --glow-danger:  0 4px 14px rgba(239,68,68,.40);
 
   /* Transitions */
   --transition: 150ms ease;
+  --transition-smooth: all 0.2s ease;
 }
 
 /* ===== 2. BASE RESET & GLOBAL ===== */
@@ -411,23 +417,23 @@ img { max-width: 100%; display: block; }
   font-weight: 600;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: background var(--transition), transform var(--transition), box-shadow var(--transition), opacity var(--transition);
+  transition: var(--transition-smooth);
   white-space: nowrap;
   user-select: none;
 }
 
-.btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
-.btn:active:not(:disabled) { transform: none; }
+.btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+.btn:active:not(:disabled) { transform: translateY(0); box-shadow: var(--shadow-sm); }
 .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
 
 .btn-primary  { background: var(--clr-blue);  color: #fff; border-color: var(--clr-blue);  }
-.btn-primary:hover:not(:disabled)  { background: #2563eb; }
+.btn-primary:hover:not(:disabled)  { background: #2563eb; box-shadow: var(--glow-primary); }
 
 .btn-success  { background: var(--clr-green); color: #fff; border-color: var(--clr-green); }
-.btn-success:hover:not(:disabled)  { background: #059669; }
+.btn-success:hover:not(:disabled)  { background: #059669; box-shadow: var(--glow-success); }
 
 .btn-danger   { background: var(--clr-red);   color: #fff; border-color: var(--clr-red);   }
-.btn-danger:hover:not(:disabled)   { background: #dc2626; }
+.btn-danger:hover:not(:disabled)   { background: #dc2626; box-shadow: var(--glow-danger); }
 
 .btn-warning  { background: var(--clr-amber); color: #000; border-color: var(--clr-amber); }
 
@@ -486,11 +492,12 @@ img { max-width: 100%; display: block; }
   border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: .9rem;
-  transition: border-color var(--transition), box-shadow var(--transition);
+  transition: var(--transition-smooth);
   font-family: inherit;
 }
 
 .form-control::placeholder { color: var(--text-muted); }
+.form-control:hover:not(:focus):not(:disabled) { border-color: var(--text-muted); }
 .form-control:focus { outline: none; border-color: var(--clr-green); box-shadow: 0 0 0 3px rgba(16,185,129,.18); }
 .form-control.is-invalid { border-color: var(--clr-red); box-shadow: 0 0 0 3px rgba(239,68,68,.18); }
 .form-control.is-invalid:focus { border-color: var(--clr-red); }
@@ -582,6 +589,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 .badge-en-revision      { background: rgba(249,115,22,.2);   color: #fdba74; }
 .badge-aprobada         { background: rgba(16,185,129,.2);   color: #6ee7b7; }
 .badge-enviada          { background: rgba(59,130,246,.2);   color: #93c5fd; }
+.badge-confirmada       { background: rgba(139,92,246,.2);   color: #c4b5fd; }
 .badge-aceptada         { background: rgba(139,92,246,.2);   color: #c4b5fd; }
 .badge-rechazada        { background: rgba(239,68,68,.2);    color: #fca5a5; }
 .badge-archivada        { background: rgba(100,116,139,.2);  color: #94a3b8; }
@@ -599,6 +607,12 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   border-radius: var(--radius-md);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
+  transition: var(--transition-smooth);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--bg-hover);
 }
 
 .card-header {
@@ -642,6 +656,13 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   padding: 1.1rem 1.25rem;
   position: relative;
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition-smooth);
+}
+
+.stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-hover);
 }
 
 .stat-card::before {
@@ -1065,6 +1086,37 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   .topbar-menu-btn { display: block; }
 
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Tablets & large phones — sales reps creating/reviewing quotes on the go */
+@media (max-width: 768px) {
+  .page-content { padding: 1rem; }
+
+  /* Card & modal chrome tightens up for narrow viewports */
+  .card-header,
+  .modal-header  { padding: .9rem 1rem; }
+  .card-body     { padding: 1rem; }
+  .modal-body    { padding: 1rem; }
+  .modal-dialog  { max-width: 100%; }
+
+  /* Forms collapse to a single column so fields are comfortably tappable */
+  .form-row { grid-template-columns: 1fr; }
+
+  /* Filter bar wraps instead of overflowing horizontally */
+  .filter-bar { flex-wrap: wrap; }
+  .filter-bar .form-group { flex: 1 1 auto; min-width: 140px; }
+
+  /* Action buttons stretch full-width and stack for easy thumb access */
+  .table-actions { flex-wrap: wrap; }
+  .card-footer   { flex-direction: column-reverse; align-items: stretch; }
+  .card-footer .btn { width: 100%; }
+
+  /* Denser table typography to fit more columns before horizontal scroll */
+  .data-table          { font-size: .8rem; }
+  .data-table thead th { padding: .5rem .65rem; }
+  .data-table tbody td { padding: .55rem .65rem; }
+
+  .topbar-title { font-size: 1rem; }
 }
 
 @media (max-width: 600px) {

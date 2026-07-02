@@ -321,6 +321,7 @@ class FormMediator {
     set('#fecha_emision', toDateInput(q.fecha_emision));
     set('#fecha_validez', toDateInput(q.fecha_validez));
     set('#moneda',        q.moneda ?? 'BOB');
+    set('#entidad_emisora', q.entidad_emisora ?? 'RC Tractoparts');
     set('#tipo_pedido',   q.tipo_pedido ?? '');
     set('#observaciones', q.observaciones ?? '');
     set('#tiempo_entrega', q.tiempo_entrega ?? '');
@@ -393,6 +394,13 @@ class FormMediator {
             <select class="form-control" id="moneda">
               <option value="BOB">BOB — Boliviano</option>
               <option value="USD">USD — Dólar</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="entidad_emisora">Entidad Emisora *</label>
+            <select class="form-control" id="entidad_emisora">
+              <option value="RC Tractoparts">RC Tractoparts</option>
+              <option value="Roca Importaciones S.R.L.">Roca Importaciones S.R.L.</option>
             </select>
           </div>
           <div class="form-group">
@@ -1245,6 +1253,7 @@ class FormMediator {
       descripcion,
       fecha_emision,
       moneda:                   this.#container.querySelector('#moneda')?.value                  || 'BOB',
+      entidad_emisora:          this.#container.querySelector('#entidad_emisora')?.value          || 'RC Tractoparts',
       tipo_pedido:              this.#container.querySelector('#tipo_pedido')?.value.trim()       || null,
       fecha_validez:            fecha_validez || null,
       observaciones:            this.#container.querySelector('#observaciones')?.value.trim()    || null,

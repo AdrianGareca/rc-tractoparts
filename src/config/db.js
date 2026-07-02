@@ -29,6 +29,11 @@ const poolConfig = {
   timezone:        '+00:00',  // Store and retrieve dates in UTC; the app layer handles local TZ
   decimalNumbers:  true,      // Return DECIMAL columns as JS numbers, not strings
   multipleStatements: false,  // Disable multiple statements per query to prevent SQL injection
+  // Keep-alive prevents idle pooled sockets from being silently dropped by the
+  // OS/MySQL wait_timeout during the low-traffic gaps of a ~10-user daily load,
+  // which would otherwise surface as intermittent ECONNRESET/PROTOCOL errors.
+  enableKeepAlive:       true,
+  keepAliveInitialDelay: 10_000, // Start keep-alive probes after 10s idle
 };
 
 // ---------------------------------------------------------------------------

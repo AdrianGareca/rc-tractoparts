@@ -212,13 +212,17 @@ CREATE TABLE cotizaciones (
   descripcion        TEXT          NOT NULL,
   monto_total        DECIMAL(15,2) DEFAULT NULL,
   moneda             CHAR(3)       NOT NULL DEFAULT 'USD',
+  entidad_emisora    VARCHAR(150)  NOT NULL DEFAULT 'RC Tractoparts'
+    COMMENT 'Razón social emisora de la proforma: "RC Tractoparts" o "Roca Importaciones S.R.L." — se imprime en el encabezado del PDF',
   estado             ENUM(
                        'Pendiente',
                        'En revision',
                        'En espera',
                        'Aprobada internamente',
                        'Enviada al cliente',
-                       'Aceptada',
+                       'Confirmada',
+                       'Aceptada',              -- LEGACY: superseded by 'Confirmada'; retained so
+                                                -- pre-migration rows never violate the ENUM constraint.
                        'Rechazada',
                        'Archivada'
                      ) NOT NULL DEFAULT 'Pendiente',
@@ -404,6 +408,23 @@ CREATE TABLE notificaciones (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- =============================================================================
+-- MIGRATION — Lifecycle rename: 'Aceptada' -> 'Confirmada'
+-- Idempotent: affects 0 rows on a fresh install, converts legacy rows on an
+-- existing database. Run safely as many times as needed.
+-- =============================================================================
+UPDATE cotizaciones
+   SET estado = 'Confirmada'
+ WHERE estado = 'Aceptada';
+
+UPDATE cotizacion_historial_estados
+   SET estado_nuevo = 'Confirmada'
+ WHERE estado_nuevo = 'Aceptada';
+
+UPDATE cotizacion_historial_estados
+   SET estado_anterior = 'Confirmada'
+ WHERE estado_anterior = 'Aceptada';
 
 -- =============================================================================
 -- SEED DATA

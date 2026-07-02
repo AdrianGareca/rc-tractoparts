@@ -32,7 +32,9 @@ const VALID_STATES = [
   'En espera',              // Decision suspended pending external supplier stock checks
   'Aprobada internamente',  // Approved by Jefe; ready to be sent to the client
   'Enviada al cliente',     // Formally delivered to the client
-  'Aceptada',               // Client accepted the terms
+  'Confirmada',             // Client confirmed the terms (formerly 'Aceptada')
+  'Aceptada',               // LEGACY alias of 'Confirmada' — tolerated so pre-migration
+                            // records and their transitions never crash the state machine.
   'Rechazada',              // Rejected — either internally or by the client
   'Archivada',              // Terminal state; no further transitions allowed
 ];
@@ -57,9 +59,10 @@ const ROLE_TRANSITIONS = {
     'En revision':           [],                                    // Read-only: wait for Jefe
     'En espera':             [],                                    // Read-only: Jefe suspended decision
     'Aprobada internamente': ['Enviada al cliente'],
-    'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],
+    'Enviada al cliente':    ['Confirmada', 'Rechazada', 'Archivada'],
     Rechazada:               ['Pendiente', 'Archivada'],            // Reset to initial state for rework
-    Aceptada:                ['Archivada'],
+    Confirmada:              ['Archivada'],
+    Aceptada:                ['Archivada'],                         // LEGACY alias of 'Confirmada'
     Archivada:               [],
   },
 
@@ -71,14 +74,15 @@ const ROLE_TRANSITIONS = {
     // client and then marked accepted/rejected. These are delivery/outcome steps,
     // not approval decisions, so they do not breach the Jefe's exclusive approval
     // authority. This unblocks the linear flow
-    // Pendiente → Aprobada internamente → Enviada al cliente → Aceptada.
+    // Pendiente → Aprobada internamente → Enviada al cliente → Confirmada.
     Pendiente:               ['En revision', 'En espera', 'Archivada'],
     'En revision':           ['En espera', 'Pendiente', 'Archivada'],   // Can hold or retract
     'En espera':             ['En revision', 'Pendiente', 'Archivada'], // Can resume or retract
     'Aprobada internamente': ['Enviada al cliente', 'Archivada'],       // Forward to client or archive
-    'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],    // Record client outcome
+    'Enviada al cliente':    ['Confirmada', 'Rechazada', 'Archivada'],  // Record client outcome
     Rechazada:               ['Pendiente', 'Archivada'],               // Allow rework cycle
-    Aceptada:                ['Archivada'],
+    Confirmada:              ['Archivada'],
+    Aceptada:                ['Archivada'],                            // LEGACY alias of 'Confirmada'
     Archivada:               [],
   },
 
@@ -92,16 +96,17 @@ const ROLE_TRANSITIONS = {
     Pendiente:               ['En revision', 'En espera', 'Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Archivada'],
     'En revision':           ['Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
     'En espera':             ['Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'En revision', 'Archivada'],
-    'Aprobada internamente': ['Aceptada', 'Enviada al cliente', 'Rechazada', 'Archivada'],
+    'Aprobada internamente': ['Confirmada', 'Enviada al cliente', 'Rechazada', 'Archivada'],
     // 'Pendiente' added: allows Jefe to request changes when the quote has already
     // been sent to the client (asynchronous internal delivery model — HU-CambioPostEnvio).
     // 'En espera' added: Jefe may suspend a delivered quotation while waiting for
     // client confirmation or external factors (HU-EsperaPostEnvio).
-    'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
+    'Enviada al cliente':    ['Confirmada', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
     // Rechazada → can be reverted to Pendiente OR En revision by high-privilege roles
     // (HU-Revertir: allows re-injecting into the approval queue after sudden business changes)
     Rechazada:               ['Pendiente', 'En revision', 'Aprobada internamente', 'Archivada'],
-    Aceptada:                ['Archivada'],
+    Confirmada:              ['Archivada'],
+    Aceptada:                ['Archivada'],                            // LEGACY alias of 'Confirmada'
     Archivada:               [],
   },
 
@@ -111,11 +116,12 @@ const ROLE_TRANSITIONS = {
     Pendiente:               ['En revision', 'En espera', 'Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Archivada'],
     'En revision':           ['Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
     'En espera':             ['Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'En revision', 'Archivada'],
-    'Aprobada internamente': ['Aceptada', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'Archivada'],
-    'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Pendiente', 'Archivada'],
+    'Aprobada internamente': ['Confirmada', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'Archivada'],
+    'Enviada al cliente':    ['Confirmada', 'Rechazada', 'Pendiente', 'Archivada'],
     // Rechazada → can be reverted to Pendiente OR En revision
     Rechazada:               ['Pendiente', 'En revision', 'Aprobada internamente', 'Archivada'],
-    Aceptada:                ['Archivada', 'Pendiente'],
+    Confirmada:              ['Archivada', 'Pendiente'],
+    Aceptada:                ['Archivada', 'Pendiente'],              // LEGACY alias of 'Confirmada'
     Archivada:               [],    // Terminal — even SysAdmin cannot un-archive
   },
 };
@@ -129,9 +135,10 @@ const STATE_TRANSITIONS = {
   'En revision':           ['Aprobada internamente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
   'En espera':             ['Aprobada internamente', 'Rechazada', 'Pendiente', 'Archivada'],
   'Aprobada internamente': ['Enviada al cliente', 'Archivada'],
-  'Enviada al cliente':    ['Aceptada', 'Rechazada', 'Archivada'],
+  'Enviada al cliente':    ['Confirmada', 'Rechazada', 'Archivada'],
   Rechazada:               ['Pendiente', 'Archivada'],
-  Aceptada:                ['Archivada'],
+  Confirmada:              ['Archivada'],
+  Aceptada:                ['Archivada'],   // LEGACY alias of 'Confirmada'
   Archivada:               [],
 };
 
@@ -288,12 +295,12 @@ const QuotationModel = {
     const sql = `
       INSERT INTO cotizaciones
         (numero_correlativo, id_cliente, id_ejecutivo, descripcion,
-         monto_total, moneda, estado, observaciones, fecha_emision, fecha_validez,
+         monto_total, moneda, entidad_emisora, estado, observaciones, fecha_emision, fecha_validez,
          tipo_pedido, tiempo_entrega,
          solicitante_no_solicitud, solicitante_area, solicitante_celular, solicitante_correo,
          equipo_marca, equipo_tipo, equipo_modelo, equipo_serie, equipo_motor)
       VALUES
-        (?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const [result] = await connection.execute(sql, [
@@ -303,6 +310,7 @@ const QuotationModel = {
       data.descripcion,
       data.monto_total              || null,
       data.moneda                   || 'BOB',
+      data.entidad_emisora          || 'RC Tractoparts',
       data.observaciones            || null,
       data.fecha_emision,
       data.fecha_validez            || null,
@@ -385,6 +393,7 @@ const QuotationModel = {
         descripcion              = ?,
         monto_total              = ?,
         moneda                   = ?,
+        entidad_emisora          = ?,
         observaciones            = ?,
         fecha_emision            = ?,
         fecha_validez            = ?,
@@ -407,6 +416,7 @@ const QuotationModel = {
       data.descripcion,
       data.monto_total              ?? null,
       data.moneda                   || 'BOB',
+      data.entidad_emisora          || 'RC Tractoparts',
       data.observaciones            || null,
       data.fecha_emision,
       data.fecha_validez            || null,
@@ -463,6 +473,7 @@ const QuotationModel = {
         c.descripcion,
         c.monto_total,
         c.moneda,
+        c.entidad_emisora,
         c.estado,
         c.pdf_ruta,
         c.excel_ruta,
@@ -500,9 +511,23 @@ const QuotationModel = {
     try {
       [headerRows] = await pool.execute(sqlHeader, [id]);
     } catch (err) {
-      if (err.message && err.message.includes("Unknown column 'c.excel_ruta'")) {
+      // Graceful degradation for legacy databases that predate one or more
+      // optional columns. Rewrite each missing column to a NULL alias and retry
+      // so the detail view never crashes on a schema that is behind the code.
+      const msg = err.message || '';
+      let fallbackSql = sqlHeader;
+      let patched = false;
+      if (msg.includes("Unknown column 'c.excel_ruta'")) {
         console.warn('[QuotationModel.findById] excel_ruta column missing — retrying without it.');
-        const fallbackSql = sqlHeader.replace('        c.excel_ruta,\n', '        NULL AS excel_ruta,\n');
+        fallbackSql = fallbackSql.replace('        c.excel_ruta,\n', '        NULL AS excel_ruta,\n');
+        patched = true;
+      }
+      if (msg.includes("Unknown column 'c.entidad_emisora'")) {
+        console.warn('[QuotationModel.findById] entidad_emisora column missing — retrying with default.');
+        fallbackSql = fallbackSql.replace('        c.entidad_emisora,\n', "        'RC Tractoparts' AS entidad_emisora,\n");
+        patched = true;
+      }
+      if (patched) {
         [headerRows] = await pool.execute(fallbackSql, [id]);
       } else {
         throw err;
@@ -721,7 +746,7 @@ const QuotationModel = {
       ORDER BY FIELD(
         c.estado,
         'Pendiente', 'En revision', 'En espera', 'Aprobada internamente',
-        'Enviada al cliente', 'Aceptada', 'Rechazada', 'Archivada'
+        'Enviada al cliente', 'Confirmada', 'Aceptada', 'Rechazada', 'Archivada'
       )
     `;
 
@@ -1236,7 +1261,7 @@ const QuotationModel = {
   // getProgreso — Monthly analytics for Jefe / SysAdmin performance dashboard.
   // Returns three data sets in a single DB round-trip:
   //   1. total_mes_usd     — Sum of monto_total (USD) for the current month
-  //   2. conversion_ratio  — COUNT(Aceptada) / (COUNT(Aceptada) + COUNT(Rechazada))
+  //   2. conversion_ratio  — COUNT(Confirmada) / (COUNT(Confirmada) + COUNT(Rechazada))
   //   3. por_ejecutivo     — Per-executive breakdown of all states this month
   // ---------------------------------------------------------------------------
   async getProgreso() {
@@ -1251,13 +1276,14 @@ const QuotationModel = {
         AND YEAR(fecha_emision)  = YEAR(CURDATE())
     `);
 
-    // Conversion ratio across all time (meaningful business metric)
+    // Conversion ratio across all time (meaningful business metric).
+    // Counts both 'Confirmada' (current) and legacy 'Aceptada' rows.
     const [conversionRows] = await pool.execute(`
       SELECT
-        SUM(CASE WHEN estado = 'Aceptada'  THEN 1 ELSE 0 END) AS total_aceptadas,
+        SUM(CASE WHEN estado IN ('Confirmada', 'Aceptada') THEN 1 ELSE 0 END) AS total_aceptadas,
         SUM(CASE WHEN estado = 'Rechazada' THEN 1 ELSE 0 END) AS total_rechazadas
       FROM cotizaciones
-      WHERE estado IN ('Aceptada', 'Rechazada')
+      WHERE estado IN ('Confirmada', 'Aceptada', 'Rechazada')
     `);
 
     // Per-executive breakdown for the current month
@@ -1265,7 +1291,7 @@ const QuotationModel = {
       SELECT
         u.nombre_completo                                              AS ejecutivo,
         COUNT(*)                                                       AS total,
-        SUM(CASE WHEN c.estado = 'Aceptada'  THEN 1 ELSE 0 END)      AS aceptadas,
+        SUM(CASE WHEN c.estado IN ('Confirmada', 'Aceptada') THEN 1 ELSE 0 END) AS aceptadas,
         SUM(CASE WHEN c.estado = 'Rechazada' THEN 1 ELSE 0 END)      AS rechazadas,
         SUM(CASE WHEN c.estado = 'Pendiente' THEN 1 ELSE 0 END)      AS pendientes,
         SUM(CASE WHEN c.estado = 'En revision' THEN 1 ELSE 0 END)    AS en_revision,
@@ -1330,7 +1356,7 @@ const QuotationModel = {
           SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END) AS total_bob
         FROM cotizaciones c
         INNER JOIN clientes cl ON cl.id = c.id_cliente
-        WHERE c.estado IN ('Aceptada', 'Enviada al cliente')
+        WHERE c.estado IN ('Confirmada', 'Aceptada', 'Enviada al cliente')
           AND c.id_ejecutivo = ?
         GROUP BY c.id_cliente, cl.razon_social, cl.nit
         ORDER BY total_usd DESC
@@ -1344,7 +1370,7 @@ const QuotationModel = {
           SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END) AS total_bob
         FROM cotizaciones c
         INNER JOIN clientes cl ON cl.id = c.id_cliente
-        WHERE c.estado IN ('Aceptada', 'Enviada al cliente')
+        WHERE c.estado IN ('Confirmada', 'Aceptada', 'Enviada al cliente')
         GROUP BY c.id_cliente, cl.razon_social, cl.nit
         ORDER BY total_usd DESC
         LIMIT 10`;
@@ -1363,6 +1389,7 @@ const QuotationModel = {
           COUNT(c.id)                                                      AS total_creadas,
           SUM(CASE WHEN c.estado IN ('Aprobada internamente',
                                      'Enviada al cliente',
+                                     'Confirmada',
                                      'Aceptada')         THEN 1 ELSE 0 END) AS total_aprobadas,
           SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END)   AS total_usd,
           SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END)   AS total_bob
@@ -1376,6 +1403,7 @@ const QuotationModel = {
           COUNT(c.id)                                                      AS total_creadas,
           SUM(CASE WHEN c.estado IN ('Aprobada internamente',
                                      'Enviada al cliente',
+                                     'Confirmada',
                                      'Aceptada')         THEN 1 ELSE 0 END) AS total_aprobadas,
           SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END)   AS total_usd,
           SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END)   AS total_bob

@@ -44,7 +44,7 @@ router.get('/progreso', ...jefeOnly, ReportesController.getProgreso);
  *     summary: Métricas avanzadas de BI — Top Clientes y Leaderboard de Ejecutivos
  *     description: |
  *       Retorna dos datasets analíticos:
- *       - top_clientes: Top 10 clientes por revenue (estados Aceptada / Enviada al cliente)
+ *       - top_clientes: Top 10 clientes por revenue (estados Confirmada / Enviada al cliente)
  *       - leaderboard: Rendimiento histórico por ejecutivo
  *
  *       **Row-Level Security:** Los usuarios con rol Ejecutivo reciben únicamente

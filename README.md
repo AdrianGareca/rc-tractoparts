@@ -66,7 +66,7 @@ The backend is a Node.js + Express REST API backed by MySQL. The frontend is a v
 **Database tables** (`sql/init.sql`): `roles`, `usuarios`, `marcas`, `clientes`, `productos`, `cotizaciones_correlativo`, `cotizaciones`, `cotizacion_detalles`, `auditoria`, `bitacora_auditoria`, `cotizacion_historial_estados`, `notificaciones`.
 
 **Quotation state machine** (enforced per role in `QuotationModel.ROLE_TRANSITIONS`):
-`Pendiente → En revision → En espera → Aprobada internamente → Enviada al cliente → Aceptada / Rechazada → Archivada`.
+`Pendiente → En revision → En espera → Aprobada internamente → Enviada al cliente → Confirmada / Rechazada → Archivada`.
 
 ---
 

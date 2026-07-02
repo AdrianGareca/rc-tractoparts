@@ -199,21 +199,26 @@ const QuotationStateController = {
       }
 
       // ── Notification for the owning Ejecutivo ──────────────────────────────
-      // Fires whenever a quotation reaches 'Enviada al cliente' or 'Aceptada',
+      // Fires whenever a quotation reaches 'Enviada al cliente' or 'Confirmada',
       // REGARDLESS of who drove the transition (Jefe, SysAdmin, Administracion,
       // or a delegated Ejecutivo). The owner is notified so they can follow up.
       // Self-notification is skipped — the actor already knows about their action.
-      if (['Enviada al cliente', 'Aceptada'].includes(nuevo_estado) &&
+      // 'Aceptada' is accepted as a legacy alias of 'Confirmada'.
+      if (['Enviada al cliente', 'Confirmada', 'Aceptada'].includes(nuevo_estado) &&
           quotation.id_ejecutivo !== req.user.id) {
         try {
-          const tipoMap = { 'Enviada al cliente': 'envio_cliente', 'Aceptada': 'aprobacion' };
+          const tipoMap = {
+            'Enviada al cliente': 'envio_cliente',
+            'Confirmada':         'aprobacion',
+            'Aceptada':           'aprobacion',
+          };
           const mensaje = nuevo_estado === 'Enviada al cliente'
             ? `La cotización #${quotation.numero_correlativo} ` +
               `para ${quotation.cliente_nombre ?? String(quotation.id_cliente)} ` +
               `ha sido enviada al cliente. Ya puedes darle seguimiento.`
             : `La cotización #${quotation.numero_correlativo} ` +
               `para ${quotation.cliente_nombre ?? String(quotation.id_cliente)} ` +
-              `ha sido aceptada. ¡Cierre de venta registrado!`;
+              `ha sido confirmada. ¡Cierre de venta registrado!`;
 
           await QuotationModel.insertNotificacion({
             id_usuario:    quotation.id_ejecutivo,

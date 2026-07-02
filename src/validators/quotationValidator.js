@@ -27,12 +27,20 @@ const VALID_STATES = [
   'En espera',
   'Aprobada internamente',
   'Enviada al cliente',
-  'Aceptada',
+  'Confirmada',
+  'Aceptada',   // LEGACY alias of 'Confirmada' — tolerated for backwards compatibility
   'Rechazada',
   'Archivada',
 ];
 
 const VALID_CURRENCIES = ['USD', 'BOB'];
+
+// ---------------------------------------------------------------------------
+// Valid issuing business entities (razón social emisora de la proforma).
+// Must mirror the allowed values used by the frontend dropdown and the PDF
+// header renderer exactly.
+// ---------------------------------------------------------------------------
+const VALID_ENTITIES = ['RC Tractoparts', 'Roca Importaciones S.R.L.'];
 
 // ---------------------------------------------------------------------------
 // detalleItemSchema — individual line item inside a quotation
@@ -159,6 +167,16 @@ const quotationShape = {
     // prices in Excel in BOB. USD is still accepted for multi-currency records
     // but must be explicit — defaulting to BOB prevents silent currency errors.
     .default('BOB'),
+
+  // Issuing business entity (razón social emisora). Constrained to the two
+  // legal entities the company invoices under; defaults to RC Tractoparts.
+  entidad_emisora: z
+    .string()
+    .trim()
+    .refine((v) => VALID_ENTITIES.includes(v), {
+      message: `entidad_emisora must be one of: ${VALID_ENTITIES.join(', ')}.`,
+    })
+    .default('RC Tractoparts'),
 
   observaciones: z
     .string()

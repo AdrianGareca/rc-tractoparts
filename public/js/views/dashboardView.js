@@ -85,7 +85,7 @@ function _buildProformaHTML(q, id, viewMode) {
   const canApprove      = jefeMode && ['Pendiente', 'En revision', 'En espera'].includes(q.estado);
   const canEnviarCliente= jefeMode && ['Pendiente', 'En revision', 'En espera', 'Aprobada internamente'].includes(q.estado);
   const canAceptar      = jefeMode && ['Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
-  const canRechazar     = jefeMode && !['Aceptada', 'Archivada', 'Rechazada'].includes(q.estado);
+  const canRechazar     = jefeMode && !['Confirmada', 'Aceptada', 'Archivada', 'Rechazada'].includes(q.estado);
   const canHold         = jefeMode && ['Pendiente', 'En revision', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
   // 'Aprobada internamente' is intentionally excluded: the Jefe ROLE_TRANSITIONS
   // matrix has NO 'Aprobada internamente' → 'Pendiente' edge, so offering
@@ -112,7 +112,7 @@ function _buildProformaHTML(q, id, viewMode) {
           🟢 Aprobar y Enviar al Cliente
         </button>` : ''}
         ${canAceptar ? `<button class="btn btn-primary" id="btn-aceptar" style="grid-column:1/-1;">
-          🏆 Aceptar Cotización — Cierre de Venta
+          🏆 Confirmar Cotización — Cierre de Venta
         </button>` : ''}
         ${canRechazar ? `<button class="btn btn-danger btn-sm" id="btn-rechazar">
           ❌ Rechazar
@@ -492,7 +492,7 @@ class ExecutiveStrategy extends DashboardStrategy {
               <option>Pendiente</option>
               <option>En revision</option><option>En espera</option>
               <option>Aprobada internamente</option>
-              <option>Enviada al cliente</option><option>Aceptada</option>
+              <option>Enviada al cliente</option><option>Confirmada</option>
               <option>Rechazada</option><option>Archivada</option>
             </select>
           </div>
@@ -617,7 +617,7 @@ class ExecutiveStrategy extends DashboardStrategy {
       const statsEl = document.getElementById('stats-section');
       if (!statsEl) return;
 
-      const highlighted = ['Pendiente', 'En revision', 'Aprobada internamente', 'Aceptada'];
+      const highlighted = ['Pendiente', 'En revision', 'Aprobada internamente', 'Confirmada'];
       statsEl.innerHTML = [
         { label: 'Total',      value: data.grandTotal ?? 0, color: '#3B82F6' },
         ...highlighted.map(s => ({
@@ -863,7 +863,7 @@ class ExecutiveStrategy extends DashboardStrategy {
     const VALID_STATES = [
       'Pendiente','En revision','En espera',
       'Aprobada internamente','Enviada al cliente',
-      'Aceptada','Rechazada','Archivada',
+      'Confirmada','Rechazada','Archivada',
     ];
 
     UI.openModal('Cambiar Estado', (body) => {
@@ -1071,12 +1071,12 @@ class ManagerStrategy extends DashboardStrategy {
         });
 
         body.querySelector('#btn-aceptar')?.addEventListener('click', () => {
-          this._confirmStateChange(id, 'Aceptada',
-            'Aceptar Cotización — Cierre de Venta',
-            'El cliente ha aceptado los términos. Esta acción registra el cierre de venta y congela cualquier modificación adicional.',
+          this._confirmStateChange(id, 'Confirmada',
+            'Confirmar Cotización — Cierre de Venta',
+            'El cliente ha confirmado los términos. Esta acción registra el cierre de venta y congela cualquier modificación adicional.',
             'Observaciones de cierre (opcional)',
             false,
-            '🏆 ¡Cierre de venta registrado! La cotización ha sido aceptada.');
+            '🏆 ¡Cierre de venta registrado! La cotización ha sido confirmada.');
         });
 
         // ── Revert rejection buttons (Jefe / SysAdmin only) ─────────────────────
@@ -1288,12 +1288,12 @@ class ManagerStrategy extends DashboardStrategy {
         // quotations in 'Aprobada internamente' / 'Enviada al cliente' reached
         // from the "Todas las Cotizaciones" tab can complete the sale closure.
         body.querySelector('#btn-aceptar')?.addEventListener('click', () => {
-          this._confirmStateChange(id, 'Aceptada',
-            'Aceptar Cotización — Cierre de Venta',
-            'El cliente ha aceptado los términos. Esta acción registra el cierre de venta y congela cualquier modificación adicional.',
+          this._confirmStateChange(id, 'Confirmada',
+            'Confirmar Cotización — Cierre de Venta',
+            'El cliente ha confirmado los términos. Esta acción registra el cierre de venta y congela cualquier modificación adicional.',
             'Observaciones de cierre (opcional)',
             false,
-            '🏆 ¡Cierre de venta registrado! La cotización ha sido aceptada.');
+            '🏆 ¡Cierre de venta registrado! La cotización ha sido confirmada.');
         });
 
         // Revert rejection buttons

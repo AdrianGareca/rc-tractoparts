@@ -63,6 +63,7 @@ const C = {
     'En espera':             '#D97706',
     'Aprobada internamente': '#059669',
     'Enviada al cliente':    '#2563EB',
+    'Confirmada':            '#059669',
     'Aceptada':              '#059669',
     'Rechazada':             '#DC2626',
     'Archivada':             '#6B7280',
@@ -285,6 +286,7 @@ function renderWatermark(doc, quotation, tableBodyY) {
   // Only stamp when the quotation has been formally approved or accepted.
   // The legacy 'CONFIRMADO' guard is removed — the DB uses canonical Spanish state names.
   const shouldStamp = estado === 'APROBADA INTERNAMENTE'
+    || estado === 'CONFIRMADA'
     || estado === 'ACEPTADA'
     || estado.includes('APROBAD');
 
@@ -372,6 +374,41 @@ function drawHeader(doc, quotation) {
       .text('Santa Cruz de la Sierra — Bolivia',
         MARGIN + 4, y0 + 46, { width: LOGO_W - 8, align: 'center', lineBreak: false });
   }
+
+  // ── Issuing-entity block — printed in the blank band directly under the logo ─
+  // Bounding box (collision-safe): x ∈ [MARGIN, BOX_X − gap], y ∈ [logo bottom,
+  // brand-strip line]. The logo bottom sits at y0 + LOGO_H = 108 pt and the
+  // brand-strip divider begins at y0 + BOX_H + 8 = 142 pt, so all text below is
+  // rendered between y ≈ 110 and y ≈ 136 — never overlapping the logo (above),
+  // the info box (right of BOX_X) or the brand strip (below).
+  const entidad   = (quotation.entidad_emisora && String(quotation.entidad_emisora).trim())
+    || 'RC Tractoparts';
+  const emisorX   = MARGIN;
+  const emisorW   = BOX_X - MARGIN - 10;      // ≈ 328 pt — stops short of the info box
+  let   emisorY   = y0 + LOGO_H + 2;          // ≈ 110 pt — just below the logo
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(8)
+    .fillColor(C.NAVY)
+    .text(entidad, emisorX, emisorY, { width: emisorW, lineBreak: false });
+  emisorY += 11;
+
+  doc
+    .font('Helvetica')
+    .fontSize(5.5)
+    .fillColor(C.MID_GRAY)
+    .text(
+      'Av. El Trompillo 2do Anillo, Edif. Torre Empresarial Los Laureles, Piso 9. Santa Cruz - Bolivia.',
+      emisorX, emisorY, { width: emisorW, lineBreak: false });
+  emisorY += 8;
+
+  doc
+    .font('Helvetica')
+    .fontSize(6)
+    .fillColor(C.DARK_GRAY)
+    .text('Tel: 79855624 - 72182960   |   rctractoparts@gmail.com',
+      emisorX, emisorY, { width: emisorW, lineBreak: false });
 
   // ── Right: quotation info box ─────────────────────────────────────────────
   doc

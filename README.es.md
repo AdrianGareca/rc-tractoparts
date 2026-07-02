@@ -68,7 +68,7 @@ El backend es una API REST en Node.js + Express respaldada por MySQL. El fronten
 **Máquina de estados de cotizaciones** (aplicada por rol en `QuotationModel.ROLE_TRANSITIONS`):
 
 ```
-Pendiente → En revision → En espera → Aprobada internamente → Enviada al cliente → Aceptada / Rechazada → Archivada
+Pendiente → En revision → En espera → Aprobada internamente → Enviada al cliente → Confirmada / Rechazada → Archivada
 ```
 
 ---

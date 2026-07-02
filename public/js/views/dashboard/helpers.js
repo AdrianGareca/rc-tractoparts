@@ -14,7 +14,8 @@ export const STATE_BADGE = {
   'En espera':             'badge-en-espera',
   'Aprobada internamente': 'badge-aprobada',
   'Enviada al cliente':    'badge-enviada',
-  'Aceptada':              'badge-aceptada',
+  'Confirmada':            'badge-confirmada',
+  'Aceptada':              'badge-confirmada',
   'Rechazada':             'badge-rechazada',
   'Archivada':             'badge-archivada',
 };
@@ -32,6 +33,7 @@ export const STAT_COLOR = {
   'En espera':             '#6366F1',
   'Aprobada internamente': '#10B981',
   'Enviada al cliente':    '#3B82F6',
+  'Confirmada':            '#8B5CF6',
   'Aceptada':              '#8B5CF6',
   'Rechazada':             '#EF4444',
 };

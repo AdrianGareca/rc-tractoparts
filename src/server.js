@@ -87,4 +87,12 @@ process.on('unhandledRejection', (reason, promise) => {
   // In production, consider process.exit(1) here to let PM2 restart the process
 });
 
+// Synchronous programming errors that escape all try/catch blocks. Logged so a
+// process manager (PM2/systemd) can restart a poisoned process rather than
+// letting it linger in an undefined state under concurrent load.
+process.on('uncaughtException', (error) => {
+  console.error('[Server] Uncaught Exception:', error);
+  // Leave the process to the manager's restart policy; do not silently continue.
+});
+
 startServer();

@@ -267,7 +267,7 @@ router.post(
  *         name: estado
  *         schema:
  *           type: string
- *           enum: [Pendiente, "En revision", "Aprobada internamente", "Enviada al cliente", Aceptada, Rechazada, Archivada]
+ *           enum: [Pendiente, "En revision", "Aprobada internamente", "Enviada al cliente", Confirmada, Aceptada, Rechazada, Archivada]
  *         description: Filtrar por estado exacto
  *       - in: query
  *         name: id_cliente
@@ -728,7 +728,7 @@ router.get(
  *             properties:
  *               nuevo_estado:
  *                 type: string
- *                 enum: [Pendiente, "En revision", "En espera", "Aprobada internamente", "Enviada al cliente", Aceptada, Rechazada, Archivada]
+ *                 enum: [Pendiente, "En revision", "En espera", "Aprobada internamente", "Enviada al cliente", Confirmada, Aceptada, Rechazada, Archivada]
  *                 example: "En espera"
  *               observacion:
  *                 type: string

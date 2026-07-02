@@ -48,7 +48,7 @@ function _buildTopClientesTable(rows) {
     <div class="card" style="margin-bottom:1rem;">
       <div class="card-header">
         <h3>📊 Top 10 Clientes de Mayor Impacto</h3>
-        <span class="text-muted text-sm">Basado en cotizaciones Aceptadas / Enviadas al cliente</span>
+        <span class="text-muted text-sm">Basado en cotizaciones Confirmadas / Enviadas al cliente</span>
       </div>
       <div class="table-wrapper">
         <table class="data-table">
@@ -229,7 +229,7 @@ export async function renderReportes(panel) {
           </div>
           <div class="stat-card" style="--stat-accent:#10B981;">
             <div class="stat-card-value">${aceptadas}</div>
-            <div class="stat-card-label">Aceptadas (total)</div>
+            <div class="stat-card-label">Confirmadas (total)</div>
           </div>
           <div class="stat-card" style="--stat-accent:#EF4444;">
             <div class="stat-card-value">${rechazadas}</div>
@@ -249,7 +249,7 @@ export async function renderReportes(panel) {
               <tr>
                 <th>Ejecutivo</th>
                 <th class="text-right">Total</th>
-                <th class="text-right">Aceptadas</th>
+                <th class="text-right">Confirmadas</th>
                 <th class="text-right">Rechazadas</th>
                 <th class="text-right">Pendientes</th>
                 <th class="text-right">En Revisión</th>
