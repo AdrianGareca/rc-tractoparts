@@ -419,6 +419,9 @@ img { max-width: 100%; display: block; }
   border: 1px solid transparent;
   transition: var(--transition-smooth);
   white-space: nowrap;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
   user-select: none;
 }
 
@@ -1240,6 +1243,9 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   cursor: default;
   position: relative;
   flex-shrink: 0;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
   user-select: none;
 }
 
@@ -1301,6 +1307,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   justify-content: center;
   z-index: 9999;
   padding: 1rem;
+  -webkit-backdrop-filter: blur(2px);
   backdrop-filter: blur(2px);
 }
 
