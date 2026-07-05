@@ -5,12 +5,13 @@
 ![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen?logo=node.js)
 ![Express](https://img.shields.io/badge/Express-4.x-blue?logo=express)
 ![MySQL](https://img.shields.io/badge/MySQL-8.x-orange?logo=mysql)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)
 ![License](https://img.shields.io/badge/License-UNLICENSED-red)
 ![Tests](https://img.shields.io/badge/Tests-Jest%20%2B%20Supertest-yellow?logo=jest)
 
-REST API and lightweight web client for managing **quotations (proformas)** at RC Tractoparts, a heavy-machinery spare-parts importer in Santa Cruz, Bolivia. The system covers the full quotation lifecycle: client/brand catalogs, atomic correlativo generation, a role-based approval state machine, corporate-branded PDF generation, file uploads (PDF + Excel), in-app notifications, auditing, and business-intelligence reports.
+REST API and lightweight web client for managing **quotations (proformas)** for **Empresa unipersonal de Ronald Roca Cartagena** (formerly branded "RC Tractoparts") and **Roca Importaciones S.R.L.**, a heavy-machinery spare-parts importer in Santa Cruz, Bolivia. The system covers the full quotation lifecycle: client/brand catalogs, atomic correlativo generation, a role-based approval state machine, multi-company corporate-branded PDF generation, file uploads (PDF + Excel), in-app notifications, auditing, and business-intelligence reports.
 
-The backend is a Node.js + Express REST API backed by MySQL. The frontend is a vanilla-JavaScript (ES Modules) single-page application (SPA) served as static files by the same Express process — no build step required.
+The backend is a Node.js + Express REST API backed by MySQL. The frontend is a vanilla-JavaScript (ES Modules) single-page application (SPA) served as static files by the same Express process — no build step required. The whole stack is containerized with Docker and orchestrated with Docker Compose.
 
 ---
 
@@ -18,25 +19,28 @@ The backend is a Node.js + Express REST API backed by MySQL. The frontend is a v
 
 1. [Project Overview](#1-project-overview)
 2. [System Architecture & Tech Stack](#2-system-architecture--tech-stack)
-3. [Project Directory Tree](#3-project-directory-tree)
-4. [Prerequisites](#4-prerequisites)
-5. [Installation & Local Setup](#5-installation--local-setup)
-6. [Local Execution](#6-local-execution)
-7. [Functional Overview](#7-functional-overview)
-8. [Frontend Architecture](#8-frontend-architecture)
-9. [Security Model](#9-security-model)
-10. [Tests](#10-tests)
-11. [Business Entity & Legal Naming](#11-business-entity--legal-naming)
-12. [PDF & Download Handler Refactors](#12-pdf--download-handler-refactors)
-13. [Production Deployment & Storage Considerations](#13-production-deployment--storage-considerations)
-14. [License](#license)
+3. [Architecture & Workflow Diagrams](#3-architecture--workflow-diagrams)
+4. [Project Directory Tree](#4-project-directory-tree)
+5. [Prerequisites](#5-prerequisites)
+6. [Local Installation via Docker](#6-local-installation-via-docker)
+7. [Manual (Non-Docker) Installation](#7-manual-non-docker-installation)
+8. [Local Execution](#8-local-execution)
+9. [Environment Variables](#9-environment-variables)
+10. [Functional Overview](#10-functional-overview)
+11. [Frontend Architecture](#11-frontend-architecture)
+12. [Security Model](#12-security-model)
+13. [Tests](#13-tests)
+14. [Business Entity & Legal Naming](#14-business-entity--legal-naming)
+15. [PDF & Download Handler Refactors](#15-pdf--download-handler-refactors)
+16. [Production Deployment (Nginx + DigitalOcean)](#16-production-deployment-nginx--digitalocean)
+17. [License](#license)
 
 ---
 
 ## 1. Project Overview
 
 - **Purpose:** Replace manual proforma spreadsheets with a controlled, audited workflow — executives build quotations, managers approve them, and the system emits a consistent branded PDF for the client.
-- **Company:** The primary issuing legal entity is **Empresa unipersonal de Ronald Roca Cartagena** (formerly branded "RC Tractoparts"), with **Roca Importaciones S.R.L.** remaining active as the second issuing entity. An importer of heavy-machinery spare parts (Volvo, Komatsu, John Deere, JCB, CAT, CASE) based in Santa Cruz, Bolivia. See [§11 Business Entity & Legal Naming](#11-business-entity--legal-naming) for the full rename refactor and legacy-tolerance details.
+- **Company:** The primary issuing legal entity is **Empresa unipersonal de Ronald Roca Cartagena** (formerly branded "RC Tractoparts"), with **Roca Importaciones S.R.L.** remaining active as the second issuing entity. An importer of heavy-machinery spare parts (Volvo, Komatsu, John Deere, JCB, CAT, CASE) based in Santa Cruz, Bolivia. See [§14 Business Entity & Legal Naming](#14-business-entity--legal-naming) for the full rename refactor and legacy-tolerance details.
 - **Users / roles:** `Ejecutivo`, `Administracion`, `Jefe`, `SysAdmin`, plus a per-user `can_approve_quotations` delegation flag (Delegación de Funciones).
 - **Key invariants:** every state change is role-validated and audited; each quotation owns exactly **one** physical PDF (regenerated on every meaningful change); all SQL is parameterized; the correlativo serial is generated atomically under a row lock.
 
@@ -48,7 +52,7 @@ The backend is a Node.js + Express REST API backed by MySQL. The frontend is a v
 
 | Concern | Technology (exact) |
 |---|---|
-| Runtime | Node.js `>= 18` |
+| Runtime | Node.js `>= 18` (Docker image: Node 20 LTS Alpine) |
 | Web framework | Express `^4.19.2` |
 | Database | MySQL 8 via `mysql2 ^3.9.7` (promise pool) |
 | Authentication | `jsonwebtoken ^9.0.2` (HS256) + `bcryptjs ^2.4.3` |
@@ -63,8 +67,7 @@ The backend is a Node.js + Express REST API backed by MySQL. The frontend is a v
 | Linting | `eslint ^10.5.0` (flat config) |
 | Dev reload | `nodemon ^3.1.0` |
 | Frontend | Vanilla JS (ES Modules), no build step |
-
-> **Infrastructure note:** This repository contains **no** Docker, Nginx, Redis, PM2, or CI/CD configuration. The application runs directly with Node.js against a MySQL server. (Some source comments reference reverse proxies / process managers, but none are required to run the project.)
+| Containerization | Docker (multi-stage) + Docker Compose |
 
 **Database tables** (`sql/init.sql`): `roles`, `usuarios`, `marcas`, `clientes`, `productos`, `cotizaciones_correlativo`, `cotizaciones`, `cotizacion_detalles`, `auditoria`, `bitacora_auditoria`, `cotizacion_historial_estados`, `notificaciones`.
 
@@ -77,51 +80,137 @@ The `cotizaciones.entidad_emisora` column (the issuing business name printed on 
 
 ---
 
-## 3. Project Directory Tree
+## 3. Architecture & Workflow Diagrams
+
+### 3.1 Deployment & Infrastructure Architecture
+
+Request flow from the client, over HTTPS, through the host's Nginx reverse proxy (Let's Encrypt SSL termination), into the isolated Docker containers.
+
+```mermaid
+flowchart LR
+    Client["🌐 Client Browser<br/>(HTTPS)"]
+
+    subgraph Droplet["DigitalOcean Droplet (Ubuntu Host)"]
+        direction TB
+        Nginx["Nginx Reverse Proxy<br/>:443 TLS termination<br/>Let's Encrypt / Certbot"]
+
+        subgraph Docker["Docker Compose — network: rc_internal"]
+            direction TB
+            App["app container<br/>Node.js + Express<br/>127.0.0.1:3000"]
+            DB[("db container<br/>MySQL 8")]
+            VolDB[["volume: db_data"]]
+            VolUp[["volume: app_uploads"]]
+            VolSt[["volume: app_storage"]]
+        end
+    end
+
+    Client -- "HTTPS :443" --> Nginx
+    Nginx -- "HTTP proxy_pass<br/>127.0.0.1:3000" --> App
+    App -- "SQL :3306<br/>(internal only)" --> DB
+    DB --- VolDB
+    App --- VolUp
+    App --- VolSt
+```
+
+### 3.2 Multi-Company Dynamic Logic
+
+How the system dynamically resolves separate headers, branding, and tax information depending on the selected commercial entity.
+
+```mermaid
+flowchart TD
+    Start(["Quotation created / edited"]) --> Sel{"entidad_emisora<br/>selected?"}
+    Sel -- "empty / null" --> Legacy
+    Sel -- "'RC Tractoparts'<br/>(legacy value)" --> Legacy["normalizeEntidad()<br/>graceful runtime mapping"]
+    Legacy --> Primary
+    Sel -- "Empresa unipersonal de<br/>Ronald Roca Cartagena" --> Primary["Entity A — Sole Proprietorship"]
+    Sel -- "Roca Importaciones S.R.L." --> SRL["Entity B — S.R.L."]
+
+    Primary --> RA["Render header A<br/>+ branding A + tax data A"]
+    SRL --> RB["Render header B<br/>+ branding B + tax data B"]
+
+    RA --> PDF["PDF proforma header<br/>(pdfService.drawHeader)"]
+    RB --> PDF
+    PDF --> Done(["Branded document emitted"])
+```
+
+### 3.3 Document Lifecycle State Machine
+
+Comprehensive quotation workflow, emphasizing the business rules of the **`Confirmada`** state — its absolute immutability and the automated audit-logging trigger.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pendiente
+    Pendiente --> EnRevision: submit
+    EnRevision --> EnEspera: hold
+    EnEspera --> AprobadaInternamente: manager approves
+    EnRevision --> AprobadaInternamente: manager approves
+    AprobadaInternamente --> EnviadaAlCliente: send to client
+    EnviadaAlCliente --> Confirmada: client confirms
+    EnviadaAlCliente --> Rechazada: client rejects
+    Confirmada --> Archivada: archive
+    Rechazada --> Archivada: archive
+    Archivada --> [*]
+
+    note right of Confirmada
+        BUSINESS RULE — IMMUTABLE
+        • No further edits / status changes allowed
+        • Transition recorded to cotizacion_historial_estados
+        • Automated JSON audit entry written to
+          bitacora_auditoria (who / when / payload)
+    end note
+
+    state "En revision" as EnRevision
+    state "En espera" as EnEspera
+    state "Aprobada internamente" as AprobadaInternamente
+    state "Enviada al cliente" as EnviadaAlCliente
+```
+
+### 3.4 System Performance & UI Flow
+
+Mobile-first responsive layout transitions and the memory-efficient asynchronous PDF streaming download (chunked stream responses that avoid RAM saturation).
+
+```mermaid
+sequenceDiagram
+    participant U as User (mobile-first UI)
+    participant FE as SPA (timelineView.js)
+    participant API as Express route
+    participant FS as Disk / Stream
+
+    Note over U,FE: Responsive layout adapts:<br/>≤768px single-column stacked ·<br/>>768px multi-column dashboard
+    U->>FE: Tap "Download PDF"
+    FE->>API: GET /:id/pdf (Bearer JWT)
+    API->>FS: fs.createReadStream(pdf)
+    FS-->>API: chunk 1..n (streamed)
+    API-->>FE: Blob response (chunked, low RAM)
+    FE->>FE: createElement('a') + download=<br/>"COT-2026-0001.pdf"
+    FE-->>U: Clean-named file saved
+    Note over API,FS: Streaming avoids buffering the whole<br/>file in memory — prevents RAM saturation
+```
+
+---
+
+## 4. Project Directory Tree
 
 ```
 rc-tractoparts/
+├── Dockerfile                     # Multi-stage build (deps → runner, non-root)
+├── docker-compose.yml             # app + MySQL + volumes + internal network
+├── .dockerignore                  # Keeps secrets/tests/artifacts out of the image
 ├── src/
 │   ├── server.js                  # Entry point: DB check + HTTP listen + graceful shutdown
 │   ├── app.js                     # Express app: middleware, Swagger, routes, error handler
 │   ├── config/
 │   │   └── db.js                  # MySQL connection pool (singleton) + startup ping
-│   ├── routes/
-│   │   ├── authRoutes.js          # /api/auth
-│   │   ├── quotationRoutes.js     # /api/cotizaciones (load-bearing route order)
-│   │   ├── userRoutes.js          # /api/usuarios
-│   │   ├── clientRoutes.js        # /api/clientes
-│   │   ├── brandRoutes.js         # /api/marcas
-│   │   └── reportesRoutes.js      # /api/reportes
-│   ├── controllers/
-│   │   ├── authController.js
-│   │   ├── quotationController.js
-│   │   ├── quotation/
-│   │   │   ├── quotationStateController.js   # state machine + approval
-│   │   │   └── quotationPdfController.js      # PDF/Excel upload & download
-│   │   ├── userController.js
-│   │   ├── clientController.js
-│   │   ├── brandController.js
-│   │   └── reportesController.js
+│   ├── routes/                    # /api/auth, /api/cotizaciones, /api/usuarios, …
+│   ├── controllers/               # Request handlers (incl. quotation/ subfolder)
 │   ├── models/                    # ONLY layer that runs SQL (all parameterized)
-│   │   ├── UserModel.js
-│   │   ├── QuotationModel.js       # state matrix, correlativo, reports
-│   │   ├── ClientModel.js
-│   │   ├── BrandModel.js
-│   │   └── AuditModel.js
-│   ├── middlewares/
-│   │   ├── authMiddleware.js       # JWT verify + token_version revocation
-│   │   ├── roleMiddleware.js       # RBAC authorize([...])
-│   │   └── auditMiddleware.js
+│   ├── middlewares/               # authMiddleware, roleMiddleware, auditMiddleware
 │   ├── validators/                # Zod schemas + validate() factory
-│   │   ├── validate.js
-│   │   ├── authValidator.js
-│   │   └── quotationValidator.js
 │   ├── services/
-│   │   └── pdfService.js           # PDFKit proforma layout engine
+│   │   └── pdfService.js          # PDFKit proforma layout engine
 │   ├── utils/
 │   │   └── auditLog.js
-│   └── assets/images/              # rc_logo.png + brands/*.png (used by the PDF engine)
+│   └── assets/images/             # rc_logo.png + brands/*.png (used by the PDF engine)
 ├── public/                        # Static frontend (served by Express)
 │   ├── index.html                 # Login
 │   ├── dashboard.html
@@ -135,8 +224,8 @@ rc-tractoparts/
 ├── tests/
 │   ├── unit/                      # No DB required
 │   └── integration/               # Requires the test database
-├── uploads/                       # Generated/uploaded PDFs (gitignored, runtime)
-├── storage/excels/                # Uploaded Excel spreadsheets (gitignored, runtime)
+├── uploads/                       # Generated/uploaded PDFs (gitignored, runtime volume)
+├── storage/excels/                # Uploaded Excel spreadsheets (gitignored, runtime volume)
 ├── .env.example                   # Environment variable reference
 ├── eslint.config.js
 └── package.json
@@ -144,67 +233,62 @@ rc-tractoparts/
 
 ---
 
-## 4. Prerequisites
+## 5. Prerequisites
+
+**For the Docker workflow (recommended):**
+
+- **Docker Engine 24+** and the **Docker Compose v2** plugin.
+- No local Node.js or MySQL installation required — both run inside containers.
+
+**For the manual workflow:**
 
 - **Node.js `>= 18`** and npm (the lockfile is npm-based).
 - **MySQL Server 8.x** running and reachable, with an account that can create databases (for `npm run db:init`).
-- A POSIX-ish shell is fine; all commands below are cross-platform npm scripts.
 
 ---
 
-## 5. Installation & Local Setup
+## 6. Local Installation via Docker
+
+The repository ships with a production-oriented multi-stage `Dockerfile` and a `docker-compose.yml` that orchestrates the application and a persistent MySQL database on an isolated internal network.
 
 ```bash
-# 1. Install dependencies
-npm install
+# 1. Clone and enter the project
+git clone <repo-url> rc-tractoparts && cd rc-tractoparts
 
-# 2. Create your environment file from the template
-cp .env.example .env          # Windows (PowerShell): Copy-Item .env.example .env
+# 2. Create your environment file from the template and fill in real secrets
+cp .env.example .env          # Windows PowerShell: Copy-Item .env.example .env
+
+# 3. Build the images and start the stack (detached)
+docker compose up -d --build
+
+# 4. Follow the application logs
+docker compose logs -f app
 ```
 
-**3. Edit `.env`** with your real values. Reference (`.env.example`):
+**What happens on first `up`:**
 
-```ini
-# Application
-NODE_ENV=development
-PORT=3000
-APP_NAME=RC-Tractoparts-API
+- The `db` service initializes MySQL and **auto-runs `sql/init.sql`** (mounted into `/docker-entrypoint-initdb.d/`), which drops/recreates the schema and seeds roles, brands, sample clients, the year counter, and the initial privileged accounts.
+- The `app` service waits until the database reports **healthy** (`depends_on: condition: service_healthy`), then starts Express.
+- Generated PDFs and uploaded Excel files persist in the named volumes `app_uploads` and `app_storage`; database data persists in `db_data`.
 
-# Database (MySQL)
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password_here
-DB_NAME=rc_tractoparts
-DB_NAME_TEST=rc_tractoparts_test   # used only when NODE_ENV=test
+**Endpoints (published to the host on `127.0.0.1` only):**
 
-DB_CONNECTION_LIMIT=10
-DB_QUEUE_LIMIT=0
+- Frontend / login: `http://localhost:3000/`
+- Health check: `http://localhost:3000/health`
+- Swagger UI: `http://localhost:3000/api-docs`
 
-# Auth & security
-JWT_SECRET=replace_with_a_long_random_secret_at_least_64_chars
-JWT_EXPIRES_IN=8h
-BCRYPT_ROUNDS=12
-
-# Brute-force protection
-MAX_LOGIN_ATTEMPTS=3
-LOCK_DURATION_MINUTES=15
-
-# File uploads
-UPLOAD_DIR=uploads/cotizaciones
-MAX_PDF_SIZE_MB=10
-
-# CORS (comma-separated origins)
-CORS_ORIGIN=http://localhost:3000,http://localhost:5173
-```
-
-**4. Initialize the database.** `sql/init.sql` is self-contained — it **drops and recreates** the `rc_tractoparts` database, builds every table, and seeds roles, default brands, sample clients, the year counter, and the three initial privileged accounts:
+**Common commands:**
 
 ```bash
-npm run db:init
+docker compose ps                 # Container status
+docker compose logs -f app        # Tail app logs
+docker compose exec app sh        # Shell into the app container
+docker compose exec db mysql -u root -p   # MySQL client inside the db container
+docker compose down               # Stop and remove containers (volumes are kept)
+docker compose down -v            # Stop and ALSO remove volumes (destroys data)
 ```
 
-> `db:init` opens a one-shot admin connection (no pre-selected DB, `multipleStatements` enabled) and runs the whole script. ⚠️ It is destructive — it drops any existing `rc_tractoparts` database first.
+> ⚠️ `sql/init.sql` is **destructive** — on first initialization it drops any existing `rc_tractoparts` database. It only auto-runs when the `db_data` volume is empty (first boot).
 
 **Initial accounts seeded by `init.sql`** (rotate these in production):
 
@@ -216,16 +300,32 @@ npm run db:init
 
 `Ejecutivo` accounts are **not** seeded; they are created from inside the platform via `POST /api/usuarios`.
 
-**5. (Optional) Seed development/test users** with freshly generated bcrypt hashes:
+---
+
+## 7. Manual (Non-Docker) Installation
 
 ```bash
+# 1. Install dependencies
+npm install
+
+# 2. Create your environment file from the template
+cp .env.example .env          # Windows PowerShell: Copy-Item .env.example .env
+
+# 3. Edit .env with your real values (keep DB_HOST=localhost for a local MySQL)
+
+# 4. Initialize the database (destructive — drops rc_tractoparts first)
+npm run db:init
+
+# 5. (Optional) Seed development/test users with fresh bcrypt hashes
 npm run seed            # PREVIEW only — prints SQL, writes nothing
 npm run seed:execute    # Connects and upserts the dev users into the DB
 ```
 
+> `db:init` opens a one-shot admin connection (no pre-selected DB, `multipleStatements` enabled) and runs the whole `sql/init.sql` script.
+
 ---
 
-## 6. Local Execution
+## 8. Local Execution
 
 ```bash
 # Development (auto-reload via nodemon)
@@ -235,13 +335,7 @@ npm run dev
 npm start
 ```
 
-On a successful start the server validates the DB connection, then listens on `PORT` (default **3000**):
-
-- **Frontend / login:** `http://localhost:3000/`
-- **Health check:** `http://localhost:3000/health`
-- **Interactive API docs (Swagger UI):** `http://localhost:3000/api-docs`
-
-If MySQL is unreachable, startup aborts with a non-zero exit code (it will not serve requests it cannot fulfill).
+On a successful start the server validates the DB connection, then listens on `PORT` (default **3000**). If MySQL is unreachable, startup aborts with a non-zero exit code.
 
 **Quality / tests:**
 
@@ -252,33 +346,40 @@ npm run test:integration  # Integration tests — REQUIRES rc_tractoparts_test D
 npm test                  # Full Jest run (integration parts need the test DB)
 ```
 
-> Integration tests connect to the database named by `DB_NAME_TEST` when `NODE_ENV=test`. Create and initialize that database before running them.
+---
+
+## 9. Environment Variables
+
+All secrets and configuration are externalized to `.env` (never committed). Reference (`.env.example`):
+
+| Variable | Group | Description |
+|---|---|---|
+| `NODE_ENV` | App | `development` \| `production` \| `test` |
+| `PORT` | App | HTTP port Express listens on (default `3000`) |
+| `APP_NAME` | App | Display name used in logs / Swagger |
+| `DB_HOST` | Database | MySQL host. In Docker Compose it is overridden to the `db` service name |
+| `DB_PORT` | Database | MySQL port (default `3306`) |
+| `DB_USER` | Database | Application DB user |
+| `DB_PASSWORD` | Database | Application DB user password (**secret**) |
+| `DB_NAME` | Database | Primary database name (`rc_tractoparts`) |
+| `DB_NAME_TEST` | Database | Database used only when `NODE_ENV=test` |
+| `DB_ROOT_PASSWORD` | Database | MySQL **root** password for the Compose `db` service (**secret**) |
+| `DB_CONNECTION_LIMIT` | Database | Max simultaneous pool connections |
+| `DB_QUEUE_LIMIT` | Database | Queue cap; `0` = unlimited |
+| `JWT_SECRET` | Auth | HS256 signing secret, ≥ 64 random chars (**secret**) |
+| `JWT_EXPIRES_IN` | Auth | Token lifetime (e.g. `8h`) |
+| `BCRYPT_ROUNDS` | Auth | bcrypt cost factor |
+| `MAX_LOGIN_ATTEMPTS` | Security | Failures before account lock |
+| `LOCK_DURATION_MINUTES` | Security | Account-lock duration |
+| `UPLOAD_DIR` | Uploads | PDF upload directory (default `uploads/cotizaciones`) |
+| `MAX_PDF_SIZE_MB` | Uploads | Maximum PDF size in MB |
+| `CORS_ORIGIN` | CORS | Comma-separated allowed origins (your public HTTPS domain in production) |
+
+> **Secret generation:** create a strong JWT secret with `openssl rand -hex 64`. Never hardcode secrets in source, the Dockerfile, or `docker-compose.yml` — Compose reads them from `.env` at runtime.
 
 ---
 
-## 7. Functional Overview
-
-### Web client (served from `public/`)
-
-- **Login** (`index.html`) — username/password, JWT stored client-side via `authSession`.
-- **Dashboard** (`dashboard.html`) — role-aware views: quotation list/filters, quotation form, approval queue, notifications, timeline/history, and BI reports.
-
-### REST API surface
-
-| Area | Endpoints | Access |
-|---|---|---|
-| **Auth** | `POST /api/auth/login`, `POST /api/auth/logout` | Public / authenticated |
-| **Quotations** | `GET /` (paginated+filtered), `POST /`, `GET /:id`, `PUT /:id` (owner, Pendiente only), `GET /resumen`, `GET /pendientes-aprobacion`, `GET /:id/historial` | All authenticated roles (writes role-scoped) |
-| **Quotation state** | `PUT /:id/estado` (role state machine), `POST /:id/aprobar` (Jefe/SysAdmin), `PATCH /:id/comentario-admin` (Administracion) | Role-restricted |
-| **Quotation files** | `POST /:id/pdf`, `POST /:id/upload` (PDF+Excel), `GET /:id/pdf`, `GET /:id/excel` | Ejecutivo upload / all download |
-| **Notifications** | `GET /api/cotizaciones/notificaciones`, `POST /…/notificaciones/leer` | Ejecutivo |
-| **Users** | `GET /`, `POST /`, `GET /:id`, `PUT /:id` (Jefe/Administracion/SysAdmin), `DELETE /:id` soft-delete (Jefe/SysAdmin) | Management roles |
-| **Clients** | `GET /api/clientes` (autocomplete), `POST /api/clientes` | All roles |
-| **Brands** | `GET /api/marcas`, `POST /api/marcas` | Quote-creating roles |
-| **Reports** | `GET /api/reportes/progreso` (Jefe/SysAdmin), `GET /api/reportes/advanced` (row-level security for Ejecutivo) | Restricted |
-| **System** | `GET /health` | Public |
-
-## 7. Functional Overview
+## 10. Functional Overview
 
 ### Web client (served from `public/`)
 
@@ -312,7 +413,7 @@ npm test                  # Full Jest run (integration parts need the test DB)
 
 ---
 
-## 8. Frontend Architecture
+## 11. Frontend Architecture
 
 The frontend is a vanilla JavaScript SPA using ES Modules — no transpiler or bundler required. Design patterns applied:
 
@@ -339,13 +440,15 @@ The frontend is a vanilla JavaScript SPA using ES Modules — no transpiler or b
 | `dashboard/modules/reportesView.js` | BI charts and leaderboard tables |
 | `dashboard/modules/notificationsView.js` | Notification badge polling and read marking |
 
+The UI is **mobile-first responsive**: at narrow widths the dashboard collapses into a single stacked column, expanding into a multi-column layout on larger screens (see [§3.4](#34-system-performance--ui-flow)).
+
 ---
 
-## 9. Security Model
+## 12. Security Model
 
 | Layer | Mechanism |
 |---|---|
-| Transport | HTTPS recommended behind a reverse proxy (Nginx) |
+| Transport | HTTPS terminated at the Nginx reverse proxy (Let's Encrypt) |
 | Headers | `helmet` — CSP, X-Frame-Options, HSTS, etc. |
 | CORS | Allowlist-based; origins configured via `CORS_ORIGIN` env var |
 | Rate limiting | Global + stricter on `/api/auth/login` and file uploads |
@@ -357,10 +460,12 @@ The frontend is a vanilla JavaScript SPA using ES Modules — no transpiler or b
 | Brute force | Lockout after `MAX_LOGIN_ATTEMPTS` failures for `LOCK_DURATION_MINUTES` |
 | Error handling | Global handler; stack traces / internals never exposed on 5xx |
 | Auditing | All significant actions logged to `bitacora_auditoria` |
+| Secrets | Externalized to `.env`; never hardcoded in source or images |
+| Container | Runs as non-root `node` user; MySQL never exposed to the public network |
 
 ---
 
-## 10. Tests
+## 13. Tests
 
 ```bash
 npm run test:unit         # Unit tests — NO database required
@@ -377,15 +482,11 @@ npm test                  # Full Jest run (integration parts need the test DB)
 | `tests/integration/correlativo.concurrencia.test.js` | Integration | Atomic correlativo generation under concurrent requests |
 | `tests/integration/newFeatures.test.js` | Integration | Admin notes visibility (NF-03) + persistent notifications (NF-04) |
 
-> Integration tests connect to the database named by `DB_NAME_TEST` in `.env` when `NODE_ENV=test`. Initialize that database before running them:
-> ```bash
-> # In .env: DB_NAME_TEST=rc_tractoparts_test
-> # Then run db:init once for the test DB (update DB_NAME temporarily, or connect manually)
-> ```
+> Integration tests connect to the database named by `DB_NAME_TEST` when `NODE_ENV=test`. Create and initialize that database before running them.
 
 ---
 
-## 11. Business Entity & Legal Naming
+## 14. Business Entity & Legal Naming
 
 The primary business entity name was officially changed from **"RC Tractoparts"** to **"Empresa unipersonal de Ronald Roca Cartagena"**. This refactor was applied consistently across **all layers** of the stack:
 
@@ -401,11 +502,11 @@ The primary business entity name was officially changed from **"RC Tractoparts"*
   - `quotationValidator.js` keeps `'RC Tractoparts'` in the `VALID_ENTITIES` allow-list, so pre-rename rows still validate on edit/re-save.
   - `pdfService.js` exposes `normalizeEntidad()`, which maps any stored `'RC Tractoparts'` value (or blank) to `Empresa unipersonal de Ronald Roca Cartagena` at print time — old quotations render the correct header **without any data migration**.
 
-> This mirrors the same legacy-tolerance approach used for the `Aceptada` → `Confirmada` state rename (see [§2](#2-system-architecture--tech-stack)).
+> This mirrors the same legacy-tolerance approach used for the `Aceptada` → `Confirmada` state rename (see [§2](#2-system-architecture--tech-stack)). The dynamic per-entity header/branding/tax resolution is illustrated in [§3.2](#32-multi-company-dynamic-logic).
 
 ---
 
-## 12. PDF & Download Handler Refactors
+## 15. PDF & Download Handler Refactors
 
 ### Logo alignment fix (`src/services/pdfService.js`)
 
@@ -415,26 +516,93 @@ The primary brand logo alignment in `drawHeader()` was changed from `align: 'cen
 
 The legacy download approach used `window.open(blobUrl)` on a raw `blob:` URL, which caused browsers to save PDFs with an unreadable random UUID filename (e.g. `32cb1a0d-…`), breaking the executives' "download & send to client via WhatsApp" workflow.
 
-This was completely replaced by a **dynamic anchor-tag injection** technique (`document.createElement('a')` with the `download` attribute set). Now both **PDFs and Excel files** download while enforcing the real, clean quotation alphanumeric identifier as the filename (e.g. `COT-2026-0001.pdf`). The correlativo is sanitized before use to block any path/header-injection characters.
+This was completely replaced by a **dynamic anchor-tag injection** technique (`document.createElement('a')` with the `download` attribute set). Now both **PDFs and Excel files** download while enforcing the real, clean quotation alphanumeric identifier as the filename (e.g. `COT-2026-0001.pdf`). The correlativo is sanitized before use to block any path/header-injection characters. The download itself is served via **chunked streaming** to keep server memory flat (see [§3.4](#34-system-performance--ui-flow)).
 
 ---
 
-## 13. Production Deployment & Storage Considerations
+## 16. Production Deployment (Nginx + DigitalOcean)
 
-**Current architecture — local persistent disk:** generated PDFs and uploaded Excel attachments are written to the **local filesystem** via filesystem streams:
+The recommended production topology runs the Docker Compose stack on a **DigitalOcean Droplet**, with **Nginx on the host** acting as a TLS-terminating reverse proxy in front of the containerized app. See the diagram in [§3.1](#31-deployment--infrastructure-architecture).
 
-- PDFs → `uploads/cotizaciones/`
-- Excel spreadsheets → `storage/excels/`
+### 16.1 Provision the Droplet
 
-Both directories are runtime, gitignored locations. This model works reliably on a traditional server or VM with a persistent disk.
+1. Create an Ubuntu 22.04 LTS Droplet and point your domain's `A` record at its public IP.
+2. Harden SSH, create a non-root sudo user, and enable the firewall:
+   ```bash
+   sudo ufw allow OpenSSH
+   sudo ufw allow 'Nginx Full'   # opens 80 and 443
+   sudo ufw enable
+   ```
+3. Install Docker Engine + Compose plugin and Nginx + Certbot:
+   ```bash
+   curl -fsSL https://get.docker.com | sh
+   sudo apt-get install -y nginx certbot python3-certbot-nginx
+   ```
 
-> ⚠️ **Ephemeral/serverless deployment warning**
->
-> On platforms with **ephemeral filesystems** — such as **Render** or **Heroku** — any files written to local disk are **wiped on every instance restart, redeploy, or dyno cycling**. Quotation PDFs and Excel attachments saved locally **will be lost**, and download endpoints will start returning 404s for previously generated files.
->
-> **For production on such platforms, do one of the following:**
-> - Use dedicated **object storage** (e.g. **DigitalOcean Spaces**, AWS S3, or any S3-compatible bucket) and persist file references instead of local paths, **or**
-> - Switch to **in-memory streaming buffers**, generating the PDF/Excel on demand and streaming it directly to the client without touching disk.
+### 16.2 Deploy the application stack
+
+```bash
+git clone <repo-url> /opt/rc-tractoparts && cd /opt/rc-tractoparts
+cp .env.example .env          # fill in production secrets (strong passwords + JWT)
+# Set CORS_ORIGIN=https://cotizaciones.tudominio.com in .env
+docker compose up -d --build
+```
+
+The `app` container binds to **`127.0.0.1:3000`** only — it is never publicly exposed. Only Nginx faces the internet.
+
+### 16.3 Configure Nginx as a reverse proxy
+
+Create `/etc/nginx/sites-available/rc-tractoparts`:
+
+```nginx
+server {
+    listen 80;
+    server_name cotizaciones.tudominio.com;
+
+    # Allow large PDF/Excel uploads (matches MAX_PDF_SIZE_MB)
+    client_max_body_size 12M;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Enable it and reload:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/rc-tractoparts /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+> The app already calls `app.set('trust proxy', 1)`, so `X-Forwarded-*` headers are honored for correct client IPs and rate limiting.
+
+### 16.4 Enable HTTPS with Let's Encrypt
+
+```bash
+sudo certbot --nginx -d cotizaciones.tudominio.com
+```
+
+Certbot obtains the certificate, rewrites the Nginx config to listen on `:443` with TLS, and installs an automatic renewal timer. All client traffic is now HTTPS; TLS is terminated at Nginx and forwarded as plain HTTP to the container on the loopback interface.
+
+### 16.5 Persistence & storage warning
+
+Generated PDFs (`uploads/cotizaciones/`) and uploaded Excel files (`storage/excels/`) are written to disk and persisted via the Docker named volumes `app_uploads` and `app_storage`; the database persists via `db_data`.
+
+> ⚠️ On **ephemeral/serverless** platforms (e.g. Render, Heroku) local files are wiped on every restart/redeploy. A persistent-disk Droplet with named volumes (as above) avoids this. For horizontal scaling, migrate file storage to **object storage** (DigitalOcean Spaces / S3) or stream generated documents in-memory instead of writing to local disk.
+
+### 16.6 Operations
+
+```bash
+docker compose pull && docker compose up -d --build   # deploy an update
+docker compose logs -f app                            # tail logs
+docker compose exec db mysqldump -u root -p rc_tractoparts > backup.sql   # DB backup
+```
 
 ---
 

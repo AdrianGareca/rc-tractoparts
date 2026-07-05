@@ -1,0 +1,35 @@
+# =============================================================================
+# .dockerignore — keep the build context small and secrets out of the image
+# =============================================================================
+
+# Dependencies (reinstalled cleanly inside the image via npm ci)
+node_modules
+npm-debug.log*
+
+# Local environment / secrets — NEVER bake these into an image
+.env
+.env.*
+!.env.example
+
+# Version control & editor metadata
+.git
+.gitignore
+.vscode
+.idea
+
+# Tests & CI (not needed in the production runtime image)
+tests
+coverage
+*.test.js
+
+# Local runtime artifacts (persisted via named volumes, not the image)
+uploads
+storage
+*.log
+
+# Documentation & misc
+README.md
+README.es.md
+Dockerfile
+docker-compose.yml
+.dockerignore

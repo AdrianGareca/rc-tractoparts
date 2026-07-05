@@ -1,0 +1,105 @@
+# =============================================================================
+# RC Tractoparts — Quotation Management System
+# docker-compose.yml — production-oriented multi-container orchestration
+#
+# Services:
+#   • app  — Node.js/Express API + static SPA (built from ./Dockerfile)
+#   • db   — MySQL 8 with a persistent named volume; auto-seeded from sql/init.sql
+#
+# Networking:
+#   • Internal bridge network "rc_internal" isolates app <-> db traffic.
+#   • Only the app publishes a port to the host; MySQL stays private.
+#
+# Secrets:
+#   • ALL credentials come from the .env file (see .env.example).
+#   • No secrets are hardcoded in this file.
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # MySQL 8 database
+  # ---------------------------------------------------------------------------
+  db:
+    image: mysql:8.0
+    container_name: rc_tractoparts_db
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${DB_NAME:?set DB_NAME in .env}
+      MYSQL_USER: ${DB_USER:?set DB_USER in .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      # Persistent data — survives container restarts/recreation
+      - db_data:/var/lib/mysql
+      # Auto-run the master schema on FIRST initialization only.
+      # sql/init.sql is self-contained (it DROP/CREATEs its own database).
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - rc_internal
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Node.js / Express application
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rc_tractoparts_app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+      APP_NAME: ${APP_NAME:-RC-Tractoparts-API}
+      # DB_HOST points at the "db" service name on the internal network,
+      # NOT localhost — containers resolve each other by service name.
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:?set DB_USER in .env}
+      DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      DB_NAME: ${DB_NAME:?set DB_NAME in .env}
+      DB_NAME_TEST: ${DB_NAME_TEST:-rc_tractoparts_test}
+      DB_CONNECTION_LIMIT: ${DB_CONNECTION_LIMIT:-10}
+      DB_QUEUE_LIMIT: ${DB_QUEUE_LIMIT:-0}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+      MAX_LOGIN_ATTEMPTS: ${MAX_LOGIN_ATTEMPTS:-3}
+      LOCK_DURATION_MINUTES: ${LOCK_DURATION_MINUTES:-15}
+      UPLOAD_DIR: ${UPLOAD_DIR:-uploads/cotizaciones}
+      MAX_PDF_SIZE_MB: ${MAX_PDF_SIZE_MB:-10}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    volumes:
+      # Persist generated PDFs and uploaded Excel files across deploys.
+      - app_uploads:/app/uploads
+      - app_storage:/app/storage
+    ports:
+      # Bind to 127.0.0.1 only: the host's Nginx reverse proxy terminates TLS
+      # and forwards to this port. The container is never exposed publicly.
+      - "127.0.0.1:${PORT:-3000}:${PORT:-3000}"
+    networks:
+      - rc_internal
+
+# -----------------------------------------------------------------------------
+# Named volumes (managed by Docker; survive `docker compose down`)
+# -----------------------------------------------------------------------------
+volumes:
+  db_data:
+  app_uploads:
+  app_storage:
+
+# -----------------------------------------------------------------------------
+# Isolated internal network
+# -----------------------------------------------------------------------------
+networks:
+  rc_internal:
+    driver: bridge
