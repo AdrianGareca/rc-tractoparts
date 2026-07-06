@@ -9,10 +9,10 @@
 // Middleware registration order (important):
 //   1. Security headers (helmet)
 //   2. CORS
-//   3. Rate limiting (global)
-//   4. Request logging (morgan)
-//   5. Body parsing
-//   6. Static files  (public/)
+//   3. Static files  (public/)
+//   4. Rate limiting (global)
+//   5. Request logging (morgan)
+//   6. Body parsing
 //   7. Swagger UI    (/api-docs)
 //   8. API routes
 //   9. 404 handler
@@ -83,13 +83,26 @@ app.use(cors({
 }));
 
 // ---------------------------------------------------------------------------
-// 3. Global Rate Limiter — applied to ALL routes.
+// 3. Static Files — public/ directory
+// Serves the login page (index.html), dashboard, global stylesheet, and all
+// ES module scripts. Mounted BEFORE the rate limiter so static assets are
+// never blocked by request-count limits. express.static silently falls through
+// for paths that have no matching file, so /api/* requests reach route handlers.
+// ---------------------------------------------------------------------------
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Serve backend image assets (logo, brand images) at /assets/images/ so the
+// frontend can reference the same canonical rc_logo.png used by the PDF engine.
+app.use('/assets/images', express.static(path.join(__dirname, 'assets', 'images')));
+
+// ---------------------------------------------------------------------------
+// 4. Global Rate Limiter — applied to ALL routes.
 //    Protects against resource-abuse and generic DDoS vectors.
 //    Strict per-endpoint limits (e.g. login) are applied in the route files.
 // ---------------------------------------------------------------------------
 const globalLimiter = rateLimit({
   windowMs:         15 * 60 * 1000, // 15-minute sliding window
-  max:              300,             // max requests per IP per window
+  max:              1000,            // max requests per IP per window
   standardHeaders:  true,            // Return limit info in `RateLimit-*` headers
   legacyHeaders:    false,           // Disable deprecated `X-RateLimit-*` headers
   message: {
@@ -105,13 +118,13 @@ const globalLimiter = rateLimit({
 app.use(globalLimiter);
 
 // ---------------------------------------------------------------------------
-// 4. HTTP Request Logging — morgan
+// 5. HTTP Request Logging — morgan
 // ---------------------------------------------------------------------------
 const morganFormat = process.env.NODE_ENV === 'production' ? 'combined' : 'dev';
 app.use(morgan(morganFormat));
 
 // ---------------------------------------------------------------------------
-// 5. Body Parsers
+// 6. Body Parsers
 //    JSON payloads are capped at 5 MB to prevent large-payload DoS attacks.
 //    Requests that exceed this limit return HTTP 413 before touching any route.
 // ---------------------------------------------------------------------------
@@ -156,19 +169,6 @@ const swaggerOptions = {
 };
 
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
-
-// ---------------------------------------------------------------------------
-// 6. Static Files — public/ directory
-// Serves the login page (index.html), dashboard, global stylesheet, and all
-// ES module scripts. Mounted before Swagger so "/" resolves to the login SPA
-// rather than the API docs. express.static silently falls through for paths
-// that have no matching file, so /api/* requests reach the route handlers.
-// ---------------------------------------------------------------------------
-app.use(express.static(path.join(__dirname, '..', 'public')));
-
-// Serve backend image assets (logo, brand images) at /assets/images/ so the
-// frontend can reference the same canonical rc_logo.png used by the PDF engine.
-app.use('/assets/images', express.static(path.join(__dirname, 'assets', 'images')));
 
 // ---------------------------------------------------------------------------
 // 7. Swagger UI — interactive API documentation at /api-docs
