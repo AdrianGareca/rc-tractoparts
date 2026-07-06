@@ -33,3 +33,5 @@ README.es.md
 Dockerfile
 docker-compose.yml
 .dockerignore
+
+.claude
