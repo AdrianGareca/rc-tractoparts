@@ -78,7 +78,7 @@ const ROLE_TRANSITIONS = {
     Pendiente:               ['En revision', 'En espera', 'Archivada'],
     'En revision':           ['En espera', 'Pendiente', 'Archivada'],   // Can hold or retract
     'En espera':             ['En revision', 'Pendiente', 'Archivada'], // Can resume or retract
-    'Aprobada internamente': ['Enviada al cliente', 'Archivada'],       // Forward to client or archive
+    'Aprobada internamente': ['Enviada al cliente', 'Pendiente', 'Archivada'], // Forward to client, request changes, or archive
     'Enviada al cliente':    ['Confirmada', 'Rechazada', 'Archivada'],  // Record client outcome
     Rechazada:               ['Pendiente', 'Archivada'],               // Allow rework cycle
     Confirmada:              ['Archivada'],
@@ -96,7 +96,9 @@ const ROLE_TRANSITIONS = {
     Pendiente:               ['En revision', 'En espera', 'Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Archivada'],
     'En revision':           ['Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'En espera', 'Archivada'],
     'En espera':             ['Aprobada internamente', 'Enviada al cliente', 'Rechazada', 'Pendiente', 'En revision', 'Archivada'],
-    'Aprobada internamente': ['Confirmada', 'Enviada al cliente', 'Rechazada', 'Archivada'],
+    // 'En espera' and 'Pendiente' added: allows Jefe to suspend or request changes on
+    // a fully-approved quotation before it is sent to the client (HU-CambioPostAprobacion).
+    'Aprobada internamente': ['Confirmada', 'Enviada al cliente', 'Rechazada', 'En espera', 'Pendiente', 'Archivada'],
     // 'Pendiente' added: allows Jefe to request changes when the quote has already
     // been sent to the client (asynchronous internal delivery model — HU-CambioPostEnvio).
     // 'En espera' added: Jefe may suspend a delivered quotation while waiting for

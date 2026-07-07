@@ -87,10 +87,7 @@ function _buildProformaHTML(q, id, viewMode) {
   const canAceptar      = jefeMode && ['Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
   const canRechazar     = jefeMode && !['Confirmada', 'Aceptada', 'Archivada', 'Rechazada'].includes(q.estado);
   const canHold         = jefeMode && ['Pendiente', 'En revision', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
-  // 'Aprobada internamente' is intentionally excluded: the Jefe ROLE_TRANSITIONS
-  // matrix has NO 'Aprobada internamente' → 'Pendiente' edge, so offering
-  // "Solicitar Cambios" there would always 403. Aligns the UI with the backend.
-  const canRetract      = jefeMode && ['En revision', 'En espera', 'Enviada al cliente'].includes(q.estado);
+  const canRetract      = jefeMode && ['En revision', 'En espera', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
   // High-privilege revert: only Jefe/SysAdmin can revert a Rechazada quotation
   const canRevertir = jefeMode && q.estado === 'Rechazada';
 
@@ -140,7 +137,7 @@ function _buildProformaHTML(q, id, viewMode) {
     </div>` : ''}
     ` : '';
 
-  // Admin action panel — comment box + "En Espera" button only
+  // Admin action panel — comment box + "En Espera" + "Solicitar Cambios" buttons
   const adminButtons = adminMode ? `
     <div class="approval-actions" style="border-top:1px solid var(--border);margin-top:1.5rem;padding-top:1.25rem;">
       <h4 class="approval-actions-title">Revisión del Administrador</h4>
@@ -158,6 +155,13 @@ function _buildProformaHTML(q, id, viewMode) {
         <button class="btn btn-hold btn-sm" id="btn-admin-en-espera">
           ⏸ Poner en Espera con Comentario
         </button>
+        ${
+          ['En revision', 'En espera', 'Aprobada internamente'].includes(q.estado)
+            ? `<button class="btn btn-warning btn-sm" id="btn-admin-solicitar-cambios">
+          ↩ Solicitar Cambios
+        </button>`
+            : ''
+        }
       </div>
     </div>` : '';
 
@@ -1401,9 +1405,11 @@ class ManagerStrategy extends DashboardStrategy {
                         <button class="btn btn-ghost btn-sm" data-user-edit="${u.id}"
                                 data-nombre="${u.nombre_completo}" data-rol="${u.id_rol}"
                                 data-canapprove="${u.can_approve_quotations ? 1 : 0}">Editar</button>
-                        ${u.activo ? `
-                        <button class="btn btn-danger btn-sm" data-user-deact="${u.id}"
-                                data-uname="${u.nombre_usuario}">Desactivar</button>` : ''}
+                        ${u.activo
+                          ? `<button class="btn btn-danger btn-sm" data-user-deact="${u.id}"
+                                data-uname="${u.nombre_usuario}">Desactivar</button>`
+                          : `<button class="btn btn-success btn-sm" data-user-act="${u.id}"
+                                data-uname="${u.nombre_usuario}">Activar</button>`}
                       </div>
                     </td>
                   </tr>`).join('')}
@@ -1422,6 +1428,10 @@ class ManagerStrategy extends DashboardStrategy {
       panel.querySelectorAll('[data-user-deact]').forEach(btn =>
         btn.addEventListener('click', () =>
           this._confirmDeactivateUser(btn.dataset.userDeact, btn.dataset.uname)));
+
+      panel.querySelectorAll('[data-user-act]').forEach(btn =>
+        btn.addEventListener('click', () =>
+          this._confirmActivateUser(btn.dataset.userAct, btn.dataset.uname)));
 
     } catch (err) {
       panel.innerHTML = `<div class="empty-state"><p>Error cargando usuarios: ${escHtml(err.message)}</p></div>`;
@@ -1576,6 +1586,30 @@ class ManagerStrategy extends DashboardStrategy {
         CommandInvoker.run(new DeactivateUserCommand(id), {
           btn,
           successMsg: `Usuario "${username}" desactivado.`,
+          onSuccess:  () => { UI.closeModal(); this._renderUsers(document.getElementById('manager-panel')); },
+        });
+      });
+    });
+  }
+
+  _confirmActivateUser(id, username) {
+    UI.openModal('Confirmar Activación', (body) => {
+      body.innerHTML = `
+        <div class="confirm-dialog">
+          <h4>¿Activar al usuario "${username}"?</h4>
+          <p>El usuario podrá acceder al sistema nuevamente.</p>
+          <div style="display:flex;justify-content:center;gap:.75rem;">
+            <button class="btn btn-ghost" id="ac-cancel">Cancelar</button>
+            <button class="btn btn-success" id="ac-confirm">Sí, Activar</button>
+          </div>
+        </div>`;
+
+      body.querySelector('#ac-cancel')?.addEventListener('click', UI.closeModal);
+      body.querySelector('#ac-confirm')?.addEventListener('click', () => {
+        const btn = body.querySelector('#ac-confirm');
+        CommandInvoker.run(new UpdateUserCommand(id, { activo: 1 }), {
+          btn,
+          successMsg: `Usuario "${username}" activado.`,
           onSuccess:  () => { UI.closeModal(); this._renderUsers(document.getElementById('manager-panel')); },
         });
       });
@@ -1853,6 +1887,24 @@ class AdminStrategy extends DashboardStrategy {
             onError:    (err) => { errEl.textContent = err.data?.message || err.message; },
           });
         });
+
+        // Wire "Solicitar Cambios" button (Administracion → Pendiente)
+        body.querySelector('#btn-admin-solicitar-cambios')?.addEventListener('click', () => {
+          const comment = body.querySelector('#admin-comment-input')?.value.trim() ?? '';
+          const errEl2  = body.querySelector('#admin-comment-err');
+          const btn     = body.querySelector('#btn-admin-solicitar-cambios');
+          if (!comment) {
+            errEl2.textContent = 'El comentario es requerido para solicitar cambios.';
+            return;
+          }
+          errEl2.textContent = '';
+          CommandInvoker.run(new ChangeStatusCommand(id, 'Pendiente', comment), {
+            btn,
+            successMsg: 'Cambios solicitados. La cotización ha vuelto al ejecutivo.',
+            onSuccess:  () => { UI.closeModal(); this.refresh(); },
+            onError:    (apiErr) => { errEl2.textContent = apiErr.data?.message || apiErr.message; },
+          });
+        });
       }, { wide: true });
     } catch (err) {
       showToast(`No se pudo cargar la cotización: ${err.message}`, 'error');
@@ -1960,9 +2012,11 @@ class AdminStrategy extends DashboardStrategy {
                         <button class="btn btn-ghost btn-sm" data-user-edit="${u.id}"
                                 data-nombre="${u.nombre_completo}" data-rol="${u.id_rol}"
                                 data-canapprove="${u.can_approve_quotations ? 1 : 0}">Editar</button>
-                        ${u.activo ? `
-                        <button class="btn btn-danger btn-sm" data-user-deact="${u.id}"
-                                data-uname="${u.nombre_usuario}">Desactivar</button>` : ''}
+                        ${u.activo
+                          ? `<button class="btn btn-danger btn-sm" data-user-deact="${u.id}"
+                                data-uname="${u.nombre_usuario}">Desactivar</button>`
+                          : `<button class="btn btn-success btn-sm" data-user-act="${u.id}"
+                                data-uname="${u.nombre_usuario}">Activar</button>`}
                       </div>
                     </td>
                   </tr>`).join('')}
@@ -1978,6 +2032,10 @@ class AdminStrategy extends DashboardStrategy {
       panel.querySelectorAll('[data-user-deact]').forEach(btn =>
         btn.addEventListener('click', () =>
           this._confirmDeactivateUser(btn.dataset.userDeact, btn.dataset.uname)));
+
+      panel.querySelectorAll('[data-user-act]').forEach(btn =>
+        btn.addEventListener('click', () =>
+          this._confirmActivateUser(btn.dataset.userAct, btn.dataset.uname)));
 
     } catch (err) {
       panel.innerHTML = `<div class="empty-state"><p>Error cargando usuarios: ${escHtml(err.message)}</p></div>`;
@@ -2129,6 +2187,30 @@ class AdminStrategy extends DashboardStrategy {
         CommandInvoker.run(new DeactivateUserCommand(id), {
           btn,
           successMsg: `Usuario "${username}" desactivado.`,
+          onSuccess:  () => { UI.closeModal(); this._renderUsers(document.getElementById('admin-panel')); },
+        });
+      });
+    });
+  }
+
+  _confirmActivateUser(id, username) {
+    UI.openModal('Confirmar Activación', (body) => {
+      body.innerHTML = `
+        <div class="confirm-dialog">
+          <h4>¿Activar al usuario "${username}"?</h4>
+          <p>El usuario podrá acceder al sistema nuevamente.</p>
+          <div style="display:flex;justify-content:center;gap:.75rem;">
+            <button class="btn btn-ghost" id="ac2-cancel">Cancelar</button>
+            <button class="btn btn-success" id="ac2-confirm">Sí, Activar</button>
+          </div>
+        </div>`;
+
+      body.querySelector('#ac2-cancel')?.addEventListener('click', UI.closeModal);
+      body.querySelector('#ac2-confirm')?.addEventListener('click', () => {
+        const btn = body.querySelector('#ac2-confirm');
+        CommandInvoker.run(new UpdateUserCommand(id, { activo: 1 }), {
+          btn,
+          successMsg: `Usuario "${username}" activado.`,
           onSuccess:  () => { UI.closeModal(); this._renderUsers(document.getElementById('admin-panel')); },
         });
       });

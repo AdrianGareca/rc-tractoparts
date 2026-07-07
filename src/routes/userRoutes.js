@@ -5,7 +5,7 @@
 //
 // Role access matrix (per SYSTEM HIERARCHY & PRIVILEGES SPECIFICATION):
 //   View, Create, Edit  → Jefe, Administracion, SysAdmin (unrestricted access)
-//   Delete (soft)       → Jefe, SysAdmin only
+//   Delete (soft)       → Jefe, Administracion, SysAdmin
 // =============================================================================
 
 'use strict';
@@ -220,7 +220,7 @@ router.put('/:id', ...userMgmtRoles, UserController.updateUser);
  *       401:
  *         description: Token ausente o inválido.
  *       403:
- *         description: Rol insuficiente (requiere Jefe).
+ *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
  *       404:
  *         description: Usuario no encontrado.
  *       500:
@@ -228,6 +228,6 @@ router.put('/:id', ...userMgmtRoles, UserController.updateUser);
  */
 
 // DELETE /api/usuarios/:id — soft delete (sets activo=0)
-router.delete('/:id', ...jefeOnly, UserController.deactivateUser);
+router.delete('/:id', ...userMgmtRoles, UserController.deactivateUser);
 
 module.exports = router;
