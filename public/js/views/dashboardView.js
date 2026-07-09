@@ -576,7 +576,7 @@ class ExecutiveStrategy extends DashboardStrategy {
 
     document.getElementById('btn-new-quotation')?.addEventListener('click', () => {
       UI.openModal('Nueva Cotización', (body) => {
-        mountQuotationForm(body, {
+        const destroy = mountQuotationForm(body, {
           onSuccess: (q) => {
             UI.closeModal();
             showToast(`Cotización ${q?.numero_correlativo ?? ''} creada exitosamente.`, 'success');
@@ -584,6 +584,7 @@ class ExecutiveStrategy extends DashboardStrategy {
           },
           onCancel: () => UI.closeModal(),
         });
+        UI.registerCleanup(destroy);
       });
     });
 
@@ -910,7 +911,7 @@ class ExecutiveStrategy extends DashboardStrategy {
   // header + line items, and PUTs the changes to PUT /api/cotizaciones/:id.
   _editQuotation(q) {
     UI.openModal(`Editar Cotización ${q.numero_correlativo}`, (body) => {
-      mountQuotationForm(body, {
+      const destroy = mountQuotationForm(body, {
         quotation: q,
         onSuccess: (updated) => {
           UI.closeModal();
@@ -919,6 +920,7 @@ class ExecutiveStrategy extends DashboardStrategy {
         },
         onCancel: () => UI.closeModal(),
       });
+      UI.registerCleanup(destroy);
     });
   }
 
@@ -1747,6 +1749,7 @@ class ManagerStrategy extends DashboardStrategy {
 // =============================================================================
 const UI = {
   open: false,
+  _activeCleanup: null, // teardown fn for whatever is currently mounted in the modal (if any)
 
   openModal(title, renderFn, { wide = false } = {}) {
     const overlay  = document.getElementById('modal-overlay');
@@ -1754,6 +1757,10 @@ const UI = {
     const body     = document.getElementById('modal-body');
     const titleEl  = document.getElementById('modal-title');
     if (!overlay || !body || !titleEl) return;
+
+    // A new modal is about to render — any teardown registered by whatever
+    // was previously shown no longer applies to what's on screen.
+    UI._activeCleanup = null;
 
     titleEl.textContent = title;
     body.innerHTML      = '';
@@ -1772,7 +1779,21 @@ const UI = {
     overlay.onclick = (e) => { if (e.target === overlay) UI.closeModal(); };
   },
 
+  // Lets a modal's content register a teardown callback (e.g. releasing a
+  // realtime draft lock) that MUST run no matter which path closes the modal
+  // — the X button, Escape, an overlay click, or an explicit Cancel/Submit.
+  registerCleanup(fn) {
+    UI._activeCleanup = fn;
+  },
+
   closeModal() {
+    if (typeof UI._activeCleanup === 'function') {
+      try { UI._activeCleanup(); } catch (err) {
+        console.warn('[UI.closeModal] Cleanup callback failed:', err?.message || err);
+      }
+      UI._activeCleanup = null;
+    }
+
     const overlay = document.getElementById('modal-overlay');
     const dialog  = document.getElementById('modal-dialog');
     if (overlay) overlay.classList.remove('open');
@@ -2485,7 +2506,7 @@ class DashboardController {
         // Special shortcut: "new" opens the modal immediately
         if (btn.dataset.section === 'new') {
           UI.openModal('Nueva Cotización', (body) => {
-            mountQuotationForm(body, {
+            const destroy = mountQuotationForm(body, {
               onSuccess: (q) => {
                 UI.closeModal();
                 showToast(`Cotización ${q?.numero_correlativo ?? ''} creada.`, 'success');
@@ -2493,6 +2514,7 @@ class DashboardController {
               },
               onCancel: UI.closeModal,
             });
+            UI.registerCleanup(destroy);
           });
           return;
         }

@@ -16,8 +16,11 @@
 
 require('dotenv').config(); // Must be first — loads .env before any module reads process.env
 
+const http                      = require('http');
 const app                       = require('./app');              // Configured Express instance
 const { pool, testConnection }  = require('./config/db');        // MySQL pool + startup validator
+const { initSocket }            = require('./realtime/socketServer'); // Draft-lock realtime layer
+const QuotationLockModel        = require('./models/QuotationLockModel');
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 
@@ -32,7 +35,21 @@ async function startServer() {
     // Verify that MySQL is reachable before opening the HTTP port
     await testConnection();
 
-    const server = app.listen(PORT, () => {
+    // Self-healing: no Socket.IO connection can survive a process restart, so
+    // any cotizacion_borrador_lock row still present at boot is necessarily
+    // orphaned from a prior crash/deploy. Clear it before accepting traffic.
+    try {
+      await QuotationLockModel.releaseAll();
+    } catch (lockErr) {
+      console.warn('[Server] Failed to clear stale draft locks at boot (non-fatal):', lockErr.message);
+    }
+
+    // Express alone cannot serve WebSocket upgrades — wrap it in a raw HTTP
+    // server so Socket.IO can share the same port for the draft-lock realtime layer.
+    const httpServer = http.createServer(app);
+    initSocket(httpServer);
+
+    const server = httpServer.listen(PORT, () => {
       console.log('='.repeat(60));
       console.log(`[Server] ${process.env.APP_NAME || 'RC-Tractoparts-API'} running`);
       console.log(`[Server] Environment : ${process.env.NODE_ENV || 'development'}`);

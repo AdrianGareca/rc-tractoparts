@@ -120,7 +120,7 @@ describe('CC-01: Correlativo uniqueness under concurrent access', () => {
     correlativos.forEach((corr, idx) => {
       expect(corr).toBeTruthy();
       expect(typeof corr).toBe('string');
-      expect(corr).toMatch(/^COT-\d{4}-\d{4}$/); // Format: COT-YYYY-NNNN
+      expect(corr).toMatch(/^SC-\d{4}\/\d{6}$/); // Format: SC-YYYY/NNNNNN
     });
 
     // --- Assertion 3: all correlativos are unique (no duplicates) ---

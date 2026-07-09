@@ -21,6 +21,7 @@
 
 import api          from '../services/apiClient.js';
 import { showToast } from '../services/apiClient.js';
+import { connectSocket } from '../services/socketClient.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -207,6 +208,8 @@ class FormMediator {
   #editData = null;  // Existing quotation when mounted in EDIT mode (else null)
   #editId   = null;  // Quotation id when editing (else null)
   #totalsObserver = null; // Kept for discount-input wiring
+  #lockSocket   = null;    // Realtime draft-lock connection (creation mode only)
+  #hasDraftLock = false;   // true once THIS socket owns the global next-number reservation
 
   constructor(container, quotation = null) {
     this.#container = container;
@@ -307,6 +310,7 @@ class FormMediator {
 
     // Wire Cancel
     this.#container.querySelector('#btn-cancel')?.addEventListener('click', () => {
+      this._releaseDraftLock();
       if (onCancel) onCancel();
     });
 
@@ -315,6 +319,102 @@ class FormMediator {
       e.preventDefault();
       await this._handleSubmit(onSuccess);
     });
+
+    // Reserve the next correlativo + subscribe to live "someone else is
+    // drafting" updates. Creation mode only — editing an existing quotation
+    // never allocates a new serial. Fire-and-forget: the realtime layer is
+    // a UX enhancement, never a hard dependency of the form.
+    this._initDraftLock();
+  }
+
+  // ── Private: realtime draft-lock (global "next number" reservation) ────────
+
+  async _initDraftLock() {
+    if (this.#editId) return; // Editing never reserves a new correlativo
+
+    try {
+      this.#lockSocket = await connectSocket();
+      this.#lockSocket.on('cotizacion:draft:update', (state) => this._renderLockState(state));
+
+      // .timeout() guards against a hung ack (e.g. server restarted between
+      // connect and join) — without it this await could wait forever since
+      // Socket.IO acks have no default timeout.
+      const ack = await new Promise((resolve) => {
+        this.#lockSocket
+          .timeout(5000)
+          .emit('cotizacion:draft:join', null, (err, res) => resolve(err ? null : res));
+      });
+
+      if (!ack?.success) return;
+
+      if (ack.mine) {
+        this.#hasDraftLock = true;
+        this._updateCorrelativoPreview(ack.numero_correlativo);
+      } else {
+        this._renderLockState({
+          locked:             true,
+          numero_correlativo: ack.numero_correlativo,
+          ejecutivo:          ack.ejecutivo,
+        });
+      }
+    } catch (err) {
+      // Non-fatal: realtime layer unreachable — the form still works exactly
+      // as before, just without the live collision warning.
+      console.warn('[quotationForm] Draft-lock realtime layer unavailable:', err?.message || err);
+    }
+  }
+
+  /** Render (or clear) the "someone else is drafting this number" banner. */
+  _renderLockState(state) {
+    const banner = this.#container.querySelector('#qf-lock-banner');
+    if (!banner) return;
+
+    if (state?.locked && !this.#hasDraftLock) {
+      const nombre = escText(state.ejecutivo?.nombre ?? 'otro ejecutivo');
+      const numero = escText(state.numero_correlativo ?? '');
+      banner.innerHTML =
+        `⚠️ Atención: El ejecutivo <strong>${nombre}</strong> ya está redactando la cotización ` +
+        `<strong>${numero}</strong> en este momento. Espera a que termine o coordina con él para evitar duplicados.`;
+      banner.classList.add('show');
+    } else if (!state?.locked) {
+      banner.classList.remove('show');
+      banner.innerHTML = '';
+
+      // The previous holder just released the number — try to claim it as
+      // ours so this form's preview reflects the now-available serial.
+      if (!this.#hasDraftLock && this.#lockSocket?.connected) {
+        this.#lockSocket
+          .timeout(5000)
+          .emit('cotizacion:draft:join', null, (err, ack) => {
+            if (!err && ack?.success && ack.mine) {
+              this.#hasDraftLock = true;
+              this._updateCorrelativoPreview(ack.numero_correlativo);
+            }
+          });
+      }
+    }
+  }
+
+  /** Update the read-only "Próximo Nº" badge once this socket owns the reservation. */
+  _updateCorrelativoPreview(numeroCorrelativo) {
+    const el = this.#container.querySelector('.correlativo-preview span:last-child');
+    if (el) el.textContent = numeroCorrelativo;
+  }
+
+  /** Release this socket's reservation (if any) and tear down the connection. Idempotent. */
+  _releaseDraftLock() {
+    if (!this.#lockSocket) return;
+    if (this.#hasDraftLock) {
+      this.#lockSocket.emit('cotizacion:draft:leave');
+      this.#hasDraftLock = false;
+    }
+    this.#lockSocket.disconnect();
+    this.#lockSocket = null;
+  }
+
+  /** Public teardown — called when the host container (modal) closes by ANY path. */
+  destroy() {
+    this._releaseDraftLock();
   }
 
   // ── Private: hydrate header fields from the existing quotation (edit mode) ──
@@ -436,6 +536,7 @@ class FormMediator {
 
     return /* html */ `
       <form id="quotation-form" novalidate>
+        <div class="form-alert alert-warning" id="qf-lock-banner" role="alert"></div>
         ${corrPreview}
 
         <!-- Header fields -->
@@ -1379,6 +1480,11 @@ class FormMediator {
         : await api.post('/api/cotizaciones', body);
       const quotation = response.data;
 
+      // Release our draft-lock reservation immediately on success — the
+      // number is now officially registered, so the "in progress" warning
+      // must clear for every other connected executive right away.
+      this._releaseDraftLock();
+
       // Step 2 — Upload Excel if one was attached
       if (this.#uploadedExcel && quotation?.id) {
         const formData = new FormData();
@@ -1420,4 +1526,5 @@ class FormMediator {
 export function mountQuotationForm(container, { onSuccess, onCancel, quotation = null } = {}) {
   const mediator = new FormMediator(container, quotation);
   mediator.render(onSuccess, onCancel);
+  return () => mediator.destroy();
 }

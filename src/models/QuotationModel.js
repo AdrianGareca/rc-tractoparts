@@ -256,6 +256,17 @@ const QuotationModel = {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
+  // formatCorrelativo
+  // Shared formatter so the preview, the atomic generator, and the draft-lock
+  // reservation can never drift into inconsistent serial formats.
+  // Format: "SC-YYYY/NNNNNN" (6-digit zero-padded), matching the historical
+  // Excel numbering series the company used before this system existed.
+  // ---------------------------------------------------------------------------
+  formatCorrelativo(anio, nextNumber) {
+    return `SC-${anio}/${String(nextNumber).padStart(6, '0')}`;
+  },
+
+  // ---------------------------------------------------------------------------
   // peekNextCorrelativo
   // READ-ONLY preview of what the next serial number will look like.
   // NOT guaranteed to be the actual next value under concurrency — it is
@@ -269,7 +280,7 @@ const QuotationModel = {
       [currentYear]
     );
     const nextNumber = rows.length === 0 ? 1 : rows[0].ultimo_nro + 1;
-    return `COT-${currentYear}-${String(nextNumber).padStart(4, '0')}`;
+    return this.formatCorrelativo(currentYear, nextNumber);
   },
 
   // ---------------------------------------------------------------------------
@@ -277,7 +288,7 @@ const QuotationModel = {
   // ATOMIC: must be called inside a caller-managed transaction.
   // Acquires a row-level exclusive lock (SELECT … FOR UPDATE) on the
   // cotizaciones_correlativo row for the current year, increments the counter,
-  // and returns the formatted serial "COT-YYYY-NNNN".
+  // and returns the formatted serial "SC-YYYY/NNNNNN".
   // ---------------------------------------------------------------------------
   async generateCorrelativo(connection) {
     const currentYear = new Date().getFullYear();
@@ -303,7 +314,7 @@ const QuotationModel = {
       );
     }
 
-    return `COT-${currentYear}-${String(nextNumber).padStart(4, '0')}`;
+    return this.formatCorrelativo(currentYear, nextNumber);
   },
 
   // ---------------------------------------------------------------------------

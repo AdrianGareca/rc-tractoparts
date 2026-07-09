@@ -17,8 +17,10 @@
 
 const { pool }                    = require('../config/db');
 const QuotationModel              = require('../models/QuotationModel');
+const QuotationLockModel          = require('../models/QuotationLockModel');
 const { logEvent, AuditActions }  = require('../utils/auditLog');
 const pdfService                  = require('../services/pdfService');
+const { broadcastDraftReleased }  = require('../realtime/socketServer');
 
 // Valid sort column keys exposed to GET /api/cotizaciones callers
 const VALID_SORT_KEYS = Object.keys(QuotationModel.SORTABLE_COLUMNS);
@@ -168,6 +170,18 @@ const QuotationController = {
       }
 
       await connection.commit();
+
+      // Safety net: clear the draft lock for this serial if it is still
+      // present. Normally the client releases its own reservation via the
+      // 'cotizacion:draft:leave' socket event right before/after this POST
+      // resolves, but a dropped socket message must never leave a phantom
+      // "being drafted" warning stuck on everyone else's screen.
+      try {
+        const stillLocked = await QuotationLockModel.releaseByNumeroCorrelativo(numeroCorrelativo);
+        if (stillLocked) broadcastDraftReleased();
+      } catch (lockErr) {
+        console.warn('[QuotationController.createQuotation] Draft lock cleanup failed (non-fatal):', lockErr.message);
+      }
 
       // ── Post-commit: fetch full record, generate PDF, write audit ───────────
       const createdQuotation = await QuotationModel.findById(quotationId);
