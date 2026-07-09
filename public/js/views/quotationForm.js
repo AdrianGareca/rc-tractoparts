@@ -5,17 +5,16 @@
 // STRUCTURAL PATTERN: MEDIATOR
 //   FormMediator is the central hub connecting three independent components:
 //     • LineItemsComponent — dynamic line-item rows (add / remove / edit)
-//     • TotalsComponent    — live subtotal / IVA / total panel (Observer target)
-//     • FileUploadComponent— drag-and-drop PDF attachment area
+//     • TotalsComponent    — live subtotal / discount / total panel (Observer target)
+//     • FileUploadComponent— drag-and-drop Excel attachment area
 //   Components communicate exclusively through the Mediator; they hold no
 //   direct references to each other.
 //
 // BEHAVIORAL PATTERN: OBSERVER
 //   LineItemsSubject is the observable Subject holding the items array.
-//   When items change (add, remove, field update), it notifies three Observers:
+//   When items change (add, remove, field update), it notifies two Observers:
 //     • RowSubtotalObserver  — updates the per-row subtotal cell
-//     • IvaObserver          — recalculates and displays 13% Bolivia IVA
-//     • GrandTotalObserver   — recalculates and displays the overall total
+//     • TotalsObserver       — recalculates subtotal, discount, and final total
 //   Observers register on construction and are automatically decoupled when
 //   the form is destroyed.
 // =============================================================================
@@ -162,36 +161,31 @@ class RowSubtotalObserver extends Observer {
 }
 
 /**
- * IvaObserver
- * Computes and displays the 13% Bolivia IVA on the running subtotal.
+ * TotalsObserver
+ * Keeps the subtotal display and the final total (subtotal − descuento_manual) in sync.
+ * Reads the optional #discountEl input for the live discount amount.
  */
-class IvaObserver extends Observer {
-  #el;
-  constructor(el) { super(); this.#el = el; }
-
-  update(items) {
-    const subtotal = sumSubtotals(items);
-    this.#el.textContent = fmt(subtotal * 0.13);
-  }
-}
-
-/**
- * GrandTotalObserver
- * Keeps the subtotal display and the final total (subtotal + IVA) in sync.
- */
-class GrandTotalObserver extends Observer {
+class TotalsObserver extends Observer {
   #subtotalEl;
   #totalEl;
-  constructor(subtotalEl, totalEl) {
+  #discountEl;   // <input> for the manual cash discount (may be null during init)
+
+  constructor(subtotalEl, totalEl, discountEl) {
     super();
     this.#subtotalEl = subtotalEl;
     this.#totalEl    = totalEl;
+    this.#discountEl = discountEl;
   }
 
+  /** Update the discount element reference (wired after render) */
+  setDiscountEl(el) { this.#discountEl = el; }
+
   update(items) {
-    const subtotal = sumSubtotals(items);
+    const subtotal  = sumSubtotals(items);
+    const discount  = this.#discountEl ? (parseFloat(this.#discountEl.value) || 0) : 0;
+    const total     = Math.max(0, subtotal - discount);
     this.#subtotalEl.textContent = fmt(subtotal);
-    this.#totalEl.textContent    = fmt(subtotal * 1.13);
+    this.#totalEl.textContent    = fmt(total);
   }
 }
 
@@ -208,11 +202,11 @@ class GrandTotalObserver extends Observer {
 class FormMediator {
   #subject;          // LineItemsSubject (Observable)
   #container;        // Root DOM element of the form
-  #uploadedFile = null;
   #uploadedExcel = null;   // optional Excel spreadsheet attachment
   #brands = [];      // Cache of { id, nombre } loaded from GET /api/marcas
   #editData = null;  // Existing quotation when mounted in EDIT mode (else null)
   #editId   = null;  // Quotation id when editing (else null)
+  #totalsObserver = null; // Kept for discount-input wiring
 
   constructor(container, quotation = null) {
     this.#container = container;
@@ -233,18 +227,28 @@ class FormMediator {
       this.#brands = [];
     }
 
-    this.#container.innerHTML = this._buildFormHTML();
+    // Peek at the next correlativo number for display (non-blocking, non-fatal)
+    let nextCorrelativo = '';
+    if (!this.#editId) {
+      try {
+        const r = await api.get('/api/cotizaciones/next-correlativo');
+        nextCorrelativo = r.data?.numero_correlativo ?? '';
+      } catch (_) { /* non-fatal */ }
+    }
+
+    this.#container.innerHTML = this._buildFormHTML(nextCorrelativo);
 
     // Grab observer target elements
-    const elIva      = this.#container.querySelector('#totals-iva');
     const elSubtotal = this.#container.querySelector('#totals-subtotal');
     const elTotal    = this.#container.querySelector('#totals-total');
+    const elDiscount = this.#container.querySelector('#totals-discount');
     const itemsBody  = this.#container.querySelector('#items-body');
 
     // Register Observers with the Subject
     this.#subject.subscribe(new RowSubtotalObserver(this.#container));
-    this.#subject.subscribe(new IvaObserver(elIva));
-    this.#subject.subscribe(new GrandTotalObserver(elSubtotal, elTotal));
+    const totalsObs = new TotalsObserver(elSubtotal, elTotal, elDiscount);
+    this.#totalsObserver = totalsObs;
+    this.#subject.subscribe(totalsObs);
 
     // Seed rows: hydrate from the existing quotation when editing, otherwise
     // start with a single blank row.
@@ -269,6 +273,22 @@ class FormMediator {
 
     // Pre-fill header fields when editing
     if (this.#editId) this._populateHeaderForEdit();
+
+    // Wire discount input — updates totals in real-time without touching items
+    elDiscount?.addEventListener('input', () => {
+      // Trigger a notify by re-broadcasting the current snapshot
+      this.#subject._notify();
+    });
+
+    // Wire Forma de Pago dropdown — 'Otro (Personalizado)' reveals the free-text
+    // input; picking any preset hides it again.
+    const fpSelect = this.#container.querySelector('#forma_pago');
+    fpSelect?.addEventListener('change', () => {
+      const group  = this.#container.querySelector('#forma_pago_custom_group');
+      const isOtro = fpSelect.value === '__otro__';
+      if (group) group.style.display = isOtro ? '' : 'none';
+      if (isOtro) this.#container.querySelector('#forma_pago_custom')?.focus();
+    });
 
     // Wire "+ Add item" button
     this.#container.querySelector('#btn-add-item')?.addEventListener('click', () => {
@@ -333,6 +353,7 @@ class FormMediator {
     set('#tiempo_entrega', q.tiempo_entrega ?? '');
 
     // Solicitante block (findById aliases these column names)
+    set('#solicitante_nombre',       q.nombre_sol    ?? q.solicitante_nombre ?? '');
     set('#solicitante_no_solicitud', q.nro_solicitud ?? q.solicitante_no_solicitud ?? '');
     set('#solicitante_area',         q.area_sol      ?? q.solicitante_area ?? '');
     set('#solicitante_celular',      q.celular_sol   ?? q.solicitante_celular ?? '');
@@ -344,13 +365,74 @@ class FormMediator {
     set('#equipo_modelo', q.equipo_modelo ?? '');
     set('#equipo_serie',  q.equipo_serie ?? '');
     set('#equipo_motor',  q.equipo_motor ?? '');
+
+    // Financial / PDF config fields
+    set('#descuento_manual', q.descuento_manual != null ? String(q.descuento_manual) : '');
+    // forma_pago: select the matching quick option, or 'Otro (Personalizado)'
+    // with the custom text input revealed when the stored value is not a preset.
+    this._setFormaPago(q.forma_pago ?? '');
+    const mostrarCodigos = q.mostrar_codigos != null ? Boolean(Number(q.mostrar_codigos)) : true;
+    const chkCodigos = this.#container.querySelector('#mostrar_codigos');
+    if (chkCodigos) chkCodigos.checked = mostrarCodigos;
+  }
+
+  // ── Private: forma_pago select helpers ─────────────────────────────────────
+
+  /**
+   * _setFormaPago — hydrates the Forma de Pago <select> from a stored value.
+   * A value matching one of the quick-select presets selects it directly;
+   * empty/null keeps the default option; any other string selects
+   * 'Otro (Personalizado)' and reveals + fills the custom text input.
+   */
+  _setFormaPago(value) {
+    const sel   = this.#container.querySelector('#forma_pago');
+    const group = this.#container.querySelector('#forma_pago_custom_group');
+    const input = this.#container.querySelector('#forma_pago_custom');
+    if (!sel) return;
+
+    const isPreset = [...sel.options].some(
+      (o) => o.value === value && o.value !== '__otro__'
+    );
+
+    if (!value || isPreset) {
+      sel.value = value || '';
+      if (group) group.style.display = 'none';
+      if (input) input.value = '';
+    } else {
+      sel.value = '__otro__';
+      if (group) group.style.display = '';
+      if (input) input.value = value;
+    }
+  }
+
+  /**
+   * _collectFormaPago — returns the payload value for forma_pago:
+   * the selected preset, the trimmed custom text when 'Otro' is chosen,
+   * or null (→ backend/PDF default '60% ANTICIPO Y SALDO CONTRA ENTREGA').
+   */
+  _collectFormaPago() {
+    const sel = this.#container.querySelector('#forma_pago')?.value ?? '';
+    if (sel === '__otro__') {
+      return this.#container.querySelector('#forma_pago_custom')?.value.trim() || null;
+    }
+    return sel || null;
   }
 
   // ── Private: build form HTML ───────────────────────────────────────────────
 
-  _buildFormHTML() {
+  _buildFormHTML(nextCorrelativo = '') {
+    const corrPreview = nextCorrelativo
+      ? `<div class="correlativo-preview" style="display:inline-flex;align-items:center;gap:.5rem;
+             padding:.25rem .75rem;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;
+             font-size:.85rem;color:#1D4ED8;font-weight:600;margin-bottom:.75rem;">
+           <span style="color:#6B7280;font-weight:400;">Próximo Nº:</span>
+           <span>${escText(nextCorrelativo)}</span>
+         </div>`
+      : '';
+
     return /* html */ `
       <form id="quotation-form" novalidate>
+        ${corrPreview}
 
         <!-- Header fields -->
         <div class="form-row">
@@ -437,6 +519,11 @@ class FormMediator {
         <details class="form-section-details" open>
           <summary class="form-section-summary">Datos del Solicitante</summary>
           <div class="form-row" style="margin-top:.75rem;">
+            <div class="form-group">
+              <label class="form-label" for="solicitante_nombre">Nombre del Solicitante</label>
+              <input class="form-control" type="text" id="solicitante_nombre"
+                     placeholder="Ej: Juan Pérez" maxlength="120" />
+            </div>
             <div class="form-group">
               <label class="form-label" for="solicitante_no_solicitud">Nº Solicitud / OC</label>
               <input class="form-control" type="text" id="solicitante_no_solicitud"
@@ -528,31 +615,56 @@ class FormMediator {
           </button>
         </div>
 
-        <!-- Totals panel — updated by GrandTotalObserver & IvaObserver -->
+        <!-- Totals panel — updated by TotalsObserver -->
         <div class="totals-panel">
           <div class="totals-row">
             <span>Subtotal</span>
             <span class="totals-value" id="totals-subtotal">0.00</span>
           </div>
           <div class="totals-row">
-            <span>IVA Bolivia (13%)</span>
-            <span class="totals-value" id="totals-iva">0.00</span>
+            <label for="totals-discount" style="font-size:.85rem;color:var(--text-secondary);">
+              Descuento Manual (monto fijo)
+            </label>
+            <input
+              type="number"
+              id="totals-discount"
+              min="0" step="any"
+              placeholder="0.00"
+              style="width:120px;text-align:right;padding:.25rem .5rem;border:1px solid var(--border);border-radius:4px;font-size:.9rem;"
+              title="Ingrese un descuento en monto absoluto (no porcentaje). Se resta directamente del subtotal."
+            />
           </div>
           <div class="totals-row total-final">
-            <span>Total con IVA</span>
+            <span>Total</span>
             <span class="totals-value" id="totals-total">0.00</span>
           </div>
         </div>
 
-        <!-- PDF drag-and-drop upload — optional attachment -->
-        <div class="form-group" style="margin-top:1.25rem;">
-          <label class="form-label">PDF Adjunto (opcional)</label>
-          <div class="drop-zone" id="drop-zone">
-            <input type="file" id="pdf-input" accept="application/pdf" />
-            <div class="drop-zone-icon">📄</div>
-            <p class="drop-zone-text">Arrastra un PDF aquí o haz clic para seleccionar</p>
-            <p class="drop-zone-hint">Máximo 10 MB · Solo archivos PDF</p>
-            <p class="drop-zone-file hidden" id="file-name"></p>
+        <!-- Payment terms + PDF config -->
+        <div class="form-row" style="margin-top:1rem;align-items:flex-end;gap:1rem;flex-wrap:wrap;">
+          <div class="form-group" style="flex:2;min-width:220px;">
+            <label class="form-label" for="forma_pago">Forma de Pago</label>
+            <select class="form-control" id="forma_pago">
+              <option value="">Por defecto (60% ANTICIPO Y SALDO CONTRA ENTREGA)</option>
+              <option value="20% DE ANTICIPO">20% DE ANTICIPO</option>
+              <option value="30% DE ANTICIPO">30% DE ANTICIPO</option>
+              <option value="40% DE ANTICIPO">40% DE ANTICIPO</option>
+              <option value="50% DE ANTICIPO">50% DE ANTICIPO</option>
+              <option value="60% DE ANTICIPO">60% DE ANTICIPO</option>
+              <option value="__otro__">Otro (Personalizado)</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:2;min-width:220px;display:none;" id="forma_pago_custom_group">
+            <label class="form-label" for="forma_pago_custom">Forma de Pago Personalizada</label>
+            <input class="form-control" type="text" id="forma_pago_custom"
+                   placeholder="Ej: 70% ANTICIPO Y SALDO A 30 DÍAS" maxlength="200" />
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:.5rem;padding-bottom:.25rem;">
+            <input type="checkbox" id="mostrar_codigos" checked
+                   style="width:16px;height:16px;cursor:pointer;" />
+            <label for="mostrar_codigos" class="form-label" style="margin:0;cursor:pointer;">
+              Mostrar columna CÓDIGO en el PDF
+            </label>
           </div>
         </div>
 
@@ -1104,46 +1216,9 @@ class FormMediator {
     overlay.querySelector('#nc-razon-social')?.focus();
   }
 
-  // ── Private: drag-and-drop file upload ────────────────────────────────────
+  // ── Private: drag-and-drop file upload (Excel only) ──────────────────────
 
   _wireFileUpload() {
-    const zone      = this.#container.querySelector('#drop-zone');
-    const fileInput = this.#container.querySelector('#pdf-input');
-    const fileName  = this.#container.querySelector('#file-name');
-    if (!zone || !fileInput) return;
-
-    const onFile = (file) => {
-      if (!file || file.type !== 'application/pdf') {
-        showToast('Solo se aceptan archivos PDF.', 'error');
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        showToast('El archivo excede el tamaño máximo de 10 MB.', 'error');
-        return;
-      }
-      // Mediator stores the file reference
-      this.#uploadedFile = file;
-      fileName.textContent = `✓ ${file.name}`;
-      fileName.classList.remove('hidden');
-    };
-
-    fileInput.addEventListener('change', (e) => {
-      if (e.target.files[0]) onFile(e.target.files[0]);
-    });
-
-    zone.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      zone.classList.add('dragover');
-    });
-
-    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
-
-    zone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      zone.classList.remove('dragover');
-      onFile(e.dataTransfer.files[0]);
-    });
-
     // ── Excel drag-and-drop ──────────────────────────────────────────────────
     const excelZone      = this.#container.querySelector('#excel-drop-zone');
     const excelInput     = this.#container.querySelector('#excel-input');
@@ -1154,7 +1229,6 @@ class FormMediator {
 
     const onExcelFile = (file) => {
       if (!file) return;
-      // Accept by extension (.xlsx) or declared MIME — the server re-validates via magic numbers
       const isXlsx = file.name.toLowerCase().endsWith('.xlsx') || file.type === XLSX_MIME;
       if (!isXlsx) {
         showToast('Solo se aceptan archivos .xlsx (Excel OpenXML).', 'error');
@@ -1226,7 +1300,9 @@ class FormMediator {
     }
 
     // Compute monto_total from items
-    const subtotal = sumSubtotals(items);
+    const subtotal         = sumSubtotals(items);
+    const discountRaw      = parseFloat(this.#container.querySelector('#totals-discount')?.value) || 0;
+    const descuento_manual = discountRaw > 0 ? discountRaw : null;
 
     // Build the filtered detalles array — drop rows with no description
     const filteredDetalles = items.filter(i => i.descripcion_item?.trim()).map(i => ({
@@ -1265,7 +1341,11 @@ class FormMediator {
       observaciones:            this.#container.querySelector('#observaciones')?.value.trim()    || null,
       tiempo_entrega:           this.#container.querySelector('#tiempo_entrega')?.value.trim()   || null,
       monto_total:              subtotal > 0 ? subtotal : null,
+      descuento_manual,
+      forma_pago:               this._collectFormaPago(),
+      mostrar_codigos:          this.#container.querySelector('#mostrar_codigos')?.checked ?? true,
       // Solicitante block
+      solicitante_nombre:       this.#container.querySelector('#solicitante_nombre')?.value.trim()       || null,
       solicitante_no_solicitud: this.#container.querySelector('#solicitante_no_solicitud')?.value.trim() || null,
       solicitante_area:         this.#container.querySelector('#solicitante_area')?.value.trim()         || null,
       solicitante_celular:      this.#container.querySelector('#solicitante_celular')?.value.trim()      || null,
@@ -1295,16 +1375,15 @@ class FormMediator {
         : await api.post('/api/cotizaciones', body);
       const quotation = response.data;
 
-      // Step 2 — Upload PDF and/or Excel if either was attached
-      if ((this.#uploadedFile || this.#uploadedExcel) && quotation?.id) {
+      // Step 2 — Upload Excel if one was attached
+      if (this.#uploadedExcel && quotation?.id) {
         const formData = new FormData();
-        if (this.#uploadedFile)  formData.append('pdf',   this.#uploadedFile);
-        if (this.#uploadedExcel) formData.append('excel', this.#uploadedExcel);
+        formData.append('excel', this.#uploadedExcel);
         try {
           await api.upload(`/api/cotizaciones/${quotation.id}/upload`, formData);
         } catch (fileErr) {
           // Non-fatal: quotation was created; just warn the user
-          showToast(`Cotización creada, pero los archivos no pudieron subirse: ${fileErr.message}`, 'warning');
+          showToast(`Cotización creada, pero el Excel no pudo subirse: ${fileErr.message}`, 'warning');
         }
       }
 

@@ -208,6 +208,15 @@ router.get(
   QuotationController.getStateSummary
 );
 
+// GET /api/cotizaciones/next-correlativo
+// Non-binding preview of the next sequential quotation number (COT-YYYY-NNNN).
+// Displayed in the "Nueva Cotización" form header before submission.
+router.get(
+  '/next-correlativo',
+  ...allRoles,
+  QuotationController.getNextCorrelativo
+);
+
 /**
  * @swagger
  * /api/cotizaciones/pendientes-aprobacion:

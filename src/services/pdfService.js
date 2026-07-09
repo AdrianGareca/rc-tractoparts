@@ -85,28 +85,35 @@ const CW     = PW - MARGIN * 2;  // 523.28 pt usable content width
 // Last column absorbs the remainder to prevent rounding gaps.
 // =============================================================================
 
-const COL = {
-  item:    20,
-  codigo:  48,
-  codAlt:  52,
-  desc:    130,
-  cant:    26,
-  uni:     26,
-  pUnit:   62,
-  pTotal:  62,
-  entrega: parseFloat((CW - 20 - 48 - 52 - 130 - 26 - 26 - 62 - 62).toFixed(2)), // 97.28
-};
+// buildItemLayout — computes per-quotation column widths and left-edge X
+// positions for the items table. When `showCodigo` is false the CÓDIGO column
+// collapses to zero width and its 48 pt are absorbed by DESCRIPCIÓN so the
+// layout shifts gracefully instead of leaving a gap. Widths always sum to CW.
+function buildItemLayout(showCodigo) {
+  const w = {
+    item:   20,
+    codigo: showCodigo ? 48 : 0,
+    codAlt: 52,
+    desc:   showCodigo ? 130 : 178,   // DESCRIPCIÓN absorbs CÓDIGO's width when hidden
+    cant:   26,
+    uni:    26,
+    pUnit:  62,
+    pTotal: 62,
+  };
+  // Last column (T. ENTREGA) absorbs the remainder to prevent rounding gaps.
+  w.entrega = parseFloat(
+    (CW - (w.item + w.codigo + w.codAlt + w.desc + w.cant + w.uni + w.pUnit + w.pTotal)).toFixed(2)
+  );
 
-// Precomputed left-edge X of each column
-const COL_X = (() => {
-  let x = MARGIN;
-  const out = {};
-  for (const [k, w] of Object.entries(COL)) {
-    out[k] = x;
-    x += w;
+  const x = {};
+  let cur = MARGIN;
+  for (const [k, width] of Object.entries(w)) {
+    x[k] = cur;
+    cur += width;
   }
-  return out;
-})();
+
+  return { w, x, showCodigo };
+}
 
 const TABLE_HEADER_H = 24;   // Height of the pink column-header row
 const ROW_MIN_H      = 20;   // Minimum data-row height
@@ -345,6 +352,48 @@ function normalizeEntidad(raw) {
 }
 
 // ---------------------------------------------------------------------------
+// Bank-account resolution (dynamic per issuing entity)
+//
+// BANK_ACCOUNTS holds the canonical DATOS BANCARIOS for each issuing entity.
+// It is the resilient FALLBACK used when the DB-provided bank fields are absent
+// (e.g. before the cuentas_bancarias migration is applied on a given
+// environment) — mirroring the graceful-degradation approach used elsewhere in
+// the codebase. Keys are the canonical entidad_emisora values produced by
+// normalizeEntidad().
+// ---------------------------------------------------------------------------
+const BANK_ACCOUNTS = {
+  'Empresa unipersonal de Ronald Roca Cartagena': {
+    beneficiario: 'Ronald Roca Cartagena',
+    banco:        'BANCO UNIÓN S.A.',
+    cuenta:       '1-234-56-789012',
+  },
+  'Roca Importaciones S.R.L.': {
+    beneficiario: 'ROCA IMPORTACIONES S.R.L.',
+    banco:        'BANCO UNION S.A.',
+    cuenta:       '1-000-00-66027513',
+  },
+};
+
+// ---------------------------------------------------------------------------
+// resolveBankData
+// Returns the { beneficiario, banco, cuenta } to print in the DATOS BANCARIOS
+// block. DB-provided fields (attached by QuotationModel.findById from the
+// cuentas_bancarias table) take precedence; otherwise the built-in
+// BANK_ACCOUNTS map keyed by the normalized issuing entity is used.
+// ---------------------------------------------------------------------------
+function resolveBankData(quotation) {
+  if (quotation.banco_beneficiario || quotation.banco_nombre || quotation.banco_cuenta) {
+    return {
+      beneficiario: quotation.banco_beneficiario || '—',
+      banco:        quotation.banco_nombre       || '—',
+      cuenta:       quotation.banco_cuenta        || '—',
+    };
+  }
+  const entidad = normalizeEntidad(quotation.entidad_emisora);
+  return BANK_ACCOUNTS[entidad] || BANK_ACCOUNTS[PRIMARY_ENTIDAD];
+}
+
+// ---------------------------------------------------------------------------
 // drawHeader
 // Left side  : RC TRACTOPARTS logo (real image with text fallback) + brand strip.
 // Right side : Quotation info box with thin borders (Nº, PEDIDO, ESTADO, FECHA).
@@ -355,7 +404,7 @@ function drawHeader(doc, quotation) {
   const LOGO_W  = 155;
   const LOGO_H  = 72;
   const BOX_W   = 185;
-  const BOX_H   = 98;          // info-box height (top-right metadata block)
+  const BOX_H   = 116;         // info-box height (top-right metadata block; 5 data rows)
   const BOX_X   = PW - MARGIN - BOX_W;
 
   // ── Left: corporate logo (real image with text fallback) ──────────────────
@@ -453,6 +502,9 @@ function drawHeader(doc, quotation) {
     // render loop; the display string is uppercased there before painting.
     ['ESTADO',        quotation.estado || '—'],
     ['FECHA CONFIRM.', formatDate(quotation.fecha_aprobacion || quotation.fecha_emision)],
+    // Ejecutivo de ventas that created the quotation (usuarios.nombre_completo,
+    // aliased as ejecutivo_nombre by QuotationModel.findById).
+    ['EJECUTIVO',     quotation.ejecutivo_nombre || '—'],
   ];
 
   const LABELW = 78;
@@ -622,8 +674,11 @@ function drawThreeColumnGrid(doc, quotation, startY) {
       title:  'DATOS DEL SOLICITANTE',
       x:      MARGIN + COLW + GAP,
       fields: [
-        ['Nombre',       quotation.ejecutivo_nombre || '—'],
-        ['Nº Solic./OC', quotation.nro_solicitud   || '—'],
+        // External solicitor (the person/client who requested the proforma),
+        // NOT the Sales Executive — the executive is shown only in the top-right
+        // metadata box (drawHeader). Falls back to '—' when not provided.
+        ['Nombre',       quotation.nombre_sol    || '—'],
+        ['Nº Solic./OC', quotation.nro_solicitud || '—'],
         ['Área',         quotation.area_sol        || '—'],
         ['Celular',      quotation.celular_sol     || '—'],
         ['Correo',       quotation.correo_sol      || '—'],
@@ -694,7 +749,7 @@ function drawThreeColumnGrid(doc, quotation, startY) {
 // Re-called on each new page after a page break.
 // Returns Y immediately below the header row.
 // ---------------------------------------------------------------------------
-function drawTableHeaderRow(doc, y) {
+function drawTableHeaderRow(doc, y, layout) {
   // Pink/pastel background fill
   doc.rect(MARGIN, y, CW, TABLE_HEADER_H).fill(C.PINK_HEADER);
   // Outer border stroke
@@ -704,19 +759,22 @@ function drawTableHeaderRow(doc, y) {
     .strokeColor(C.BORDER_GRAY)
     .stroke();
 
+  // Column set — the CÓDIGO header is included only when the layout shows it.
   const headers = [
-    { label: 'ITEM',        x: COL_X.item,    w: COL.item,    align: 'center' },
-    { label: 'CÓDIGO',      x: COL_X.codigo,  w: COL.codigo,  align: 'center' },
-    { label: 'CÓD. ALT.',   x: COL_X.codAlt,  w: COL.codAlt,  align: 'center' },
-    { label: 'DESCRIPCIÓN', x: COL_X.desc,    w: COL.desc,    align: 'left'   },
-    { label: 'CANT.',       x: COL_X.cant,    w: COL.cant,    align: 'right'  },
-    { label: 'UNI',         x: COL_X.uni,     w: COL.uni,     align: 'center' },
-    { label: 'P. UNIT.',    x: COL_X.pUnit,   w: COL.pUnit,   align: 'right'  },
-    { label: 'P. TOTAL',    x: COL_X.pTotal,  w: COL.pTotal,  align: 'right'  },
-    { label: 'T. ENTREGA',  x: COL_X.entrega, w: COL.entrega, align: 'center' },
+    { key: 'item',    label: 'ITEM',        align: 'center' },
+    ...(layout.showCodigo ? [{ key: 'codigo', label: 'CÓDIGO', align: 'center' }] : []),
+    { key: 'codAlt',  label: 'CÓD. ALT.',   align: 'center' },
+    { key: 'desc',    label: 'DESCRIPCIÓN', align: 'left'   },
+    { key: 'cant',    label: 'CANT.',       align: 'right'  },
+    { key: 'uni',     label: 'UNI',         align: 'center' },
+    { key: 'pUnit',   label: 'P. UNIT.',    align: 'right'  },
+    { key: 'pTotal',  label: 'P. TOTAL',    align: 'right'  },
+    { key: 'entrega', label: 'T. ENTREGA',  align: 'center' },
   ];
 
-  headers.forEach(({ label, x, w, align }) => {
+  headers.forEach(({ key, label, align }) => {
+    const x = layout.x[key];
+    const w = layout.w[key];
     doc
       .font('Helvetica-Bold')
       .fontSize(6.5)
@@ -725,11 +783,11 @@ function drawTableHeaderRow(doc, y) {
         { width: w - 4, align, lineBreak: false });
   });
 
-  // Vertical column dividers
-  [
-    COL_X.codigo, COL_X.codAlt, COL_X.desc, COL_X.cant,
-    COL_X.uni, COL_X.pUnit, COL_X.pTotal, COL_X.entrega,
-  ].forEach((dx) => {
+  // Vertical column dividers — one at the left edge of every column except the
+  // first (ITEM), following the visible column set so no stray line is drawn
+  // where the CÓDIGO column used to be when it is hidden.
+  headers.slice(1).forEach(({ key }) => {
+    const dx = layout.x[key];
     doc
       .moveTo(dx, y)
       .lineTo(dx, y + TABLE_HEADER_H)
@@ -744,9 +802,9 @@ function drawTableHeaderRow(doc, y) {
 // ---------------------------------------------------------------------------
 // _calcRowHeight — dynamic row height from description text wrapping
 // ---------------------------------------------------------------------------
-function _calcRowHeight(doc, text, fs = 7.5) {
+function _calcRowHeight(doc, text, descW, fs = 7.5) {
   doc.fontSize(fs);
-  const h = doc.heightOfString(String(text || ''), { width: COL.desc - 8 });
+  const h = doc.heightOfString(String(text || ''), { width: descW - 8 });
   return Math.max(ROW_MIN_H, h + ROW_PADDING);
 }
 
@@ -760,6 +818,14 @@ function _calcRowHeight(doc, text, fs = 7.5) {
 // ---------------------------------------------------------------------------
 function drawItemsTable(doc, quotation, startY) {
   const detalles = Array.isArray(quotation.detalles) ? quotation.detalles : [];
+
+  // Resolve the CÓDIGO-column visibility toggle (mostrar_codigos: TINYINT 1/0,
+  // boolean, or null on legacy rows → default to showing the column) and build
+  // the column layout once for this quotation.
+  const showCodigo = quotation.mostrar_codigos == null
+    ? true
+    : Boolean(Number(quotation.mostrar_codigos));
+  const layout = buildItemLayout(showCodigo);
 
   // Section title with orange underline
   doc
@@ -776,7 +842,7 @@ function drawItemsTable(doc, quotation, startY) {
 
   let y          = startY + 18;
   const headerY  = y;            // Y of the first table header row
-  y              = drawTableHeaderRow(doc, y);
+  y              = drawTableHeaderRow(doc, y, layout);
 
   // Empty state
   if (detalles.length === 0) {
@@ -791,7 +857,7 @@ function drawItemsTable(doc, quotation, startY) {
   }
 
   detalles.forEach((item, idx) => {
-    const rowH = _calcRowHeight(doc, item.descripcion_item);
+    const rowH = _calcRowHeight(doc, item.descripcion_item, layout.w.desc);
 
     // Page break guard
     if (y + rowH > PAGE_BREAK_Y) {
@@ -806,7 +872,7 @@ function drawItemsTable(doc, quotation, startY) {
       drawLogoWatermark(doc);
       drawFooter(doc, quotation);
       y = MARGIN + 8;
-      y = drawTableHeaderRow(doc, y);
+      y = drawTableHeaderRow(doc, y, layout);
     }
 
     // Alternating row background
@@ -828,44 +894,47 @@ function drawItemsTable(doc, quotation, startY) {
       .font('Helvetica')
       .fontSize(7)
       .fillColor(C.MID_GRAY)
-      .text(String(idx + 1), COL_X.item + 2, ty,
-        { width: COL.item - 4, align: 'center', lineBreak: false });
+      .text(String(idx + 1), layout.x.item + 2, ty,
+        { width: layout.w.item - 4, align: 'center', lineBreak: false });
 
-    // CÓDIGO (codigo_parte preferred; fallback to producto_codigo)
-    const codigo = item.codigo_parte || item.producto_codigo || '—';
-    doc
-      .font('Helvetica')
-      .fontSize(7)
-      .fillColor(C.DARK_GRAY)
-      .text(codigo, COL_X.codigo + 2, ty,
-        { width: COL.codigo - 4, align: 'center', lineBreak: false });
+    // CÓDIGO (codigo_parte preferred; fallback to producto_codigo) — rendered
+    // only when the CÓDIGO column is visible for this quotation.
+    if (layout.showCodigo) {
+      const codigo = item.codigo_parte || item.producto_codigo || '—';
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(C.DARK_GRAY)
+        .text(codigo, layout.x.codigo + 2, ty,
+          { width: layout.w.codigo - 4, align: 'center', lineBreak: false });
+    }
 
     // CÓDIGO ALTERNATIVO — not yet stored in DB; renders placeholder
     doc
       .font('Helvetica')
       .fontSize(7)
       .fillColor(C.MID_GRAY)
-      .text(item.codigo_alternativo || '—', COL_X.codAlt + 2, ty,
-        { width: COL.codAlt - 4, align: 'center', lineBreak: false });
+      .text(item.codigo_alternativo || '—', layout.x.codAlt + 2, ty,
+        { width: layout.w.codAlt - 4, align: 'center', lineBreak: false });
 
     // DESCRIPCIÓN — top-aligned, wraps; brand name as a muted italic subtitle
     doc
       .font('Helvetica')
       .fontSize(7.5)
       .fillColor(C.DARK_GRAY)
-      .text(String(item.descripcion_item || '—'), COL_X.desc + 4, y + 5,
-        { width: COL.desc - 8, lineBreak: true });
+      .text(String(item.descripcion_item || '—'), layout.x.desc + 4, y + 5,
+        { width: layout.w.desc - 8, lineBreak: true });
 
     // Inline brand label — rendered as clean italic text, no box/rect
     if (item.marca_nombre) {
-      const descH = doc.heightOfString(String(item.descripcion_item || ''), { width: COL.desc - 8 });
+      const descH = doc.heightOfString(String(item.descripcion_item || ''), { width: layout.w.desc - 8 });
       const brandLabelY = y + 5 + descH + 1;
       doc
         .font('Helvetica-Oblique')
         .fontSize(6)
         .fillColor(C.MID_GRAY)
-        .text(item.marca_nombre.toUpperCase(), COL_X.desc + 4, brandLabelY,
-          { width: COL.desc - 8, lineBreak: false });
+        .text(item.marca_nombre.toUpperCase(), layout.x.desc + 4, brandLabelY,
+          { width: layout.w.desc - 8, lineBreak: false });
     }
 
     // CANT. — right-aligned, es-BO format
@@ -877,53 +946,54 @@ function drawItemsTable(doc, quotation, startY) {
       .font('Helvetica')
       .fontSize(7.5)
       .fillColor(C.DARK_GRAY)
-      .text(qtyStr, COL_X.cant + 2, ty,
-        { width: COL.cant - 4, align: 'right', lineBreak: false });
+      .text(qtyStr, layout.x.cant + 2, ty,
+        { width: layout.w.cant - 4, align: 'right', lineBreak: false });
 
     // UNI
     doc
       .font('Helvetica')
       .fontSize(7)
       .fillColor(C.MID_GRAY)
-      .text(item.unidad || 'UND', COL_X.uni + 1, ty,
-        { width: COL.uni - 2, align: 'center', lineBreak: false });
+      .text(item.unidad || 'UND', layout.x.uni + 1, ty,
+        { width: layout.w.uni - 2, align: 'center', lineBreak: false });
 
     // PRECIO UNITARIO — right-aligned, es-BO
     doc
       .font('Helvetica')
       .fontSize(7.5)
       .fillColor(C.DARK_GRAY)
-      .text(fmtPrice(item.precio_unitario, quotation.moneda), COL_X.pUnit + 2, ty,
-        { width: COL.pUnit - 4, align: 'right', lineBreak: false });
+      .text(fmtPrice(item.precio_unitario, quotation.moneda), layout.x.pUnit + 2, ty,
+        { width: layout.w.pUnit - 4, align: 'right', lineBreak: false });
 
     // PRECIO TOTAL — bold, right-aligned, es-BO
     doc
       .font('Helvetica-Bold')
       .fontSize(7.5)
       .fillColor(C.DARK_GRAY)
-      .text(fmtPrice(item.subtotal, quotation.moneda), COL_X.pTotal + 2, ty,
-        { width: COL.pTotal - 4, align: 'right', lineBreak: false });
+      .text(fmtPrice(item.subtotal, quotation.moneda), layout.x.pTotal + 2, ty,
+        { width: layout.w.pTotal - 4, align: 'right', lineBreak: false });
 
     // TIEMPO DE ENTREGA — not yet stored per line; renders placeholder
     doc
       .font('Helvetica')
       .fontSize(7)
       .fillColor(C.MID_GRAY)
-      .text(item.tiempo_entrega || '—', COL_X.entrega + 2, ty,
-        { width: COL.entrega - 4, align: 'center', lineBreak: false });
+      .text(item.tiempo_entrega || '—', layout.x.entrega + 2, ty,
+        { width: layout.w.entrega - 4, align: 'center', lineBreak: false });
 
-    // Vertical column dividers for this row
-    [
-      COL_X.codigo, COL_X.codAlt, COL_X.desc, COL_X.cant,
-      COL_X.uni, COL_X.pUnit, COL_X.pTotal, COL_X.entrega,
-    ].forEach((dx) => {
-      doc
-        .moveTo(dx, y)
-        .lineTo(dx, y + rowH)
-        .lineWidth(0.25)
-        .strokeColor(C.BORDER_GRAY)
-        .stroke();
-    });
+    // Vertical column dividers for this row — one at the left edge of every
+    // column except ITEM, following the visible column set.
+    ['codAlt', 'desc', 'cant', 'uni', 'pUnit', 'pTotal', 'entrega']
+      .concat(layout.showCodigo ? ['codigo'] : [])
+      .forEach((key) => {
+        const dx = layout.x[key];
+        doc
+          .moveTo(dx, y)
+          .lineTo(dx, y + rowH)
+          .lineWidth(0.25)
+          .strokeColor(C.BORDER_GRAY)
+          .stroke();
+      });
 
     y += rowH;
   });
@@ -947,12 +1017,21 @@ function drawItemsTable(doc, quotation, startY) {
 function drawTotalsAndConditions(doc, quotation, startY) {
   const detalles = Array.isArray(quotation.detalles) ? quotation.detalles : [];
 
+  // Subtotal = sum of line-item subtotals. Prices are already tax-inclusive,
+  // so there is NO added IVA row: the subtotal equals the total unless a manual
+  // cash discount applies.
   const computedTotal = detalles.reduce(
     (s, item) => s + parseFloat(item.subtotal || 0),
     0
   );
+
+  // Manual cash discount (descuento_manual) — an absolute amount subtracted
+  // directly from the subtotal, mirroring the server-side monto_total math.
+  const discount    = quotation.descuento_manual != null ? parseFloat(quotation.descuento_manual) : 0;
+  const hasDiscount = detalles.length > 0 && discount > 0;
+
   const displayTotal = detalles.length > 0
-    ? computedTotal
+    ? Math.max(0, computedTotal - discount)
     : parseFloat(quotation.monto_total || 0);
 
   const currencyLabel = quotation.moneda === 'BOB' ? 'BOLIVIANOS' : 'DÓLARES AMERICANOS';
@@ -1019,9 +1098,14 @@ function drawTotalsAndConditions(doc, quotation, startY) {
   // Use per-quotation tiempo_entrega if provided, else fall back to default
   const entregaStr = quotation.tiempo_entrega || '25 DÍAS CALENDARIO';
 
+  // Forma de pago: use the per-quotation value (forma_pago) when supplied,
+  // otherwise fall back to the historical default advance-payment condition.
+  const formaPagoStr = (quotation.forma_pago && String(quotation.forma_pago).trim())
+    || '60% ANTICIPO Y SALDO CONTRA ENTREGA';
+
   const condiciones = [
     ['Tiempo de entrega:', entregaStr],
-    ['Forma de pago:',     '60% ANTICIPO Y SALDO CONTRA ENTREGA'],
+    ['Forma de pago:',     formaPagoStr],
     ['Validez de oferta:', validezStr],
   ];
 
@@ -1057,10 +1141,13 @@ function drawTotalsAndConditions(doc, quotation, startY) {
     .stroke();
   ly += 18;
 
+  // Dynamic per issuing entity (ENTIDAD EMISORA): the unipersonal entity prints
+  // its personal account; the S.R.L. entity prints the corporate account.
+  const banco = resolveBankData(quotation);
   const bancoData = [
-    ['Beneficiario:', 'ROCA IMPORTACIONES S.R.L.'],
-    ['Entidad:',      'BANCO UNION S.A.'],
-    ['Cuenta Cte:',   '1-000-00-66027513'],
+    ['Beneficiario:', banco.beneficiario],
+    ['Entidad:',      banco.banco],
+    ['Cuenta Cte:',   banco.cuenta],
   ];
 
   bancoData.forEach(([lbl, val]) => {
@@ -1095,6 +1182,27 @@ function drawTotalsAndConditions(doc, quotation, startY) {
       .fontSize(7.5)
       .fillColor(C.DARK_GRAY)
       .text(fmtPrice(computedTotal, quotation.moneda),
+        RIGHT_X + RIGHT_W / 2, ry + 5,
+        { width: RIGHT_W / 2 - 4, align: 'right', lineBreak: false });
+    ry += 18;
+  }
+
+  // Manual discount row (only when a positive descuento_manual is set). Shown
+  // as a negative amount in orange so it reads clearly as a deduction that
+  // subtracts from the subtotal to yield the TOTAL below.
+  if (hasDiscount) {
+    doc.rect(RIGHT_X, ry, RIGHT_W, 18).fill(C.WHITE);
+    doc
+      .font('Helvetica')
+      .fontSize(7.5)
+      .fillColor(C.MID_GRAY)
+      .text('Descuento:', RIGHT_X + 6, ry + 5,
+        { width: RIGHT_W / 2 - 6, lineBreak: false });
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(7.5)
+      .fillColor(C.ORANGE)
+      .text(`- ${fmtPrice(discount, quotation.moneda)}`,
         RIGHT_X + RIGHT_W / 2, ry + 5,
         { width: RIGHT_W / 2 - 4, align: 'right', lineBreak: false });
     ry += 18;

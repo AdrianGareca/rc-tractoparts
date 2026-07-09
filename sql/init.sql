@@ -242,6 +242,8 @@ CREATE TABLE cotizaciones (
   comentarios_admin  TEXT          DEFAULT NULL
     COMMENT 'Supervisor review comment written by Administracion role',
   -- Requester block (physical sheet: DATOS DEL SOLICITANTE)
+  solicitante_nombre       VARCHAR(120)  DEFAULT NULL
+    COMMENT 'Nombre de la persona/cliente externo que solicitó la proforma (el solicitante). Se imprime en la columna DATOS DEL SOLICITANTE del PDF; NO es el ejecutivo de ventas.',
   solicitante_no_solicitud VARCHAR(100)  DEFAULT NULL
     COMMENT 'Nº de Solicitud / Nº de OC del solicitante interno',
   solicitante_area         VARCHAR(100)  DEFAULT NULL
@@ -261,6 +263,13 @@ CREATE TABLE cotizaciones (
     COMMENT 'Número de serie del equipo',
   equipo_motor             VARCHAR(80)   DEFAULT NULL
     COMMENT 'Número de motor del equipo',
+  -- Financial / PDF configuration fields
+  descuento_manual         DECIMAL(15,2) DEFAULT NULL
+    COMMENT 'Descuento manual fijo en efectivo (monto absoluto) restado del subtotal al calcular el Total Final',
+  forma_pago               VARCHAR(200)  DEFAULT NULL
+    COMMENT 'Condiciones de pago personalizadas (ej. 60% ANTICIPO Y SALDO CONTRA ENTREGA). NULL → frontend default shown.',
+  mostrar_codigos          TINYINT(1)    NOT NULL DEFAULT 1
+    COMMENT '1 = mostrar columna CÓDIGO en el PDF generado; 0 = ocultar (útil cuando no hay códigos de parte)',
   creado_en          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   actualizado_en     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -275,6 +284,38 @@ CREATE TABLE cotizaciones (
   CONSTRAINT fk_cot_aprobador
     FOREIGN KEY (aprobado_por) REFERENCES usuarios (id) ON DELETE SET NULL  ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =============================================================================
+-- 7b. CUENTAS_BANCARIAS
+--    Datos bancarios (DATOS BANCARIOS del PDF) por entidad emisora. Permite
+--    cambiar la cuenta impresa dinámicamente según cotizaciones.entidad_emisora
+--    sin tocar código. QuotationModel.findById adjunta beneficiario/banco/
+--    numero_cuenta a la cotización; pdfService los imprime, y si la tabla no
+--    existe todavía degrada a su mapa BANK_ACCOUNTS interno.
+--    entidad_emisora es UNIQUE para que exista a lo sumo una cuenta por entidad.
+-- =============================================================================
+
+CREATE TABLE cuentas_bancarias (
+  id              INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  entidad_emisora VARCHAR(150)  NOT NULL
+    COMMENT 'Coincide con cotizaciones.entidad_emisora (nombre legal de la razón social emisora).',
+  beneficiario    VARCHAR(150)  NOT NULL
+    COMMENT 'Titular de la cuenta que se imprime como Beneficiario en el PDF.',
+  banco           VARCHAR(120)  NOT NULL
+    COMMENT 'Entidad bancaria (ej. BANCO UNIÓN S.A.).',
+  numero_cuenta   VARCHAR(60)   NOT NULL
+    COMMENT 'Número de cuenta corriente impreso en el PDF.',
+  creado_en       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  actualizado_en  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_cuentas_entidad (entidad_emisora)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Semilla: una cuenta por entidad emisora. La cuenta unipersonal usa un número
+-- provisional (placeholder) hasta que se confirme el definitivo en producción.
+INSERT INTO cuentas_bancarias (entidad_emisora, beneficiario, banco, numero_cuenta) VALUES
+  ('Empresa unipersonal de Ronald Roca Cartagena', 'Ronald Roca Cartagena',      'BANCO UNIÓN S.A.', '1-234-56-789012'),
+  ('Roca Importaciones S.R.L.',                    'ROCA IMPORTACIONES S.R.L.',  'BANCO UNION S.A.',  '1-000-00-66027513');
 
 -- =============================================================================
 -- 8. COTIZACION_DETALLES

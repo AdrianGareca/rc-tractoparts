@@ -196,6 +196,13 @@ const quotationShape = {
   // ---------------------------------------------------------------------------
   // Requester block — DATOS DEL SOLICITANTE (physical sheet)
   // ---------------------------------------------------------------------------
+  solicitante_nombre: z
+    .string()
+    .trim()
+    .max(120, 'solicitante_nombre must not exceed 120 characters.')
+    .optional()
+    .nullable(),
+
   solicitante_no_solicitud: z
     .string()
     .trim()
@@ -220,7 +227,6 @@ const quotationShape = {
   solicitante_correo: z
     .string()
     .trim()
-    .email('solicitante_correo must be a valid email address.')
     .max(120, 'solicitante_correo must not exceed 120 characters.')
     .optional()
     .nullable(),
@@ -286,6 +292,35 @@ const quotationShape = {
     .max(100, 'tiempo_entrega must not exceed 100 characters.')
     .optional()
     .nullable(),
+
+  // ---------------------------------------------------------------------------
+  // Financial / PDF configuration fields
+  // ---------------------------------------------------------------------------
+
+  // Fixed cash discount subtracted from the subtotal to produce the final total.
+  // Absolute monetary amount — NOT a percentage.
+  descuento_manual: z
+    .number({ invalid_type_error: 'descuento_manual must be a number.' })
+    .min(0, 'descuento_manual must be 0 or greater.')
+    .max(99999999999.99, 'descuento_manual is too large.')
+    .optional()
+    .nullable(),
+
+  // Payment-terms text printed in CONDICIONES DE LA OFERTA on the PDF.
+  // NULL → PDF renders the default '60% ANTICIPO Y SALDO CONTRA ENTREGA'.
+  forma_pago: z
+    .string()
+    .trim()
+    .max(200, 'forma_pago must not exceed 200 characters.')
+    .optional()
+    .nullable(),
+
+  // Toggle for the CÓDIGO column in the generated PDF.
+  // true (default) → show the column; false → hide it.
+  mostrar_codigos: z
+    .boolean()
+    .optional()
+    .default(true),
 
   detalles: z
     .array(detalleItemSchema)

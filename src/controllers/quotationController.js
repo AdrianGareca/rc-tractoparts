@@ -46,6 +46,7 @@ const QuotationController = {
       fecha_validez,
       tipo_pedido,
       tiempo_entrega,
+      solicitante_nombre,
       solicitante_no_solicitud,
       solicitante_area,
       solicitante_celular,
@@ -55,6 +56,9 @@ const QuotationController = {
       equipo_modelo,
       equipo_serie,
       equipo_motor,
+      descuento_manual,
+      forma_pago,
+      mostrar_codigos,
       detalles = [],
     } = req.body;
 
@@ -115,13 +119,17 @@ const QuotationController = {
       // Recalculate monto_total server-side from line items so the stored
       // header total always matches the sum of the actual detail rows.
       // The client-supplied value is ignored when detalles are present.
+      // A manual cash discount (descuento_manual) is then subtracted from
+      // the subtotal to produce the stored total — preserving auditability.
       let calculatedTotal = null;
       if (detalles.length > 0) {
-        calculatedTotal = parseFloat(
+        const subtotalFromItems = parseFloat(
           detalles.reduce((sum, item) => {
             return sum + parseFloat(item.cantidad) * parseFloat(item.precio_unitario);
           }, 0).toFixed(2)
         );
+        const discount = descuento_manual != null ? parseFloat(descuento_manual) : 0;
+        calculatedTotal = parseFloat(Math.max(0, subtotalFromItems - discount).toFixed(2));
       } else if (monto_total != null) {
         // No line items — accept an explicit header-level total (e.g. free-text quote)
         calculatedTotal = parseFloat(monto_total);
@@ -140,6 +148,7 @@ const QuotationController = {
         fecha_validez:            fecha_validez            || null,
         tipo_pedido:              tipo_pedido              || null,
         tiempo_entrega:           tiempo_entrega           || null,
+        solicitante_nombre:       solicitante_nombre       || null,
         solicitante_no_solicitud: solicitante_no_solicitud || null,
         solicitante_area:         solicitante_area         || null,
         solicitante_celular:      solicitante_celular      || null,
@@ -149,6 +158,9 @@ const QuotationController = {
         equipo_modelo:            equipo_modelo            || null,
         equipo_serie:             equipo_serie             || null,
         equipo_motor:             equipo_motor             || null,
+        descuento_manual:         descuento_manual         != null ? parseFloat(descuento_manual) : null,
+        forma_pago:               forma_pago               || null,
+        mostrar_codigos:          mostrar_codigos          != null ? mostrar_codigos : true,
       });
 
       if (detalles.length > 0) {
@@ -289,10 +301,13 @@ const QuotationController = {
 
       // Recalculate the header total server-side from the line items so the
       // stored total always matches the actual detail rows (client value ignored).
-      const calculatedTotal = parseFloat(
+      // A manual cash discount is subtracted when provided.
+      const subtotalFromItems = parseFloat(
         detalles.reduce((sum, item) =>
           sum + parseFloat(item.cantidad) * parseFloat(item.precio_unitario), 0).toFixed(2)
       );
+      const discountUpdate = req.body.descuento_manual != null ? parseFloat(req.body.descuento_manual) : 0;
+      const calculatedTotal = parseFloat(Math.max(0, subtotalFromItems - discountUpdate).toFixed(2));
 
       connection = await pool.getConnection();
       await connection.beginTransaction();
@@ -308,6 +323,7 @@ const QuotationController = {
         fecha_validez:            req.body.fecha_validez,
         tipo_pedido:              req.body.tipo_pedido,
         tiempo_entrega:           req.body.tiempo_entrega,
+        solicitante_nombre:       req.body.solicitante_nombre,
         solicitante_no_solicitud: req.body.solicitante_no_solicitud,
         solicitante_area:         req.body.solicitante_area,
         solicitante_celular:      req.body.solicitante_celular,
@@ -317,6 +333,9 @@ const QuotationController = {
         equipo_modelo:            req.body.equipo_modelo,
         equipo_serie:             req.body.equipo_serie,
         equipo_motor:             req.body.equipo_motor,
+        descuento_manual:         req.body.descuento_manual != null ? parseFloat(req.body.descuento_manual) : null,
+        forma_pago:               req.body.forma_pago               || null,
+        mostrar_codigos:          req.body.mostrar_codigos          != null ? req.body.mostrar_codigos : true,
       });
 
       if (!headerUpdated) {
@@ -373,6 +392,21 @@ const QuotationController = {
       return res.status(500).json({ success: false, message: 'Failed to update quotation.' });
     } finally {
       if (connection) connection.release();
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // getNextCorrelativo — GET /api/cotizaciones/next-correlativo  (All roles)
+  // Returns a non-binding preview of what the next serial number will look
+  // like. Used by the frontend form to display the number in real-time.
+  // ---------------------------------------------------------------------------
+  async getNextCorrelativo(req, res) {
+    try {
+      const preview = await QuotationModel.peekNextCorrelativo();
+      return res.status(200).json({ success: true, data: { numero_correlativo: preview } });
+    } catch (error) {
+      console.error('[QuotationController.getNextCorrelativo] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to preview next correlativo.' });
     }
   },
 

@@ -61,8 +61,14 @@ function _buildProformaHTML(q, id, viewMode) {
 
   const detalles = q.detalles ?? [];
   const subtotal = detalles.reduce((sum, d) => sum + parseFloat(d.subtotal || 0), 0);
-  const iva      = subtotal * 0.13;
-  const total    = subtotal + iva;
+  // Prices are tax-inclusive — NO IVA is added on top. The TOTAL is the direct
+  // sum of the line items minus the optional manual cash discount
+  // (descuento_manual), mirroring the server-side monto_total math and the PDF.
+  const descuento = q.descuento_manual != null ? (parseFloat(q.descuento_manual) || 0) : 0;
+  const total     = Math.max(0, subtotal - descuento);
+
+  // Escape-or-dash helper for optional metadata fields
+  const v = (x) => (x != null && String(x).trim() !== '') ? escHtml(String(x)) : '—';
 
   const detallesRows = detalles.length > 0
     ? detalles.map(d => {
@@ -233,6 +239,60 @@ function _buildProformaHTML(q, id, viewMode) {
         <p class="proforma-description">${escHtml(q.descripcion)}</p>
       </div>
 
+      <!-- Solicitor data (DATOS DEL SOLICITANTE — mirrors the PDF grid) -->
+      <div class="form-group" style="margin-bottom:1rem;">
+        <span class="form-label" style="color:#1D4ED8;">👤 Datos del Solicitante</span>
+        <div class="proforma-meta-bar" style="margin-top:.4rem;">
+          <div class="proforma-meta-item">
+            <span class="form-label">Nombre</span>
+            <p>${v(q.nombre_sol)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Nº Solicitud / OC</span>
+            <p>${v(q.nro_solicitud)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Área</span>
+            <p>${v(q.area_sol)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Celular</span>
+            <p>${v(q.celular_sol)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Correo</span>
+            <p>${v(q.correo_sol)}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Equipment data (DATOS DEL EQUIPO — mirrors the PDF grid) -->
+      <div class="form-group" style="margin-bottom:1rem;">
+        <span class="form-label" style="color:#1D4ED8;">🚜 Datos del Equipo</span>
+        <div class="proforma-meta-bar" style="margin-top:.4rem;">
+          <div class="proforma-meta-item">
+            <span class="form-label">Marca</span>
+            <p>${v(q.equipo_marca)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Tipo</span>
+            <p>${v(q.equipo_tipo)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Modelo</span>
+            <p>${v(q.equipo_modelo)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Serie</span>
+            <p>${v(q.equipo_serie)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Motor</span>
+            <p>${v(q.equipo_motor)}</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Line items table -->
       <div class="table-wrapper proforma-items-wrapper" style="margin-bottom:1rem;">
         <table class="data-table proforma-items-table">
@@ -250,18 +310,19 @@ function _buildProformaHTML(q, id, viewMode) {
         </table>
       </div>
 
-      <!-- Totals panel -->
+      <!-- Totals panel (prices are tax-inclusive — no IVA row) -->
       <div class="proforma-totals">
         <div class="proforma-total-row">
           <span>Subtotal</span>
           <span class="fw-600">${q.moneda} ${subtotal.toFixed(2)}</span>
         </div>
+        ${descuento > 0 ? `
         <div class="proforma-total-row">
-          <span>IVA Bolivia (13%)</span>
-          <span>${q.moneda} ${iva.toFixed(2)}</span>
-        </div>
+          <span>Descuento</span>
+          <span style="color:#C85A0F;font-weight:600;">− ${q.moneda} ${descuento.toFixed(2)}</span>
+        </div>` : ''}
         <div class="proforma-total-row proforma-grand-total">
-          <span>TOTAL CON IVA</span>
+          <span>TOTAL</span>
           <span class="fw-600">${q.moneda} ${total.toFixed(2)}</span>
         </div>
       </div>

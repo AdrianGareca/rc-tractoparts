@@ -256,6 +256,23 @@ const QuotationModel = {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
+  // peekNextCorrelativo
+  // READ-ONLY preview of what the next serial number will look like.
+  // NOT guaranteed to be the actual next value under concurrency — it is
+  // purely informational, displayed to the user before they submit the form.
+  // No lock is acquired; no row is modified.
+  // ---------------------------------------------------------------------------
+  async peekNextCorrelativo() {
+    const currentYear = new Date().getFullYear();
+    const [rows] = await pool.execute(
+      'SELECT ultimo_nro FROM cotizaciones_correlativo WHERE anio = ?',
+      [currentYear]
+    );
+    const nextNumber = rows.length === 0 ? 1 : rows[0].ultimo_nro + 1;
+    return `COT-${currentYear}-${String(nextNumber).padStart(4, '0')}`;
+  },
+
+  // ---------------------------------------------------------------------------
   // generateCorrelativo
   // ATOMIC: must be called inside a caller-managed transaction.
   // Acquires a row-level exclusive lock (SELECT … FOR UPDATE) on the
@@ -299,10 +316,11 @@ const QuotationModel = {
         (numero_correlativo, id_cliente, id_ejecutivo, descripcion,
          monto_total, moneda, entidad_emisora, estado, observaciones, fecha_emision, fecha_validez,
          tipo_pedido, tiempo_entrega,
-         solicitante_no_solicitud, solicitante_area, solicitante_celular, solicitante_correo,
-         equipo_marca, equipo_tipo, equipo_modelo, equipo_serie, equipo_motor)
+         solicitante_nombre, solicitante_no_solicitud, solicitante_area, solicitante_celular, solicitante_correo,
+         equipo_marca, equipo_tipo, equipo_modelo, equipo_serie, equipo_motor,
+         descuento_manual, forma_pago, mostrar_codigos)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const [result] = await connection.execute(sql, [
@@ -310,7 +328,7 @@ const QuotationModel = {
       data.id_cliente,
       data.id_ejecutivo,
       data.descripcion,
-      data.monto_total              || null,
+      data.monto_total              ?? null,
       data.moneda                   || 'BOB',
       data.entidad_emisora          || 'Empresa unipersonal de Ronald Roca Cartagena',
       data.observaciones            || null,
@@ -318,6 +336,7 @@ const QuotationModel = {
       data.fecha_validez            || null,
       data.tipo_pedido              || null,
       data.tiempo_entrega           || null,
+      data.solicitante_nombre       || null,
       data.solicitante_no_solicitud || null,
       data.solicitante_area         || null,
       data.solicitante_celular      || null,
@@ -327,6 +346,9 @@ const QuotationModel = {
       data.equipo_modelo            || null,
       data.equipo_serie             || null,
       data.equipo_motor             || null,
+      data.descuento_manual         ?? null,
+      data.forma_pago               || null,
+      data.mostrar_codigos          != null ? (data.mostrar_codigos ? 1 : 0) : 1,
     ]);
 
     return result.insertId;
@@ -401,6 +423,7 @@ const QuotationModel = {
         fecha_validez            = ?,
         tipo_pedido              = ?,
         tiempo_entrega           = ?,
+        solicitante_nombre       = ?,
         solicitante_no_solicitud = ?,
         solicitante_area         = ?,
         solicitante_celular      = ?,
@@ -409,7 +432,10 @@ const QuotationModel = {
         equipo_tipo              = ?,
         equipo_modelo            = ?,
         equipo_serie             = ?,
-        equipo_motor             = ?
+        equipo_motor             = ?,
+        descuento_manual         = ?,
+        forma_pago               = ?,
+        mostrar_codigos          = ?
       WHERE id = ? AND estado = 'Pendiente'
     `;
 
@@ -424,6 +450,7 @@ const QuotationModel = {
       data.fecha_validez            || null,
       data.tipo_pedido              || null,
       data.tiempo_entrega           || null,
+      data.solicitante_nombre       || null,
       data.solicitante_no_solicitud || null,
       data.solicitante_area         || null,
       data.solicitante_celular      || null,
@@ -433,6 +460,9 @@ const QuotationModel = {
       data.equipo_modelo            || null,
       data.equipo_serie             || null,
       data.equipo_motor             || null,
+      data.descuento_manual         ?? null,
+      data.forma_pago               || null,
+      data.mostrar_codigos          != null ? (data.mostrar_codigos ? 1 : 0) : 1,
       id,
     ]);
 
@@ -489,6 +519,7 @@ const QuotationModel = {
         c.fecha_aprobacion,
         c.obs_aprobacion,
         c.comentarios_admin,
+        c.solicitante_nombre       AS nombre_sol,
         c.solicitante_no_solicitud AS nro_solicitud,
         c.solicitante_area         AS area_sol,
         c.solicitante_celular      AS celular_sol,
@@ -498,6 +529,9 @@ const QuotationModel = {
         c.equipo_modelo,
         c.equipo_serie,
         c.equipo_motor,
+        c.descuento_manual,
+        c.forma_pago,
+        c.mostrar_codigos,
         c.creado_en,
         c.actualizado_en
       FROM cotizaciones c
@@ -529,6 +563,26 @@ const QuotationModel = {
         fallbackSql = fallbackSql.replace('        c.entidad_emisora,\n', "        'Empresa unipersonal de Ronald Roca Cartagena' AS entidad_emisora,\n");
         patched = true;
       }
+      if (msg.includes("Unknown column 'c.descuento_manual'")) {
+        console.warn('[QuotationModel.findById] descuento_manual column missing — retrying with NULL.');
+        fallbackSql = fallbackSql.replace('        c.descuento_manual,\n', '        NULL AS descuento_manual,\n');
+        patched = true;
+      }
+      if (msg.includes("Unknown column 'c.forma_pago'")) {
+        console.warn('[QuotationModel.findById] forma_pago column missing — retrying with NULL.');
+        fallbackSql = fallbackSql.replace('        c.forma_pago,\n', '        NULL AS forma_pago,\n');
+        patched = true;
+      }
+      if (msg.includes("Unknown column 'c.mostrar_codigos'")) {
+        console.warn('[QuotationModel.findById] mostrar_codigos column missing — retrying with 1.');
+        fallbackSql = fallbackSql.replace('        c.mostrar_codigos,\n', '        1 AS mostrar_codigos,\n');
+        patched = true;
+      }
+      if (msg.includes("Unknown column 'c.solicitante_nombre'")) {
+        console.warn('[QuotationModel.findById] solicitante_nombre column missing — retrying with NULL.');
+        fallbackSql = fallbackSql.replace('        c.solicitante_nombre       AS nombre_sol,\n', '        NULL AS nombre_sol,\n');
+        patched = true;
+      }
       if (patched) {
         [headerRows] = await pool.execute(fallbackSql, [id]);
       } else {
@@ -538,6 +592,36 @@ const QuotationModel = {
 
     if (!headerRows[0]) return null;
     const quotation = headerRows[0];
+
+    // Attach the DATOS BANCARIOS for this quotation's issuing entity so the PDF
+    // service can print the correct account dynamically (dynamic bank data).
+    // Isolated + self-degrading: if the cuentas_bancarias table does not yet
+    // exist on this environment, the fields are left undefined and pdfService
+    // falls back to its built-in BANK_ACCOUNTS map. The legacy 'RC Tractoparts'
+    // value is mapped to the primary unipersonal entity so old rows resolve too.
+    try {
+      const entidadLookup = (quotation.entidad_emisora && String(quotation.entidad_emisora).trim()) === 'RC Tractoparts'
+        ? 'Empresa unipersonal de Ronald Roca Cartagena'
+        : quotation.entidad_emisora;
+      const [bankRows] = await pool.execute(
+        `SELECT beneficiario, banco, numero_cuenta
+           FROM cuentas_bancarias
+          WHERE entidad_emisora = ?
+          LIMIT 1`,
+        [entidadLookup]
+      );
+      if (bankRows[0]) {
+        quotation.banco_beneficiario = bankRows[0].beneficiario;
+        quotation.banco_nombre       = bankRows[0].banco;
+        quotation.banco_cuenta       = bankRows[0].numero_cuenta;
+      }
+    } catch (bankErr) {
+      // Non-fatal: table missing on a legacy DB, or any lookup failure. The PDF
+      // service degrades gracefully to its built-in per-entity bank map.
+      if (!/doesn't exist|Unknown table|no such table/i.test(bankErr.message || '')) {
+        console.warn('[QuotationModel.findById] Bank data lookup failed (non-fatal):', bankErr.message);
+      }
+    }
 
     const sqlDetalles = `
       SELECT
