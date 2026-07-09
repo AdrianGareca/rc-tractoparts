@@ -1397,7 +1397,13 @@ async function generateQuotationPdf(quotation) {
         fs.mkdirSync(uploadDir, { recursive: true });
       }
 
-      const filename     = `${quotation.numero_correlativo}-${Date.now()}.pdf`;
+      // numero_correlativo formats like "SC-2026/000692" contain a '/', which
+      // path.join() (and the OS) would interpret as a subdirectory separator,
+      // making fs.createWriteStream fail with ENOENT (target dir doesn't exist).
+      // Sanitize to a filesystem-safe stem before building the filename.
+      const safeCorrelativo = String(quotation.numero_correlativo || `COT-${quotation.id}`)
+        .replace(/[^\w\-]/g, '_');
+      const filename     = `${safeCorrelativo}-${Date.now()}.pdf`;
       const absolutePath = path.join(uploadDir, filename);
       const relativePath = path.join(
         process.env.UPLOAD_DIR || 'uploads/cotizaciones',
