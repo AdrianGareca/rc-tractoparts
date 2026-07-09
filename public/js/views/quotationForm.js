@@ -421,6 +421,10 @@ class FormMediator {
   // ── Private: build form HTML ───────────────────────────────────────────────
 
   _buildFormHTML(nextCorrelativo = '') {
+    // Shared "(Opcional)" label marker — appended to every non-mandatory field
+    // so users know at a glance which inputs can be left blank.
+    const OPT = '<span style="color:#9ca3af;font-size:.8rem;font-weight:400;">(Opcional)</span>';
+
     const corrPreview = nextCorrelativo
       ? `<div class="correlativo-preview" style="display:inline-flex;align-items:center;gap:.5rem;
              padding:.25rem .75rem;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;
@@ -520,27 +524,27 @@ class FormMediator {
           <summary class="form-section-summary">Datos del Solicitante</summary>
           <div class="form-row" style="margin-top:.75rem;">
             <div class="form-group">
-              <label class="form-label" for="solicitante_nombre">Nombre del Solicitante</label>
+              <label class="form-label" for="solicitante_nombre">Nombre del Solicitante ${OPT}</label>
               <input class="form-control" type="text" id="solicitante_nombre"
                      placeholder="Ej: Juan Pérez" maxlength="120" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="solicitante_no_solicitud">Nº Solicitud / OC</label>
+              <label class="form-label" for="solicitante_no_solicitud">Nº Solicitud / OC ${OPT}</label>
               <input class="form-control" type="text" id="solicitante_no_solicitud"
                      placeholder="Ej: OC-2026-0045" maxlength="100" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="solicitante_area">Área / Departamento</label>
+              <label class="form-label" for="solicitante_area">Área / Departamento ${OPT}</label>
               <input class="form-control" type="text" id="solicitante_area"
                      placeholder="Ej: Mantenimiento" maxlength="100" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="solicitante_celular">Celular</label>
+              <label class="form-label" for="solicitante_celular">Celular ${OPT}</label>
               <input class="form-control" type="tel" id="solicitante_celular"
                      placeholder="Ej: 77012345" maxlength="30" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="solicitante_correo">Correo</label>
+              <label class="form-label" for="solicitante_correo">Correo ${OPT}</label>
               <input class="form-control" type="email" id="solicitante_correo"
                      placeholder="solicitante@empresa.com" maxlength="120" />
             </div>
@@ -552,27 +556,27 @@ class FormMediator {
           <summary class="form-section-summary">Datos del Equipo</summary>
           <div class="form-row" style="margin-top:.75rem;">
             <div class="form-group">
-              <label class="form-label" for="equipo_marca">Marca</label>
+              <label class="form-label" for="equipo_marca">Marca ${OPT}</label>
               <input class="form-control" type="text" id="equipo_marca"
                      placeholder="Ej: Caterpillar" maxlength="80" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="equipo_tipo">Tipo</label>
+              <label class="form-label" for="equipo_tipo">Tipo ${OPT}</label>
               <input class="form-control" type="text" id="equipo_tipo"
                      placeholder="Ej: Excavadora" maxlength="80" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="equipo_modelo">Modelo</label>
+              <label class="form-label" for="equipo_modelo">Modelo ${OPT}</label>
               <input class="form-control" type="text" id="equipo_modelo"
                      placeholder="Ej: 336" maxlength="80" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="equipo_serie">Nº Serie <span style="color:#9ca3af;font-size:.8rem;font-weight:400;">(Opcional)</span></label>
+              <label class="form-label" for="equipo_serie">Nº Serie ${OPT}</label>
               <input class="form-control" type="text" id="equipo_serie"
                      placeholder="Ej: CAT0336XXXXX" maxlength="80" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="equipo_motor">Nº Motor <span style="color:#9ca3af;font-size:.8rem;font-weight:400;">(Opcional)</span></label>
+              <label class="form-label" for="equipo_motor">Nº Motor ${OPT}</label>
               <input class="form-control" type="text" id="equipo_motor"
                      placeholder="Ej: C9.3" maxlength="80" />
             </div>
