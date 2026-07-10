@@ -501,7 +501,7 @@ function drawHeader(doc, quotation) {
     // Store raw DB estado so the STATUS color palette can be resolved in the
     // render loop; the display string is uppercased there before painting.
     ['ESTADO',        quotation.estado || '—'],
-    ['FECHA CONFIRM.', formatDate(quotation.fecha_aprobacion || quotation.fecha_emision)],
+    ['FECHA',         formatDate(quotation.fecha_emision)],
     // Ejecutivo de ventas that created the quotation (usuarios.nombre_completo,
     // aliased as ejecutivo_nombre by QuotationModel.findById).
     ['EJECUTIVO',     quotation.ejecutivo_nombre || '—'],
