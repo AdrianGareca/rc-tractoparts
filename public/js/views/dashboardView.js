@@ -70,6 +70,12 @@ function _buildProformaHTML(q, id, viewMode) {
   // Escape-or-dash helper for optional metadata fields
   const v = (x) => (x != null && String(x).trim() !== '') ? escHtml(String(x)) : '—';
 
+  // Mirror the PDF's CÓDIGO-column toggle so the on-screen preview and the
+  // printed proforma always show the same column set (TINYINT 1/0, boolean,
+  // or null on legacy rows → default to showing the column — same resolution
+  // rule as pdfService.drawItemsTable).
+  const showCodigos = q.mostrar_codigos == null ? true : Boolean(Number(q.mostrar_codigos));
+
   const detallesRows = detalles.length > 0
     ? detalles.map(d => {
         // Prefer the catalog Part Number (via productos FK); fall back to the
@@ -78,14 +84,14 @@ function _buildProformaHTML(q, id, viewMode) {
         return `
         <tr>
           <td>${escHtml(d.descripcion_item)}</td>
-          <td class="text-muted text-sm">${codigoParte ? escHtml(codigoParte) : '—'}</td>
+          ${showCodigos ? `<td class="text-muted text-sm">${codigoParte ? escHtml(codigoParte) : '—'}</td>` : ''}
           ${d.marca_nombre ? `<td class="text-muted text-sm">${escHtml(d.marca_nombre)}</td>` : '<td class="text-muted text-sm">—</td>'}
           <td class="text-right">${Number(d.cantidad).toFixed(4).replace(/\.?0+$/, '')}</td>
           <td class="text-right">${Number(d.precio_unitario).toFixed(2)}</td>
           <td class="text-right fw-600">${Number(d.subtotal).toFixed(2)}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">Sin ítems registrados</td></tr>`;
+    : `<tr><td colspan="${showCodigos ? 6 : 5}" style="text-align:center;color:var(--text-muted);">Sin ítems registrados</td></tr>`;
 
   // Jefe action grid — contextual buttons based on current state
   const canApprove      = jefeMode && ['Pendiente', 'En revision', 'En espera'].includes(q.estado);
@@ -299,7 +305,7 @@ function _buildProformaHTML(q, id, viewMode) {
           <thead>
             <tr>
               <th>Descripción del Ítem</th>
-              <th>Cód. Parte</th>
+              ${showCodigos ? '<th>Cód. Parte</th>' : ''}
               <th>Marca</th>
               <th class="text-right">Cantidad</th>
               <th class="text-right">Precio Unit. (${q.moneda})</th>
@@ -1758,8 +1764,15 @@ const UI = {
     const titleEl  = document.getElementById('modal-title');
     if (!overlay || !body || !titleEl) return;
 
-    // A new modal is about to render — any teardown registered by whatever
-    // was previously shown no longer applies to what's on screen.
+    // A new modal is about to render — RUN (not just discard) any teardown
+    // registered by whatever was previously shown. Discarding silently would
+    // leak whatever the old content held (e.g. a draft-lock socket) if a
+    // modal is ever replaced without passing through closeModal().
+    if (typeof UI._activeCleanup === 'function') {
+      try { UI._activeCleanup(); } catch (err) {
+        console.warn('[UI.openModal] Previous cleanup callback failed:', err?.message || err);
+      }
+    }
     UI._activeCleanup = null;
 
     titleEl.textContent = title;

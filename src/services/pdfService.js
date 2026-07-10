@@ -841,7 +841,7 @@ function drawItemsTable(doc, quotation, startY) {
     .stroke();
 
   let y          = startY + 18;
-  const headerY  = y;            // Y of the first table header row
+  let headerY    = y;            // Y of the CURRENT page's table header row
   y              = drawTableHeaderRow(doc, y, layout);
 
   // Empty state
@@ -857,7 +857,11 @@ function drawItemsTable(doc, quotation, startY) {
   }
 
   detalles.forEach((item, idx) => {
-    const rowH = _calcRowHeight(doc, item.descripcion_item, layout.w.desc);
+    // Row height = wrapped description PLUS the italic brand subtitle drawn
+    // beneath it (6 pt line + gap); without the extra 8 pt the brand label
+    // bleeds past the row's bottom border into the next row.
+    let rowH = _calcRowHeight(doc, item.descripcion_item, layout.w.desc);
+    if (item.marca_nombre) rowH += 8;
 
     // Page break guard
     if (y + rowH > PAGE_BREAK_Y) {
@@ -872,6 +876,10 @@ function drawItemsTable(doc, quotation, startY) {
       drawLogoWatermark(doc);
       drawFooter(doc, quotation);
       y = MARGIN + 8;
+      // Reset headerY to THIS page's header top — the closing outer border
+      // below the loop must frame the current page's rows, not coordinates
+      // captured on a previous page.
+      headerY = y;
       y = drawTableHeaderRow(doc, y, layout);
     }
 
@@ -1015,6 +1023,18 @@ function drawItemsTable(doc, quotation, startY) {
 //   Right (~45 % of CW): Subtotal row (if items exist) + navy TOTAL box
 // ---------------------------------------------------------------------------
 function drawTotalsAndConditions(doc, quotation, startY) {
+  // Page-break guard: the SON line + conditions/bank/total block needs
+  // ~150 pt. If the items table ended too low, PDFKit's auto page-break
+  // would fire mid-block on a doc.text() call — scattering labels onto a
+  // phantom page while the rects/lines stay behind. Start the whole block
+  // on a fresh page instead.
+  if (startY > PH - 240) {
+    doc.addPage();
+    drawLogoWatermark(doc);
+    drawFooter(doc, quotation);
+    startY = MARGIN;
+  }
+
   const detalles = Array.isArray(quotation.detalles) ? quotation.detalles : [];
 
   // Subtotal = sum of line-item subtotals. Prices are already tax-inclusive,
@@ -1248,6 +1268,22 @@ function drawObservations(doc, quotation, startY) {
   const notes = (quotation.observaciones || '').trim();
   if (!notes) return startY;
 
+  // Measure the box BEFORE drawing so the page-break guard can decide
+  // whether the title + box still fit above the fixed footer.
+  doc.font('Helvetica').fontSize(7.5);
+  const textH = doc.heightOfString(notes, { width: CW - 16 });
+  const boxH  = Math.min(textH + 16, 80);
+
+  // Page-break guard — same rationale as drawTotalsAndConditions: a
+  // doc.text() past the bottom margin triggers PDFKit's auto page-break
+  // mid-section, splitting the notes from their box.
+  if (startY + 8 + 18 + boxH > PH - MARGIN - 50) {
+    doc.addPage();
+    drawLogoWatermark(doc);
+    drawFooter(doc, quotation);
+    startY = MARGIN - 8; // so y = startY + 8 lands exactly on MARGIN
+  }
+
   let y = startY + 8;
 
   doc
@@ -1262,10 +1298,6 @@ function drawObservations(doc, quotation, startY) {
     .strokeColor(C.ORANGE)
     .stroke();
   y += 18;
-
-  doc.fontSize(7.5);
-  const textH = doc.heightOfString(notes, { width: CW - 16 });
-  const boxH  = Math.min(textH + 16, 80);
 
   doc
     .rect(MARGIN, y, CW, boxH)

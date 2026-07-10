@@ -532,7 +532,11 @@ const QuotationController = {
       // Overrides any explicit fecha_desde / fecha_hasta values — used by the
       // "Proformas del Día" executive widget.
       if (req.query.hoy === 'true') {
-        const today = new Date().toISOString().slice(0, 10);
+        // 'en-CA' formats as YYYY-MM-DD. Computed in Bolivia's timezone —
+        // toISOString() (UTC) would roll over to *tomorrow* at 20:00 local
+        // (UTC-4) on a UTC server, emptying the "Proformas del Día" widget
+        // every evening even though today's quotations exist.
+        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/La_Paz' });
         filters.fecha_desde = today;
         filters.fecha_hasta = today;
       }
