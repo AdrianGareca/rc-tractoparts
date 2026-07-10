@@ -365,7 +365,7 @@ const BANK_ACCOUNTS = {
   'Empresa unipersonal de Ronald Roca Cartagena': {
     beneficiario: 'Ronald Roca Cartagena',
     banco:        'BANCO UNIÓN S.A.',
-    cuenta:       '1-234-56-789012',
+    cuenta:       '10000060054760',
   },
   'Roca Importaciones S.R.L.': {
     beneficiario: 'ROCA IMPORTACIONES S.R.L.',

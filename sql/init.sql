@@ -338,10 +338,9 @@ CREATE TABLE cuentas_bancarias (
   UNIQUE KEY uq_cuentas_entidad (entidad_emisora)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Semilla: una cuenta por entidad emisora. La cuenta unipersonal usa un número
--- provisional (placeholder) hasta que se confirme el definitivo en producción.
+-- Semilla: una cuenta por entidad emisora.
 INSERT INTO cuentas_bancarias (entidad_emisora, beneficiario, banco, numero_cuenta) VALUES
-  ('Empresa unipersonal de Ronald Roca Cartagena', 'Ronald Roca Cartagena',      'BANCO UNIÓN S.A.', '1-234-56-789012'),
+  ('Empresa unipersonal de Ronald Roca Cartagena', 'Ronald Roca Cartagena',      'BANCO UNIÓN S.A.', '10000060054760'),
   ('Roca Importaciones S.R.L.',                    'ROCA IMPORTACIONES S.R.L.',  'BANCO UNION S.A.',  '1-000-00-66027513');
 
 -- =============================================================================
