@@ -614,6 +614,13 @@ const QuotationModel = {
       const entidadLookup = (quotation.entidad_emisora && String(quotation.entidad_emisora).trim()) === 'RC Tractoparts'
         ? 'Empresa unipersonal de Ronald Roca Cartagena'
         : quotation.entidad_emisora;
+      // TEMP DEBUG — remove after diagnosing the bank-account placeholder issue
+      console.log('[DEBUG bank lookup] raw entidad_emisora:', JSON.stringify(quotation.entidad_emisora));
+      console.log('[DEBUG bank lookup] entidadLookup used in query:', JSON.stringify(entidadLookup));
+      const [serverInfo] = await pool.execute(
+        'SELECT DATABASE() AS db_name, @@hostname AS db_host, @@port AS db_port'
+      );
+      console.log('[DEBUG bank lookup] Actual MySQL server/schema in use by Node:', JSON.stringify(serverInfo[0]));
       const [bankRows] = await pool.execute(
         `SELECT beneficiario, banco, numero_cuenta
            FROM cuentas_bancarias
@@ -621,12 +628,16 @@ const QuotationModel = {
           LIMIT 1`,
         [entidadLookup]
       );
+      // TEMP DEBUG — remove after diagnosing the bank-account placeholder issue
+      console.log('[DEBUG bank lookup] bankRows returned:', JSON.stringify(bankRows));
       if (bankRows[0]) {
         quotation.banco_beneficiario = bankRows[0].beneficiario;
         quotation.banco_nombre       = bankRows[0].banco;
         quotation.banco_cuenta       = bankRows[0].numero_cuenta;
       }
     } catch (bankErr) {
+      // TEMP DEBUG — remove after diagnosing the bank-account placeholder issue
+      console.log('[DEBUG bank lookup] QUERY THREW:', bankErr.message);
       // Non-fatal: table missing on a legacy DB, or any lookup failure. The PDF
       // service degrades gracefully to its built-in per-entity bank map.
       if (!/doesn't exist|Unknown table|no such table/i.test(bankErr.message || '')) {
