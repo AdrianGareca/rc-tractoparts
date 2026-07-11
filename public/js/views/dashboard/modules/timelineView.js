@@ -13,18 +13,73 @@ import api, { showToast } from '../../../services/apiClient.js';
 import { escHtml }        from '../helpers.js';
 
 // ---------------------------------------------------------------------------
+// saveBlobAs — user-controlled file save with graceful degradation.
+//
+// Modern path (Chrome/Edge over HTTPS/localhost): window.showSaveFilePicker
+// opens the OS-native "Guardar como…" dialog so the user CHOOSES the
+// destination folder (and may rename), with the quotation correlativo
+// pre-filled as the suggested filename. Nothing touches disk until they
+// confirm; cancelling the dialog saves nothing at all.
+//
+// Fallback path (Firefox/Safari, or contexts where the picker API is
+// unavailable): the classic anchor-download trick with the forced filename.
+// Where THAT file lands is governed by the browser's own settings — users
+// who want a location prompt there must enable "Preguntar dónde guardar
+// cada archivo antes de descargarlo" in the browser preferences.
+//
+// @param   {Blob}   blob      — File content to persist
+// @param   {string} fileName  — Suggested filename (e.g. "SC-2026_000692.pdf")
+// @param   {Object} fileType  — showSaveFilePicker "types" entry, e.g.
+//                               { description: 'Documento PDF',
+//                                 accept: { 'application/pdf': ['.pdf'] } }
+// @returns {Promise<'saved'|'cancelled'>}
+// ---------------------------------------------------------------------------
+async function saveBlobAs(blob, fileName, fileType) {
+  if (typeof window.showSaveFilePicker === 'function') {
+    try {
+      const handle   = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        types:         [fileType],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return 'saved';
+    } catch (err) {
+      // User dismissed the dialog — a deliberate choice, not an error.
+      if (err?.name === 'AbortError') return 'cancelled';
+      // Any other picker failure (rare: permission policy, transient FS error)
+      // falls through to the legacy anchor download so the file is never lost.
+      console.warn('[saveBlobAs] Save picker failed — falling back to direct download:', err.message);
+    }
+  }
+
+  // Legacy fallback: direct anchor download (browser decides the folder).
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href  = url;
+  link.setAttribute('download', fileName);
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Short delay before releasing the URL guarantees the download has been
+  // handed off to the browser's download manager.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return 'saved';
+}
+
+// ---------------------------------------------------------------------------
 // wirePdfButton
 // Attaches an authenticated PDF fetch handler to the #btn-ver-pdf button
 // rendered inside a modal body. Uses apiClient (which injects the Bearer
 // token) instead of a plain anchor navigation that would strip the header.
 //
-// The Blob is downloaded via the anchor "download" trick with the quotation
-// correlativo forced as the filename (e.g. "COT-2026-0007.pdf"). Previously the
-// PDF was opened with window.open() on a raw blob: URL, which made the browser's
-// "Save As" dialog suggest the blob's random UUID instead of a meaningful name —
-// breaking the executives' "download & send to client via WhatsApp" workflow.
-//
-// The object URL is revoked shortly after the click so browser memory is freed.
+// The Blob is persisted via saveBlobAs(): a native "Guardar como…" dialog
+// where supported (user picks the folder), anchor-download fallback elsewhere.
+// The correlativo is always the suggested filename (e.g. "COT-2026-0007.pdf") —
+// never a raw blob UUID — preserving the executives' "download & send to
+// client via WhatsApp" workflow.
 //
 // @param {HTMLElement}    body        — Modal body containing #btn-ver-pdf
 // @param {number|string}  id          — Quotation ID for the endpoint URL
@@ -39,23 +94,17 @@ export function wirePdfButton(body, id, correlativo) {
     try {
       const response = await api.get(`/api/cotizaciones/${id}/pdf`);
       const blob     = await response.blob();
-      // Force the real quotation code as the download filename so the browser
-      // never prompts a raw blob UUID. Sanitize to word chars/hyphens to keep
-      // COT-2026-0007 intact while blocking any path/header-injection chars.
+      // Force the real quotation code as the suggested filename. Sanitize to
+      // word chars/hyphens to keep COT-2026-0007 intact while blocking any
+      // path/header-injection chars.
       const fileName = correlativo
         ? `${String(correlativo).replace(/[^\w\-]/g, '_')}.pdf`
         : `Cotizacion_${id}.pdf`;
-      const url  = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href  = url;
-      link.setAttribute('download', fileName);
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      // Short delay before releasing the URL guarantees the download has been
-      // handed off to the browser's download manager.
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      const outcome = await saveBlobAs(blob, fileName, {
+        description: 'Documento PDF',
+        accept:      { 'application/pdf': ['.pdf'] },
+      });
+      if (outcome === 'saved') showToast('PDF guardado.', 'success', 2500);
     } catch (err) {
       showToast(err.data?.message || err.message || 'No se pudo cargar el PDF.', 'error');
     } finally {
@@ -71,8 +120,10 @@ export function wirePdfButton(body, id, correlativo) {
 // rendered inside a modal body.  The Bearer token ensures the spreadsheet
 // (company financial blueprints) is never served to unauthenticated sessions.
 //
-// The response is streamed as a Blob and triggered as a file download rather
-// than opened inline, since browsers cannot natively render .xlsx files.
+// The response is streamed as a Blob and persisted via saveBlobAs(): a native
+// "Guardar como…" dialog where supported (user picks the folder), anchor-
+// download fallback elsewhere. Excel files are never opened inline since
+// browsers cannot natively render .xlsx.
 //
 // @param {HTMLElement}    body  — Modal body containing #btn-ver-excel
 // @param {number|string}  id   — Quotation ID for the endpoint URL
@@ -87,19 +138,14 @@ export function wireExcelButton(body, id, correlativo) {
     try {
       const response = await api.get(`/api/cotizaciones/${id}/excel`);
       const blob     = await response.blob();
-      const url      = URL.createObjectURL(blob);
-      // Trigger browser download with the sanitized correlativo as filename
       const fileName = correlativo
         ? `${String(correlativo).replace(/[^\w\-]/g, '_')}.xlsx`
         : `Cotizacion_${id}.xlsx`;
-      const anchor   = document.createElement('a');
-      anchor.href    = url;
-      anchor.download = fileName;
-      anchor.style.display = 'none';
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      const outcome = await saveBlobAs(blob, fileName, {
+        description: 'Planilla de Excel',
+        accept:      { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
+      });
+      if (outcome === 'saved') showToast('Planilla Excel guardada.', 'success', 2500);
     } catch (err) {
       showToast(err.data?.message || err.message || 'No se pudo descargar la planilla Excel.', 'error');
     } finally {
