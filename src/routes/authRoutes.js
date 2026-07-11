@@ -10,6 +10,7 @@ const express        = require('express');
 const rateLimit      = require('express-rate-limit');
 const AuthController = require('../controllers/authController');
 const { authenticate } = require('../middlewares/authMiddleware');
+const authorize        = require('../middlewares/roleMiddleware');
 const { validate }     = require('../validators/validate');
 const { loginSchema }  = require('../validators/authValidator');
 
@@ -127,5 +128,28 @@ router.post('/login', loginLimiter, validate(loginSchema), AuthController.login)
 // POST /api/auth/logout
 // Protected — authenticate first to get req.token for revocation
 router.post('/logout', authenticate, AuthController.logout);
+
+/**
+ * @swagger
+ * /api/auth/docs-token:
+ *   get:
+ *     summary: Emitir un token de acceso de corta duración para /api-docs
+ *     description: |
+ *       Devuelve un JWT de propósito único (10 minutos de vigencia) que el
+ *       frontend usa para abrir /api-docs?token=... — Swagger UI es una
+ *       navegación de navegador y no puede enviar el header Authorization.
+ *       Exclusivo para Jefe y SysAdmin.
+ *     tags: [Autenticación]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Token de documentación emitido exitosamente.
+ *       401:
+ *         description: Token de sesión ausente o inválido.
+ *       403:
+ *         description: Rol insuficiente (requiere Jefe o SysAdmin).
+ */
+router.get('/docs-token', authenticate, authorize(['Jefe', 'SysAdmin']), AuthController.getDocsToken);
 
 module.exports = router;

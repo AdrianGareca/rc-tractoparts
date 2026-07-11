@@ -38,6 +38,7 @@ import {
 import { wirePdfButton, wireExcelButton, buildTimelineHtml } from './dashboard/modules/timelineView.js';
 import { renderReportes, renderAdvancedReports } from './dashboard/modules/reportesView.js';
 import { refreshNotifBadge, requestNotifPermission, startNotifPolling } from './dashboard/modules/notificationsView.js';
+import { mountAuditLogTab } from './dashboard/modules/auditView.js';
 
 // ---------------------------------------------------------------------------
 // _buildProformaHTML
@@ -1914,65 +1915,7 @@ class ManagerStrategy extends DashboardStrategy {
   // ── Tab: Audit Logs ────────────────────────────────────────────────────────
 
   async _renderAuditLogs(panel) {
-    panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
-
-    // Attempt to fetch audit data from the API
-    try {
-      const data = await api.get('/api/auditoria?limit=50');
-      const rows = data.data ?? [];
-      panel.innerHTML = this._buildAuditTable(rows);
-    } catch (err) {
-      // The audit read endpoint is not yet implemented in the API.
-      // Show a graceful placeholder pointing to the Swagger docs.
-      if (err.status === 404 || err.status === 403) {
-        panel.innerHTML = `
-          <div class="card">
-            <div class="card-header"><h3>Registros de Auditoría</h3></div>
-            <div class="card-body">
-              <div class="empty-state">
-                <div class="empty-state-icon">🔍</div>
-                <h4>Endpoint en desarrollo</h4>
-                <p>
-                  La tabla <code>auditoria</code> está activa en la base de datos.<br>
-                  El endpoint <code>GET /api/auditoria</code> está planificado para el Sprint 3.<br>
-                  Mientras tanto, puede consultar los registros directamente en la BD o vía
-                  <a href="/api-docs" target="_blank">Swagger UI</a>.
-                </p>
-              </div>
-            </div>
-          </div>`;
-      } else {
-        panel.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.message)}</p></div>`;
-      }
-    }
-  }
-
-  _buildAuditTable(rows) {
-    return `
-      <div class="card">
-        <div class="card-header"><h3>Registros de Auditoría (últimos 50)</h3></div>
-        <div class="table-wrapper">
-          <table class="data-table">
-            <thead>
-              <tr><th>Fecha</th><th>Usuario</th><th>Tabla</th><th>Acción</th><th>Registro</th><th>IP</th></tr>
-            </thead>
-            <tbody>
-              ${rows.length === 0
-                ? `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted);">Sin registros.</td></tr>`
-                : rows.map(r => `
-                  <tr>
-                    <td class="text-sm">${fmtDate(r.fecha_hora)}</td>
-                    <td>${r.id_usuario ?? '—'}</td>
-                    <td>${r.tabla_afectada}</td>
-                    <td><code style="font-size:.75rem;color:var(--clr-amber)">${r.accion}</code></td>
-                    <td>${r.id_registro_afectado ?? '—'}</td>
-                    <td class="text-muted text-xs">${r.ip_cliente}</td>
-                  </tr>`).join('')
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>`;
+    await mountAuditLogTab(panel);
   }
 }
 
@@ -2484,48 +2427,7 @@ class AdminStrategy extends DashboardStrategy {
 
   // ── Tab: Audit logs ───────────────────────────────────────────────────────
   async _renderAuditLogs(panel) {
-    panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
-    try {
-      const data = await api.get('/api/auditoria?limit=50');
-      const rows = data.data ?? [];
-      panel.innerHTML = `
-        <div class="card">
-          <div class="card-header"><h3>Registros de Auditoría (últimos 50)</h3></div>
-          <div class="table-wrapper">
-            <table class="data-table">
-              <thead>
-                <tr><th>Fecha</th><th>Usuario</th><th>Tabla</th><th>Acción</th><th>Registro</th><th>IP</th></tr>
-              </thead>
-              <tbody>
-                ${rows.length === 0
-                  ? `<tr><td colspan="6" style="text-align:center;padding:2rem;">Sin registros.</td></tr>`
-                  : rows.map(r => `<tr>
-                      <td class="text-sm">${fmtDate(r.fecha_hora)}</td>
-                      <td>${r.id_usuario ?? '—'}</td>
-                      <td>${r.tabla_afectada}</td>
-                      <td><code style="font-size:.75rem;">${r.accion}</code></td>
-                      <td>${r.id_registro_afectado ?? '—'}</td>
-                      <td class="text-muted text-xs">${r.ip_cliente}</td>
-                    </tr>`).join('')
-                }
-              </tbody>
-            </table>
-          </div>
-        </div>`;
-    } catch (err) {
-      panel.innerHTML = `
-        <div class="card">
-          <div class="card-header"><h3>Registros de Auditoría</h3></div>
-          <div class="card-body">
-            <div class="empty-state">
-              <div class="empty-state-icon">🔍</div>
-              <h4>Endpoint en desarrollo</h4>
-              <p>La tabla <code>auditoria</code> está activa en la BD.<br>
-              El endpoint <code>GET /api/auditoria</code> estará disponible próximamente.</p>
-            </div>
-          </div>
-        </div>`;
-    }
+    await mountAuditLogTab(panel);
   }
 }
 
@@ -2620,7 +2522,14 @@ class DashboardController {
 
     let links = '';
 
-    if (role === 'Jefe') {
+    // NOTE: SysAdmin is intentionally grouped with 'Jefe' here — it already
+    // gets the full ManagerStrategy content (see DashboardController strategy
+    // selection: role === 'Jefe' || role === 'SysAdmin'), but this sidebar
+    // check previously read `role === 'Jefe'` only, so a SysAdmin login fell
+    // through to the Ejecutivo-only sidebar (no way to reach any Manager tab
+    // via the nav). Fixed as part of adding the Swagger docs link below,
+    // which must be visible to SysAdmin — the primary user of this feature.
+    if (role === 'Jefe' || role === 'SysAdmin') {
       links = `
         <span class="sidebar-section-label">Panel Principal</span>
         <button class="sidebar-link active" data-section="approvals">
@@ -2635,6 +2544,9 @@ class DashboardController {
         </button>
         <button class="sidebar-link" data-section="audit">
           <span class="link-icon">🔍</span> Registros de Auditoría
+        </button>
+        <button class="sidebar-link" id="sidebar-api-docs">
+          <span class="link-icon">📘</span> Documentación API
         </button>
         <span class="sidebar-section-label">Cuenta</span>
         <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
@@ -2681,6 +2593,26 @@ class DashboardController {
     nav.querySelector('#btn-logout-sidebar')?.addEventListener('click', () => {
       AuthSession.clearSession();
       window.location.href = '/';
+    });
+
+    // Wire "Documentación API" — fetches a short-lived docs-only token (see
+    // GET /api/auth/docs-token, Jefe/SysAdmin-only) and opens Swagger UI with
+    // it in a new tab. Swagger is browser-navigated and can't carry the
+    // normal Authorization header, hence the dedicated token-in-URL flow.
+    nav.querySelector('#sidebar-api-docs')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      const original = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="link-icon">⏳</span> Abriendo…';
+      try {
+        const { data } = await api.get('/api/auth/docs-token');
+        window.open(`/api-docs?token=${encodeURIComponent(data.token)}`, '_blank', 'noopener');
+      } catch (err) {
+        showToast(err.data?.message || err.message || 'No se pudo abrir la documentación.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
     });
 
     // Sidebar link click → update topbar title + call strategy section

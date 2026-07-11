@@ -54,6 +54,24 @@ export function fmtDate(iso) {
 }
 
 /**
+ * fmtDateTime — "DD/MM/YYYY HH:mm" in the viewer's local timezone.
+ * Unlike fmtDate (date-only, string-sliced), this parses the value as a real
+ * Date so the displayed time reflects the browser's local timezone rather
+ * than the raw UTC string the API returns — important for audit trails where
+ * the exact minute of an event matters (e.g. LOGIN/LOGOUT timestamps).
+ */
+export function fmtDateTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${d.getFullYear()} ${hh}:${mi}`;
+}
+
+/**
  * escHtml — HTML-entity-encode a value before interpolating into innerHTML.
  * Prevents stored-XSS when rendering user-controlled strings (OWASP A03).
  * @param   {any} str  - Value to encode (null/undefined become empty string)

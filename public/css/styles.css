@@ -603,6 +603,19 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 .badge-active           { background: rgba(16,185,129,.2);   color: var(--clr-green); }
 .badge-inactive         { background: rgba(239,68,68,.2);    color: var(--clr-red);   }
 
+/* Audit log — acción category badges (semantic color by action family) */
+.badge-audit-auth       { background: rgba(139,92,246,.2);   color: #c4b5fd; }  /* LOGIN/LOGOUT — violet */
+.badge-audit-auth-fail  { background: rgba(239,68,68,.2);    color: #fca5a5; }  /* LOGIN_FAILED — red */
+.badge-audit-create     { background: rgba(59,130,246,.2);   color: #93c5fd; }  /* CREAR_* — blue */
+.badge-audit-edit       { background: rgba(245,158,11,.2);   color: #fcd34d; }  /* EDITAR_*, CAMBIAR_ESTADO — amber */
+.badge-audit-approve    { background: rgba(16,185,129,.2);   color: #6ee7b7; }  /* APROBAR — green */
+.badge-audit-reject     { background: rgba(239,68,68,.2);    color: #fca5a5; }  /* RECHAZAR, DESACTIVAR_USUARIO — red */
+.badge-audit-file       { background: rgba(20,184,166,.2);   color: #5eead4; }  /* SUBIR_PDF/DESCARGAR_PDF — teal */
+
+/* Audit log — resultado badges */
+.badge-resultado-exito  { background: rgba(16,185,129,.2);   color: var(--clr-green); }
+.badge-resultado-fallo  { background: rgba(239,68,68,.2);    color: var(--clr-red);   }
+
 /* ===== 13. CARDS ===== */
 .card {
   background: var(--bg-surface);

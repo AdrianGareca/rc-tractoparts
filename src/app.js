@@ -31,6 +31,7 @@ const morgan    = require('morgan');     // HTTP request logger
 const rateLimit = require('express-rate-limit'); // Brute-force / DDoS protection
 const swaggerUi   = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
+const jwt         = require('jsonwebtoken'); // Verifies the short-lived docs-access token (see requireDocsAccess below)
 
 // Route modules
 const authRoutes        = require('./routes/authRoutes');
@@ -39,6 +40,7 @@ const userRoutes        = require('./routes/userRoutes');
 const clientRoutes      = require('./routes/clientRoutes');
 const brandRoutes       = require('./routes/brandRoutes');
 const reportesRoutes    = require('./routes/reportesRoutes');
+const auditoriaRoutes   = require('./routes/auditoriaRoutes');
 
 const app = express();
 
@@ -142,10 +144,16 @@ const swaggerOptions = {
       version: '1.0.0',
       description: 'Documentación interactiva de la API para el control de cotizaciones, usuarios y auditorías (XP-SCRUM).',
     },
+    // Relative server URL: Swagger UI resolves every "Try it out" request
+    // against the SAME origin the docs page was loaded from. Locally that is
+    // http://localhost:3000; in production it is https://rctractoparts.org —
+    // no hardcoded host, no per-environment lists, no HTTPS→HTTP mixed-content
+    // blocks. (A hardcoded localhost here previously made the production docs
+    // fire requests at the viewer's own machine instead of the real API.)
     servers: [
       {
-        url: 'http://localhost:3000',
-        description: 'Servidor Local de Desarrollo',
+        url: '/',
+        description: 'Servidor actual (mismo origen de esta página)',
       },
     ],
     components: {
@@ -171,9 +179,61 @@ const swaggerOptions = {
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 
 // ---------------------------------------------------------------------------
-// 7. Swagger UI — interactive API documentation at /api-docs
+// 6b. requireDocsAccess — gates the Swagger index page (Jefe / SysAdmin only)
+//
+// /api-docs is browser-navigated (a plain GET, not an XHR from apiClient), so
+// it cannot carry an Authorization header. The frontend instead fetches a
+// short-lived, single-purpose token from GET /api/auth/docs-token and opens
+// /api-docs?token=<that token>. This middleware verifies it here, independent
+// of the normal Bearer-header authMiddleware (which this route can't use).
+//
+// The API's full endpoint map (routes, params, roles) is meaningful recon
+// value even though every endpoint still requires its own JWT — this keeps
+// that map out of reach of anyone without a live Jefe/SysAdmin session.
 // ---------------------------------------------------------------------------
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+function requireDocsAccess(req, res, next) {
+  const token = req.query.token;
+  const deny = (status, msg) => res.status(status).send(`
+    <!DOCTYPE html>
+    <html lang="es"><head><meta charset="utf-8"><title>Acceso restringido</title></head>
+    <body style="font-family:sans-serif;max-width:480px;margin:15vh auto;text-align:center;color:#334155;">
+      <h2>🔒 Acceso restringido</h2>
+      <p>${msg}</p>
+      <p>Volvé al panel y usá el enlace "Documentación API" desde tu sesión (Jefe / SysAdmin).</p>
+    </body></html>`);
+
+  if (!token) return deny(401, 'Este enlace requiere un token de acceso a la documentación.');
+
+  try {
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    if (payload.purpose !== 'api-docs') {
+      return deny(403, 'Token no válido para este propósito.');
+    }
+    if (payload.rol !== 'Jefe' && payload.rol !== 'SysAdmin') {
+      return deny(403, 'Tu rol no tiene acceso a la documentación de la API.');
+    }
+    next();
+  } catch {
+    return deny(401, 'El enlace expiró o no es válido. Los enlaces de documentación duran 10 minutos.');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 7. Swagger UI — interactive API documentation at /api-docs
+//
+// Split into two mounts on purpose:
+//   • swaggerUi.serve — static framework assets (bundle.js, css, icons).
+//     Generic swagger-ui-dist files with zero application-specific content;
+//     left PUBLIC so the browser's follow-up asset requests (which cannot
+//     carry our ?token=) still load and the page renders correctly.
+//   • swaggerUi.setup — the actual HTML page with the API spec embedded
+//     (every route, param and role — real recon value). GATED behind
+//     requireDocsAccess. swaggerUi.serve calls next() for any path that
+//     isn't a real static file (i.e. just "/api-docs" itself), so only that
+//     request ever reaches the gate.
+// ---------------------------------------------------------------------------
+app.use('/api-docs', swaggerUi.serve);
+app.use('/api-docs', requireDocsAccess, swaggerUi.setup(swaggerDocs));
 
 // ---------------------------------------------------------------------------
 // 6. Application Routes
@@ -184,6 +244,7 @@ app.use('/api/usuarios',      userRoutes);         // CRUD /api/usuarios (Jefe o
 app.use('/api/clientes',      clientRoutes);       // GET|POST /api/clientes (all roles)
 app.use('/api/marcas',        brandRoutes);        // GET|POST /api/marcas (brand catalog)
 app.use('/api/reportes',      reportesRoutes);     // GET /api/reportes/progreso (Jefe/SysAdmin)
+app.use('/api/auditoria',     auditoriaRoutes);     // GET /api/auditoria (Jefe/Administracion/SysAdmin)
 
 // Health-check endpoint
 app.get('/health', (req, res) => {

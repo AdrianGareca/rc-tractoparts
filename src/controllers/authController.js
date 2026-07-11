@@ -222,6 +222,32 @@ const AuthController = {
       });
     }
   },
+
+  // ---------------------------------------------------------------------------
+  // getDocsToken — GET /api/auth/docs-token  (Jefe / SysAdmin only, route-guarded)
+  //
+  // Issues a short-lived, single-purpose JWT used ONLY to open /api-docs.
+  // Swagger UI is browser-navigated (a direct GET, not an XHR from apiClient),
+  // so it cannot carry an Authorization header — the gate in src/app.js reads
+  // the token from a ?token= query param instead. Deliberately NOT the user's
+  // full 8h session token: a dedicated 10-minute token scoped to purpose
+  // 'api-docs' means a leaked docs URL (pasted in chat, browser history) has a
+  // tiny blast radius and cannot be replayed against any other endpoint.
+  // ---------------------------------------------------------------------------
+  async getDocsToken(req, res) {
+    try {
+      const token = jwt.sign(
+        { id: req.user.id, rol: req.user.rol, purpose: 'api-docs' },
+        process.env.JWT_SECRET,
+        { expiresIn: '10m', algorithm: 'HS256' }
+      );
+
+      return res.status(200).json({ success: true, data: { token } });
+    } catch (error) {
+      console.error('[AuthController.getDocsToken] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to issue documentation access token.' });
+    }
+  },
 };
 
 module.exports = AuthController;
