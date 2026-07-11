@@ -911,8 +911,8 @@ class ExecutiveStrategy extends DashboardStrategy {
               '🏆 ¡Cierre de venta registrado! La cotización ha sido confirmada.'));
         }
 
-        wirePdfButton(body, id, q.numero_correlativo);
-        wireExcelButton(body, id, q.numero_correlativo);
+        wirePdfButton(body, id, q.numero_correlativo, q.cliente_nombre);
+        wireExcelButton(body, id, q.numero_correlativo, q.cliente_nombre);
         body.insertAdjacentHTML('beforeend', buildTimelineHtml(history));
       });
     } catch (err) {
@@ -1392,8 +1392,8 @@ class ManagerStrategy extends DashboardStrategy {
 
       UI.openModal(`Proforma ${q.numero_correlativo} — Decisión de Jefe`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, true);
-        wirePdfButton(body, id, q.numero_correlativo);
-        wireExcelButton(body, id, q.numero_correlativo);
+        wirePdfButton(body, id, q.numero_correlativo, q.cliente_nombre);
+        wireExcelButton(body, id, q.numero_correlativo, q.cliente_nombre);
 
         // Wire the 4 state-machine action buttons
         body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () => {
@@ -1559,8 +1559,8 @@ class ManagerStrategy extends DashboardStrategy {
       const q    = data.data;
       UI.openModal(`Proforma ${correlativo ?? q.numero_correlativo}`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, 'jefe');
-        wirePdfButton(body, id, correlativo ?? q.numero_correlativo);
-        wireExcelButton(body, id, correlativo ?? q.numero_correlativo);
+        wirePdfButton(body, id, correlativo ?? q.numero_correlativo, q.cliente_nombre);
+        wireExcelButton(body, id, correlativo ?? q.numero_correlativo, q.cliente_nombre);
         // Wire action buttons (same as approval detail)
         body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () => {
           this._confirmStateChange(id, 'Pendiente',
@@ -2175,8 +2175,8 @@ class AdminStrategy extends DashboardStrategy {
 
       UI.openModal(`Revisión Administrador — ${q.numero_correlativo}`, (body) => {
         body.innerHTML = _buildProformaHTML(q, id, 'admin');
-        wirePdfButton(body, id, q.numero_correlativo);
-        wireExcelButton(body, id, q.numero_correlativo);
+        wirePdfButton(body, id, q.numero_correlativo, q.cliente_nombre);
+        wireExcelButton(body, id, q.numero_correlativo, q.cliente_nombre);
 
         // Wire "Save comment only" button
         body.querySelector('#btn-save-comment')?.addEventListener('click', () => {

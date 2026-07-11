@@ -70,6 +70,38 @@ async function saveBlobAs(blob, fileName, fileType) {
 }
 
 // ---------------------------------------------------------------------------
+// buildDownloadBaseName — canonical filename (without extension) for quotation
+// document downloads: "CORRELATIVO_CLIENTE", e.g.
+// "SC-2026_000692_IMPORTADORA_SAN_JOSE".
+//
+// The correlativo comes FIRST (unique business reference — files sort
+// chronologically in a folder); the client name follows so executives can
+// still identify the file at a glance when attaching it in WhatsApp/email.
+// Two quotes for the same client can never collide into the same filename.
+//
+// Sanitization: accents are stripped via Unicode NFD decomposition (José →
+// Jose) BEFORE the non-word filter, so client names don't degrade into
+// underscores; runs of '_' are collapsed. Client part capped at 60 chars to
+// keep Windows path lengths comfortable.
+//
+// @param   {string} [correlativo]   — e.g. "SC-2026/000692"
+// @param   {string} [clienteNombre] — e.g. "Importadora San José"
+// @param   {number|string} id       — Quotation ID (last-resort fallback)
+// @returns {string}
+// ---------------------------------------------------------------------------
+function buildDownloadBaseName(correlativo, clienteNombre, id) {
+  const sanitize = (s) => String(s)
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')  // strip accents, keep letters
+    .replace(/[^\w\-]/g, '_')                          // block path/injection chars
+    .replace(/_+/g, '_')                               // collapse runs of _
+    .replace(/^_|_$/g, '');                            // trim edge underscores
+  const parts = [];
+  if (correlativo)   parts.push(sanitize(correlativo));
+  if (clienteNombre) parts.push(sanitize(clienteNombre).slice(0, 60));
+  return parts.length > 0 ? parts.join('_') : `Cotizacion_${id}`;
+}
+
+// ---------------------------------------------------------------------------
 // wirePdfButton
 // Attaches an authenticated PDF fetch handler to the #btn-ver-pdf button
 // rendered inside a modal body. Uses apiClient (which injects the Bearer
@@ -77,15 +109,16 @@ async function saveBlobAs(blob, fileName, fileType) {
 //
 // The Blob is persisted via saveBlobAs(): a native "Guardar como…" dialog
 // where supported (user picks the folder), anchor-download fallback elsewhere.
-// The correlativo is always the suggested filename (e.g. "COT-2026-0007.pdf") —
-// never a raw blob UUID — preserving the executives' "download & send to
-// client via WhatsApp" workflow.
+// The suggested filename is "CLIENTE_CORRELATIVO.pdf" (see
+// buildDownloadBaseName) — never a raw blob UUID — so executives can identify
+// the file instantly in the "download & send to client via WhatsApp" workflow.
 //
 // @param {HTMLElement}    body        — Modal body containing #btn-ver-pdf
 // @param {number|string}  id          — Quotation ID for the endpoint URL
-// @param {string}         [correlativo] — Quotation number used as filename
+// @param {string}         [correlativo]   — Quotation number used in the filename
+// @param {string}         [clienteNombre] — Client razón social used in the filename
 // ---------------------------------------------------------------------------
-export function wirePdfButton(body, id, correlativo) {
+export function wirePdfButton(body, id, correlativo, clienteNombre) {
   const btn = body.querySelector('#btn-ver-pdf');
   if (!btn) return;
   btn.addEventListener('click', async () => {
@@ -94,12 +127,7 @@ export function wirePdfButton(body, id, correlativo) {
     try {
       const response = await api.get(`/api/cotizaciones/${id}/pdf`);
       const blob     = await response.blob();
-      // Force the real quotation code as the suggested filename. Sanitize to
-      // word chars/hyphens to keep COT-2026-0007 intact while blocking any
-      // path/header-injection chars.
-      const fileName = correlativo
-        ? `${String(correlativo).replace(/[^\w\-]/g, '_')}.pdf`
-        : `Cotizacion_${id}.pdf`;
+      const fileName = `${buildDownloadBaseName(correlativo, clienteNombre, id)}.pdf`;
       const outcome = await saveBlobAs(blob, fileName, {
         description: 'Documento PDF',
         accept:      { 'application/pdf': ['.pdf'] },
@@ -127,9 +155,10 @@ export function wirePdfButton(body, id, correlativo) {
 //
 // @param {HTMLElement}    body  — Modal body containing #btn-ver-excel
 // @param {number|string}  id   — Quotation ID for the endpoint URL
-// @param {string}         correlativo — Used as the suggested download filename
+// @param {string}         [correlativo]   — Quotation number used in the filename
+// @param {string}         [clienteNombre] — Client razón social used in the filename
 // ---------------------------------------------------------------------------
-export function wireExcelButton(body, id, correlativo) {
+export function wireExcelButton(body, id, correlativo, clienteNombre) {
   const btn = body.querySelector('#btn-ver-excel');
   if (!btn) return;
   btn.addEventListener('click', async () => {
@@ -138,9 +167,7 @@ export function wireExcelButton(body, id, correlativo) {
     try {
       const response = await api.get(`/api/cotizaciones/${id}/excel`);
       const blob     = await response.blob();
-      const fileName = correlativo
-        ? `${String(correlativo).replace(/[^\w\-]/g, '_')}.xlsx`
-        : `Cotizacion_${id}.xlsx`;
+      const fileName = `${buildDownloadBaseName(correlativo, clienteNombre, id)}.xlsx`;
       const outcome = await saveBlobAs(blob, fileName, {
         description: 'Planilla de Excel',
         accept:      { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
