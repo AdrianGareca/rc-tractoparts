@@ -54,9 +54,10 @@ import { refreshNotifBadge, requestNotifPermission, startNotifPolling } from './
 function _buildProformaHTML(q, id, viewMode) {
   const jefeMode     = viewMode === true  || viewMode === 'jefe';
   const adminMode    = viewMode === 'admin';
-  // 'delegate' — read-only Executive view PLUS a single "Aprobar Internamente"
-  // action, shown only to executives holding the delegated can_approve_quotations
-  // flag (Delegación de Funciones). It deliberately exposes nothing else.
+  // 'delegate' — Executive view PLUS the full operational action grid, shown to
+  // executives holding the delegated can_approve_quotations flag (Delegación de
+  // Funciones ampliada): aprobar, enviar, confirmar, solicitar cambios, en
+  // espera y rechazar — same lifecycle powers as the Jefe, quotations ONLY.
   const delegateMode = viewMode === 'delegate';
 
   const detalles = q.detalles ?? [];
@@ -93,19 +94,26 @@ function _buildProformaHTML(q, id, viewMode) {
       }).join('')
     : `<tr><td colspan="${showCodigos ? 6 : 5}" style="text-align:center;color:var(--text-muted);">Sin ítems registrados</td></tr>`;
 
-  // Jefe action grid — contextual buttons based on current state
-  const canApprove      = jefeMode && ['Pendiente', 'En revision', 'En espera'].includes(q.estado);
-  const canEnviarCliente= jefeMode && ['Pendiente', 'En revision', 'En espera', 'Aprobada internamente'].includes(q.estado);
-  const canAceptar      = jefeMode && ['Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
-  const canRechazar     = jefeMode && !['Confirmada', 'Aceptada', 'Archivada', 'Rechazada'].includes(q.estado);
-  const canHold         = jefeMode && ['Pendiente', 'En revision', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
-  const canRetract      = jefeMode && ['En revision', 'En espera', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
-  // High-privilege revert: only Jefe/SysAdmin can revert a Rechazada quotation
+  // Operational action grid — contextual buttons based on current state.
+  // Rendered for the Jefe AND for delegated executives (Delegación de Funciones
+  // ampliada): both operate the full lifecycle with the same transitions. The
+  // backend re-validates every action against the DB-fresh flag, so these
+  // conditionals are pure UI gating.
+  const operative       = jefeMode || delegateMode;
+  const canApprove      = operative && ['Pendiente', 'En revision', 'En espera'].includes(q.estado);
+  const canEnviarCliente= operative && ['Pendiente', 'En revision', 'En espera', 'Aprobada internamente'].includes(q.estado);
+  const canAceptar      = operative && ['Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
+  const canRechazar     = operative && !['Confirmada', 'Aceptada', 'Archivada', 'Rechazada'].includes(q.estado);
+  const canHold         = operative && ['Pendiente', 'En revision', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
+  const canRetract      = operative && ['En revision', 'En espera', 'Aprobada internamente', 'Enviada al cliente'].includes(q.estado);
+  // High-privilege revert: only Jefe/SysAdmin can revert a Rechazada quotation.
+  // Deliberately NOT extended to delegates — reverting a rejection re-opens a
+  // closed commercial decision and stays with the Jefe.
   const canRevertir = jefeMode && q.estado === 'Rechazada';
 
-  const jefeButtons = jefeMode ? `
+  const jefeButtons = operative ? `
     <div class="approval-actions">
-      <h4 class="approval-actions-title">Decisión del Jefe</h4>
+      <h4 class="approval-actions-title">${jefeMode ? 'Decisión del Jefe' : '🔑 Acciones Operativas — Delegación de Funciones'}</h4>
       <div class="approval-actions-grid">
         ${canRetract ? `<button class="btn btn-warning btn-sm" id="btn-solicitar-cambios">
           ↩ Solicitar Cambios
@@ -177,19 +185,11 @@ function _buildProformaHTML(q, id, viewMode) {
       </div>
     </div>` : '';
 
-  // Delegated-executive action — a single "Aprobar Internamente" button, rendered
-  // only in delegate mode and only from a legitimate pre-approval source state.
-  // Mirrors exactly what the backend additive delegation branch will accept.
-  const delegateButtons = (delegateMode && ['Pendiente', 'En revision', 'En espera'].includes(q.estado)) ? `
-    <div class="approval-actions" style="border-top:2px solid #16a34a;margin-top:1.5rem;padding-top:1.25rem;">
-      <h4 class="approval-actions-title" style="color:#15803d;">🔑 Delegación de Funciones</h4>
-      <p class="text-sm" style="color:var(--text-secondary);margin-bottom:.75rem;">
-        Cuentas con autorización delegada para aprobar internamente esta cotización.
-      </p>
-      <button class="btn btn-success" id="btn-aprobar-delegado">
-        ✅ Aprobar Internamente
-      </button>
-    </div>` : '';
+  // NOTE (Delegación ampliada): the former single "Aprobar Internamente" button
+  // block was superseded by the full operational grid above (jefeButtons renders
+  // in delegate mode too). Delegated actions are wired by ExecutiveStrategy to
+  // flow through PUT /:id/estado — never the jefeOnly POST /:id/aprobar route.
+  const delegateButtons = '';
 
   // Read-only admin comment block — shown to ALL authenticated roles when a
   // comment exists, so Ejecutivos can see supervisor notes.  In Jefe mode an
@@ -863,9 +863,52 @@ class ExecutiveStrategy extends DashboardStrategy {
         }
 
         if (delegated) {
-          body.querySelector('#btn-aprobar-delegado')?.addEventListener('click', () => {
-            this._confirmDelegatedApproval(id);
-          });
+          // Delegación de Funciones AMPLIADA — full operational wiring. Every
+          // action flows through PUT /:id/estado (ChangeStatusCommand); the
+          // backend re-reads the flag fresh from the DB on each transition.
+          // The jefeOnly POST /:id/aprobar route is never used here.
+          body.querySelector('#btn-aprobar')?.addEventListener('click', () =>
+            this._confirmDelegatedApproval(id));
+
+          body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () =>
+            this._confirmDelegatedStateChange(id, 'Pendiente',
+              'Solicitar Cambios',
+              'La cotización volverá a estado Pendiente para correcciones.',
+              'Observaciones para el propietario *',
+              true,
+              'Cambios solicitados — cotización regresada a Pendiente.'));
+
+          body.querySelector('#btn-en-espera')?.addEventListener('click', () =>
+            this._confirmDelegatedStateChange(id, 'En espera',
+              'Poner en Espera',
+              'La decisión queda suspendida mientras se verifica disponibilidad con el proveedor.',
+              'Motivo de la espera (opcional)',
+              false,
+              'Cotización puesta en espera.'));
+
+          body.querySelector('#btn-enviar-cliente')?.addEventListener('click', () =>
+            this._confirmDelegatedStateChange(id, 'Enviada al cliente',
+              'Aprobar y Enviar al Cliente',
+              'La cotización pasará directamente al estado "Enviada al cliente". Esta acción queda registrada en el historial.',
+              'Nota para el historial (opcional)',
+              false,
+              '🟢 Cotización enviada al cliente exitosamente.'));
+
+          body.querySelector('#btn-rechazar')?.addEventListener('click', () =>
+            this._confirmDelegatedStateChange(id, 'Rechazada',
+              'Rechazar Cotización',
+              'La cotización quedará rechazada. La justificación es obligatoria.',
+              'Justificación del rechazo *',
+              true,
+              'Cotización rechazada.'));
+
+          body.querySelector('#btn-aceptar')?.addEventListener('click', () =>
+            this._confirmDelegatedStateChange(id, 'Confirmada',
+              'Confirmar Cotización — Cierre de Venta',
+              'El cliente ha confirmado los términos. Esta acción registra el cierre de venta y congela cualquier modificación adicional.',
+              'Observaciones de cierre (opcional)',
+              false,
+              '🏆 ¡Cierre de venta registrado! La cotización ha sido confirmada.'));
         }
 
         wirePdfButton(body, id, q.numero_correlativo);
@@ -907,6 +950,46 @@ class ExecutiveStrategy extends DashboardStrategy {
           btn,
           successMsg: 'Cotización aprobada internamente.',
           onSuccess:  () => { UI.closeModal(); this.refresh(); },
+        });
+      });
+    });
+  }
+
+  // ── Generic delegated state-transition confirmation (Delegación ampliada) ────
+  // Mirrors ManagerStrategy._confirmStateChange: shows a confirm dialog with an
+  // optional/required observation textarea, then transitions via the standard
+  // PUT /:id/estado endpoint. The backend authorizes each transition only
+  // because the executive carries the can_approve_quotations flag (re-read
+  // fresh from the DB server-side on every call).
+  _confirmDelegatedStateChange(id, newState, title, description, obsLabel, obsRequired, successMsg) {
+    UI.openModal(title, (body) => {
+      body.innerHTML = `
+        <p class="text-sm" style="color:var(--text-secondary);margin-bottom:1rem;">
+          ${description}
+        </p>
+        <div class="form-group">
+          <label class="form-label" for="dsc-obs">${obsLabel}</label>
+          <textarea class="form-control" id="dsc-obs" rows="3"></textarea>
+          <span class="field-error" id="dsc-err"></span>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+          <button class="btn btn-ghost" id="dsc-cancel">Cancelar</button>
+          <button class="btn btn-primary" id="dsc-confirm">${title}</button>
+        </div>`;
+
+      body.querySelector('#dsc-cancel')?.addEventListener('click', UI.closeModal);
+      body.querySelector('#dsc-confirm')?.addEventListener('click', () => {
+        const obs   = body.querySelector('#dsc-obs')?.value.trim() ?? '';
+        const errEl = body.querySelector('#dsc-err');
+        if (obsRequired && !obs) {
+          errEl.textContent = 'Este campo es requerido.';
+          return;
+        }
+        const btn = body.querySelector('#dsc-confirm');
+        CommandInvoker.run(new ChangeStatusCommand(id, newState, obs), {
+          btn,
+          successMsg,
+          onSuccess: () => { UI.closeModal(); this.refresh(); },
         });
       });
     });
@@ -1683,7 +1766,7 @@ class ManagerStrategy extends DashboardStrategy {
         <div class="form-group">
           <label class="form-label checkbox-label">
             <input type="checkbox" id="nu-canapprove" />
-            <span>Delegación de Funciones: Permitir aprobar cotizaciones</span>
+            <span>Delegación de Funciones: gestión completa del ciclo de cotizaciones (aprobar, enviar, confirmar, rechazar)</span>
           </label>
         </div>` : ''}
         <div class="form-alert" id="nu-alert"></div>
@@ -1748,7 +1831,7 @@ class ManagerStrategy extends DashboardStrategy {
         <div class="form-group">
           <label class="form-label checkbox-label">
             <input type="checkbox" id="eu-canapprove" ${isDelegated ? 'checked' : ''} />
-            <span>Delegación de Funciones: Permitir aprobar cotizaciones</span>
+            <span>Delegación de Funciones: gestión completa del ciclo de cotizaciones (aprobar, enviar, confirmar, rechazar)</span>
           </label>
         </div>` : ''}
         <div class="form-group">
@@ -2257,7 +2340,7 @@ class AdminStrategy extends DashboardStrategy {
         <div class="form-group">
           <label class="form-label checkbox-label">
             <input type="checkbox" id="nu2-canapprove" />
-            <span>Delegación de Funciones: Permitir aprobar cotizaciones</span>
+            <span>Delegación de Funciones: gestión completa del ciclo de cotizaciones (aprobar, enviar, confirmar, rechazar)</span>
           </label>
         </div>` : ''}
         <div class="form-alert" id="nu2-alert"></div>
@@ -2320,7 +2403,7 @@ class AdminStrategy extends DashboardStrategy {
         <div class="form-group">
           <label class="form-label checkbox-label">
             <input type="checkbox" id="eu2-canapprove" ${isDelegated ? 'checked' : ''} />
-            <span>Delegación de Funciones: Permitir aprobar cotizaciones</span>
+            <span>Delegación de Funciones: gestión completa del ciclo de cotizaciones (aprobar, enviar, confirmar, rechazar)</span>
           </label>
         </div>` : ''}
         <div class="form-group">

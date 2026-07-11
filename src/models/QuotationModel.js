@@ -908,7 +908,16 @@ const QuotationModel = {
   // @returns {{ valid: boolean, reason?: string, allowedTransitions?: string[] }}
   // ---------------------------------------------------------------------------
   validateTransitionByRole(estadoActual, nuevoEstado, rol, canApproveQuotations = false) {
-    const roleMatrix = ROLE_TRANSITIONS[rol];
+    // ── Delegación de Funciones AMPLIADA ────────────────────────────────────
+    // An Ejecutivo holding the can_approve_quotations flag operates the FULL
+    // quotation lifecycle with the Jefe's transition matrix (aprobar, enviar,
+    // confirmar, solicitar cambios, en espera, rechazar). They remain an
+    // 'Ejecutivo' everywhere else — user management, audit logs and every other
+    // route enforce the base role via middleware and never consult this matrix.
+    // The flag is re-read fresh from the DB by the controller on every call, so
+    // revoking it takes effect immediately without waiting for JWT expiry.
+    const effectiveRol = (rol === 'Ejecutivo' && canApproveQuotations === true) ? 'Jefe' : rol;
+    const roleMatrix = ROLE_TRANSITIONS[effectiveRol];
 
     // Rol desconocido — no debería llegar aquí si el middleware de autenticación está activo
     if (!roleMatrix) {
@@ -1033,7 +1042,7 @@ const QuotationModel = {
   // @param {boolean} canApproveQuotations - Delegación de Funciones flag (forwarded to the guard)
   // @returns {boolean}               - true if the row was updated
   // ---------------------------------------------------------------------------
-  async updateStatus(id, nuevoEstado, estadoActual, rol, comentarioAdmin = null, canApproveQuotations = false) {
+  async updateStatus(id, nuevoEstado, estadoActual, rol, comentarioAdmin = null, canApproveQuotations = false, aprobadoPor = null) {
     // Defense-in-depth: re-validate the role-based transition inside the model
     const check = this.validateTransitionByRole(estadoActual, nuevoEstado, rol, canApproveQuotations);
 
@@ -1066,6 +1075,16 @@ const QuotationModel = {
     // → 'Archivada'), so this is written exactly once and never overwritten.
     if (nuevoEstado === 'Confirmada' || nuevoEstado === 'Aceptada') {
       setClauses.push('fecha_confirmacion = NOW()');
+    }
+
+    // Approval traceability: when the target is 'Aprobada internamente' and the
+    // controller supplied the acting user's id, record WHO approved and WHEN —
+    // exactly like the dedicated POST /:id/aprobar endpoint does. This closes
+    // the metadata gap for approvals executed through this generic transition
+    // route (delegated executives, or a Jefe using the state endpoint directly).
+    if (nuevoEstado === 'Aprobada internamente' && aprobadoPor != null) {
+      setClauses.push('aprobado_por = ?', 'fecha_aprobacion = NOW()');
+      params.push(aprobadoPor);
     }
 
     const sql = `UPDATE cotizaciones SET ${setClauses.join(', ')} WHERE id = ? AND estado = ?`;

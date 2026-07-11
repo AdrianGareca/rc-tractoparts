@@ -68,13 +68,17 @@ const QuotationStateController = {
 
       const estadoActual = quotation.estado;
 
-      // ── Dynamic Function Delegation lookup ─────────────────────────────────
+      // ── Dynamic Function Delegation lookup (AMPLIADA) ──────────────────────
       // Read the caller's can_approve_quotations flag straight from the DB so a
-      // freshly-granted delegation takes effect immediately (no re-login needed).
-      // Only relevant when the target is the delegated 'Aprobada internamente'
-      // state, so we skip the extra query otherwise.
+      // freshly-granted (or revoked) delegation takes effect immediately — no
+      // re-login needed and no trust placed in the JWT payload.
+      // A delegated Ejecutivo operates the FULL lifecycle with the Jefe's
+      // transition matrix, so the flag must be resolved for EVERY transition an
+      // Ejecutivo attempts, not only the 'Aprobada internamente' target. Other
+      // roles never depend on it (except the legacy Administracion approval
+      // grant), so the extra query is skipped for them.
       let canApproveDelegated = false;
-      if (nuevo_estado === 'Aprobada internamente') {
+      if (userRol === 'Ejecutivo' || nuevo_estado === 'Aprobada internamente') {
         const actingUser = await UserModel.findById(req.user.id);
         canApproveDelegated = Boolean(actingUser?.can_approve_quotations);
       }
@@ -130,7 +134,8 @@ const QuotationStateController = {
         estadoActual,
         userRol,
         adminComment,
-        canApproveDelegated
+        canApproveDelegated,
+        req.user.id   // approval traceability: stamps aprobado_por/fecha_aprobacion on 'Aprobada internamente'
       );
 
       if (!updated) {
