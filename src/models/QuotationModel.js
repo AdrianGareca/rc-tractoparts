@@ -528,6 +528,7 @@ const QuotationModel = {
         c.aprobado_por,
         ap.nombre_completo  AS aprobador_nombre,
         c.fecha_aprobacion,
+        c.fecha_confirmacion,
         c.obs_aprobacion,
         c.comentarios_admin,
         c.solicitante_nombre       AS nombre_sol,
@@ -574,6 +575,12 @@ const QuotationModel = {
         fallbackSql = fallbackSql.replace('        c.entidad_emisora,\n', "        'Empresa unipersonal de Ronald Roca Cartagena' AS entidad_emisora,\n");
         patched = true;
       }
+      if (msg.includes("Unknown column 'c.fecha_confirmacion'")) {
+        console.warn('[QuotationModel.findById] fecha_confirmacion column missing — retrying with NULL. ' +
+          'Run the ALTER TABLE upgrade in sql/upgrade_2026_fecha_confirmacion.sql to fix this permanently.');
+        fallbackSql = fallbackSql.replace('        c.fecha_confirmacion,\n', '        NULL AS fecha_confirmacion,\n');
+        patched = true;
+      }
       if (msg.includes("Unknown column 'c.descuento_manual'")) {
         console.warn('[QuotationModel.findById] descuento_manual column missing — retrying with NULL.');
         fallbackSql = fallbackSql.replace('        c.descuento_manual,\n', '        NULL AS descuento_manual,\n');
@@ -614,13 +621,6 @@ const QuotationModel = {
       const entidadLookup = (quotation.entidad_emisora && String(quotation.entidad_emisora).trim()) === 'RC Tractoparts'
         ? 'Empresa unipersonal de Ronald Roca Cartagena'
         : quotation.entidad_emisora;
-      // TEMP DEBUG — remove after diagnosing the bank-account placeholder issue
-      console.log('[DEBUG bank lookup] raw entidad_emisora:', JSON.stringify(quotation.entidad_emisora));
-      console.log('[DEBUG bank lookup] entidadLookup used in query:', JSON.stringify(entidadLookup));
-      const [serverInfo] = await pool.execute(
-        'SELECT DATABASE() AS db_name, @@hostname AS db_host, @@port AS db_port'
-      );
-      console.log('[DEBUG bank lookup] Actual MySQL server/schema in use by Node:', JSON.stringify(serverInfo[0]));
       const [bankRows] = await pool.execute(
         `SELECT beneficiario, banco, numero_cuenta
            FROM cuentas_bancarias
@@ -628,16 +628,12 @@ const QuotationModel = {
           LIMIT 1`,
         [entidadLookup]
       );
-      // TEMP DEBUG — remove after diagnosing the bank-account placeholder issue
-      console.log('[DEBUG bank lookup] bankRows returned:', JSON.stringify(bankRows));
       if (bankRows[0]) {
         quotation.banco_beneficiario = bankRows[0].beneficiario;
         quotation.banco_nombre       = bankRows[0].banco;
         quotation.banco_cuenta       = bankRows[0].numero_cuenta;
       }
     } catch (bankErr) {
-      // TEMP DEBUG — remove after diagnosing the bank-account placeholder issue
-      console.log('[DEBUG bank lookup] QUERY THREW:', bankErr.message);
       // Non-fatal: table missing on a legacy DB, or any lookup failure. The PDF
       // service degrades gracefully to its built-in per-entity bank map.
       if (!/doesn't exist|Unknown table|no such table/i.test(bankErr.message || '')) {
@@ -1054,14 +1050,26 @@ const QuotationModel = {
     //
     // If comentarioAdmin is provided, persist it in the same atomic UPDATE so
     // the comment and the state change are never split across two writes.
-    let sql, params;
+    // Build the SET clause dynamically so a single atomic UPDATE can carry the
+    // state change, the optional admin comment, and the sale-closure timestamp.
+    const setClauses = ['estado = ?'];
+    const params     = [nuevoEstado];
+
     if (comentarioAdmin !== null && comentarioAdmin !== undefined) {
-      sql    = 'UPDATE cotizaciones SET estado = ?, comentarios_admin = ? WHERE id = ? AND estado = ?';
-      params = [nuevoEstado, String(comentarioAdmin).trim() || null, id, estadoActual];
-    } else {
-      sql    = 'UPDATE cotizaciones SET estado = ? WHERE id = ? AND estado = ?';
-      params = [nuevoEstado, id, estadoActual];
+      setClauses.push('comentarios_admin = ?');
+      params.push(String(comentarioAdmin).trim() || null);
     }
+
+    // Sale-closure timestamp: stamp the EXACT moment the quotation becomes
+    // 'Confirmada' (venta cerrada). 'Aceptada' is the legacy alias of the same
+    // terminal outcome, handled defensively. 'Confirmada' is near-terminal (only
+    // → 'Archivada'), so this is written exactly once and never overwritten.
+    if (nuevoEstado === 'Confirmada' || nuevoEstado === 'Aceptada') {
+      setClauses.push('fecha_confirmacion = NOW()');
+    }
+
+    const sql = `UPDATE cotizaciones SET ${setClauses.join(', ')} WHERE id = ? AND estado = ?`;
+    params.push(id, estadoActual);
 
     const [result] = await pool.execute(sql, params);
     return result.affectedRows > 0;

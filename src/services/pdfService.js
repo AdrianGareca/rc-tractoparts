@@ -502,10 +502,19 @@ function drawHeader(doc, quotation) {
     // render loop; the display string is uppercased there before painting.
     ['ESTADO',        quotation.estado || '—'],
     ['FECHA',         formatDate(quotation.fecha_emision)],
-    // Ejecutivo de ventas that created the quotation (usuarios.nombre_completo,
-    // aliased as ejecutivo_nombre by QuotationModel.findById).
-    ['EJECUTIVO',     quotation.ejecutivo_nombre || '—'],
   ];
+
+  // FECHA CONFIRM. = sale-closure date. Rendered ONLY when the sale is actually
+  // closed (estado 'Confirmada', or its legacy alias 'Aceptada') AND the closure
+  // timestamp exists. Any other state omits the row entirely — the box height
+  // auto-adjusts via rowH below. 'Aceptada' tolerated for pre-migration records.
+  if ((quotation.estado === 'Confirmada' || quotation.estado === 'Aceptada') && quotation.fecha_confirmacion) {
+    infoRows.push(['FECHA CONFIRM.', formatDate(quotation.fecha_confirmacion)]);
+  }
+
+  // Ejecutivo de ventas that created the quotation (usuarios.nombre_completo,
+  // aliased as ejecutivo_nombre by QuotationModel.findById).
+  infoRows.push(['EJECUTIVO', quotation.ejecutivo_nombre || '—']);
 
   const LABELW = 78;
   const rowH   = Math.floor((BOX_H - 18) / infoRows.length);  // ≈ 18 pt

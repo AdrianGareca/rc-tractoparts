@@ -264,7 +264,10 @@ CREATE TABLE cotizaciones (
   fecha_emision      DATE          NOT NULL,
   fecha_validez      DATE          DEFAULT NULL,
   aprobado_por       INT UNSIGNED  DEFAULT NULL,
-  fecha_aprobacion   DATETIME      DEFAULT NULL,
+  fecha_aprobacion   DATETIME      DEFAULT NULL
+    COMMENT 'Timestamp de la APROBACIÓN INTERNA del Jefe (approve()). NO es el cierre de venta.',
+  fecha_confirmacion DATETIME      DEFAULT NULL
+    COMMENT 'Timestamp del CIERRE DE VENTA: se escribe con NOW() al pasar el estado a "Confirmada". NULL mientras la venta no se consolide. Se imprime como "FECHA CONFIRM." en el PDF.',
   obs_aprobacion     TEXT          DEFAULT NULL,
   comentarios_admin  TEXT          DEFAULT NULL
     COMMENT 'Supervisor review comment written by Administracion role',
