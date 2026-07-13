@@ -93,4 +93,144 @@ router.get('/', ...allRoles, ClientController.search);
  */
 router.post('/', ...allRoles, ClientController.create);
 
+/**
+ * @swagger
+ * /api/clientes/all:
+ *   get:
+ *     summary: Listar todos los clientes (activos e inactivos, paginado)
+ *     description: >-
+ *       Pantalla de gestión de clientes — a diferencia de GET /api/clientes
+ *       (autocomplete, máx. 20 activos), retorna TODOS los clientes con
+ *       paginación, para poder verlos, editarlos, desactivarlos o reactivarlos.
+ *     tags: [Clientes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         description: Filtro opcional por razón social o NIT
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Lista paginada de clientes.
+ *       401:
+ *         description: Token ausente o inválido.
+ *       500:
+ *         description: Error interno del servidor.
+ */
+// NOTE: this literal route MUST be registered before GET /:id — otherwise
+// Express would match "/all" against the :id param route and try to parse
+// "all" as a client ID.
+router.get('/all', ...allRoles, ClientController.listAll);
+
+/**
+ * @swagger
+ * /api/clientes/{id}:
+ *   get:
+ *     summary: Obtener el detalle completo de un cliente
+ *     description: Usado para precargar el modal de edición (la búsqueda por autocomplete no incluye contacto/email/teléfono).
+ *     tags: [Clientes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Detalle del cliente.
+ *       404:
+ *         description: Cliente no encontrado.
+ */
+router.get('/:id', ...allRoles, ClientController.getById);
+
+/**
+ * @swagger
+ * /api/clientes/{id}:
+ *   put:
+ *     summary: Editar un cliente existente
+ *     description: Corrige datos de un cliente ya registrado (p. ej. agregar un NIT que quedó vacío en el registro exprés).
+ *     tags: [Clientes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - razon_social
+ *             properties:
+ *               razon_social:
+ *                 type: string
+ *               nit:
+ *                 type: string
+ *               contacto:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               telefono:
+ *                 type: string
+ *               activo:
+ *                 type: boolean
+ *                 description: Permite reactivar un cliente previamente desactivado.
+ *     responses:
+ *       200:
+ *         description: Cliente actualizado exitosamente.
+ *       404:
+ *         description: Cliente no encontrado.
+ *       409:
+ *         description: Ya existe otro cliente con ese NIT.
+ *       422:
+ *         description: Datos de entrada inválidos.
+ */
+router.put('/:id', ...allRoles, ClientController.update);
+
+/**
+ * @swagger
+ * /api/clientes/{id}:
+ *   delete:
+ *     summary: Desactivar cliente (baja lógica)
+ *     description: >-
+ *       Establece activo=0 en lugar de eliminar el registro físicamente — un
+ *       borrado físico no es posible una vez que el cliente tiene cotizaciones
+ *       asociadas (restricción de integridad referencial). Reversible vía
+ *       PUT /api/clientes/{id} con activo=true.
+ *     tags: [Clientes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Cliente desactivado correctamente.
+ *       404:
+ *         description: Cliente no encontrado.
+ *       409:
+ *         description: El cliente ya está inactivo.
+ */
+router.delete('/:id', ...allRoles, ClientController.deactivate);
+
 module.exports = router;

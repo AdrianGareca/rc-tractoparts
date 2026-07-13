@@ -22,6 +22,7 @@
 import api          from '../services/apiClient.js';
 import { showToast } from '../services/apiClient.js';
 import { connectSocket } from '../services/socketClient.js';
+import { openClienteModal } from './dashboard/modules/clientModal.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -1174,15 +1175,33 @@ class FormMediator {
                  role="option" tabindex="-1">
               <span class="cdi-name">${escText(c.razon_social)}</span>
               ${c.nit ? `<span class="cdi-nit">NIT: ${escText(c.nit)}</span>` : ''}
+              <button type="button" class="cdi-edit" data-edit-id="${c.id}"
+                      title="Editar cliente" aria-label="Editar cliente">✏️</button>
             </div>
           `).join('');
           dropdown.classList.add('open');
 
           dropdown.querySelectorAll('.client-dropdown-item').forEach(item => {
             item.addEventListener('mousedown', (e) => {
+              // The edit button has its own handler below — don't also select
+              // the client when the user is trying to edit it.
+              if (e.target.closest('.cdi-edit')) return;
               // Use mousedown so blur fires before click is lost
               e.preventDefault();
               selectClient(item.dataset.id, item.dataset.label);
+            });
+          });
+
+          // "Editar cliente" — opens the same sub-modal pre-filled, so an
+          // executive can correct/add data (e.g. a missing NIT) on an existing
+          // client instead of hitting the NIT-uniqueness error trying to
+          // re-create it (there is no other way to edit a client record).
+          dropdown.querySelectorAll('.cdi-edit').forEach(btn => {
+            btn.addEventListener('mousedown', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const client = clients.find(c => String(c.id) === String(btn.dataset.editId));
+              if (client) this._openEditarClienteModal(client, selectClient);
             });
           });
         } catch (_err) {
@@ -1204,123 +1223,34 @@ class FormMediator {
     });
   }
 
-  // ── Private: express client registration sub-modal ────────────────────────
+  // ── Private: express client registration / edit sub-modal ────────────────
+  // Delegates to the shared clientModal module (also used by the "Gestión de
+  // Clientes" management tab) so the fields/validation/duplicate-NIT
+  // handling live in exactly one place.
 
+  /** Opens the "+ Nuevo Cliente" express-registration sub-modal. */
   _openNuevoClienteModal(onCreated) {
-    // Render a fixed-position overlay inside the quotation form's container
-    const overlay = document.createElement('div');
-    overlay.className = 'sub-modal-overlay';
-    overlay.setAttribute('role', 'dialog');
-    overlay.setAttribute('aria-modal', 'true');
-    overlay.setAttribute('aria-labelledby', 'subm-title');
-
-    overlay.innerHTML = /* html */ `
-      <div class="sub-modal">
-        <div class="sub-modal-header">
-          <h4 id="subm-title">Registrar Nuevo Cliente</h4>
-          <button type="button" class="btn-icon sub-modal-close" id="subm-close" aria-label="Cerrar">✕</button>
-        </div>
-        <div class="sub-modal-body">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label" for="nc-razon-social">Razón Social *</label>
-              <input class="form-control" type="text" id="nc-razon-social"
-                     placeholder="Nombre comercial o legal" maxlength="150" />
-              <span class="field-error" id="nc-err-razon"></span>
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="nc-nit">NIT</label>
-              <input class="form-control" type="text" id="nc-nit"
-                     placeholder="Ej: 1234567890" maxlength="20" />
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label" for="nc-contacto">Contacto</label>
-              <input class="form-control" type="text" id="nc-contacto"
-                     placeholder="Nombre del responsable" />
-            </div>
-            <div class="form-group">
-              <label class="form-label" for="nc-telefono">Teléfono</label>
-              <input class="form-control" type="tel" id="nc-telefono"
-                     placeholder="Ej: 77012345" />
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="nc-email">Email</label>
-            <input class="form-control" type="email" id="nc-email"
-                   placeholder="contacto@empresa.com" />
-          </div>
-          <div class="form-alert" id="nc-alert" role="alert"></div>
-          <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem;">
-            <button type="button" class="btn btn-ghost" id="subm-cancel">Cancelar</button>
-            <button type="button" class="btn btn-primary" id="subm-save">
-              <span id="subm-label">Guardar Cliente</span>
-              <span class="spinner hidden" id="subm-spinner"></span>
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-
-    // Append as child of the main modal body (inherits stacking context)
-    this.#container.closest('.modal-body, [id="modal-body"]')?.appendChild(overlay)
-      ?? document.body.appendChild(overlay);
-
-    const close = () => overlay.remove();
-
-    overlay.querySelector('#subm-close')?.addEventListener('click', close);
-    overlay.querySelector('#subm-cancel')?.addEventListener('click', close);
-
-    // Close on backdrop click
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) close();
+    openClienteModal({
+      mode:       'create',
+      client:     null,
+      onSaved:    onCreated,
+      mountTarget: this.#container.closest('.modal-body, [id="modal-body"]') ?? document.body,
     });
+  }
 
-    overlay.querySelector('#subm-save')?.addEventListener('click', async () => {
-      const razon_social = overlay.querySelector('#nc-razon-social')?.value.trim();
-      const nit          = overlay.querySelector('#nc-nit')?.value.trim()      || null;
-      const contacto     = overlay.querySelector('#nc-contacto')?.value.trim() || null;
-      const email        = overlay.querySelector('#nc-email')?.value.trim()    || null;
-      const telefono     = overlay.querySelector('#nc-telefono')?.value.trim() || null;
-
-      const alertEl  = overlay.querySelector('#nc-alert');
-      const errRazon = overlay.querySelector('#nc-err-razon');
-
-      // Client-side guard
-      if (!razon_social) {
-        errRazon.textContent = 'La razón social es requerida.';
-        return;
-      }
-      errRazon.textContent = '';
-      alertEl.className    = 'form-alert';
-
-      const saveBtn    = overlay.querySelector('#subm-save');
-      const labelEl    = overlay.querySelector('#subm-label');
-      const spinnerEl  = overlay.querySelector('#subm-spinner');
-
-      saveBtn.disabled = true;
-      if (labelEl)   labelEl.textContent = 'Guardando...';
-      if (spinnerEl) spinnerEl.classList.remove('hidden');
-
-      try {
-        const resp   = await api.post('/api/clientes', { razon_social, nit, contacto, email, telefono });
-        const client = resp.data;
-        showToast(`Cliente "${client.razon_social}" registrado exitosamente.`, 'success');
-        onCreated(String(client.id), client.razon_social);
-        close();
-      } catch (err) {
-        const msg = err.data?.message || err.message || 'Error al registrar el cliente.';
-        alertEl.textContent = msg;
-        alertEl.className   = 'form-alert show alert-error';
-        saveBtn.disabled    = false;
-        if (labelEl)   labelEl.textContent = 'Guardar Cliente';
-        if (spinnerEl) spinnerEl.classList.add('hidden');
-      }
+  /**
+   * Opens the same sub-modal pre-filled for an EXISTING client, so its data
+   * (e.g. a NIT left blank at express-registration time) can be corrected.
+   * Without this there was no way to fix a client record short of re-creating
+   * it, which the NIT-uniqueness constraint rejects with no path forward.
+   */
+  _openEditarClienteModal(client, onSaved) {
+    openClienteModal({
+      mode:   'edit',
+      client,
+      onSaved,
+      mountTarget: this.#container.closest('.modal-body, [id="modal-body"]') ?? document.body,
     });
-
-    // Auto-focus first field
-    overlay.querySelector('#nc-razon-social')?.focus();
   }
 
   // ── Private: drag-and-drop file upload (Excel only) ──────────────────────

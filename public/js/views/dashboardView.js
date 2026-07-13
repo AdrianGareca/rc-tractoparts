@@ -39,6 +39,7 @@ import { wirePdfButton, wireExcelButton, buildTimelineHtml } from './dashboard/m
 import { renderReportes, renderAdvancedReports } from './dashboard/modules/reportesView.js';
 import { refreshNotifBadge, requestNotifPermission, startNotifPolling } from './dashboard/modules/notificationsView.js';
 import { mountAuditLogTab } from './dashboard/modules/auditView.js';
+import { mountClientsTab } from './dashboard/modules/clientsView.js';
 
 // ---------------------------------------------------------------------------
 // _buildProformaHTML
@@ -541,7 +542,10 @@ class ExecutiveStrategy extends DashboardStrategy {
       <div class="card">
         <div class="card-header">
           <h3>Cotizaciones</h3>
-          <button class="btn btn-primary btn-sm" id="btn-new-quotation">+ Nueva Cotización</button>
+          <div style="display:flex;gap:.5rem;">
+            <button class="btn btn-ghost btn-sm" id="btn-manage-clients">🏢 Clientes</button>
+            <button class="btn btn-primary btn-sm" id="btn-new-quotation">+ Nueva Cotización</button>
+          </div>
         </div>
 
         <!-- Scope segmented control: personal workspace vs. team activity.
@@ -593,6 +597,10 @@ class ExecutiveStrategy extends DashboardStrategy {
         });
         UI.registerCleanup(destroy);
       });
+    });
+
+    document.getElementById('btn-manage-clients')?.addEventListener('click', () => {
+      UI.openModal('Gestión de Clientes', (body) => { mountClientsTab(body); }, { wide: true });
     });
 
     document.getElementById('btn-filter-apply')?.addEventListener('click', () => {
@@ -1277,6 +1285,7 @@ class ManagerStrategy extends DashboardStrategy {
         <button class="tab-btn active" data-tab="approvals">Cola de Aprobación</button>
         <button class="tab-btn" data-tab="quotations">Todas las Cotizaciones</button>
         <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
+        <button class="tab-btn" data-tab="clientes">Gestión de Clientes</button>
         <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
         <button class="tab-btn" data-tab="reportes">📊 Reportes</button>
       </div>
@@ -1307,6 +1316,7 @@ class ManagerStrategy extends DashboardStrategy {
       case 'approvals':  await this._renderApprovals(panel);       break;
       case 'quotations': await this._renderAllQuotations(panel);   break;
       case 'users':      await this._renderUsers(panel);           break;
+      case 'clientes':   await mountClientsTab(panel);             break;
       case 'audit':      await this._renderAuditLogs(panel);       break;
       case 'reportes':   await this._renderReportes(panel);        break;
     }
@@ -2007,6 +2017,7 @@ class AdminStrategy extends DashboardStrategy {
         <button class="tab-btn active" data-tab="review">Cola de Revisión</button>
         <button class="tab-btn" data-tab="quotations">Todas las Cotizaciones</button>
         <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
+        <button class="tab-btn" data-tab="clientes">Gestión de Clientes</button>
         <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
         <button class="tab-btn" data-tab="reportes">📊 Reportes</button>
       </div>
@@ -2036,6 +2047,7 @@ class AdminStrategy extends DashboardStrategy {
       case 'review':     await this._renderReviewQueue(panel);    break;
       case 'quotations': await this._renderAllQuotations(panel);  break;
       case 'users':      await this._renderUsers(panel);          break;
+      case 'clientes':   await mountClientsTab(panel);            break;
       case 'audit':      await this._renderAuditLogs(panel);      break;
       case 'reportes':   await this._renderReportes(panel);       break;
     }

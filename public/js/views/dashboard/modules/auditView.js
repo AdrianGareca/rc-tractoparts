@@ -38,6 +38,8 @@ const ACCION_META = {
   EDITAR_USUARIO:      { icon: '🖊️', label: 'Usuario Editado',       badge: 'badge-audit-edit' },
   DESACTIVAR_USUARIO:  { icon: '🚫', label: 'Usuario Desactivado',   badge: 'badge-audit-reject' },
   CREAR_CLIENTE:       { icon: '🏢', label: 'Cliente Creado',        badge: 'badge-audit-create' },
+  EDITAR_CLIENTE:      { icon: '🖊️', label: 'Cliente Editado',       badge: 'badge-audit-edit' },
+  DESACTIVAR_CLIENTE:  { icon: '🚫', label: 'Cliente Desactivado',   badge: 'badge-audit-reject' },
 };
 
 const ENTIDAD_LABELS = {
