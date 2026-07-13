@@ -62,11 +62,20 @@ const allowedOrigins = (process.env.CORS_ORIGIN || '')
   .map((o) => o.trim())
   .filter(Boolean);
 
-// Añadimos explícitamente el puerto local de Swagger para evitar bloqueos en local
-if (process.env.NODE_ENV !== 'production' || allowedOrigins.length === 0) {
+// Añadimos explícitamente el puerto local de Swagger para evitar bloqueos en local.
+// IMPORTANT: this fallback must NEVER apply in production — if it did, a
+// deploy that forgot to set CORS_ORIGIN would silently allow only
+// http://localhost:3000 and reject every request from the real production
+// frontend domain (a full, silent outage). Fail fast instead.
+if (process.env.NODE_ENV !== 'production') {
   if (!allowedOrigins.includes('http://localhost:3000')) {
     allowedOrigins.push('http://localhost:3000');
   }
+} else if (allowedOrigins.length === 0) {
+  throw new Error(
+    'CORS_ORIGIN must be set to at least one allowed origin in production. ' +
+    'Refusing to start with an empty allow-list.'
+  );
 }
 
 app.use(cors({

@@ -82,6 +82,11 @@ afterAll(async () => {
 describe('CC-01: Correlativo uniqueness under concurrent access', () => {
 
   test(`${N} simultaneous quotation requests all receive unique correlativos`, async () => {
+    // Explicit generous timeout: this test fires N real HTTP requests, each
+    // running a full DB transaction plus synchronous PDF generation, against
+    // a connection pool of DB_CONNECTION_LIMIT. Jest's global 5000ms default
+    // is unrealistic here regardless of hardware — on constrained CI/dev
+    // hardware the PDF rendering alone can take multiple seconds per request.
     // Build N request payloads (distinct descriptions to avoid duplicate-detection warnings)
     const payloads = Array.from({ length: N }, (_, i) => ({
       id_cliente:    testClienteId,
@@ -142,5 +147,5 @@ describe('CC-01: Correlativo uniqueness under concurrent access', () => {
       [testClienteId]
     );
     expect(countRows[0].total).toBe(N);
-  });
+  }, 120000);
 });

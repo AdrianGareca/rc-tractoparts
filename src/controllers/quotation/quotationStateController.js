@@ -276,8 +276,11 @@ const QuotationStateController = {
   //   3. It mandates `observaciones` when rejecting (business rule).
   //   4. It regenerates the PDF to reflect the updated approval status.
   //
-  // Source-state constraint: NONE. Jefe and SysAdmin can approve or reject
-  // from ANY active state — 'Pendiente', 'En revision', or 'En espera'.
+  // Source-state constraint: Jefe and SysAdmin can approve or reject only
+  // from the active pre-approval states — 'Pendiente', 'En revision', or
+  // 'En espera' (QuotationModel.APPROVAL_SOURCE_STATES). Terminal/closed
+  // states (Archivada, Confirmada, Enviada al cliente, Rechazada) are not
+  // eligible — this endpoint must not be usable to reopen a closed sale.
   //
   // Request body:
   //   { "aprobado": true | false, "observaciones": "text" (required on reject) }
@@ -338,6 +341,18 @@ const QuotationStateController = {
       const estadoAnterior = quotation.estado;
       const nuevoEstado    = aprobado ? 'Aprobada internamente' : 'Rechazada';
       const obsText        = observaciones ? String(observaciones).trim() : null;
+
+      // Source-state guard: approval/rejection is only legal from the active
+      // pre-approval states. Without this check a Jefe/SysAdmin could "approve"
+      // a quotation that is already Archivada, Confirmada, Enviada al cliente,
+      // etc., silently reopening a closed sale or resurrecting a terminal record.
+      if (!QuotationModel.APPROVAL_SOURCE_STATES.includes(estadoAnterior)) {
+        return res.status(409).json({
+          success: false,
+          message: `Cannot approve/reject a quotation in state '${estadoAnterior}'. ` +
+                   `Only ${QuotationModel.APPROVAL_SOURCE_STATES.join(', ')} are eligible.`,
+        });
+      }
 
       const approved = await QuotationModel.approve(id, req.user.id, aprobado, obsText, estadoAnterior);
 

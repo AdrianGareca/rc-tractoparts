@@ -18,8 +18,9 @@
 //   multipleStatements disabled for safety.
 //
 // Usage:
-//   npm run db:init           # via package.json
-//   node sql/init.js          # directly
+//   npm run db:init           # via package.json — targets DB_NAME
+//   node sql/init.js          # directly — targets DB_NAME
+//   node sql/init.js --test   # targets DB_NAME_TEST (used by the test suite)
 // =============================================================================
 
 'use strict';
@@ -35,10 +36,26 @@ const SQL_FILE = path.join(__dirname, 'init.sql');
 // ---------------------------------------------------------------------------
 // run
 // Reads sql/init.sql and executes it against the configured MySQL server.
+// The script's literal `rc_tractoparts` database name is substituted with the
+// env-configured target (DB_NAME, or DB_NAME_TEST with --test) so deployments
+// that customize the database name — and the test suite, which needs its own
+// database — actually get initialized instead of silently bootstrapping
+// whatever name is hardcoded in the .sql file.
 // Returns nothing; throws on any failure so callers can handle the exit code.
+//
+// @param {boolean} useTestDb - When true, target DB_NAME_TEST instead of DB_NAME.
 // ---------------------------------------------------------------------------
-async function run() {
-  const sql = fs.readFileSync(SQL_FILE, 'utf8');
+async function run(useTestDb = false) {
+  const targetDb = useTestDb ? process.env.DB_NAME_TEST : process.env.DB_NAME;
+
+  if (!targetDb) {
+    throw new Error(
+      `[db:init] ${useTestDb ? 'DB_NAME_TEST' : 'DB_NAME'} is not set in the environment.`
+    );
+  }
+
+  const rawSql = fs.readFileSync(SQL_FILE, 'utf8');
+  const sql    = rawSql.replace(/\brc_tractoparts\b/g, targetDb);
 
   // Admin connection: no database selected (the script creates it), with
   // multipleStatements enabled so the full master script runs at once.
@@ -52,7 +69,7 @@ async function run() {
   });
 
   try {
-    console.log(`[db:init] Executing ${path.basename(SQL_FILE)} ...`);
+    console.log(`[db:init] Executing ${path.basename(SQL_FILE)} against database '${targetDb}' ...`);
     await connection.query(sql);
     console.log('[db:init] Database initialized successfully.');
   } finally {
@@ -60,9 +77,10 @@ async function run() {
   }
 }
 
-// Run immediately when invoked directly (node sql/init.js); export for reuse.
+// Run immediately when invoked directly (node sql/init.js [--test]); export for reuse.
 if (require.main === module) {
-  run().catch((err) => {
+  const useTestDb = process.argv.includes('--test');
+  run(useTestDb).catch((err) => {
     console.error('[db:init] Initialization failed:', err.message);
     process.exit(1);
   });

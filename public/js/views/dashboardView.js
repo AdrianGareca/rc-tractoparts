@@ -794,7 +794,7 @@ class ExecutiveStrategy extends DashboardStrategy {
           <tbody>
             ${rows.map((r) => `
               <tr>
-                <td class="fw-600">${r.numero_correlativo}</td>
+                <td class="fw-600">${escHtml(r.numero_correlativo)}</td>
                 <td>${r.cliente_nombre ? escHtml(r.cliente_nombre) : r.id_cliente}</td>
                 ${isTeam ? `<td>${escHtml(r.ejecutivo_nombre ?? '—')}</td>` : ''}
                 <td>${fmtDate(r.fecha_emision)}</td>
@@ -804,7 +804,7 @@ class ExecutiveStrategy extends DashboardStrategy {
                   <div class="table-actions">
                     <button class="btn btn-ghost btn-sm" data-action="view" data-id="${r.id}">Ver</button>
                     ${showStatusBtn
-                      ? `<button class="btn btn-ghost btn-sm" data-action="status" data-id="${r.id}" data-estado="${r.estado}">Estado</button>`
+                      ? `<button class="btn btn-ghost btn-sm" data-action="status" data-id="${r.id}" data-estado="${escHtml(r.estado)}">Estado</button>`
                       : ''}
                   </div>
                 </td>
@@ -1355,7 +1355,7 @@ class ManagerStrategy extends DashboardStrategy {
               <tbody>
                 ${rows.map(r => `
                   <tr>
-                    <td class="fw-600">${r.numero_correlativo}</td>
+                    <td class="fw-600">${escHtml(r.numero_correlativo)}</td>
                     <td>${badgeHtml(r.estado)}</td>
                     <td>${escHtml(r.ejecutivo_nombre ?? '—')}</td>
                     <td>${escHtml(r.cliente_nombre ?? String(r.id_cliente))}</td>
@@ -1688,8 +1688,8 @@ class ManagerStrategy extends DashboardStrategy {
                 ${users.map(u => `
                   <tr>
                     <td>${u.id}</td>
-                    <td>${u.nombre_completo}</td>
-                    <td class="fw-600">${u.nombre_usuario}</td>
+                    <td>${escHtml(u.nombre_completo)}</td>
+                    <td class="fw-600">${escHtml(u.nombre_usuario)}</td>
                     <td>${roleBadgeHtml(u.rol)}</td>
                     <td>
                       <span class="badge ${u.activo ? 'badge-active' : 'badge-inactive'}">
@@ -1699,13 +1699,13 @@ class ManagerStrategy extends DashboardStrategy {
                     <td>
                       <div class="table-actions">
                         <button class="btn btn-ghost btn-sm" data-user-edit="${u.id}"
-                                data-nombre="${u.nombre_completo}" data-rol="${u.id_rol}"
+                                data-nombre="${escHtml(u.nombre_completo)}" data-rol="${u.id_rol}"
                                 data-canapprove="${u.can_approve_quotations ? 1 : 0}">Editar</button>
                         ${u.activo
                           ? `<button class="btn btn-danger btn-sm" data-user-deact="${u.id}"
-                                data-uname="${u.nombre_usuario}">Desactivar</button>`
+                                data-uname="${escHtml(u.nombre_usuario)}">Desactivar</button>`
                           : `<button class="btn btn-success btn-sm" data-user-act="${u.id}"
-                                data-uname="${u.nombre_usuario}">Activar</button>`}
+                                data-uname="${escHtml(u.nombre_usuario)}">Activar</button>`}
                       </div>
                     </td>
                   </tr>`).join('')}
@@ -1818,7 +1818,7 @@ class ManagerStrategy extends DashboardStrategy {
       body.innerHTML = `
         <div class="form-group">
           <label class="form-label" for="eu-nombre">Nombre Completo</label>
-          <input class="form-control" type="text" id="eu-nombre" value="${nombre ?? ''}" />
+          <input class="form-control" type="text" id="eu-nombre" value="${escHtml(nombre ?? '')}" />
         </div>
         <div class="form-group">
           <label class="form-label" for="eu-rol">Rol</label>
@@ -1868,7 +1868,7 @@ class ManagerStrategy extends DashboardStrategy {
     UI.openModal('Confirmar Desactivación', (body) => {
       body.innerHTML = `
         <div class="confirm-dialog">
-          <h4>¿Desactivar al usuario "${username}"?</h4>
+          <h4>¿Desactivar al usuario "${escHtml(username)}"?</h4>
           <p>El usuario no podrá acceder al sistema. Esta acción puede revertirse editando el usuario.</p>
           <div style="display:flex;justify-content:center;gap:.75rem;">
             <button class="btn btn-ghost" id="dc-cancel">Cancelar</button>
@@ -1892,7 +1892,7 @@ class ManagerStrategy extends DashboardStrategy {
     UI.openModal('Confirmar Activación', (body) => {
       body.innerHTML = `
         <div class="confirm-dialog">
-          <h4>¿Activar al usuario "${username}"?</h4>
+          <h4>¿Activar al usuario "${escHtml(username)}"?</h4>
           <p>El usuario podrá acceder al sistema nuevamente.</p>
           <div style="display:flex;justify-content:center;gap:.75rem;">
             <button class="btn btn-ghost" id="ac-cancel">Cancelar</button>
@@ -2081,7 +2081,7 @@ class AdminStrategy extends DashboardStrategy {
               <tbody>
                 ${rows.map(r => `
                   <tr>
-                    <td class="fw-600">${r.numero_correlativo}</td>
+                    <td class="fw-600">${escHtml(r.numero_correlativo)}</td>
                     <td>${escHtml(r.ejecutivo_nombre ?? '—')}</td>
                     <td>${escHtml(r.cliente_nombre ?? String(r.id_cliente))}</td>
                     <td>${fmtAmount(r.monto_total, r.moneda)}</td>
@@ -2207,8 +2207,8 @@ class AdminStrategy extends DashboardStrategy {
                 ${users.map(u => `
                   <tr>
                     <td>${u.id}</td>
-                    <td>${u.nombre_completo}</td>
-                    <td class="fw-600">${u.nombre_usuario}</td>
+                    <td>${escHtml(u.nombre_completo)}</td>
+                    <td class="fw-600">${escHtml(u.nombre_usuario)}</td>
                     <td>${roleBadgeHtml(u.rol)}</td>
                     <td>
                       <span class="badge ${u.activo ? 'badge-active' : 'badge-inactive'}">
@@ -2218,13 +2218,13 @@ class AdminStrategy extends DashboardStrategy {
                     <td>
                       <div class="table-actions">
                         <button class="btn btn-ghost btn-sm" data-user-edit="${u.id}"
-                                data-nombre="${u.nombre_completo}" data-rol="${u.id_rol}"
+                                data-nombre="${escHtml(u.nombre_completo)}" data-rol="${u.id_rol}"
                                 data-canapprove="${u.can_approve_quotations ? 1 : 0}">Editar</button>
                         ${u.activo
                           ? `<button class="btn btn-danger btn-sm" data-user-deact="${u.id}"
-                                data-uname="${u.nombre_usuario}">Desactivar</button>`
+                                data-uname="${escHtml(u.nombre_usuario)}">Desactivar</button>`
                           : `<button class="btn btn-success btn-sm" data-user-act="${u.id}"
-                                data-uname="${u.nombre_usuario}">Activar</button>`}
+                                data-uname="${escHtml(u.nombre_usuario)}">Activar</button>`}
                       </div>
                     </td>
                   </tr>`).join('')}
@@ -2332,7 +2332,7 @@ class AdminStrategy extends DashboardStrategy {
       body.innerHTML = `
         <div class="form-group">
           <label class="form-label" for="eu2-nombre">Nombre Completo</label>
-          <input class="form-control" type="text" id="eu2-nombre" value="${nombre ?? ''}" />
+          <input class="form-control" type="text" id="eu2-nombre" value="${escHtml(nombre ?? '')}" />
         </div>
         <div class="form-group">
           <label class="form-label" for="eu2-rol">Rol</label>
@@ -2381,7 +2381,7 @@ class AdminStrategy extends DashboardStrategy {
     UI.openModal('Confirmar Desactivación', (body) => {
       body.innerHTML = `
         <div class="confirm-dialog">
-          <h4>¿Desactivar al usuario "${username}"?</h4>
+          <h4>¿Desactivar al usuario "${escHtml(username)}"?</h4>
           <p>El usuario no podrá acceder al sistema.</p>
           <div style="display:flex;justify-content:center;gap:.75rem;">
             <button class="btn btn-ghost" id="dc2-cancel">Cancelar</button>
@@ -2405,7 +2405,7 @@ class AdminStrategy extends DashboardStrategy {
     UI.openModal('Confirmar Activación', (body) => {
       body.innerHTML = `
         <div class="confirm-dialog">
-          <h4>¿Activar al usuario "${username}"?</h4>
+          <h4>¿Activar al usuario "${escHtml(username)}"?</h4>
           <p>El usuario podrá acceder al sistema nuevamente.</p>
           <div style="display:flex;justify-content:center;gap:.75rem;">
             <button class="btn btn-ghost" id="ac2-cancel">Cancelar</button>

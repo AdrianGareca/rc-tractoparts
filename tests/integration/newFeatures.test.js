@@ -109,7 +109,8 @@ describe('NF-03 — Admin Notes Access (comentarios_admin)', () => {
 
   beforeAll(async () => {
     // Create a quotation with a comentarios_admin value
-    const correlativo = `TEST-NF03-${Date.now()}`;
+    // numero_correlativo is VARCHAR(20) — keep the fixture within that limit
+    const correlativo = `NF03-${Date.now()}`;
     const [cotRes] = await pool.execute(
       `INSERT INTO cotizaciones
          (numero_correlativo, id_cliente, id_ejecutivo, descripcion,

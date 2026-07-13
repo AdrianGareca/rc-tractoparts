@@ -196,6 +196,25 @@ const UserModel = {
   },
 
   // ---------------------------------------------------------------------------
+  // getSessionState
+  // Returns { token_version, activo } for a user in a single query, or null if
+  // the user no longer exists. Consumed by the auth middleware on every request
+  // so that BOTH a logout (token_version bump) AND an admin deactivation
+  // (activo=0) instantly invalidate an already-issued JWT, without waiting for
+  // its natural expiry.
+  //
+  // @param  {number} id - User primary key
+  // @returns {{token_version:number, activo:number}|null}
+  // ---------------------------------------------------------------------------
+  async getSessionState(id) {
+    const [rows] = await pool.execute(
+      'SELECT token_version, activo FROM usuarios WHERE id = ? LIMIT 1',
+      [id]
+    );
+    return rows[0] || null;
+  },
+
+  // ---------------------------------------------------------------------------
   // incrementTokenVersion
   // Atomically bumps the user's token_version, instantly invalidating every JWT
   // previously issued to that user (all active sessions/devices). Called on

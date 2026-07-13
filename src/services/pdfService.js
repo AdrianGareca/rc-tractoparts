@@ -147,14 +147,33 @@ function fmtPrice(amount, moneda) {
 
 // ---------------------------------------------------------------------------
 // formatDate — YYYY-MM-DD / Date → DD/MM/YYYY, UTC-safe
+//
+// src/config/db.js sets `timezone: '+00:00'`, so mysql2 returns DATE/DATETIME
+// columns as JS Date objects representing a UTC instant. Reading those with
+// LOCAL getters (getDate/getMonth/getFullYear) shifts the printed date by a
+// day whenever the Node process runs in a timezone behind UTC (a midnight-UTC
+// value rolls back to the previous local day). Date objects must therefore
+// always be read with the UTC getters. Plain 'YYYY-MM-DD' strings are parsed
+// directly from their components instead of round-tripping through Date, so
+// the result never depends on the process's local timezone at all.
 // ---------------------------------------------------------------------------
 function formatDate(v) {
   if (!v) return '—';
-  const d = typeof v === 'string' ? new Date(`${v}T00:00:00`) : new Date(v);
+
+  if (typeof v === 'string') {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+    if (match) {
+      const [, yyyy, mm, dd] = match;
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    v = new Date(v);
+  }
+
+  const d = v;
   if (isNaN(d.getTime())) return String(v);
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  return `${dd}/${mm}/${d.getFullYear()}`;
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getUTCFullYear()}`;
 }
 
 // ---------------------------------------------------------------------------

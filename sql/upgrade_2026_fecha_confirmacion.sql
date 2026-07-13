@@ -9,17 +9,21 @@
 -- Do NOT run sql/init.js / npm run db:init against a live database — that script
 -- DROPs and recreates everything. Run THIS script instead: it is additive only.
 --
--- ⚠️  Run ONCE. Back up the database first, then run against the target env:
+-- ⚠️  Back up the database first, then run against the target env:
 --   mysql -u <user> -p <database_name> < sql/upgrade_2026_fecha_confirmacion.sql
 --
--- If it was already applied, step 1 will report "Duplicate column name" — that
--- is harmless (it just means the column already exists); step 2 is always safe
--- to re-run because it only touches rows whose fecha_confirmacion is still NULL.
+-- Truly idempotent: step 1 uses ADD COLUMN IF NOT EXISTS (MySQL 8.0.29+ — this
+-- project runs mysql:8.0, see docker-compose.yml). A plain `ALTER TABLE ...
+-- ADD COLUMN` would raise "Duplicate column name" on a second run, which
+-- aborts the whole batch under `mysql ... < file.sql` unless invoked with
+-- -f/--force — so re-running would silently never reach the backfill in step
+-- 2. Step 2 is always safe to re-run because it only touches rows whose
+-- fecha_confirmacion is still NULL.
 -- =============================================================================
 
--- ── 1. Add the sale-closure timestamp column ─────────────────────────────────
+-- ── 1. Add the sale-closure timestamp column (idempotent) ────────────────────
 ALTER TABLE cotizaciones
-  ADD COLUMN fecha_confirmacion DATETIME NULL DEFAULT NULL AFTER fecha_aprobacion;
+  ADD COLUMN IF NOT EXISTS fecha_confirmacion DATETIME NULL DEFAULT NULL AFTER fecha_aprobacion;
 
 -- ── 2. Backfill historical closures from the state-history table ─────────────
 -- For every quotation currently 'Confirmada' (or its legacy alias 'Aceptada')

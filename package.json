@@ -10,6 +10,7 @@
     "test:unit": "jest tests/unit --runInBand",
     "test:integration": "jest tests/integration --runInBand --forceExit",
     "db:init": "node sql/init.js",
+    "db:init:test": "node sql/init.js --test",
     "db:migrate": "echo 'No standalone migrations: sql/init.sql is the single source of truth. Run: npm run db:init'",
     "seed": "node scripts/seed-users.js",
     "seed:execute": "node scripts/seed-users.js --execute",

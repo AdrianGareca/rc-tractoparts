@@ -16,6 +16,7 @@
 'use strict';
 
 const { pool } = require('../config/db');
+const { calcularSubtotal } = require('../utils/quotationTotals');
 
 // =============================================================================
 // STATE MACHINE CONSTANTS
@@ -127,6 +128,15 @@ const ROLE_TRANSITIONS = {
     Archivada:               [],    // Terminal — even SysAdmin cannot un-archive
   },
 };
+
+// ---------------------------------------------------------------------------
+// APPROVAL_SOURCE_STATES — the only quotation states from which an approval
+// or rejection decision (nuevoEstado === 'Aprobada internamente'/'Rechazada'
+// via the dedicated /:id/aprobar endpoint) may legally be made. Shared between
+// validateTransitionByRole (below) and QuotationStateController.approveQuotation
+// so both entry points enforce the exact same source-state guard.
+// ---------------------------------------------------------------------------
+const APPROVAL_SOURCE_STATES = ['Pendiente', 'En revision', 'En espera'];
 
 // ---------------------------------------------------------------------------
 // STATE_TRANSITIONS — flat fallback matrix (used only for reference / tests).
@@ -375,9 +385,7 @@ const QuotationModel = {
     const placeholders = detalles.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
 
     const values = detalles.flatMap((item) => {
-      const subtotal = parseFloat(
-        (parseFloat(item.cantidad) * parseFloat(item.precio_unitario)).toFixed(2)
-      );
+      const subtotal = calcularSubtotal(parseFloat(item.cantidad), parseFloat(item.precio_unitario));
       // Truncate codigo to 50 chars max (mirrors VARCHAR(50) DB column)
       const codigoParte = item.codigo
         ? String(item.codigo).trim().substring(0, 50) || null
@@ -931,17 +939,19 @@ const QuotationModel = {
 
     // ── Dynamic Function Delegation (Delegación de Funciones) ──────────────────
     // A transition to 'Aprobada internamente' is authorized when the caller is a
-    // Jefe (id_rol 3), Administracion (id_rol 2) or SysAdmin (superuser) — OR any
-    // user holding the delegated can_approve_quotations flag — provided the source
-    // state is one of the legitimate pre-approval states. This is strictly
-    // ADDITIVE: it only ever GRANTS the single 'Aprobada internamente' target and
-    // never removes a transition the base role already had, so the audited core
-    // lifecycle is preserved.
-    const APPROVAL_SOURCE_STATES = ['Pendiente', 'En revision', 'En espera'];
+    // Jefe (id_rol 3) or SysAdmin (superuser) — OR any user holding the delegated
+    // can_approve_quotations flag — provided the source state is one of the
+    // legitimate pre-approval states. Administracion is intentionally EXCLUDED
+    // here: per ROLE_TRANSITIONS.Administracion above, approval authority
+    // belongs exclusively to the Jefe unless explicitly delegated via the flag
+    // (an Administracion user without the flag must not be able to approve).
+    // This is strictly ADDITIVE: it only ever GRANTS the single
+    // 'Aprobada internamente' target and never removes a transition the base
+    // role already had, so the audited core lifecycle is preserved.
     const isDelegatedApproval =
       nuevoEstado === 'Aprobada internamente' &&
       APPROVAL_SOURCE_STATES.includes(estadoActual) &&
-      (rol === 'Jefe' || rol === 'Administracion' || rol === 'SysAdmin' || canApproveQuotations === true);
+      (rol === 'Jefe' || rol === 'SysAdmin' || canApproveQuotations === true);
 
     if (isDelegatedApproval) {
       return {
@@ -1099,10 +1109,12 @@ const QuotationModel = {
   // Dedicated method for the approval workflow. Records the decision, the
   // approver's identity, the timestamp, and the mandatory observation text.
   //
-  // Jefe and SysAdmin hold ABSOLUTE authority: they can approve or reject from
-  // ANY non-terminal state. The WHERE clause uses the caller-supplied
-  // `currentState` for optimistic concurrency — it guarantees that two
-  // concurrent requests for the same quotation cannot both succeed.
+  // The caller (QuotationStateController.approveQuotation) validates that
+  // `currentState` is one of APPROVAL_SOURCE_STATES before invoking this
+  // method — this function itself enforces no state restriction. The WHERE
+  // clause uses the caller-supplied `currentState` for optimistic concurrency
+  // — it guarantees that two concurrent requests for the same quotation
+  // cannot both succeed.
   //
   // @param {number}  id            - Quotation primary key
   // @param {number}  aprobadoPor   - User ID of the approver (from req.user.id)
@@ -1583,6 +1595,7 @@ const QuotationModel = {
   VALID_STATES,
   STATE_TRANSITIONS,
   ROLE_TRANSITIONS,
+  APPROVAL_SOURCE_STATES,
   SORTABLE_COLUMNS,
 };
 

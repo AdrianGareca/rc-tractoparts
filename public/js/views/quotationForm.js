@@ -37,7 +37,9 @@ function escText(v) {
   return String(v)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /** Sum all item subtotals from the items array */
@@ -1160,7 +1162,7 @@ class FormMediator {
           if (clients.length === 0) {
             dropdown.innerHTML = `
               <div class="client-dropdown-empty">
-                Sin resultados para "<em>${q}</em>"
+                Sin resultados para "<em>${escText(q)}</em>"
               </div>`;
             dropdown.classList.add('open');
             return;
@@ -1168,10 +1170,10 @@ class FormMediator {
 
           dropdown.innerHTML = clients.map(c => `
             <div class="client-dropdown-item" data-id="${c.id}"
-                 data-label="${c.razon_social.replace(/"/g, '&quot;')}"
+                 data-label="${escText(c.razon_social)}"
                  role="option" tabindex="-1">
-              <span class="cdi-name">${c.razon_social}</span>
-              ${c.nit ? `<span class="cdi-nit">NIT: ${c.nit}</span>` : ''}
+              <span class="cdi-name">${escText(c.razon_social)}</span>
+              ${c.nit ? `<span class="cdi-nit">NIT: ${escText(c.nit)}</span>` : ''}
             </div>
           `).join('');
           dropdown.classList.add('open');

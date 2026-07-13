@@ -21,6 +21,7 @@ const QuotationLockModel          = require('../models/QuotationLockModel');
 const { logEvent, AuditActions }  = require('../utils/auditLog');
 const pdfService                  = require('../services/pdfService');
 const { broadcastDraftReleased }  = require('../realtime/socketServer');
+const { calcularMontoTotal }      = require('../utils/quotationTotals');
 
 // Valid sort column keys exposed to GET /api/cotizaciones callers
 const VALID_SORT_KEYS = Object.keys(QuotationModel.SORTABLE_COLUMNS);
@@ -109,67 +110,128 @@ const QuotationController = {
       console.warn('[QuotationController] Duplicate check failed (non-fatal):', dupErr.message);
     }
 
-    // ── Atomic transaction ────────────────────────────────────────────────────
+    // Recalculate monto_total server-side from line items so the stored
+    // header total always matches the sum of the actual detail rows.
+    // The client-supplied value is ignored when detalles are present.
+    // A manual cash discount (descuento_manual) is then subtracted from
+    // the subtotal to produce the stored total — preserving auditability.
+    //
+    // IMPORTANT: each line's subtotal must be rounded to 2 decimals BEFORE
+    // summing, mirroring exactly what QuotationModel.createDetalles stores
+    // per row (subtotal = round(cantidad * precio_unitario)). Rounding only
+    // once at the end of the raw sum can diverge from SUM(detalle.subtotal)
+    // by a cent or more on fractional prices, which desyncs the reports
+    // (built from cotizaciones.monto_total) from the PDF (built from the
+    // stored detail rows). This is pure JS math — safe to compute once,
+    // outside the retry loop below.
+    let calculatedTotal = null;
+    if (detalles.length > 0) {
+      const subtotalFromItems = calcularMontoTotal(
+        detalles.map((item) => ({
+          cantidad:        parseFloat(item.cantidad),
+          precio_unitario: parseFloat(item.precio_unitario),
+        }))
+      );
+      const discount = descuento_manual != null ? parseFloat(descuento_manual) : 0;
+      calculatedTotal = parseFloat(Math.max(0, subtotalFromItems - discount).toFixed(2));
+    } else if (monto_total != null) {
+      // No line items — accept an explicit header-level total (e.g. free-text quote)
+      calculatedTotal = parseFloat(monto_total);
+    }
+
+    // ── Atomic transaction, retried on transient InnoDB deadlocks ─────────────
+    // Under real concurrent load, many simultaneous INSERTs referencing the
+    // same parent rows (same id_cliente, same correlativo-counter row) can
+    // trigger a genuine MySQL "Deadlock found when trying to get lock; try
+    // restarting transaction" (ER_LOCK_DEADLOCK) — this is normal, expected
+    // InnoDB behavior under contention, not a bug in the lock ordering itself.
+    // MySQL's own guidance is that the client must retry the whole
+    // transaction. Without this retry, a legitimate concurrent user simply
+    // gets an opaque 500 error (reproduced with 20 simultaneous creations
+    // against the same client).
+    const MAX_DEADLOCK_RETRIES = 3;
     let connection;
+    let numeroCorrelativo;
+    let quotationId;
 
     try {
-      connection = await pool.getConnection();
-      await connection.beginTransaction();
+      for (let attempt = 1; attempt <= MAX_DEADLOCK_RETRIES; attempt++) {
+        try {
+          connection = await pool.getConnection();
+          await connection.beginTransaction();
 
-      const numeroCorrelativo = await QuotationModel.generateCorrelativo(connection);
+          numeroCorrelativo = await QuotationModel.generateCorrelativo(connection);
 
-      // Recalculate monto_total server-side from line items so the stored
-      // header total always matches the sum of the actual detail rows.
-      // The client-supplied value is ignored when detalles are present.
-      // A manual cash discount (descuento_manual) is then subtracted from
-      // the subtotal to produce the stored total — preserving auditability.
-      let calculatedTotal = null;
-      if (detalles.length > 0) {
-        const subtotalFromItems = parseFloat(
-          detalles.reduce((sum, item) => {
-            return sum + parseFloat(item.cantidad) * parseFloat(item.precio_unitario);
-          }, 0).toFixed(2)
-        );
-        const discount = descuento_manual != null ? parseFloat(descuento_manual) : 0;
-        calculatedTotal = parseFloat(Math.max(0, subtotalFromItems - discount).toFixed(2));
-      } else if (monto_total != null) {
-        // No line items — accept an explicit header-level total (e.g. free-text quote)
-        calculatedTotal = parseFloat(monto_total);
+          quotationId = await QuotationModel.create(connection, {
+            numero_correlativo:       numeroCorrelativo,
+            id_cliente:               parseInt(id_cliente, 10),
+            id_ejecutivo:             req.user.id,
+            descripcion:              String(descripcion).trim(),
+            monto_total:              calculatedTotal,
+            moneda:                   moneda || 'BOB',
+            entidad_emisora:          entidad_emisora || 'Empresa unipersonal de Ronald Roca Cartagena',
+            observaciones:            observaciones            || null,
+            fecha_emision,
+            fecha_validez:            fecha_validez            || null,
+            tipo_pedido:              tipo_pedido              || null,
+            tiempo_entrega:           tiempo_entrega           || null,
+            solicitante_nombre:       solicitante_nombre       || null,
+            solicitante_no_solicitud: solicitante_no_solicitud || null,
+            solicitante_area:         solicitante_area         || null,
+            solicitante_celular:      solicitante_celular      || null,
+            solicitante_correo:       solicitante_correo       || null,
+            equipo_marca:             equipo_marca             || null,
+            equipo_tipo:              equipo_tipo              || null,
+            equipo_modelo:            equipo_modelo            || null,
+            equipo_serie:             equipo_serie             || null,
+            equipo_motor:             equipo_motor             || null,
+            descuento_manual:         descuento_manual         != null ? parseFloat(descuento_manual) : null,
+            forma_pago:               forma_pago               || null,
+            mostrar_codigos:          mostrar_codigos          != null ? mostrar_codigos : true,
+          });
+
+          if (detalles.length > 0) {
+            await QuotationModel.createDetalles(connection, quotationId, detalles);
+          }
+
+          await connection.commit();
+
+          // Release the transaction connection back to the pool IMMEDIATELY
+          // after commit. Everything below (lock release, findById, PDF
+          // generation, audit logging) uses the shared `pool` for its own
+          // short-lived connections — it must NOT run while this request is
+          // still holding a checked-out connection. Holding it through those
+          // steps meant each in-flight request occupied one of the
+          // DB_CONNECTION_LIMIT pool slots for its ENTIRE duration, including
+          // the multi-second PDF render. Once concurrent requests reached the
+          // pool limit, every held connection ended up waiting on a
+          // pool.execute() call for a connection that could only come from one
+          // of those very same held connections — a full pool self-deadlock
+          // that never resolves (reproduced with DB_CONNECTION_LIMIT=10 and
+          // 10+ concurrent creations).
+          connection.release();
+          connection = null;
+          break; // success — exit the retry loop
+        } catch (txErr) {
+          if (connection) {
+            try { await connection.rollback(); } catch (rbErr) {
+              console.error('[QuotationController] Rollback error:', rbErr.message);
+            }
+            connection.release();
+            connection = null;
+          }
+
+          const isDeadlock = txErr.code === 'ER_LOCK_DEADLOCK';
+          if (isDeadlock && attempt < MAX_DEADLOCK_RETRIES) {
+            console.warn(
+              `[QuotationController.createQuotation] Deadlock detected, retrying transaction ` +
+              `(attempt ${attempt + 1}/${MAX_DEADLOCK_RETRIES})...`
+            );
+            continue;
+          }
+          throw txErr; // Exhausted retries, or a non-deadlock error — let the outer catch handle it
+        }
       }
-
-      const quotationId = await QuotationModel.create(connection, {
-        numero_correlativo:       numeroCorrelativo,
-        id_cliente:               parseInt(id_cliente, 10),
-        id_ejecutivo:             req.user.id,
-        descripcion:              String(descripcion).trim(),
-        monto_total:              calculatedTotal,
-        moneda:                   moneda || 'BOB',
-        entidad_emisora:          entidad_emisora || 'Empresa unipersonal de Ronald Roca Cartagena',
-        observaciones:            observaciones            || null,
-        fecha_emision,
-        fecha_validez:            fecha_validez            || null,
-        tipo_pedido:              tipo_pedido              || null,
-        tiempo_entrega:           tiempo_entrega           || null,
-        solicitante_nombre:       solicitante_nombre       || null,
-        solicitante_no_solicitud: solicitante_no_solicitud || null,
-        solicitante_area:         solicitante_area         || null,
-        solicitante_celular:      solicitante_celular      || null,
-        solicitante_correo:       solicitante_correo       || null,
-        equipo_marca:             equipo_marca             || null,
-        equipo_tipo:              equipo_tipo              || null,
-        equipo_modelo:            equipo_modelo            || null,
-        equipo_serie:             equipo_serie             || null,
-        equipo_motor:             equipo_motor             || null,
-        descuento_manual:         descuento_manual         != null ? parseFloat(descuento_manual) : null,
-        forma_pago:               forma_pago               || null,
-        mostrar_codigos:          mostrar_codigos          != null ? mostrar_codigos : true,
-      });
-
-      if (detalles.length > 0) {
-        await QuotationModel.createDetalles(connection, quotationId, detalles);
-      }
-
-      await connection.commit();
 
       // Safety net: clear the draft lock for this serial if it is still
       // present. Normally the client releases its own reservation via the
@@ -218,7 +280,7 @@ const QuotationController = {
           accion:         AuditActions.CREAR_COTIZACION,
           entidad:        'cotizaciones',
           id_entidad:     quotationId,
-          detalle:        { numero_correlativo: numeroCorrelativo, id_cliente, monto_total: monto_total || null },
+          detalle:        { numero_correlativo: numeroCorrelativo, id_cliente, monto_total: calculatedTotal },
           ip_origen:      clientIp,
           resultado:      'exito',
         });
@@ -316,9 +378,14 @@ const QuotationController = {
       // Recalculate the header total server-side from the line items so the
       // stored total always matches the actual detail rows (client value ignored).
       // A manual cash discount is subtracted when provided.
-      const subtotalFromItems = parseFloat(
-        detalles.reduce((sum, item) =>
-          sum + parseFloat(item.cantidad) * parseFloat(item.precio_unitario), 0).toFixed(2)
+      // calcularMontoTotal rounds each line to 2 decimals BEFORE summing — see
+      // the matching comment in createQuotation for why this must mirror
+      // QuotationModel.createDetalles' per-row rounding.
+      const subtotalFromItems = calcularMontoTotal(
+        detalles.map((item) => ({
+          cantidad:        parseFloat(item.cantidad),
+          precio_unitario: parseFloat(item.precio_unitario),
+        }))
       );
       const discountUpdate = req.body.descuento_manual != null ? parseFloat(req.body.descuento_manual) : 0;
       const calculatedTotal = parseFloat(Math.max(0, subtotalFromItems - discountUpdate).toFixed(2));
@@ -363,6 +430,14 @@ const QuotationController = {
       await QuotationModel.replaceDetalles(connection, id, detalles);
 
       await connection.commit();
+
+      // Release the transaction connection back to the pool immediately after
+      // commit — see the matching comment in createQuotation for why holding
+      // it through the post-commit PDF/audit steps (which need their own
+      // pool connections) risks a full connection-pool deadlock under
+      // concurrent load.
+      connection.release();
+      connection = null;
 
       // ── Post-commit: refetch, regenerate PDF (single-PDF invariant), audit ──
       const updatedQuotation = await QuotationModel.findById(id);

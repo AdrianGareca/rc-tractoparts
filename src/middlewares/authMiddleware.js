@@ -64,16 +64,30 @@ async function authenticate(req, res, next) {
     //    jwt.verify throws JsonWebTokenError or TokenExpiredError on failure.
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
+    // 4b. Reject single-purpose tokens (e.g. the 10-minute /api-docs access
+    //     token minted by AuthController.getDocsToken). Those payloads carry
+    //     a `purpose` claim precisely so they CANNOT be replayed as a normal
+    //     session token against any other endpoint — enforce that here since
+    //     this is the one middleware every protected route shares.
+    if (payload.purpose) {
+      return res.status(401).json({
+        success: false,
+        message: 'This token is not valid for this operation.',
+      });
+    }
+
     // 5. Durable revocation check — compare the token's version stamp against the
-    //    current persistent counter in the database. A logout bumps the counter,
-    //    so any token minted before that logout is rejected here even after the
+    //    current persistent counter in the database, and confirm the account is
+    //    still active. A logout bumps the counter, and an admin deactivating a
+    //    user (or changing their role) also bumps it (see UserController), so
+    //    any token minted before either event is rejected here even after the
     //    server has been restarted (the in-memory set above would have been lost).
     //    Fail-open on DB errors: the token is already cryptographically valid, so
     //    a transient DB hiccup must not lock every user out (availability).
     try {
-      const currentVersion = await UserModel.getTokenVersion(payload.id);
+      const session = await UserModel.getSessionState(payload.id);
 
-      if (currentVersion === null) {
+      if (!session) {
         // User no longer exists — reject.
         return res.status(401).json({
           success: false,
@@ -81,8 +95,15 @@ async function authenticate(req, res, next) {
         });
       }
 
+      if (!session.activo) {
+        return res.status(401).json({
+          success: false,
+          message: 'Account has been deactivated. Please contact an administrator.',
+        });
+      }
+
       const tokenVersion = payload.token_version ?? 0;
-      if (tokenVersion !== currentVersion) {
+      if (tokenVersion !== session.token_version) {
         return res.status(401).json({
           success: false,
           message: 'Session has been ended. Please log in again.',

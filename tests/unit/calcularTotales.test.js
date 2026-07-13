@@ -3,60 +3,18 @@
 // Unit Tests UT-01 through UT-08 — Quotation Line-Item Total Calculation
 // (Section 3.11.2 — Pruebas unitarias: cálculo de subtotales y monto total)
 //
-// These tests are pure unit tests — they import calculation functions directly
-// from the service, with no database connections involved. Run with:
-//   npm run test:unit
-// =============================================================================
+// These tests import the REAL calculation functions from
+// src/utils/quotationTotals.js — the exact module used by
+// QuotationController.createQuotation/updateQuotation and by
+// QuotationModel.createDetalles. Testing a local reimplementation here would
+// give false confidence: it could pass while the production code path
+// actually rounds differently (that divergence was a real, previously-shipped
+// bug — see the 'REGRESSION' test below).
+// ---------------------------------------------------------------------------
 
 'use strict';
 
-// ---------------------------------------------------------------------------
-// Calculation functions — extracted from business logic so they can be tested
-// in isolation. In the full codebase these live in a cotizacionService.js;
-// for Sprint 1 they are defined inline in this file so tests are self-contained.
-// ---------------------------------------------------------------------------
-
-/**
- * calcularSubtotal
- * Compute the subtotal for one line item: cantidad × precio_unitario, rounded to 2 decimals.
- * Throws a descriptive error if inputs are invalid (UT-07, UT-08).
- *
- * @param   {number} cantidad        - Quantity (must be > 0)
- * @param   {number} precioUnitario  - Unit price (must be >= 0)
- * @returns {number}                 - Rounded subtotal
- */
-function calcularSubtotal(cantidad, precioUnitario) {
-  if (typeof cantidad !== 'number' || cantidad <= 0) {
-    throw new Error('cantidad debe ser mayor a 0');
-  }
-
-  if (typeof precioUnitario !== 'number' || precioUnitario < 0) {
-    throw new Error('precio_unitario debe ser mayor o igual a 0');
-  }
-
-  // Multiply and round to exactly 2 decimal places (monetary precision)
-  return parseFloat((cantidad * precioUnitario).toFixed(2));
-}
-
-/**
- * calcularMontoTotal
- * Sum the subtotals of all line items. Returns 0.00 for an empty array.
- * Each item must have cantidad and precio_unitario properties.
- *
- * @param   {Array<{cantidad: number, precio_unitario: number}>} detalles
- * @returns {number} - Total amount rounded to 2 decimals
- */
-function calcularMontoTotal(detalles) {
-  if (!Array.isArray(detalles) || detalles.length === 0) {
-    return 0.00; // UT-04: empty quotation returns zero
-  }
-
-  const total = detalles.reduce((acc, item) => {
-    return acc + calcularSubtotal(item.cantidad, item.precio_unitario);
-  }, 0);
-
-  return parseFloat(total.toFixed(2));
-}
+const { calcularSubtotal, calcularMontoTotal } = require('../../src/utils/quotationTotals');
 
 // ---------------------------------------------------------------------------
 // Test suites
@@ -141,5 +99,21 @@ describe('calcularMontoTotal', () => {
     ];
     // 0.10 + 0.20 = 0.30 (not 0.30000000000000004 from floating point)
     expect(calcularMontoTotal(detalles)).toBeCloseTo(0.30, 2);
+  });
+
+  // REGRESSION — monto_total must equal the sum of the PER-LINE rounded
+  // subtotals (what QuotationModel.createDetalles stores in
+  // cotizacion_detalles.subtotal), NOT the rounding of the raw unrounded sum.
+  // Two lines of 0.125 each round individually to 0.13 + 0.13 = 0.26, but
+  // summing the raw products first (0.125 + 0.125 = 0.25) then rounding once
+  // gives 0.25 — a real, previously-shipped 1-cent divergence between
+  // cotizaciones.monto_total (reports) and SUM(detalle.subtotal) (the PDF).
+  test('REGRESSION: sums per-line rounded subtotals, not the rounded raw sum', () => {
+    const detalles = [
+      { cantidad: 1, precio_unitario: 0.125 }, // rounds to 0.13
+      { cantidad: 1, precio_unitario: 0.125 }, // rounds to 0.13
+    ];
+    expect(calcularSubtotal(1, 0.125)).toBeCloseTo(0.13, 2);
+    expect(calcularMontoTotal(detalles)).toBeCloseTo(0.26, 2); // NOT 0.25
   });
 });

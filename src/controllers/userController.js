@@ -190,6 +190,13 @@ const UserController = {
 
       await UserModel.update(id, updateData);
 
+      // Role or active-status changes must invalidate any already-issued JWT for
+      // this user immediately — otherwise a demoted/deactivated user keeps their
+      // old privileges until the token naturally expires (up to JWT_EXPIRES_IN).
+      if (updateData.id_rol !== undefined || updateData.activo !== undefined) {
+        await UserModel.incrementTokenVersion(id);
+      }
+
       await logEvent({
         id_usuario:    req.user.id,
         nombre_usuario: req.user.nombre_usuario,
@@ -250,6 +257,10 @@ const UserController = {
       }
 
       await UserModel.update(id, { activo: 0 });
+
+      // Invalidate any already-issued JWT for this user immediately — otherwise
+      // the deactivated user keeps operating until their token naturally expires.
+      await UserModel.incrementTokenVersion(id);
 
       await logEvent({
         id_usuario:    req.user.id,

@@ -16,6 +16,15 @@ const UserModel = require('../models/UserModel');
 const { revokeToken }             = require('../middlewares/authMiddleware');
 const { logEvent, AuditActions }  = require('../utils/auditLog');
 
+// A static, valid-format bcrypt hash (cost 12, matching the default
+// BCRYPT_ROUNDS) with no corresponding real password. Used to burn an
+// equivalent amount of CPU time on a bcrypt.compare() call when the username
+// lookup misses, so a nonexistent-username response takes roughly as long as
+// a wrong-password response. Without this, an attacker can enumerate valid
+// usernames purely from response-time (unknown user = instant 401, no
+// bcrypt call; known user with wrong password = ~80-150ms bcrypt.compare).
+const DUMMY_BCRYPT_HASH = '$2a$12$CwTycUXWue0Thq9StjUM0uJ8mEywNw12KVUwEVQjLzQKtUyq93U9m';
+
 const AuthController = {
 
   // ---------------------------------------------------------------------------
@@ -49,13 +58,19 @@ const AuthController = {
       // ── 2. User lookup ────────────────────────────────────────────────────────
       const user = await UserModel.findByUsername(trimmedUsername);
 
-      // Generic 401 — never reveal whether the username exists or not
+      // Generic 401 — never reveal whether the username exists or not.
+      // Burn an equivalent bcrypt.compare() cost against a dummy hash so this
+      // path takes roughly as long as the wrong-password path below — otherwise
+      // the response-time gap itself reveals whether the username is valid.
       if (!user) {
+        await bcrypt.compare(password, DUMMY_BCRYPT_HASH);
         return res.status(401).json({ success: false, message: 'Invalid credentials.' });
       }
 
       // ── 3. Active account check ───────────────────────────────────────────────
       if (!user.activo) {
+        await bcrypt.compare(password, DUMMY_BCRYPT_HASH); // keep timing uniform
+
         await logEvent({
           id_usuario:    user.id,
           nombre_usuario: user.nombre_usuario,
@@ -193,10 +208,17 @@ const AuthController = {
 
       // Durable path: bump the user's token_version so EVERY token issued to this
       // user is invalidated and the revocation survives a server restart.
+      // If this write fails, the token is still only revoked in THIS process'
+      // in-memory set (the fast path above) — other instances / a restart would
+      // still accept it. Surface that to the client instead of silently
+      // claiming full success, so the frontend can react (e.g. force-clear the
+      // locally-stored token regardless).
+      let durableRevocationFailed = false;
       try {
         await UserModel.incrementTokenVersion(req.user.id);
       } catch (versionErr) {
-        console.warn('[AuthController.logout] token_version bump failed (non-fatal):', versionErr.message);
+        durableRevocationFailed = true;
+        console.error('[AuthController.logout] token_version bump FAILED — durable revocation incomplete:', versionErr.message);
       }
 
       await logEvent({
@@ -211,7 +233,10 @@ const AuthController = {
 
       return res.status(200).json({
         success: true,
-        message: 'Logged out successfully. Token has been invalidated.',
+        message: durableRevocationFailed
+          ? 'Logged out locally. Full session revocation is pending — please discard the token on this device.'
+          : 'Logged out successfully. Token has been invalidated.',
+        warning: durableRevocationFailed,
       });
     } catch (error) {
       console.error('[AuthController.logout] Error:', error.message);
