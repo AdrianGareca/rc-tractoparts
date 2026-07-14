@@ -14,6 +14,49 @@ import api           from '../../../services/apiClient.js';
 import { escHtml }   from '../helpers.js';
 
 // ---------------------------------------------------------------------------
+// Date helpers for the reports range filter.
+// ymd() formats a Date as local 'YYYY-MM-DD' (NOT toISOString, which is UTC and
+// would shift the day for negative timezones like Bolivia's UTC-4).
+// ---------------------------------------------------------------------------
+function ymd(d) {
+  const y   = d.getFullYear();
+  const m   = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Maps a quick-range preset id to a [desde, hasta] pair of 'YYYY-MM-DD' strings. */
+function presetRange(preset) {
+  const now = new Date();
+  switch (preset) {
+    case 'hoy':
+      return [ymd(now), ymd(now)];
+    case 'ayer': {
+      const y = new Date(now); y.setDate(now.getDate() - 1);
+      return [ymd(y), ymd(y)];
+    }
+    case '7d': {
+      const s = new Date(now); s.setDate(now.getDate() - 6);
+      return [ymd(s), ymd(now)];
+    }
+    case '30d': {
+      const s = new Date(now); s.setDate(now.getDate() - 29);
+      return [ymd(s), ymd(now)];
+    }
+    case 'mespasado': {
+      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const last  = new Date(now.getFullYear(), now.getMonth(), 0); // day 0 = last day of prev month
+      return [ymd(first), ymd(last)];
+    }
+    case 'anio':
+      return [ymd(new Date(now.getFullYear(), 0, 1)), ymd(now)];
+    case 'mes':
+    default:
+      return [ymd(new Date(now.getFullYear(), now.getMonth(), 1)), ymd(now)];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // _buildTopClientesTable
 // Renders the "Top 10 Clientes de Mayor Impacto" HTML table.
 // Guards against null/empty data with a clean empty-state row.
@@ -173,14 +216,104 @@ export async function renderAdvancedReports(panel) {
 // @param {HTMLElement} panel — Container element (manager-panel)
 // ---------------------------------------------------------------------------
 export async function renderReportes(panel) {
-  panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+  // Default range: from the 1st of the current month up to today.
+  const [defDesde, defHasta] = presetRange('mes');
+
+  // Render the persistent filter bar + a data container that re-renders on demand.
+  panel.innerHTML = `
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="card-header">
+        <h3>📅 Período del Reporte</h3>
+        <span class="text-muted text-sm">Filtra las métricas por un día o un rango de fechas</span>
+      </div>
+      <div class="filter-bar" style="padding:1rem;">
+        <div class="form-group">
+          <label class="form-label">Rango rápido</label>
+          <select class="form-control" id="rep-preset" style="min-width:150px;">
+            <option value="hoy">Hoy</option>
+            <option value="ayer">Ayer</option>
+            <option value="7d">Últimos 7 días</option>
+            <option value="30d">Últimos 30 días</option>
+            <option value="mes" selected>Este mes</option>
+            <option value="mespasado">Mes pasado</option>
+            <option value="anio">Este año</option>
+            <option value="custom">Personalizado…</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Desde</label>
+          <input class="form-control" type="date" id="rep-desde" value="${defDesde}" style="min-width:150px;" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Hasta</label>
+          <input class="form-control" type="date" id="rep-hasta" value="${defHasta}" style="min-width:150px;" />
+        </div>
+        <button class="btn btn-primary btn-sm" id="rep-apply" style="align-self:flex-end;">Aplicar</button>
+      </div>
+    </div>
+    <div id="reportes-data"><div class="page-loading"><div class="spinner"></div></div></div>
+  `;
+
+  const presetEl = panel.querySelector('#rep-preset');
+  const desdeEl  = panel.querySelector('#rep-desde');
+  const hastaEl  = panel.querySelector('#rep-hasta');
+
+  // Choosing a quick-range preset fills the two date inputs.
+  presetEl.addEventListener('change', () => {
+    if (presetEl.value === 'custom') return;
+    const [d, h] = presetRange(presetEl.value);
+    desdeEl.value = d;
+    hastaEl.value = h;
+  });
+
+  // Manually editing either date switches the preset selector to "Personalizado".
+  [desdeEl, hastaEl].forEach((el) =>
+    el.addEventListener('input', () => { presetEl.value = 'custom'; })
+  );
+
+  panel.querySelector('#rep-apply').addEventListener('click', () => {
+    loadReportesData(panel, desdeEl.value, hastaEl.value);
+  });
+
+  await loadReportesData(panel, defDesde, defHasta);
+}
+
+// ---------------------------------------------------------------------------
+// loadReportesData — fetches both report endpoints for the given date range and
+// renders the data section (leaving the filter bar untouched).
+// ---------------------------------------------------------------------------
+async function loadReportesData(panel, desde, hasta) {
+  const dataEl = panel.querySelector('#reportes-data');
+  if (!dataEl) return;
+
+  if (!desde || !hasta) {
+    dataEl.innerHTML = `<div class="empty-state"><p>Selecciona una fecha de inicio y una de fin.</p></div>`;
+    return;
+  }
+  if (desde > hasta) {
+    dataEl.innerHTML = `<div class="empty-state"><p>La fecha "Desde" no puede ser mayor que "Hasta".</p></div>`;
+    return;
+  }
+
+  dataEl.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
   try {
+    const qs = `?fecha_desde=${encodeURIComponent(desde)}&fecha_hasta=${encodeURIComponent(hasta)}`;
     // Fire both requests in parallel — independent data sets
     const [progresoRes, advancedRes] = await Promise.all([
-      api.get('/api/reportes/progreso'),
-      api.get('/api/reportes/advanced'),
+      api.get('/api/reportes/progreso' + qs),
+      api.get('/api/reportes/advanced' + qs),
     ]);
+    dataEl.innerHTML = buildReportesDataHTML(progresoRes, advancedRes);
+  } catch (err) {
+    dataEl.innerHTML = `<div class="empty-state"><p>Error cargando reportes: ${escHtml(err.message)}</p></div>`;
+  }
+}
 
+// ---------------------------------------------------------------------------
+// buildReportesDataHTML — builds the full analytics HTML (stats grid + monthly
+// executive breakdown + BI tables) from the two API responses.
+// ---------------------------------------------------------------------------
+function buildReportesDataHTML(progresoRes, advancedRes) {
     // ── Progreso data ─────────────────────────────────────────────────────
     const {
       volumen       = {},
@@ -204,7 +337,7 @@ export async function renderReportes(panel) {
       leaderboard  = [],
     } = advancedRes.data ?? {};
 
-    panel.innerHTML = `
+    return `
       <!-- ── Stats grid ── -->
       <div class="card" style="margin-bottom:1rem;">
         <div class="card-header">
@@ -213,32 +346,32 @@ export async function renderReportes(panel) {
         <div class="stats-grid" style="padding:1rem 1rem 0;">
           <div class="stat-card" style="--stat-accent:#3B82F6;">
             <div class="stat-card-value">${volUSD}</div>
-            <div class="stat-card-label">Volumen USD (mes)</div>
+            <div class="stat-card-label">Volumen USD (período)</div>
           </div>
           <div class="stat-card" style="--stat-accent:#8B5CF6;">
             <div class="stat-card-value">${volBOB}</div>
-            <div class="stat-card-label">Volumen BOB (mes)</div>
+            <div class="stat-card-label">Volumen BOB (período)</div>
           </div>
           <div class="stat-card" style="--stat-accent:#F59E0B;">
             <div class="stat-card-value">${totalCot}</div>
-            <div class="stat-card-label">Cotizaciones (mes)</div>
+            <div class="stat-card-label">Cotizaciones (período)</div>
           </div>
           <div class="stat-card" style="--stat-accent:${ratioColor};">
             <div class="stat-card-value">${ratioPct}%</div>
-            <div class="stat-card-label">Tasa de Éxito</div>
+            <div class="stat-card-label">Tasa de Éxito (período)</div>
           </div>
           <div class="stat-card" style="--stat-accent:#10B981;">
             <div class="stat-card-value">${aceptadas}</div>
-            <div class="stat-card-label">Confirmadas (total)</div>
+            <div class="stat-card-label">Confirmadas (período)</div>
           </div>
           <div class="stat-card" style="--stat-accent:#EF4444;">
             <div class="stat-card-value">${rechazadas}</div>
-            <div class="stat-card-label">Rechazadas (total)</div>
+            <div class="stat-card-label">Rechazadas (período)</div>
           </div>
         </div>
       </div>
 
-      <!-- ── Monthly executive breakdown ── -->
+      <!-- ── Per-executive breakdown for the selected range ── -->
       <div class="card" style="margin-bottom:1rem;">
         <div class="card-header">
           <h3>Rendimiento por Ejecutivo — ${escHtml(periodo)}</h3>
@@ -258,7 +391,7 @@ export async function renderReportes(panel) {
             </thead>
             <tbody>
               ${por_ejecutivo.length === 0
-                ? `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted);">Sin datos para el mes actual.</td></tr>`
+                ? `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted);">Sin datos para el período seleccionado.</td></tr>`
                 : por_ejecutivo.map(e => `
                     <tr>
                       <td class="fw-600">${escHtml(e.ejecutivo)}</td>
@@ -281,7 +414,4 @@ export async function renderReportes(panel) {
       <!-- ── BI: Executive Leaderboard ── -->
       ${_buildLeaderboardTable(leaderboard, rol)}
     `;
-  } catch (err) {
-    panel.innerHTML = `<div class="empty-state"><p>Error cargando reportes: ${escHtml(err.message)}</p></div>`;
-  }
 }

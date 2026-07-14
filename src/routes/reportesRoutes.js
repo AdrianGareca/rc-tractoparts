@@ -13,7 +13,8 @@ const { authenticate }     = require('../middlewares/authMiddleware');
 const authorize            = require('../middlewares/roleMiddleware');
 
 const router      = express.Router();
-const jefeOnly    = [authenticate, authorize(['Jefe', 'SysAdmin'])];
+// Progreso dashboard: full management view — Jefe, Administracion and SysAdmin.
+const progresoAuth = [authenticate, authorize(['Jefe', 'Administracion', 'SysAdmin'])];
 // Advanced reports: managers see company-wide data; Ejecutivo sees own data only
 const advancedAuth = [authenticate, authorize(['Jefe', 'Administracion', 'SysAdmin', 'Ejecutivo'])];
 
@@ -21,21 +22,35 @@ const advancedAuth = [authenticate, authorize(['Jefe', 'Administracion', 'SysAdm
  * @swagger
  * /api/reportes/progreso:
  *   get:
- *     summary: Dashboard de progreso ejecutivo (Jefe / SysAdmin)
+ *     summary: Dashboard de progreso ejecutivo (Jefe / Administracion / SysAdmin)
+ *     description: |
+ *       Volumen, tasa de conversión y desglose por ejecutivo dentro de un rango
+ *       de fechas. Si se omiten fecha_desde/fecha_hasta, se usa el mes actual.
  *     tags: [Reportes]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: fecha_desde
+ *         schema: { type: string, format: date }
+ *         description: Límite inferior inclusivo (YYYY-MM-DD).
+ *       - in: query
+ *         name: fecha_hasta
+ *         schema: { type: string, format: date }
+ *         description: Límite superior inclusivo (YYYY-MM-DD).
  *     responses:
  *       200:
  *         description: Reporte de progreso obtenido exitosamente.
  *       401:
  *         description: Token ausente o inválido.
  *       403:
- *         description: Rol insuficiente (requiere Jefe o SysAdmin).
+ *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
+ *       422:
+ *         description: Rango de fechas inválido.
  *       500:
  *         description: Error interno al ejecutar las consultas de agregación.
  */
-router.get('/progreso', ...jefeOnly, ReportesController.getProgreso);
+router.get('/progreso', ...progresoAuth, ReportesController.getProgreso);
 
 /**
  * @swagger

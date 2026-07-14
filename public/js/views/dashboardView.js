@@ -2095,7 +2095,10 @@ class AdminStrategy extends DashboardStrategy {
   }
 
   async _renderReportes(panel) {
-    await renderAdvancedReports(panel);
+    // Administracion now sees the SAME full analytics dashboard as the Jefe
+    // (stats grid + per-executive breakdown + BI tables), with date-range
+    // filtering — not just the trimmed advanced view.
+    await renderReportes(panel);
   }
 
   // ── Tab: Review queue (read + hold + comment) ─────────────────────────────

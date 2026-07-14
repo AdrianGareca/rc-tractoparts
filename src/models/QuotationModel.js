@@ -1405,25 +1405,33 @@ const QuotationModel = {
   },
 
   // ---------------------------------------------------------------------------
-  // getProgreso — Monthly analytics for Jefe / SysAdmin performance dashboard.
+  // getProgreso — Analytics for the Jefe / Administracion / SysAdmin dashboard,
+  // scoped to a [fechaDesde, fechaHasta] date range (inclusive).
   // Returns three data sets in a single DB round-trip:
-  //   1. total_mes_usd     — Sum of monto_total (USD) for the current month
+  //   1. total_mes_usd     — Sum of monto_total (USD) within the range
   //   2. conversion_ratio  — COUNT(Confirmada) / (COUNT(Confirmada) + COUNT(Rechazada))
-  //   3. por_ejecutivo     — Per-executive breakdown of all states this month
+  //   3. por_ejecutivo     — Per-executive breakdown of all states in the range
+  //
+  // @param {string} fechaDesde — 'YYYY-MM-DD' inclusive lower bound
+  // @param {string} fechaHasta — 'YYYY-MM-DD' inclusive upper bound
   // ---------------------------------------------------------------------------
-  async getProgreso() {
-    // Monthly volume (current month, USD only)
+  async getProgreso(fechaDesde, fechaHasta) {
+    // fecha_emision is a DATE column, so BETWEEN is an inclusive [desde, hasta]
+    // range. The controller always resolves a concrete range (defaulting to the
+    // current month) so every query here filters by the same window.
+    const rangeParams = [fechaDesde, fechaHasta];
+
+    // Volume within the selected range
     const [volumenRows] = await pool.execute(`
       SELECT
         SUM(CASE WHEN moneda = 'USD' THEN monto_total ELSE 0 END) AS total_mes_usd,
         SUM(CASE WHEN moneda = 'BOB' THEN monto_total ELSE 0 END) AS total_mes_bob,
         COUNT(*)                                                   AS total_cotizaciones
       FROM cotizaciones
-      WHERE MONTH(fecha_emision) = MONTH(CURDATE())
-        AND YEAR(fecha_emision)  = YEAR(CURDATE())
-    `);
+      WHERE fecha_emision BETWEEN ? AND ?
+    `, rangeParams);
 
-    // Conversion ratio across all time (meaningful business metric).
+    // Conversion ratio within the selected range.
     // Counts both 'Confirmada' (current) and legacy 'Aceptada' rows.
     const [conversionRows] = await pool.execute(`
       SELECT
@@ -1431,9 +1439,10 @@ const QuotationModel = {
         SUM(CASE WHEN estado = 'Rechazada' THEN 1 ELSE 0 END) AS total_rechazadas
       FROM cotizaciones
       WHERE estado IN ('Confirmada', 'Aceptada', 'Rechazada')
-    `);
+        AND fecha_emision BETWEEN ? AND ?
+    `, rangeParams);
 
-    // Per-executive breakdown for the current month
+    // Per-executive breakdown within the selected range
     const [porEjecutivoRows] = await pool.execute(`
       SELECT
         u.nombre_completo                                              AS ejecutivo,
@@ -1445,11 +1454,10 @@ const QuotationModel = {
         SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END) AS volumen_usd
       FROM cotizaciones c
       INNER JOIN usuarios u ON u.id = c.id_ejecutivo
-      WHERE MONTH(c.fecha_emision) = MONTH(CURDATE())
-        AND YEAR(c.fecha_emision)  = YEAR(CURDATE())
+      WHERE c.fecha_emision BETWEEN ? AND ?
       GROUP BY c.id_ejecutivo, u.nombre_completo
       ORDER BY volumen_usd DESC
-    `);
+    `, rangeParams);
 
     const vol        = volumenRows[0] || {};
     const conv       = conversionRows[0] || {};
@@ -1486,15 +1494,32 @@ const QuotationModel = {
   //
   // @param {number|null} ejecutivoId — Pass req.user.id for Ejecutivo role,
   //                                    null for Jefe / Administracion / SysAdmin.
+  // @param {string|null} fechaDesde  — Optional 'YYYY-MM-DD' inclusive lower bound.
+  // @param {string|null} fechaHasta  — Optional 'YYYY-MM-DD' inclusive upper bound.
+  //                                    The range applies only when BOTH are set.
   // ===========================================================================
-  async getAdvancedReports(ejecutivoId = null) {
+  async getAdvancedReports(ejecutivoId = null, fechaDesde = null, fechaHasta = null) {
     const isEjecutivo = ejecutivoId != null;
+    const hasRange    = fechaDesde != null && fechaHasta != null;
+
+    // Build the shared dynamic filters (executive row-level isolation + an
+    // optional [fechaDesde, fechaHasta] range) as reusable clause/param pairs.
+    // The date range is only applied when BOTH bounds are present, so the
+    // executive personal dashboard (no dates) keeps its all-time behaviour.
+    const buildFilters = () => {
+      const clauses = [];
+      const params  = [];
+      if (isEjecutivo) { clauses.push('c.id_ejecutivo = ?');            params.push(ejecutivoId); }
+      if (hasRange)    { clauses.push('c.fecha_emision BETWEEN ? AND ?'); params.push(fechaDesde, fechaHasta); }
+      return { clauses, params };
+    };
 
     // ── Top 10 Clients ──────────────────────────────────────────────────────
     // For Jefe/Admin: company-wide, all executives.
     // For Ejecutivo: restricted to their own accepted/sent quotations.
-    const topClientesSql = isEjecutivo
-      ? `
+    const tc      = buildFilters();
+    const tcExtra = tc.clauses.length ? ' AND ' + tc.clauses.join(' AND ') : '';
+    const topClientesSql = `
         SELECT
           cl.razon_social                               AS cliente,
           cl.nit                                        AS nit,
@@ -1503,34 +1528,19 @@ const QuotationModel = {
           SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END) AS total_bob
         FROM cotizaciones c
         INNER JOIN clientes cl ON cl.id = c.id_cliente
-        WHERE c.estado IN ('Confirmada', 'Aceptada', 'Enviada al cliente')
-          AND c.id_ejecutivo = ?
-        GROUP BY c.id_cliente, cl.razon_social, cl.nit
-        ORDER BY total_usd DESC
-        LIMIT 10`
-      : `
-        SELECT
-          cl.razon_social                               AS cliente,
-          cl.nit                                        AS nit,
-          COUNT(c.id)                                   AS proformas_emitidas,
-          SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END) AS total_usd,
-          SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END) AS total_bob
-        FROM cotizaciones c
-        INNER JOIN clientes cl ON cl.id = c.id_cliente
-        WHERE c.estado IN ('Confirmada', 'Aceptada', 'Enviada al cliente')
+        WHERE c.estado IN ('Confirmada', 'Aceptada', 'Enviada al cliente')${tcExtra}
         GROUP BY c.id_cliente, cl.razon_social, cl.nit
         ORDER BY total_usd DESC
         LIMIT 10`;
-
-    const topClientesParams = isEjecutivo ? [ejecutivoId] : [];
-    const [topClientesRows] = await pool.execute(topClientesSql, topClientesParams);
+    const [topClientesRows] = await pool.execute(topClientesSql, tc.params);
 
     // ── Executive Leaderboard ───────────────────────────────────────────────
-    // Aggregates all-time: total created, total approved by Jefe, total revenue.
+    // Aggregates over the range: total created, total approved by Jefe, revenue.
     // When the caller is an Ejecutivo, the leaderboard is scoped to themselves
     // (returns a single-row personal summary rather than a company leaderboard).
-    const leaderboardSql = isEjecutivo
-      ? `
+    const lb      = buildFilters();
+    const lbWhere = lb.clauses.length ? 'WHERE ' + lb.clauses.join(' AND ') : '';
+    const leaderboardSql = `
         SELECT
           u.nombre_completo                                                AS ejecutivo,
           COUNT(c.id)                                                      AS total_creadas,
@@ -1542,25 +1552,10 @@ const QuotationModel = {
           SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END)   AS total_bob
         FROM cotizaciones c
         INNER JOIN usuarios u ON u.id = c.id_ejecutivo
-        WHERE c.id_ejecutivo = ?
-        GROUP BY c.id_ejecutivo, u.nombre_completo`
-      : `
-        SELECT
-          u.nombre_completo                                                AS ejecutivo,
-          COUNT(c.id)                                                      AS total_creadas,
-          SUM(CASE WHEN c.estado IN ('Aprobada internamente',
-                                     'Enviada al cliente',
-                                     'Confirmada',
-                                     'Aceptada')         THEN 1 ELSE 0 END) AS total_aprobadas,
-          SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END)   AS total_usd,
-          SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END)   AS total_bob
-        FROM cotizaciones c
-        INNER JOIN usuarios u ON u.id = c.id_ejecutivo
+        ${lbWhere}
         GROUP BY c.id_ejecutivo, u.nombre_completo
         ORDER BY total_usd DESC`;
-
-    const leaderboardParams = isEjecutivo ? [ejecutivoId] : [];
-    const [leaderboardRows] = await pool.execute(leaderboardSql, leaderboardParams);
+    const [leaderboardRows] = await pool.execute(leaderboardSql, lb.params);
 
     // Post-process leaderboard: compute approval rate safely (avoid / 0)
     const leaderboard = leaderboardRows.map((row) => {
