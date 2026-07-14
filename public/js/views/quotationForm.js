@@ -213,6 +213,7 @@ class FormMediator {
   #totalsObserver = null; // Kept for discount-input wiring
   #lockSocket   = null;    // Realtime draft-lock connection (creation mode only)
   #hasDraftLock = false;   // true once THIS socket owns the global next-number reservation
+  #dirty        = false;   // true once the user has entered/changed anything — gates the close-confirmation
 
   constructor(container, quotation = null) {
     this.#container = container;
@@ -243,6 +244,13 @@ class FormMediator {
     }
 
     this.#container.innerHTML = this._buildFormHTML(nextCorrelativo);
+
+    // Mark the form dirty on ANY user edit (delegated — covers every current
+    // and future input/select/textarea in the form, including line-item rows).
+    // Backs the close-confirmation guard so an accidental click outside the
+    // modal (or Escape) can no longer silently discard in-progress work.
+    this.#container.addEventListener('input',  () => { this.#dirty = true; });
+    this.#container.addEventListener('change', () => { this.#dirty = true; });
 
     // Grab observer target elements
     const elSubtotal = this.#container.querySelector('#totals-subtotal');
@@ -317,8 +325,21 @@ class FormMediator {
       if (onCancel) onCancel();
     });
 
+    // Block implicit submission on Enter — with dozens of fields, a user
+    // hitting Enter expecting to move to the next field (or just finishing a
+    // line-item value) would otherwise submit and save the whole quotation.
+    // Textareas keep Enter as a newline; the actual submit button still
+    // works via Enter/click since browsers dispatch a real 'click' there.
+    const quotationForm = this.#container.querySelector('#quotation-form');
+    quotationForm?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const tag = e.target.tagName;
+      if (tag === 'TEXTAREA' || tag === 'BUTTON' || e.target.type === 'submit') return;
+      e.preventDefault();
+    });
+
     // Wire Submit
-    this.#container.querySelector('#quotation-form')?.addEventListener('submit', async (e) => {
+    quotationForm?.addEventListener('submit', async (e) => {
       e.preventDefault();
       await this._handleSubmit(onSuccess);
     });
@@ -418,6 +439,11 @@ class FormMediator {
   /** Public teardown — called when the host container (modal) closes by ANY path. */
   destroy() {
     this._releaseDraftLock();
+  }
+
+  /** True once the user has entered/changed anything — used to gate the close-confirmation. */
+  isDirty() {
+    return this.#dirty;
   }
 
   // ── Private: hydrate header fields from the existing quotation (edit mode) ──
@@ -974,6 +1000,7 @@ class FormMediator {
 
   /** Called when a line item field changes — Mediator notifies the Subject */
   _onItemFieldChange(index, field, value) {
+    this.#dirty = true;
     this.#subject.updateItem(index, field, value);
   }
 
@@ -1142,6 +1169,7 @@ class FormMediator {
 
     /** Called when the user picks a client from the list or after express creation */
     const selectClient = (id, label) => {
+      this.#dirty = true;
       hiddenInput.value  = id;
       searchInput.value  = label;
       if (errEl) errEl.textContent = '';
@@ -1275,6 +1303,7 @@ class FormMediator {
         showToast('El archivo Excel excede el tamaño máximo de 10 MB.', 'error');
         return;
       }
+      this.#dirty = true;
       this.#uploadedExcel = file;
       excelFileName.textContent = `✓ ${file.name}`;
       excelFileName.classList.remove('hidden');
@@ -1456,7 +1485,15 @@ class FormMediator {
 // Returns a cleanup function that removes event listeners when the form closes.
 // =============================================================================
 export function mountQuotationForm(container, { onSuccess, onCancel, quotation = null } = {}) {
+  // Diagnostic banner — if you DON'T see this in the console when opening the
+  // form, your browser is running an OLD cached copy of this file (do a hard
+  // reload: Ctrl+Shift+R, or DevTools → Network → "Disable cache").
+  console.log('%c[quotationForm] v3 — Enter no envía + click-fuera no cierra','color:#16a34a;font-weight:bold');
   const mediator = new FormMediator(container, quotation);
   mediator.render(onSuccess, onCancel);
-  return () => mediator.destroy();
+  // Callable teardown, same as before — plus an `isDirty()` escape hatch so the
+  // host (the modal) can confirm before discarding an in-progress draft.
+  const destroy = () => mediator.destroy();
+  destroy.isDirty = () => mediator.isDirty();
+  return destroy;
 }

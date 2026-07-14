@@ -773,6 +773,13 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   visibility: visible;
 }
 
+/* Belt-and-suspenders: while a modal is open, the page behind it (sidebar,
+   topbar, content) must be fully inert — no click, however it lands, should
+   ever reach a sidebar link or button underneath the backdrop. */
+body.modal-open .page-shell {
+  pointer-events: none;
+}
+
 .modal-dialog {
   background: var(--bg-surface);
   border: 1px solid var(--border);
