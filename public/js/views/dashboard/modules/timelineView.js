@@ -32,9 +32,18 @@ import { escHtml }        from '../helpers.js';
 // @param   {Object} fileType  — showSaveFilePicker "types" entry, e.g.
 //                               { description: 'Documento PDF',
 //                                 accept: { 'application/pdf': ['.pdf'] } }
-// @returns {Promise<'saved'|'cancelled'>}
+// @returns {Promise<'saved'|'cancelled'|'downloaded'>}
+//   'saved'      → user picked a location via the native dialog.
+//   'cancelled'  → user dismissed the dialog; nothing written.
+//   'downloaded' → picker unavailable/failed; file went to the browser's
+//                  default Downloads folder via the legacy anchor fallback.
+//                  Callers use this to tell the user WHERE the file landed,
+//                  since in that path they never got to choose.
 // ---------------------------------------------------------------------------
 async function saveBlobAs(blob, fileName, fileType) {
+  // The picker is ONLY exposed in a secure context (HTTPS or http://localhost)
+  // on Chromium browsers. Over plain HTTP on a LAN IP, or in Firefox/Safari, it
+  // is undefined — so this branch is skipped and we fall back to a download.
   if (typeof window.showSaveFilePicker === 'function') {
     try {
       const handle   = await window.showSaveFilePicker({
@@ -66,7 +75,7 @@ async function saveBlobAs(blob, fileName, fileType) {
   // Short delay before releasing the URL guarantees the download has been
   // handed off to the browser's download manager.
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
-  return 'saved';
+  return 'downloaded';
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +141,11 @@ export function wirePdfButton(body, id, correlativo, clienteNombre) {
         description: 'Documento PDF',
         accept:      { 'application/pdf': ['.pdf'] },
       });
-      if (outcome === 'saved') showToast('PDF guardado.', 'success', 2500);
+      if (outcome === 'saved') {
+        showToast('PDF guardado en la ubicación elegida.', 'success', 2500);
+      } else if (outcome === 'downloaded') {
+        showToast('PDF descargado a tu carpeta de Descargas.', 'info', 3500);
+      }
     } catch (err) {
       showToast(err.data?.message || err.message || 'No se pudo cargar el PDF.', 'error');
     } finally {
@@ -172,7 +185,11 @@ export function wireExcelButton(body, id, correlativo, clienteNombre) {
         description: 'Planilla de Excel',
         accept:      { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
       });
-      if (outcome === 'saved') showToast('Planilla Excel guardada.', 'success', 2500);
+      if (outcome === 'saved') {
+        showToast('Planilla Excel guardada en la ubicación elegida.', 'success', 2500);
+      } else if (outcome === 'downloaded') {
+        showToast('Planilla Excel descargada a tu carpeta de Descargas.', 'info', 3500);
+      }
     } catch (err) {
       showToast(err.data?.message || err.message || 'No se pudo descargar la planilla Excel.', 'error');
     } finally {

@@ -360,8 +360,7 @@ function _buildProformaHTML(q, id, viewMode) {
         ${q.pdf_ruta ? `
         <button class="btn btn-outline btn-sm" id="btn-ver-pdf" type="button">
           📄 Ver PDF Adjunto
-        </button>
-        <span class="text-muted text-xs">Se abre en una nueva pestaña</span>` : `
+        </button>` : `
         <span class="text-muted text-sm">Sin documento PDF adjunto.</span>`}
         ${q.excel_ruta ? `
         <button
