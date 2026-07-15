@@ -399,7 +399,7 @@ Todos los secretos y la configuración están externalizados en `.env` (nunca ve
 | **Archivos de cotización** | `POST /:id/pdf`, `POST /:id/upload` (PDF+Excel), `GET /:id/pdf`, `GET /:id/excel` | Ejecutivo sube / todos descargan |
 | **Notificaciones** | `GET /api/cotizaciones/notificaciones`, `POST /…/notificaciones/leer` | Ejecutivo |
 | **Usuarios** | `GET /`, `POST /`, `GET /:id`, `PUT /:id` (Jefe/Administracion/SysAdmin), `DELETE /:id` soft-delete (Jefe/SysAdmin) | Roles de gestión |
-| **Clientes** | `GET /api/clientes` (autocompletado), `POST /api/clientes` | Todos los roles |
+| **Clientes** | `GET /` (autocompletado, 20 activos), `GET /all` (paginado, incl. inactivos), `GET /:id`, `POST /`, `PUT /:id` (también reactiva vía `activo`), `DELETE /:id` baja lógica | Todos los roles |
 | **Marcas** | `GET /api/marcas`, `POST /api/marcas` | Roles que crean cotizaciones |
 | **Reportes** | `GET /api/reportes/progreso` (Jefe/SysAdmin), `GET /api/reportes/advanced` (seguridad a nivel de fila para Ejecutivo) | Restringido |
 | **Sistema** | `GET /health` | Público |
@@ -436,12 +436,17 @@ El frontend es una SPA en JavaScript puro usando ES Modules — sin transpilador
 |---|---|
 | `apiClient.js` | Wrapper de fetch estilo Axios, inyección automática de JWT, feedback con toasts |
 | `authSession.js` | Almacenamiento de JWT y utilidades de decodificación de rol |
+| `socketClient.js` | Conexión de socket en tiempo real (ver `src/realtime/socketServer.js`) |
+| `authView.js` | Controlador de la pantalla de login |
 | `dashboardView.js` | Controlador principal, selección de estrategia, invocador de Commands |
 | `quotationForm.js` | Formulario multi-paso de creación/edición de cotizaciones |
 | `dashboard/helpers.js` | Formateadores compartidos, constructores de badges, utilidades de escape |
 | `dashboard/modules/timelineView.js` | Timeline de historial de estados, botones de descarga PDF/Excel |
 | `dashboard/modules/reportesView.js` | Gráficos BI y tablas de leaderboard |
 | `dashboard/modules/notificationsView.js` | Polling del badge de notificaciones y marcado como leído |
+| `dashboard/modules/auditView.js` | Espacio de trabajo de logs de auditoría (Jefe / SysAdmin) |
+| `dashboard/modules/clientsView.js` | Pestaña "Gestión de Clientes": listar, editar, desactivar, reactivar |
+| `dashboard/modules/clientModal.js` | Sub-modal compartido de creación/edición de cliente — único lugar donde viven los campos, la validación y el manejo de NIT duplicado |
 
 La UI es **responsiva mobile-first**: en anchos reducidos el dashboard colapsa a una sola columna apilada, y se expande a un diseño multicolumna en pantallas más grandes (ver [§3.4](#34-rendimiento-del-sistema-y-flujo-de-ui)).
 
@@ -510,6 +515,40 @@ El nombre de la entidad de negocio principal fue cambiado oficialmente de **"RC 
 ---
 
 ## 15. Refactorizaciones de PDF y Descargas
+
+### Color del encabezado de la tabla de ítems (`src/services/pdfService.js`)
+
+El encabezado de la tabla `DETALLE DE ÍTEMS COTIZADOS` era originalmente rosa pastel (fondo `#FADADD` con texto vinotinto `#4A1622`) y sus filas alternaban con un `#FFF8F8` de tinte rosado. El rosa se leía como decorativo más que corporativo en un documento que se envía al cliente, por lo que el encabezado ahora reutiliza el **navy** primario que ya existe en la paleta, con texto blanco:
+
+| Clave de paleta | Antes | Después | Se usa para |
+|---|---|---|---|
+| `TABLE_HEADER` (antes `PINK_HEADER`) | `#FADADD` | `#1B2B4B` | Fondo del encabezado de la tabla de ítems |
+| `TABLE_HEADER_TEXT` (antes `PINK_TEXT`) | `#4A1622` | `#FFFFFF` | Texto del encabezado de la tabla de ítems |
+| `ALT_ROW` | `#FFF8F8` | `#F7F8FA` | Tinte de filas alternas |
+
+Esto reutiliza `NAVY` (ya es el color del encabezado del documento y de la caja de totales) en lugar de introducir un cuarto tono, mantiene el encabezado legible cuando la proforma se imprime en blanco y negro, y elimina el último tinte rosado de las filas de ítems.
+
+> El sello de agua `APROBADO` conserva su tinta magenta (`STAMP_COLOR = '#C71585'`, `drawApprovedStamp`) **a propósito** — replica el sello de goma físico de la empresa y no forma parte del estilo de la tabla.
+
+### Dirección / Ciudad del cliente — completando el slice vertical
+
+La grilla `DATOS GENERALES DEL CLIENTE` del PDF siempre mostraba **Dirección** y **Ciudad** como `—`. La causa era un slice vertical wireado a medias, no un bug del PDF:
+
+- `clientes.direccion` / `clientes.ciudad` **ya existían** en `sql/init.sql`.
+- `QuotationModel.findById` **ya** las seleccionaba como `cliente_dir` / `cliente_ciudad`, y `pdfService.drawThreeColumnGrid` **ya** las imprimía.
+- Pero nada en el medio las **escribía** nunca: el modal de cliente no tenía los campos, `clientController` no las leía del body, y los `INSERT`/`UPDATE`/`SELECT` de `ClientModel` omitían las columnas por completo. Por eso siempre quedaban en `NULL`.
+
+La corrección conecta el eslabón faltante (no requiere migración de BD — las columnas ya existen):
+
+| Capa | Archivo | Cambio |
+|---|---|---|
+| Frontend | `public/js/views/dashboard/modules/clientModal.js` | Se agregaron los campos Dirección / Ciudad y se incluyen en el payload de creación/edición |
+| Controlador | `src/controllers/clientController.js` | Los lee del body, valida los límites de 200 / 100 caracteres y los resuelve al actualizar |
+| Modelo | `src/models/ClientModel.js` | Se agregaron ambas columnas a todos los `SELECT`, más al `INSERT` y al `UPDATE` |
+| Documentación de API | `src/routes/clientRoutes.js` | Ambos campos documentados en `POST /` y `PUT /:id` |
+| Datos iniciales | `sql/init.sql` | Los clientes de ejemplo ahora traen dirección y ciudad reales |
+
+> ⚠️ **Regla de preservación de datos.** `ClientModel.update` escribe *todas* las columnas en cada llamada, por lo que cualquier invocador que omita un campo lo borraría. Dos invocadores envían una lista fija de campos que no incluye Dirección/Ciudad — el botón "Activar" (reactivar) en `clientsView.js` y `ClientController.deactivate`. Para evitar que cualquiera de los dos borre silenciosamente una dirección guardada, `update` resuelve ambos campos igual que ya resolvía `activo`: **`undefined` significa "no enviado — conservar el valor almacenado"**, mientras que un `null` explícito sí vacía el campo a propósito. Todo nuevo invocador de `ClientModel.update` debe respetar esta regla.
 
 ### Corrección de alineación del logo (`src/services/pdfService.js`)
 

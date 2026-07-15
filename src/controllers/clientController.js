@@ -98,7 +98,7 @@ const ClientController = {
   // Express client registration: used by the "Nuevo Cliente" in-form sub-modal.
   // ---------------------------------------------------------------------------
   async create(req, res) {
-    const { razon_social, nit, contacto, email, telefono } = req.body;
+    const { razon_social, nit, contacto, email, telefono, direccion, ciudad } = req.body;
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
     // ── Input validation ──────────────────────────────────────────────────────
@@ -130,8 +130,22 @@ const ClientController = {
       });
     }
 
+    if (direccion && String(direccion).trim().length > 200) {
+      return res.status(422).json({
+        success: false,
+        message: 'direccion must not exceed 200 characters.',
+      });
+    }
+
+    if (ciudad && String(ciudad).trim().length > 100) {
+      return res.status(422).json({
+        success: false,
+        message: 'ciudad must not exceed 100 characters.',
+      });
+    }
+
     try {
-      const id = await ClientModel.create({ razon_social, nit, contacto, email, telefono });
+      const id = await ClientModel.create({ razon_social, nit, contacto, email, telefono, direccion, ciudad });
       const newClient = await ClientModel.findById(id);
 
       await logEvent({
@@ -197,7 +211,7 @@ const ClientController = {
       return res.status(400).json({ success: false, message: 'Invalid client ID.' });
     }
 
-    const { razon_social, nit, contacto, email, telefono } = req.body;
+    const { razon_social, nit, contacto, email, telefono, direccion, ciudad } = req.body;
 
     // ── Input validation (mirrors create) ─────────────────────────────────────
     if (!razon_social || !String(razon_social).trim()) {
@@ -228,6 +242,20 @@ const ClientController = {
       });
     }
 
+    if (direccion && String(direccion).trim().length > 200) {
+      return res.status(422).json({
+        success: false,
+        message: 'direccion must not exceed 200 characters.',
+      });
+    }
+
+    if (ciudad && String(ciudad).trim().length > 100) {
+      return res.status(422).json({
+        success: false,
+        message: 'ciudad must not exceed 100 characters.',
+      });
+    }
+
     try {
       const existing = await ClientModel.findByIdAny(id);
 
@@ -237,7 +265,20 @@ const ClientController = {
 
       const activo = req.body.activo != null ? (req.body.activo ? 1 : 0) : existing.activo;
 
-      const updated = await ClientModel.update(id, { razon_social, nit, contacto, email, telefono, activo });
+      // direccion/ciudad follow the same resolve-from-existing rule as `activo`:
+      // ClientModel.update always writes every column, so a caller that omits
+      // these (e.g. the reactivation button, which posts a fixed field list)
+      // would otherwise blank them out. `undefined` means "not sent — keep the
+      // stored value"; an explicit null/'' still clears the field on purpose.
+      const nextDireccion = direccion !== undefined ? direccion : existing.direccion;
+      const nextCiudad    = ciudad    !== undefined ? ciudad    : existing.ciudad;
+
+      const updated = await ClientModel.update(id, {
+        razon_social, nit, contacto, email, telefono,
+        direccion: nextDireccion,
+        ciudad:    nextCiudad,
+        activo,
+      });
 
       if (!updated) {
         return res.status(404).json({ success: false, message: `Client with ID ${id} was not found.` });
@@ -320,6 +361,8 @@ const ClientController = {
         contacto:     existing.contacto,
         email:        existing.email,
         telefono:     existing.telefono,
+        direccion:    existing.direccion,
+        ciudad:       existing.ciudad,
         activo:       0,
       });
 

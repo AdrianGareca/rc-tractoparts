@@ -396,7 +396,7 @@ All secrets and configuration are externalized to `.env` (never committed). Refe
 | **Quotation files** | `POST /:id/pdf`, `POST /:id/upload` (PDF+Excel), `GET /:id/pdf`, `GET /:id/excel` | Ejecutivo upload / all download |
 | **Notifications** | `GET /api/cotizaciones/notificaciones`, `POST /…/notificaciones/leer` | Ejecutivo |
 | **Users** | `GET /`, `POST /`, `GET /:id`, `PUT /:id` (Jefe/Administracion/SysAdmin), `DELETE /:id` soft-delete (Jefe/SysAdmin) | Management roles |
-| **Clients** | `GET /api/clientes` (autocomplete), `POST /api/clientes` | All roles |
+| **Clients** | `GET /` (autocomplete, 20 active), `GET /all` (paginated, incl. inactive), `GET /:id`, `POST /`, `PUT /:id` (also reactivates via `activo`), `DELETE /:id` soft-delete | All roles |
 | **Brands** | `GET /api/marcas`, `POST /api/marcas` | Quote-creating roles |
 | **Reports** | `GET /api/reportes/progreso` (Jefe/SysAdmin), `GET /api/reportes/advanced` (row-level security for Ejecutivo) | Restricted |
 | **System** | `GET /health` | Public |
@@ -433,12 +433,17 @@ The frontend is a vanilla JavaScript SPA using ES Modules — no transpiler or b
 |---|---|
 | `apiClient.js` | Axios-style fetch wrapper, automatic JWT injection, toast feedback |
 | `authSession.js` | JWT storage and role-decoding utilities |
+| `socketClient.js` | Realtime socket connection (see `src/realtime/socketServer.js`) |
+| `authView.js` | Login screen controller |
 | `dashboardView.js` | Main controller, strategy selection, Command invoker |
 | `quotationForm.js` | Multi-step quotation creation / editing form |
 | `dashboard/helpers.js` | Shared formatters, badge builders, escape utils |
 | `dashboard/modules/timelineView.js` | State history timeline, PDF/Excel download buttons |
 | `dashboard/modules/reportesView.js` | BI charts and leaderboard tables |
 | `dashboard/modules/notificationsView.js` | Notification badge polling and read marking |
+| `dashboard/modules/auditView.js` | Audit-log workspace (Jefe / SysAdmin) |
+| `dashboard/modules/clientsView.js` | "Gestión de Clientes" tab: list, edit, deactivate, reactivate |
+| `dashboard/modules/clientModal.js` | Shared create/edit client sub-modal — the single place the client fields, validation, and duplicate-NIT handling live |
 
 The UI is **mobile-first responsive**: at narrow widths the dashboard collapses into a single stacked column, expanding into a multi-column layout on larger screens (see [§3.4](#34-system-performance--ui-flow)).
 
@@ -507,6 +512,40 @@ The primary business entity name was officially changed from **"RC Tractoparts"*
 ---
 
 ## 15. PDF & Download Handler Refactors
+
+### Items-table header color (`src/services/pdfService.js`)
+
+The `DETALLE DE ÍTEMS COTIZADOS` table header was originally a pastel pink (`#FADADD` background with `#4A1622` maroon text) and its rows alternated with a pink-tinted `#FFF8F8`. The pink read as decorative rather than corporate on a document sent to clients, so the header now reuses the palette's existing primary **navy** with white text:
+
+| Palette key | Before | After | Used for |
+|---|---|---|---|
+| `TABLE_HEADER` (was `PINK_HEADER`) | `#FADADD` | `#1B2B4B` | Items table header background |
+| `TABLE_HEADER_TEXT` (was `PINK_TEXT`) | `#4A1622` | `#FFFFFF` | Items table header text |
+| `ALT_ROW` | `#FFF8F8` | `#F7F8FA` | Alternating row tint |
+
+This reuses `NAVY` (already the color of the document header and totals box) instead of introducing a fourth hue, keeps the header legible when the proforma is printed in black and white, and drops the last pink tint from the line-item rows.
+
+> The `APROBADO` watermark keeps its magenta ink (`STAMP_COLOR = '#C71585'`, `drawApprovedStamp`) **by design** — it replicates the company's physical rubber stamp and is not part of the table styling.
+
+### Client Dirección / Ciudad — completing the vertical slice
+
+The `DATOS GENERALES DEL CLIENTE` grid on the PDF always rendered **Dirección** and **Ciudad** as `—`. The cause was a half-wired vertical slice, not a PDF bug:
+
+- `clientes.direccion` / `clientes.ciudad` **existed** in `sql/init.sql`.
+- `QuotationModel.findById` **already** selected them as `cliente_dir` / `cliente_ciudad`, and `pdfService.drawThreeColumnGrid` **already** printed them.
+- But nothing in between ever **wrote** them: the client modal had no inputs, `clientController` never read them off the request body, and `ClientModel`'s `INSERT`/`UPDATE`/`SELECT` statements omitted the columns entirely. The columns were therefore always `NULL`.
+
+The fix wires the missing middle (no DB migration required — the columns already exist):
+
+| Layer | File | Change |
+|---|---|---|
+| Frontend | `public/js/views/dashboard/modules/clientModal.js` | Added the Dirección / Ciudad inputs and included them in the create/update payload |
+| Controller | `src/controllers/clientController.js` | Reads both off the body, enforces the 200 / 100-char limits, and resolves them on update |
+| Model | `src/models/ClientModel.js` | Added both columns to every `SELECT`, plus the `INSERT` and `UPDATE` |
+| API docs | `src/routes/clientRoutes.js` | Documented both fields on `POST /` and `PUT /:id` |
+| Seed | `sql/init.sql` | Sample clients now ship with a real address and city |
+
+> ⚠️ **Data-preservation rule.** `ClientModel.update` writes *every* column on each call, so any caller that omits a field would blank it. Two callers post a fixed field list that does not include Dirección/Ciudad — the "Activar" (reactivate) button in `clientsView.js` and `ClientController.deactivate`. To stop either from silently wiping a saved address, `update` resolves both fields the same way it already resolves `activo`: **`undefined` means "not sent — keep the stored value"**, while an explicit `null` still clears the field on purpose. Any new caller of `ClientModel.update` must respect this.
 
 ### Logo alignment fix (`src/services/pdfService.js`)
 

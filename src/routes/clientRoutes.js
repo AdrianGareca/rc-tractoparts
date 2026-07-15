@@ -81,6 +81,16 @@ router.get('/', ...allRoles, ClientController.search);
  *               telefono:
  *                 type: string
  *                 example: "77099999"
+ *               direccion:
+ *                 type: string
+ *                 maxLength: 200
+ *                 description: Dirección impresa en la grilla "DATOS GENERALES DEL CLIENTE" del PDF.
+ *                 example: Av. Cristo Redentor #123, 3er Anillo
+ *               ciudad:
+ *                 type: string
+ *                 maxLength: 100
+ *                 description: Ciudad impresa en la grilla "DATOS GENERALES DEL CLIENTE" del PDF.
+ *                 example: Santa Cruz de la Sierra
  *     responses:
  *       201:
  *         description: Cliente creado exitosamente.
@@ -189,6 +199,18 @@ router.get('/:id', ...allRoles, ClientController.getById);
  *                 type: string
  *               telefono:
  *                 type: string
+ *               direccion:
+ *                 type: string
+ *                 maxLength: 200
+ *                 description: >-
+ *                   Omitir el campo conserva el valor almacenado; enviarlo como
+ *                   null lo vacía explícitamente.
+ *               ciudad:
+ *                 type: string
+ *                 maxLength: 100
+ *                 description: >-
+ *                   Omitir el campo conserva el valor almacenado; enviarlo como
+ *                   null lo vacía explícitamente.
  *               activo:
  *                 type: boolean
  *                 description: Permite reactivar un cliente previamente desactivado.

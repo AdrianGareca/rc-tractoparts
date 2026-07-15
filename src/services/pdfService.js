@@ -54,9 +54,9 @@ const C = {
   BLUE_ACCENT: '#3B82F6',   // Left stripe on 3-column section headers
   BLUE_BG:     '#EFF6FF',   // 3-column section header background
   BLUE_TITLE:  '#1D4ED8',   // 3-column section header text
-  PINK_HEADER: '#FADADD',   // Items table header background (light pink/pastel)
-  PINK_TEXT:   '#4A1622',   // Items table header text (dark on pink)
-  ALT_ROW:     '#FFF8F8',   // Alternating row tint inside the items table
+  TABLE_HEADER: '#1B2B4B',  // Items table header background (navy, matches NAVY)
+  TABLE_HEADER_TEXT: '#FFFFFF', // Items table header text (white on navy)
+  ALT_ROW:     '#F7F8FA',   // Alternating row tint inside the items table
   STATUS: {
     'Pendiente':             '#6B7280',
     'En revision':           '#D97706',
@@ -674,8 +674,8 @@ function drawSubtitle(doc, startY) {
 //   2. DATOS DEL SOLICITANTE        (Nombre, Nº Solicitud/OC, Área, Celular, Correo)
 //   3. DATOS DEL EQUIPO             (MARCA, TIPO, MODELO, SERIE, MOTOR)
 //
-// Fields absent from the current DB schema render as '—' until the
-// corresponding columns are added via migration.
+// Every field renders '—' when the underlying value is null/empty, so a
+// quotation whose client predates the Dirección/Ciudad fields still prints.
 // ---------------------------------------------------------------------------
 function drawThreeColumnGrid(doc, quotation, startY) {
   const y0      = startY + 6;
@@ -778,8 +778,8 @@ function drawThreeColumnGrid(doc, quotation, startY) {
 // Returns Y immediately below the header row.
 // ---------------------------------------------------------------------------
 function drawTableHeaderRow(doc, y, layout) {
-  // Pink/pastel background fill
-  doc.rect(MARGIN, y, CW, TABLE_HEADER_H).fill(C.PINK_HEADER);
+  // Navy background fill
+  doc.rect(MARGIN, y, CW, TABLE_HEADER_H).fill(C.TABLE_HEADER);
   // Outer border stroke
   doc
     .rect(MARGIN, y, CW, TABLE_HEADER_H)
@@ -806,7 +806,7 @@ function drawTableHeaderRow(doc, y, layout) {
     doc
       .font('Helvetica-Bold')
       .fontSize(6.5)
-      .fillColor(C.PINK_TEXT)
+      .fillColor(C.TABLE_HEADER_TEXT)
       .text(label, x + 2, y + (TABLE_HEADER_H - 6.5) / 2,
         { width: w - 4, align, lineBreak: false });
   });

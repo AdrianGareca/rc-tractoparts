@@ -74,6 +74,20 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
                  placeholder="contacto@empresa.com"
                  value="${escHtml(client?.email ?? '')}" />
         </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="nc-direccion">Dirección</label>
+            <input class="form-control" type="text" id="nc-direccion"
+                   placeholder="Av. Cristo Redentor #123" maxlength="200"
+                   value="${escHtml(client?.direccion ?? '')}" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="nc-ciudad">Ciudad</label>
+            <input class="form-control" type="text" id="nc-ciudad"
+                   placeholder="Santa Cruz de la Sierra" maxlength="100"
+                   value="${escHtml(client?.ciudad ?? '')}" />
+          </div>
+        </div>
         <div class="form-alert" id="nc-alert" role="alert"></div>
         <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem;">
           <button type="button" class="btn btn-ghost" id="subm-cancel">Cancelar</button>
@@ -104,6 +118,8 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
     const contacto     = overlay.querySelector('#nc-contacto')?.value.trim() || null;
     const email        = overlay.querySelector('#nc-email')?.value.trim()    || null;
     const telefono     = overlay.querySelector('#nc-telefono')?.value.trim() || null;
+    const direccion    = overlay.querySelector('#nc-direccion')?.value.trim() || null;
+    const ciudad       = overlay.querySelector('#nc-ciudad')?.value.trim()    || null;
 
     const alertEl  = overlay.querySelector('#nc-alert');
     const errRazon = overlay.querySelector('#nc-err-razon');
@@ -126,7 +142,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
     if (spinnerEl) spinnerEl.classList.remove('hidden');
 
     try {
-      const payload = { razon_social, nit, contacto, email, telefono };
+      const payload = { razon_social, nit, contacto, email, telefono, direccion, ciudad };
       const resp    = isEdit
         ? await api.put(`/api/clientes/${client.id}`, payload)
         : await api.post('/api/clientes', payload);

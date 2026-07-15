@@ -24,7 +24,7 @@ const ClientModel = {
     const escaped = String(q).trim().replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
     const like = `%${escaped}%`;
     const [rows] = await pool.execute(
-      `SELECT id, razon_social, nit, contacto, email, telefono
+      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad
          FROM clientes
         WHERE activo = 1
           AND (razon_social LIKE ? ESCAPE '\\\\' OR nit LIKE ? ESCAPE '\\\\')
@@ -40,7 +40,7 @@ const ClientModel = {
   // ---------------------------------------------------------------------------
   async findById(id) {
     const [[row]] = await pool.execute(
-      `SELECT id, razon_social, nit, contacto, email, telefono
+      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad
          FROM clientes
         WHERE id = ? AND activo = 1
         LIMIT 1`,
@@ -57,7 +57,7 @@ const ClientModel = {
   // ---------------------------------------------------------------------------
   async findByIdAny(id) {
     const [[row]] = await pool.execute(
-      `SELECT id, razon_social, nit, contacto, email, telefono, activo
+      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad, activo
          FROM clientes
         WHERE id = ?
         LIMIT 1`,
@@ -91,7 +91,7 @@ const ClientModel = {
     }
 
     const [rows] = await pool.execute(
-      `SELECT id, razon_social, nit, contacto, email, telefono, activo
+      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad, activo
          FROM clientes
          ${whereClause}
         ORDER BY razon_social ASC
@@ -131,7 +131,7 @@ const ClientModel = {
   async findByNit(nit) {
     if (!nit) return null;
     const [[row]] = await pool.execute(
-      `SELECT id, razon_social, nit, contacto, email, telefono
+      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad
          FROM clientes
         WHERE activo = 1 AND nit = ?
         LIMIT 1`,
@@ -145,16 +145,18 @@ const ClientModel = {
   // Returns the insertId of the newly created row.
   // Throws ER_DUP_ENTRY if the NIT already exists (handled by controller).
   // ---------------------------------------------------------------------------
-  async create({ razon_social, nit, contacto, email, telefono }) {
+  async create({ razon_social, nit, contacto, email, telefono, direccion, ciudad }) {
     const [result] = await pool.execute(
-      `INSERT INTO clientes (razon_social, nit, contacto, email, telefono)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO clientes (razon_social, nit, contacto, email, telefono, direccion, ciudad)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         String(razon_social).trim(),
-        nit      ? String(nit).trim()      : null,
-        contacto ? String(contacto).trim() : null,
-        email    ? String(email).trim()    : null,
-        telefono ? String(telefono).trim() : null,
+        nit       ? String(nit).trim()       : null,
+        contacto  ? String(contacto).trim()  : null,
+        email     ? String(email).trim()     : null,
+        telefono  ? String(telefono).trim()  : null,
+        direccion ? String(direccion).trim() : null,
+        ciudad    ? String(ciudad).trim()    : null,
       ]
     );
     return result.insertId;
@@ -162,9 +164,10 @@ const ClientModel = {
 
   // ---------------------------------------------------------------------------
   // update — UPDATE an existing client's editable fields, including its
-  // active/inactive status. The controller resolves `activo` before calling
-  // this (defaulting to the client's current value when the caller doesn't
-  // intend to change it), so this method always receives an explicit 0/1.
+  // active/inactive status. The controller resolves `activo`, `direccion`, and
+  // `ciudad` before calling this (defaulting to the client's current value when
+  // the caller doesn't intend to change them), so this method always receives
+  // explicit values for every column it writes.
   // No `activo = 1` guard in the WHERE clause — unlike create's NIT-conflict
   // check, editing/reactivating an already-inactive client is a valid,
   // intended operation here (the controller's own findByIdAny 404 check
@@ -173,7 +176,7 @@ const ClientModel = {
   // Throws ER_DUP_ENTRY if the new NIT belongs to a DIFFERENT client (handled
   // by controller, same as create).
   // ---------------------------------------------------------------------------
-  async update(id, { razon_social, nit, contacto, email, telefono, activo }) {
+  async update(id, { razon_social, nit, contacto, email, telefono, direccion, ciudad, activo }) {
     const [result] = await pool.execute(
       `UPDATE clientes
           SET razon_social = ?,
@@ -181,14 +184,18 @@ const ClientModel = {
               contacto     = ?,
               email        = ?,
               telefono     = ?,
+              direccion    = ?,
+              ciudad       = ?,
               activo       = ?
         WHERE id = ?`,
       [
         String(razon_social).trim(),
-        nit      ? String(nit).trim()      : null,
-        contacto ? String(contacto).trim() : null,
-        email    ? String(email).trim()    : null,
-        telefono ? String(telefono).trim() : null,
+        nit       ? String(nit).trim()       : null,
+        contacto  ? String(contacto).trim()  : null,
+        email     ? String(email).trim()     : null,
+        telefono  ? String(telefono).trim()  : null,
+        direccion ? String(direccion).trim() : null,
+        ciudad    ? String(ciudad).trim()    : null,
         activo ? 1 : 0,
         parseInt(id, 10),
       ]
