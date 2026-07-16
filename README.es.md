@@ -87,53 +87,57 @@ Pendiente → En revision → En espera → Aprobada internamente → Enviada al
 
 ### 3.1 Arquitectura de Despliegue e Infraestructura
 
-Flujo de la petición desde el cliente, sobre HTTPS, a través del proxy inverso Nginx del host (terminación SSL con Let's Encrypt), hacia los contenedores Docker aislados.
+Flujo de la petición desde el cliente, sobre HTTPS, a través del proxy inverso Nginx del host (terminación SSL con Let's Encrypt), hacia los contenedores Docker aislados. Ningún contenedor es alcanzable desde internet: la app se vincula solo a loopback y MySQL no se publica en absoluto.
 
 ```mermaid
 flowchart LR
-    Cliente["🌐 Navegador Cliente<br/>(HTTPS)"]
+    Cliente["🌐 Navegador del cliente<br/>escritorio / móvil"]
 
-    subgraph Droplet["Droplet de DigitalOcean (Host Ubuntu)"]
+    subgraph Droplet["Droplet de DigitalOcean — host Ubuntu"]
         direction TB
-        Nginx["Proxy Inverso Nginx<br/>:443 terminación TLS<br/>Let's Encrypt / Certbot"]
+        Nginx["Proxy inverso Nginx<br/>:80 / :443 · terminación TLS<br/>Let's Encrypt + renovación Certbot<br/>client_max_body_size 12M"]
 
-        subgraph Docker["Docker Compose — red: rc_internal"]
+        subgraph Compose["Docker Compose — red interna rc_internal"]
             direction TB
-            App["contenedor app<br/>Node.js + Express<br/>127.0.0.1:3000"]
-            DB[("contenedor db<br/>MySQL 8")]
-            VolDB[["volumen: db_data"]]
-            VolUp[["volumen: app_uploads"]]
-            VolSt[["volumen: app_storage"]]
+            App["contenedor app<br/>Node 20 Alpine + Express<br/>corre como 'node' no-root<br/>vincula solo 127.0.0.1:3000"]
+            DB[("contenedor db<br/>MySQL 8.0<br/>:3306 — nunca publicado<br/>al host")]
         end
+
+        VolDB[["volumen db_data<br/>datos de MySQL"]]
+        VolUp[["volumen app_uploads<br/>PDFs de proforma generados"]]
+        VolSt[["volumen app_storage<br/>archivos Excel subidos"]]
     end
 
-    Cliente -- "HTTPS :443" --> Nginx
-    Nginx -- "proxy_pass HTTP<br/>127.0.0.1:3000" --> App
-    App -- "SQL :3306<br/>(solo interno)" --> DB
-    DB --- VolDB
-    App --- VolUp
-    App --- VolSt
+    Cliente == "HTTPS :443" ==> Nginx
+    Nginx == "proxy_pass HTTP<br/>127.0.0.1:3000<br/>+ cabeceras X-Forwarded-*" ==> App
+    App == "pool de promesas mysql2<br/>SQL 100% parametrizado" ==> DB
+    DB -. "persiste" .-> VolDB
+    App -. "escribe PDFs" .-> VolUp
+    App -. "escribe Excels" .-> VolSt
 ```
 
 ### 3.2 Lógica Dinámica Multiempresa
 
-Cómo el sistema resuelve dinámicamente encabezados, marca (branding) e información tributaria separados según la entidad comercial seleccionada.
+Cómo el sistema resuelve encabezados, marca (branding) e información tributaria separados a partir de la `entidad_emisora` almacenada en cada cotización — incluyendo el mapeo tolerante en runtime que permite que las filas previas al renombrado (`'RC Tractoparts'`) impriman correctamente **sin ninguna migración de datos**.
 
 ```mermaid
 flowchart TD
-    Start(["Cotización creada / editada"]) --> Sel{"¿entidad_emisora<br/>seleccionada?"}
-    Sel -- "vacío / null" --> Legacy
-    Sel -- "'RC Tractoparts'<br/>(valor heredado)" --> Legacy["normalizeEntidad()<br/>mapeo tolerante en runtime"]
-    Legacy --> Primary
-    Sel -- "Empresa unipersonal de<br/>Ronald Roca Cartagena" --> Primary["Entidad A — Unipersonal"]
-    Sel -- "Roca Importaciones S.R.L." --> SRL["Entidad B — S.R.L."]
+    Start(["Cotización creada / editada /<br/>PDF regenerado"]) --> Val{"¿entidad_emisora<br/>almacenada?"}
 
-    Primary --> RA["Renderiza encabezado A<br/>+ branding A + datos tributarios A"]
-    SRL --> RB["Renderiza encabezado B<br/>+ branding B + datos tributarios B"]
+    Val -- "Empresa unipersonal de<br/>Ronald Roca Cartagena" --> A
+    Val -- "Roca Importaciones S.R.L." --> B
+    Val -- "'RC Tractoparts' (heredado)<br/>o vacío / NULL" --> Norm["normalizeEntidad()<br/>mapeo en runtime al imprimir —<br/>las filas heredadas nunca se migran,<br/>nunca se rompen"]
+    Norm --> A
 
-    RA --> PDF["Encabezado de proforma PDF<br/>(pdfService.drawHeader)"]
+    A["Entidad A — unipersonal<br/>Empresa unipersonal de<br/>Ronald Roca Cartagena"]
+    B["Entidad B — S.R.L.<br/>Roca Importaciones S.R.L."]
+
+    A --> RA["encabezado A · branding A · datos tributarios A"]
+    B --> RB["encabezado B · branding B · datos tributarios B"]
+
+    RA --> PDF["pdfService.drawHeader()"]
     RB --> PDF
-    PDF --> Done(["Documento con marca emitido"])
+    PDF --> Done(["Proforma A4 con marca emitida"])
 ```
 
 ### 3.3 Máquina de Estados del Ciclo de Vida del Documento
@@ -142,16 +146,23 @@ Flujo completo de la cotización, enfatizando las reglas de negocio del estado *
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Pendiente
-    Pendiente --> EnRevision: enviar
-    EnRevision --> EnEspera: poner en espera
-    EnEspera --> AprobadaInternamente: jefe aprueba
-    EnRevision --> AprobadaInternamente: jefe aprueba
-    AprobadaInternamente --> EnviadaAlCliente: enviar al cliente
-    EnviadaAlCliente --> Confirmada: cliente confirma
-    EnviadaAlCliente --> Rechazada: cliente rechaza
-    Confirmada --> Archivada: archivar
-    Rechazada --> Archivada: archivar
+    [*] --> Pendiente : Ejecutivo crea
+    Pendiente --> Pendiente : propietario edita — el ÚNICO estado editable
+    Pendiente --> EnRevision : Ejecutivo envía
+    EnRevision --> EnEspera : poner en espera
+    EnRevision --> AprobadaInternamente : Jefe / SysAdmin / aprobador delegado
+    EnEspera --> AprobadaInternamente : Jefe / SysAdmin / aprobador delegado
+    AprobadaInternamente --> EnviadaAlCliente : enviada al cliente
+    EnviadaAlCliente --> Confirmada : cliente confirma — se registra fecha_confirmacion
+
+    note right of AprobadaInternamente
+        Desde este estado en adelante el PDF se
+        regenera con el sello de agua APROBADO
+        (renderWatermark)
+    end note
+    EnviadaAlCliente --> Rechazada : cliente rechaza
+    Confirmada --> Archivada : archivar
+    Rechazada --> Archivada : archivar
     Archivada --> [*]
 
     note right of Confirmada
@@ -160,6 +171,13 @@ stateDiagram-v2
         • La transición se registra en cotizacion_historial_estados
         • Se escribe una entrada de auditoría JSON automática
           en bitacora_auditoria (quién / cuándo / payload)
+        • El Ejecutivo propietario recibe una notificación persistente
+    end note
+
+    note left of Pendiente
+        Toda transición se valida contra
+        QuotationModel.ROLE_TRANSITIONS —
+        la matriz de roles es el único guardián
     end note
 
     state "En revision" as EnRevision
@@ -174,20 +192,94 @@ Transiciones de diseño responsivo mobile-first y la descarga asíncrona y efici
 
 ```mermaid
 sequenceDiagram
-    participant U as Usuario (UI mobile-first)
-    participant FE as SPA (timelineView.js)
-    participant API as Ruta Express
-    participant FS as Disco / Stream
+    autonumber
+    actor U as Usuario (UI mobile-first)
+    participant FE as SPA — timelineView.js
+    participant API as Express — GET /:id/pdf
+    participant FS as Disco (volumen app_uploads)
 
     Note over U,FE: El diseño responsivo se adapta:<br/>≤768px una columna apilada ·<br/>>768px dashboard multicolumna
     U->>FE: Toca "Descargar PDF"
-    FE->>API: GET /:id/pdf (Bearer JWT)
-    API->>FS: fs.createReadStream(pdf)
-    FS-->>API: fragmento 1..n (streaming)
-    API-->>FE: Respuesta Blob (por fragmentos, baja RAM)
-    FE->>FE: createElement('a') + download=<br/>"COT-2026-0001.pdf"
-    FE-->>U: Archivo con nombre limpio guardado
-    Note over API,FS: El streaming evita almacenar el archivo<br/>completo en memoria — previene saturación de RAM
+    FE->>API: fetch con Bearer JWT
+    API->>API: authenticate (JWT + token_version)<br/>+ authorize (rol)
+    API->>FS: fs.createReadStream(pdf_ruta)
+    loop streaming por fragmentos — la RAM del servidor se mantiene plana
+        FS-->>API: fragmento n
+        API-->>FE: fragmento n
+    end
+    FE->>FE: Blob → elemento ancla con<br/>download="COT-2026-0001.pdf"
+    FE-->>U: Archivo guardado con el correlativo limpio
+    Note over FE,API: El correlativo se sanitiza antes de usarse —<br/>bloquea inyección de rutas / cabeceras.<br/>Nunca window.open(blobUrl): eso producía<br/>nombres UUID aleatorios (ver §15)
+```
+
+### 3.5 Pipeline de Peticiones y Layering Estricto
+
+Toda petición a la API cruza el mismo recorrido antes de que corra cualquier lógica de negocio. El layering es estricto — **solo los modelos ejecutan SQL** — de modo que cada preocupación de seguridad vive en exactamente un lugar.
+
+```mermaid
+flowchart LR
+    REQ(["Petición HTTP"]) --> G
+
+    subgraph G["Middleware global — src/app.js"]
+        direction TB
+        G1["cabeceras helmet · lista CORS<br/>rate limiting · tope JSON 5 MB · morgan"]
+    end
+
+    G --> RT["Ruta<br/>src/routes/*"]
+    RT --> A1["authenticate<br/>JWT HS256 + chequeo de<br/>revocación token_version"]
+    A1 --> A2["authorize<br/>lista de roles +<br/>flag can_approve_quotations"]
+    A2 --> VZ["validate — esquema Zod<br/>coerciona tipos, elimina claves desconocidas"]
+    VZ --> CT["Controlador<br/>src/controllers/*<br/>solo reglas de negocio, sin SQL"]
+    CT --> MD["Modelo<br/>src/models/*<br/>la ÚNICA capa que ejecuta SQL"]
+    MD --> DB[("MySQL 8<br/>100% parametrizado")]
+
+    CT -.-> PS["pdfService<br/>motor de proformas PDFKit"]
+    CT -.-> AL["auditLog →<br/>bitacora_auditoria"]
+    CT -.-> EH["Manejador de errores global<br/>nunca expone stack traces en 5xx"]
+```
+
+### 3.6 Slice de Datos del Cliente — Dirección / Ciudad de Punta a Punta
+
+El camino vertical completo que recorre la dirección de un cliente, desde el modal compartido hasta la proforma impresa. Este es el slice completado en §15 — antes de esa corrección el lado de escritura (modal → controlador → modelo) simplemente no existía, por lo que el PDF siempre imprimía `—`.
+
+```mermaid
+flowchart TD
+    subgraph FE["Frontend — sub-modal compartido"]
+        M["clientModal.js<br/>Razón Social · NIT · Contacto · Teléfono ·<br/>Email · Dirección · Ciudad"]
+    end
+
+    M -- "POST /api/clientes<br/>PUT /api/clientes/:id" --> CC
+
+    subgraph BE["Backend"]
+        CC["clientController<br/>límites de largo: dirección ≤ 200 · ciudad ≤ 100<br/>al actualizar: undefined ⇒ conserva el valor guardado,<br/>null explícito ⇒ vacía a propósito"]
+        CC --> CM["ClientModel<br/>INSERT / UPDATE / todos los SELECT<br/>incluyen ambas columnas"]
+    end
+
+    CM --> TB[("clientes<br/>direccion VARCHAR 200<br/>ciudad VARCHAR 100")]
+
+    TB -- "JOIN por id_cliente" --> QM["QuotationModel.findById<br/>→ cliente_dir · cliente_ciudad"]
+    QM --> PG["pdfService.drawThreeColumnGrid<br/>DATOS GENERALES DEL CLIENTE"]
+    PG --> OUT(["PDF de proforma — Dirección y Ciudad<br/>impresas, o '—' mientras sigan vacías"])
+```
+
+### 3.7 Flujo de Release y Migraciones de Esquema
+
+Cómo un cambio llega a producción. La regla clave: **las migraciones aditivas de esquema corren contra la BD viva *antes* de construir el código nuevo que depende de ellas** — nunca al revés, y nunca vía `db:init` (que es destructivo).
+
+```mermaid
+flowchart LR
+    DEV["💻 Desarrollo local<br/>git commit + push"] --> GH["GitHub<br/>origin/main"]
+    GH -- "git pull origin main" --> SRV["Droplet<br/>~/rc-tractoparts"]
+    SRV --> Q{"¿El release trae un<br/>sql/upgrade_*.sql?"}
+
+    Q -- "sí" --> BK["Respaldar primero:<br/>docker compose exec db mysqldump …"]
+    BK --> MG["Ejecutar la migración contra el contenedor db<br/>aditiva · idempotente · re-ejecutable<br/>(sintaxis MySQL 8 — ver advertencia en §16.7)"]
+    MG --> UP
+    Q -- "sin cambio de esquema" --> UP["docker compose up -d --build app<br/>solo se reconstruye el contenedor app —<br/>db y su volumen no se tocan"]
+
+    UP --> HC["Verificar:<br/>docker compose ps → healthy<br/>logs → Connected to MySQL<br/>GET /health → 200"]
+    HC --> OK(["Release en producción ✅"])
+    HC -- "falla" --> RB["Rollback:<br/>git checkout al commit anterior<br/>+ rebuild de app"]
 ```
 
 ---
@@ -211,6 +303,8 @@ rc-tractoparts/
 │   ├── validators/                # Esquemas Zod + factory validate()
 │   ├── services/
 │   │   └── pdfService.js          # Motor de diseño de proformas con PDFKit
+│   ├── realtime/
+│   │   └── socketServer.js        # Capa de sockets en tiempo real (candados / eventos en vivo)
 │   ├── utils/
 │   │   └── auditLog.js
 │   └── assets/images/             # rc_logo.png + marcas/*.png (para el motor PDF)
@@ -220,8 +314,9 @@ rc-tractoparts/
 │   ├── css/styles.css
 │   └── js/{services,views}/        # apiClient, authSession, vistas del dashboard
 ├── sql/
-│   ├── init.sql                   # Fuente única de verdad: esquema completo + datos iniciales
-│   └── init.js                    # Ejecuta init.sql (conexión admin, multipleStatements)
+│   ├── init.sql                   # Fuente única de verdad: esquema + datos iniciales (DESTRUCTIVO)
+│   ├── init.js                    # Ejecuta init.sql (conexión admin, multipleStatements)
+│   └── upgrade_*.sql              # Migraciones ADITIVAS puntuales para BDs vivas (ver §16.7)
 ├── scripts/
 │   └── seed-users.js              # Genera hashes bcrypt; siembra usuarios de dev/test
 ├── tests/
@@ -538,7 +633,7 @@ La grilla `DATOS GENERALES DEL CLIENTE` del PDF siempre mostraba **Dirección** 
 - `QuotationModel.findById` **ya** las seleccionaba como `cliente_dir` / `cliente_ciudad`, y `pdfService.drawThreeColumnGrid` **ya** las imprimía.
 - Pero nada en el medio las **escribía** nunca: el modal de cliente no tenía los campos, `clientController` no las leía del body, y los `INSERT`/`UPDATE`/`SELECT` de `ClientModel` omitían las columnas por completo. Por eso siempre quedaban en `NULL`.
 
-La corrección conecta el eslabón faltante (no requiere migración de BD — las columnas ya existen):
+La corrección conecta el eslabón faltante (ver el camino de punta a punta en [§3.6](#36-slice-de-datos-del-cliente--dirección--ciudad-de-punta-a-punta)):
 
 | Capa | Archivo | Cambio |
 |---|---|---|
@@ -547,6 +642,7 @@ La corrección conecta el eslabón faltante (no requiere migración de BD — la
 | Modelo | `src/models/ClientModel.js` | Se agregaron ambas columnas a todos los `SELECT`, más al `INSERT` y al `UPDATE` |
 | Documentación de API | `src/routes/clientRoutes.js` | Ambos campos documentados en `POST /` y `PUT /:id` |
 | Datos iniciales | `sql/init.sql` | Los clientes de ejemplo ahora traen dirección y ciudad reales |
+| Migración | `sql/upgrade_2026_cliente_direccion_ciudad.sql` | `ALTER` idempotente para bases inicializadas antes de que las columnas entraran a `init.sql` — no-op donde ya existen (ver [§16.7](#167-migraciones-de-esquema-sqlupgrade_sql)) |
 
 > ⚠️ **Regla de preservación de datos.** `ClientModel.update` escribe *todas* las columnas en cada llamada, por lo que cualquier invocador que omita un campo lo borraría. Dos invocadores envían una lista fija de campos que no incluye Dirección/Ciudad — el botón "Activar" (reactivar) en `clientsView.js` y `ClientController.deactivate`. Para evitar que cualquiera de los dos borre silenciosamente una dirección guardada, `update` resuelve ambos campos igual que ya resolvía `activo`: **`undefined` significa "no enviado — conservar el valor almacenado"**, mientras que un `null` explícito sí vacía el campo a propósito. Todo nuevo invocador de `ClientModel.update` debe respetar esta regla.
 
@@ -645,6 +741,30 @@ docker compose pull && docker compose up -d --build   # desplegar una actualizac
 docker compose logs -f app                            # ver logs
 docker compose exec db mysqldump -u root -p rc_tractoparts > backup.sql   # respaldo de BD
 ```
+
+### 16.7 Migraciones de esquema (`sql/upgrade_*.sql`)
+
+`sql/init.sql` solo se ejecuta automáticamente en el **primer** arranque (volumen `db_data` vacío) y es **destructivo** — jamás debe correrse contra una base de datos viva. Los cambios de esquema para una BD de producción ya en marcha se distribuyen como scripts independientes y **aditivos** en `sql/upgrade_*.sql`:
+
+| Script | Agrega |
+|---|---|
+| `upgrade_2026_correlativo_692.sql` | Siembra el contador de correlativo 2026 en 691 |
+| `upgrade_2026_fecha_confirmacion.sql` | `cotizaciones.fecha_confirmacion` + backfill histórico |
+| `upgrade_2026_delegacion_ampliada.sql` | Soporte de delegación (`can_approve_quotations`) |
+| `upgrade_2026_cliente_direccion_ciudad.sql` | `clientes.direccion` / `clientes.ciudad` (no-op en BDs cuyo esquema ya las tiene) |
+
+**Procedimiento** (el orden importa — migrar *antes* de reconstruir la app, para que el código nuevo nunca consulte columnas que aún no existen; ver el flujo en [§3.7](#37-flujo-de-release-y-migraciones-de-esquema)):
+
+```bash
+cd ~/rc-tractoparts
+docker compose exec db mysqldump -u root -p rc_tractoparts > backup-$(date +%F).sql  # 1. respaldo
+git pull origin main                                                                  # 2. código
+docker compose exec -T db mysql -u root -p rc_tractoparts < sql/upgrade_XXXX.sql      # 3. migrar
+docker compose up -d --build app                                                      # 4. reconstruir solo la app
+docker compose ps && docker compose logs --tail=40 app                                # 5. verificar healthy
+```
+
+> ⚠️ **Advertencia de sintaxis MySQL.** `ALTER TABLE … ADD COLUMN IF NOT EXISTS` es una **extensión de MariaDB** — en el MySQL 8 real que corre este stack (`image: mysql:8.0`) es un error de sintaxis (`ER_PARSE_ERROR` 1064). Las migraciones idempotentes aquí deben usar el patrón portable: consultar `information_schema.COLUMNS` y ejecutar el `ALTER` condicionalmente vía `PREPARE`/`EXECUTE` — ver `upgrade_2026_cliente_direccion_ciudad.sql` como implementación de referencia. Algunos scripts de upgrade anteriores todavía llevan la forma de MariaDB; verificá su efecto con un `SHOW COLUMNS` en lugar de asumir que se aplicaron.
 
 ---
 

@@ -84,53 +84,57 @@ The `cotizaciones.entidad_emisora` column (the issuing business name printed on 
 
 ### 3.1 Deployment & Infrastructure Architecture
 
-Request flow from the client, over HTTPS, through the host's Nginx reverse proxy (Let's Encrypt SSL termination), into the isolated Docker containers.
+Request flow from the client, over HTTPS, through the host's Nginx reverse proxy (Let's Encrypt SSL termination), into the isolated Docker containers. Neither container is ever reachable from the internet: the app binds to loopback only, and MySQL is not published at all.
 
 ```mermaid
 flowchart LR
-    Client["🌐 Client Browser<br/>(HTTPS)"]
+    Client["🌐 Client browser<br/>desktop / mobile"]
 
-    subgraph Droplet["DigitalOcean Droplet (Ubuntu Host)"]
+    subgraph Droplet["DigitalOcean Droplet — Ubuntu host"]
         direction TB
-        Nginx["Nginx Reverse Proxy<br/>:443 TLS termination<br/>Let's Encrypt / Certbot"]
+        Nginx["Nginx reverse proxy<br/>:80 / :443 · TLS termination<br/>Let's Encrypt + Certbot auto-renew<br/>client_max_body_size 12M"]
 
-        subgraph Docker["Docker Compose — network: rc_internal"]
+        subgraph Compose["Docker Compose — internal network rc_internal"]
             direction TB
-            App["app container<br/>Node.js + Express<br/>127.0.0.1:3000"]
-            DB[("db container<br/>MySQL 8")]
-            VolDB[["volume: db_data"]]
-            VolUp[["volume: app_uploads"]]
-            VolSt[["volume: app_storage"]]
+            App["app container<br/>Node 20 Alpine + Express<br/>runs as non-root 'node'<br/>binds 127.0.0.1:3000 only"]
+            DB[("db container<br/>MySQL 8.0<br/>:3306 — never published<br/>to the host")]
         end
+
+        VolDB[["volume db_data<br/>MySQL data files"]]
+        VolUp[["volume app_uploads<br/>generated proforma PDFs"]]
+        VolSt[["volume app_storage<br/>uploaded Excel files"]]
     end
 
-    Client -- "HTTPS :443" --> Nginx
-    Nginx -- "HTTP proxy_pass<br/>127.0.0.1:3000" --> App
-    App -- "SQL :3306<br/>(internal only)" --> DB
-    DB --- VolDB
-    App --- VolUp
-    App --- VolSt
+    Client == "HTTPS :443" ==> Nginx
+    Nginx == "proxy_pass HTTP<br/>127.0.0.1:3000<br/>+ X-Forwarded-* headers" ==> App
+    App == "mysql2 promise pool<br/>100% parameterized SQL" ==> DB
+    DB -. "persists" .-> VolDB
+    App -. "writes PDFs" .-> VolUp
+    App -. "writes Excels" .-> VolSt
 ```
 
 ### 3.2 Multi-Company Dynamic Logic
 
-How the system dynamically resolves separate headers, branding, and tax information depending on the selected commercial entity.
+How the system resolves separate headers, branding, and tax information from the `entidad_emisora` stored on each quotation — including the graceful runtime mapping that lets pre-rename rows (`'RC Tractoparts'`) print correctly **without any data migration**.
 
 ```mermaid
 flowchart TD
-    Start(["Quotation created / edited"]) --> Sel{"entidad_emisora<br/>selected?"}
-    Sel -- "empty / null" --> Legacy
-    Sel -- "'RC Tractoparts'<br/>(legacy value)" --> Legacy["normalizeEntidad()<br/>graceful runtime mapping"]
-    Legacy --> Primary
-    Sel -- "Empresa unipersonal de<br/>Ronald Roca Cartagena" --> Primary["Entity A — Sole Proprietorship"]
-    Sel -- "Roca Importaciones S.R.L." --> SRL["Entity B — S.R.L."]
+    Start(["Quotation created / edited /<br/>PDF regenerated"]) --> Val{"stored<br/>entidad_emisora?"}
 
-    Primary --> RA["Render header A<br/>+ branding A + tax data A"]
-    SRL --> RB["Render header B<br/>+ branding B + tax data B"]
+    Val -- "Empresa unipersonal de<br/>Ronald Roca Cartagena" --> A
+    Val -- "Roca Importaciones S.R.L." --> B
+    Val -- "'RC Tractoparts' (legacy)<br/>or empty / NULL" --> Norm["normalizeEntidad()<br/>runtime mapping at print time —<br/>legacy rows never migrated,<br/>never broken"]
+    Norm --> A
 
-    RA --> PDF["PDF proforma header<br/>(pdfService.drawHeader)"]
+    A["Entity A — sole proprietorship<br/>Empresa unipersonal de<br/>Ronald Roca Cartagena"]
+    B["Entity B — S.R.L.<br/>Roca Importaciones S.R.L."]
+
+    A --> RA["header A · branding A · tax data A"]
+    B --> RB["header B · branding B · tax data B"]
+
+    RA --> PDF["pdfService.drawHeader()"]
     RB --> PDF
-    PDF --> Done(["Branded document emitted"])
+    PDF --> Done(["Branded A4 proforma emitted"])
 ```
 
 ### 3.3 Document Lifecycle State Machine
@@ -139,16 +143,23 @@ Comprehensive quotation workflow, emphasizing the business rules of the **`Confi
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Pendiente
-    Pendiente --> EnRevision: submit
-    EnRevision --> EnEspera: hold
-    EnEspera --> AprobadaInternamente: manager approves
-    EnRevision --> AprobadaInternamente: manager approves
-    AprobadaInternamente --> EnviadaAlCliente: send to client
-    EnviadaAlCliente --> Confirmada: client confirms
-    EnviadaAlCliente --> Rechazada: client rejects
-    Confirmada --> Archivada: archive
-    Rechazada --> Archivada: archive
+    [*] --> Pendiente : Ejecutivo creates
+    Pendiente --> Pendiente : owner edits — the ONLY editable state
+    Pendiente --> EnRevision : Ejecutivo submits
+    EnRevision --> EnEspera : put on hold
+    EnRevision --> AprobadaInternamente : Jefe / SysAdmin / delegated approver
+    EnEspera --> AprobadaInternamente : Jefe / SysAdmin / delegated approver
+    AprobadaInternamente --> EnviadaAlCliente : sent to client
+    EnviadaAlCliente --> Confirmada : client confirms — fecha_confirmacion recorded
+
+    note right of AprobadaInternamente
+        From this state onward the PDF is
+        regenerated with the APROBADO
+        ink-stamp watermark (renderWatermark)
+    end note
+    EnviadaAlCliente --> Rechazada : client rejects
+    Confirmada --> Archivada : archive
+    Rechazada --> Archivada : archive
     Archivada --> [*]
 
     note right of Confirmada
@@ -157,6 +168,13 @@ stateDiagram-v2
         • Transition recorded to cotizacion_historial_estados
         • Automated JSON audit entry written to
           bitacora_auditoria (who / when / payload)
+        • Ejecutivo owner gets a persistent notification
+    end note
+
+    note left of Pendiente
+        Every transition is validated against
+        QuotationModel.ROLE_TRANSITIONS —
+        the role matrix is the single gatekeeper
     end note
 
     state "En revision" as EnRevision
@@ -171,20 +189,94 @@ Mobile-first responsive layout transitions and the memory-efficient asynchronous
 
 ```mermaid
 sequenceDiagram
-    participant U as User (mobile-first UI)
-    participant FE as SPA (timelineView.js)
-    participant API as Express route
-    participant FS as Disk / Stream
+    autonumber
+    actor U as User (mobile-first UI)
+    participant FE as SPA — timelineView.js
+    participant API as Express — GET /:id/pdf
+    participant FS as Disk (volume app_uploads)
 
-    Note over U,FE: Responsive layout adapts:<br/>≤768px single-column stacked ·<br/>>768px multi-column dashboard
-    U->>FE: Tap "Download PDF"
-    FE->>API: GET /:id/pdf (Bearer JWT)
-    API->>FS: fs.createReadStream(pdf)
-    FS-->>API: chunk 1..n (streamed)
-    API-->>FE: Blob response (chunked, low RAM)
-    FE->>FE: createElement('a') + download=<br/>"COT-2026-0001.pdf"
-    FE-->>U: Clean-named file saved
-    Note over API,FS: Streaming avoids buffering the whole<br/>file in memory — prevents RAM saturation
+    Note over U,FE: Responsive layout adapts:<br/>≤768px single stacked column ·<br/>>768px multi-column dashboard
+    U->>FE: Tap "Descargar PDF"
+    FE->>API: fetch with Bearer JWT
+    API->>API: authenticate (JWT + token_version)<br/>+ authorize (role)
+    API->>FS: fs.createReadStream(pdf_ruta)
+    loop chunked streaming — server RAM stays flat
+        FS-->>API: chunk n
+        API-->>FE: chunk n
+    end
+    FE->>FE: Blob → anchor element with<br/>download="COT-2026-0001.pdf"
+    FE-->>U: File saved with the clean correlativo name
+    Note over FE,API: The correlativo is sanitized before use —<br/>blocks path / header injection.<br/>Never window.open(blobUrl): that produced<br/>random UUID filenames (see §15)
+```
+
+### 3.5 Request Pipeline & Strict Layering
+
+Every API request crosses the same gauntlet before any business logic runs. Layering is strict — **only models execute SQL** — so security concerns live in exactly one place each.
+
+```mermaid
+flowchart LR
+    REQ(["HTTP request"]) --> G
+
+    subgraph G["Global middleware — src/app.js"]
+        direction TB
+        G1["helmet headers · CORS allowlist<br/>rate limiting · 5 MB JSON cap · morgan"]
+    end
+
+    G --> RT["Route<br/>src/routes/*"]
+    RT --> A1["authenticate<br/>JWT HS256 + token_version<br/>revocation check"]
+    A1 --> A2["authorize<br/>role allowlist +<br/>can_approve_quotations flag"]
+    A2 --> VZ["validate — Zod schema<br/>type-coerces, strips unknown keys"]
+    VZ --> CT["Controller<br/>src/controllers/*<br/>business rules only, no SQL"]
+    CT --> MD["Model<br/>src/models/*<br/>the ONLY layer that runs SQL"]
+    MD --> DB[("MySQL 8<br/>100% parameterized")]
+
+    CT -.-> PS["pdfService<br/>PDFKit proforma engine"]
+    CT -.-> AL["auditLog →<br/>bitacora_auditoria"]
+    CT -.-> EH["Global error handler<br/>never leaks stack traces on 5xx"]
+```
+
+### 3.6 Client Data Slice — Dirección / Ciudad End-to-End
+
+The full vertical path a client's address travels, from the shared client modal to the printed proforma. This is the slice completed in §15 — before that fix the write side (modal → controller → model) simply didn't exist, so the PDF always printed `—`.
+
+```mermaid
+flowchart TD
+    subgraph FE["Frontend — shared sub-modal"]
+        M["clientModal.js<br/>Razón Social · NIT · Contacto · Teléfono ·<br/>Email · Dirección · Ciudad"]
+    end
+
+    M -- "POST /api/clientes<br/>PUT /api/clientes/:id" --> CC
+
+    subgraph BE["Backend"]
+        CC["clientController<br/>length limits: dirección ≤ 200 · ciudad ≤ 100<br/>on update: undefined ⇒ keep stored value,<br/>explicit null ⇒ clear on purpose"]
+        CC --> CM["ClientModel<br/>INSERT / UPDATE / every SELECT<br/>include both columns"]
+    end
+
+    CM --> TB[("clientes<br/>direccion VARCHAR 200<br/>ciudad VARCHAR 100")]
+
+    TB -- "JOIN on id_cliente" --> QM["QuotationModel.findById<br/>→ cliente_dir · cliente_ciudad"]
+    QM --> PG["pdfService.drawThreeColumnGrid<br/>DATOS GENERALES DEL CLIENTE"]
+    PG --> OUT(["Proforma PDF — Dirección and Ciudad<br/>printed, or '—' while still empty"])
+```
+
+### 3.7 Release & Schema-Migration Flow
+
+How a change reaches production. The key rule: **additive schema migrations run against the live DB *before* the new app code that depends on them is built** — never the other way around, and never via `db:init` (which is destructive).
+
+```mermaid
+flowchart LR
+    DEV["💻 Local dev<br/>git commit + push"] --> GH["GitHub<br/>origin/main"]
+    GH -- "git pull origin main" --> SRV["Droplet<br/>~/rc-tractoparts"]
+    SRV --> Q{"Release ships a<br/>sql/upgrade_*.sql?"}
+
+    Q -- "yes" --> BK["Back up first:<br/>docker compose exec db mysqldump …"]
+    BK --> MG["Run migration against the db container<br/>additive · idempotent · safe to re-run<br/>(MySQL 8 syntax — see warning in §16.7)"]
+    MG --> UP
+    Q -- "no schema change" --> UP["docker compose up -d --build app<br/>only the app container is rebuilt —<br/>db and its volume are untouched"]
+
+    UP --> HC["Verify:<br/>docker compose ps → healthy<br/>logs → Connected to MySQL<br/>GET /health → 200"]
+    HC --> OK(["Release live ✅"])
+    HC -- "failure" --> RB["Rollback:<br/>git checkout previous commit<br/>+ rebuild app"]
 ```
 
 ---
@@ -208,6 +300,8 @@ rc-tractoparts/
 │   ├── validators/                # Zod schemas + validate() factory
 │   ├── services/
 │   │   └── pdfService.js          # PDFKit proforma layout engine
+│   ├── realtime/
+│   │   └── socketServer.js        # Realtime socket layer (quotation locks / live events)
 │   ├── utils/
 │   │   └── auditLog.js
 │   └── assets/images/             # rc_logo.png + brands/*.png (used by the PDF engine)
@@ -217,8 +311,9 @@ rc-tractoparts/
 │   ├── css/styles.css
 │   └── js/{services,views}/        # apiClient, authSession, dashboard views
 ├── sql/
-│   ├── init.sql                   # Single source of truth: full schema + seed data
-│   └── init.js                    # Runs init.sql (admin connection, multipleStatements)
+│   ├── init.sql                   # Single source of truth: full schema + seed data (DESTRUCTIVE)
+│   ├── init.js                    # Runs init.sql (admin connection, multipleStatements)
+│   └── upgrade_*.sql              # One-time ADDITIVE migrations for live DBs (see §16.7)
 ├── scripts/
 │   └── seed-users.js              # Generates bcrypt hashes; seeds dev/test users
 ├── tests/
@@ -535,7 +630,7 @@ The `DATOS GENERALES DEL CLIENTE` grid on the PDF always rendered **Dirección**
 - `QuotationModel.findById` **already** selected them as `cliente_dir` / `cliente_ciudad`, and `pdfService.drawThreeColumnGrid` **already** printed them.
 - But nothing in between ever **wrote** them: the client modal had no inputs, `clientController` never read them off the request body, and `ClientModel`'s `INSERT`/`UPDATE`/`SELECT` statements omitted the columns entirely. The columns were therefore always `NULL`.
 
-The fix wires the missing middle (no DB migration required — the columns already exist):
+The fix wires the missing middle (see the end-to-end path in [§3.6](#36-client-data-slice--dirección--ciudad-end-to-end)):
 
 | Layer | File | Change |
 |---|---|---|
@@ -544,6 +639,7 @@ The fix wires the missing middle (no DB migration required — the columns alrea
 | Model | `src/models/ClientModel.js` | Added both columns to every `SELECT`, plus the `INSERT` and `UPDATE` |
 | API docs | `src/routes/clientRoutes.js` | Documented both fields on `POST /` and `PUT /:id` |
 | Seed | `sql/init.sql` | Sample clients now ship with a real address and city |
+| Migration | `sql/upgrade_2026_cliente_direccion_ciudad.sql` | Idempotent `ALTER` for databases initialised before the columns entered `init.sql` — a no-op where they already exist (see [§16.7](#167-schema-migrations-sqlupgrade_sql)) |
 
 > ⚠️ **Data-preservation rule.** `ClientModel.update` writes *every* column on each call, so any caller that omits a field would blank it. Two callers post a fixed field list that does not include Dirección/Ciudad — the "Activar" (reactivate) button in `clientsView.js` and `ClientController.deactivate`. To stop either from silently wiping a saved address, `update` resolves both fields the same way it already resolves `activo`: **`undefined` means "not sent — keep the stored value"**, while an explicit `null` still clears the field on purpose. Any new caller of `ClientModel.update` must respect this.
 
@@ -642,6 +738,30 @@ docker compose pull && docker compose up -d --build   # deploy an update
 docker compose logs -f app                            # tail logs
 docker compose exec db mysqldump -u root -p rc_tractoparts > backup.sql   # DB backup
 ```
+
+### 16.7 Schema migrations (`sql/upgrade_*.sql`)
+
+`sql/init.sql` only auto-runs on the **first** boot (empty `db_data` volume) and is **destructive** — it must never be run against a live database. Schema changes for an already-running production DB ship instead as standalone, **additive** scripts in `sql/upgrade_*.sql`:
+
+| Script | Adds |
+|---|---|
+| `upgrade_2026_correlativo_692.sql` | Seeds the 2026 correlativo counter at 691 |
+| `upgrade_2026_fecha_confirmacion.sql` | `cotizaciones.fecha_confirmacion` + historical backfill |
+| `upgrade_2026_delegacion_ampliada.sql` | Delegation support (`can_approve_quotations`) |
+| `upgrade_2026_cliente_direccion_ciudad.sql` | `clientes.direccion` / `clientes.ciudad` (no-op on DBs whose schema already has them) |
+
+**Procedure** (order matters — migrate *before* rebuilding the app, so the new code never queries columns that don't exist yet; see the flow in [§3.7](#37-release--schema-migration-flow)):
+
+```bash
+cd ~/rc-tractoparts
+docker compose exec db mysqldump -u root -p rc_tractoparts > backup-$(date +%F).sql  # 1. backup
+git pull origin main                                                                  # 2. code
+docker compose exec -T db mysql -u root -p rc_tractoparts < sql/upgrade_XXXX.sql      # 3. migrate
+docker compose up -d --build app                                                      # 4. rebuild app only
+docker compose ps && docker compose logs --tail=40 app                                # 5. verify healthy
+```
+
+> ⚠️ **MySQL syntax warning.** `ALTER TABLE … ADD COLUMN IF NOT EXISTS` is a **MariaDB extension** — on the real MySQL 8 this stack runs (`image: mysql:8.0`) it is a syntax error (`ER_PARSE_ERROR` 1064). Idempotent migrations here must use the portable pattern instead: probe `information_schema.COLUMNS`, then conditionally `PREPARE`/`EXECUTE` the `ALTER` — see `upgrade_2026_cliente_direccion_ciudad.sql` for the reference implementation. Some earlier upgrade scripts still carry the MariaDB form; verify their effect with a `SHOW COLUMNS` check rather than assuming they applied.
 
 ---
 
