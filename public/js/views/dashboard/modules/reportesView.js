@@ -10,8 +10,9 @@
 //                                 (row-level security enforced by the backend)
 // =============================================================================
 
-import api           from '../../../services/apiClient.js';
-import { escHtml }   from '../helpers.js';
+import api, { showToast } from '../../../services/apiClient.js';
+import { escHtml }        from '../helpers.js';
+import { saveBlobAs }     from './timelineView.js';
 
 // ---------------------------------------------------------------------------
 // Date helpers for the reports range filter.
@@ -29,6 +30,8 @@ function ymd(d) {
 function presetRange(preset) {
   const now = new Date();
   switch (preset) {
+    case 'todo':
+      return ['', ''];
     case 'hoy':
       return [ymd(now), ymd(now)];
     case 'ayer': {
@@ -54,6 +57,91 @@ function presetRange(preset) {
     default:
       return [ymd(new Date(now.getFullYear(), now.getMonth(), 1)), ymd(now)];
   }
+}
+
+// ---------------------------------------------------------------------------
+// downloadReportePdf — GET /api/reportes/pdf for the given range (both bounds
+// empty means "histórico/todo el rango" — the backend interprets a missing
+// range as all-time for Ejecutivo callers, or the current month for
+// managers). Backend RLS decides company vs individual content; the frontend
+// only forwards whatever range is currently selected.
+// ---------------------------------------------------------------------------
+async function downloadReportePdf(btn, desde, hasta) {
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const qs = desde && hasta
+      ? `?fecha_desde=${encodeURIComponent(desde)}&fecha_hasta=${encodeURIComponent(hasta)}`
+      : '';
+    const response = await api.get('/api/reportes/pdf' + qs);
+    const blob     = await response.blob();
+    const fileName = `Reporte_${desde || 'historico'}_${hasta || ''}.pdf`.replace(/[^\w.\-]/g, '_');
+    const outcome  = await saveBlobAs(blob, fileName, {
+      description: 'Documento PDF',
+      accept:      { 'application/pdf': ['.pdf'] },
+    });
+    if (outcome === 'saved') {
+      showToast('PDF guardado en la ubicación elegida.', 'success', 2500);
+    } else if (outcome === 'downloaded') {
+      showToast('PDF descargado a tu carpeta de Descargas.', 'info', 3500);
+    }
+  } catch (err) {
+    showToast(err.data?.message || err.message || 'No se pudo generar el PDF.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// _buildClientesPorOrigenTable
+// Renders the "Clientes por Origen" HTML table (company/manager reports only
+// — never computed for the Ejecutivo's individual report).
+//
+// @param {Array}  rows  — clientes_por_origen array from /api/reportes/advanced
+// @returns {string}     — HTML string for the <table> block
+// ---------------------------------------------------------------------------
+function _buildClientesPorOrigenTable(rows) {
+  const safeRows = rows ?? [];
+  const tbody = safeRows.length === 0
+    ? `<tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--text-muted);">
+         Sin clientes clasificados todavía.
+       </td></tr>`
+    : safeRows.map((o) => `
+        <tr>
+          <td class="fw-600">${escHtml(o.origen)}</td>
+          <td class="text-right">${Number(o.total_clientes ?? 0)}</td>
+          <td class="text-right fw-600">
+            ${Number(o.total_usd ?? 0) > 0
+              ? `<span style="color:#10B981;">USD ${Number(o.total_usd).toFixed(2)}</span>`
+              : ''}
+            ${Number(o.total_bob ?? 0) > 0
+              ? `<span style="color:#8B5CF6;margin-left:.25rem;">BOB ${Number(o.total_bob).toFixed(2)}</span>`
+              : ''}
+            ${Number(o.total_usd ?? 0) === 0 && Number(o.total_bob ?? 0) === 0 ? '—' : ''}
+          </td>
+        </tr>`).join('');
+
+  return `
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="card-header">
+        <h3>📍 Clientes por Origen</h3>
+        <span class="text-muted text-sm">De dónde vienen los clientes activos — clasificación editable en Gestión de Clientes</span>
+      </div>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Origen</th>
+              <th class="text-right">Clientes</th>
+              <th class="text-right">Volumen del Período</th>
+            </tr>
+          </thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,29 +266,101 @@ function _buildLeaderboardTable(rows, rol) {
 }
 
 // ---------------------------------------------------------------------------
-// renderAdvancedReports
-// Fetches /api/reportes/advanced (accessible to all authenticated roles) and
-// renders the Top Clients table + the Leaderboard into the given panel.
-// The backend enforces row-level security: Ejecutivo callers receive only
-// their own records; Jefe / Administracion / SysAdmin receive company-wide data.
+// renderExecutiveMetrics
+// Ejecutivo's personal report — fetches /api/reportes/advanced, which the
+// backend row-level-security-scopes to the caller's own quotations, and adds
+// a date-range filter bar plus a "Generar PDF" button ("solo sus
+// cotizaciones y nada más" — GET /api/reportes/pdf applies the same RLS,
+// never company-wide data for this role).
 //
-// @param {HTMLElement} panel — Container element
+// Default range is "Todo el historial" (both bounds empty = all-time).
+//
+// @param {HTMLElement} panel — Container element (#metrics-section)
 // ---------------------------------------------------------------------------
-export async function renderAdvancedReports(panel) {
-  panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
-  try {
-    const res  = await api.get('/api/reportes/advanced');
-    const rol  = res.rol ?? 'Ejecutivo';
-    const {
-      top_clientes = [],
-      leaderboard  = [],
-    } = res.data ?? {};
+export async function renderExecutiveMetrics(panel) {
+  panel.innerHTML = `
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="card-header">
+        <h3>📅 Filtrar mi Reporte</h3>
+        <span class="text-muted text-sm">Filtra tus propias cotizaciones por un día o un rango de fechas</span>
+      </div>
+      <div class="filter-bar" style="padding:1rem;">
+        <div class="form-group">
+          <label class="form-label">Rango rápido</label>
+          <select class="form-control" id="mym-preset" style="min-width:150px;">
+            <option value="todo" selected>Todo el historial</option>
+            <option value="hoy">Hoy</option>
+            <option value="ayer">Ayer</option>
+            <option value="7d">Últimos 7 días</option>
+            <option value="30d">Últimos 30 días</option>
+            <option value="mes">Este mes</option>
+            <option value="mespasado">Mes pasado</option>
+            <option value="anio">Este año</option>
+            <option value="custom">Personalizado…</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Desde</label>
+          <input class="form-control" type="date" id="mym-desde" style="min-width:150px;" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Hasta</label>
+          <input class="form-control" type="date" id="mym-hasta" style="min-width:150px;" />
+        </div>
+        <button class="btn btn-primary btn-sm" id="mym-apply" style="align-self:flex-end;">Filtrar</button>
+        <button class="btn btn-ghost btn-sm" id="mym-pdf" style="align-self:flex-end;">📄 Generar PDF</button>
+      </div>
+    </div>
+    <div id="mym-data"><div class="page-loading"><div class="spinner"></div></div></div>
+  `;
 
-    panel.innerHTML =
+  const presetEl = panel.querySelector('#mym-preset');
+  const desdeEl  = panel.querySelector('#mym-desde');
+  const hastaEl  = panel.querySelector('#mym-hasta');
+
+  presetEl.addEventListener('change', () => {
+    if (presetEl.value === 'custom') return;
+    const [d, h] = presetRange(presetEl.value);
+    desdeEl.value = d;
+    hastaEl.value = h;
+  });
+
+  [desdeEl, hastaEl].forEach((el) =>
+    el.addEventListener('input', () => { presetEl.value = 'custom'; })
+  );
+
+  panel.querySelector('#mym-apply').addEventListener('click', () => {
+    loadExecutiveMetrics(panel, desdeEl.value, hastaEl.value);
+  });
+
+  panel.querySelector('#mym-pdf').addEventListener('click', (e) =>
+    downloadReportePdf(e.currentTarget, desdeEl.value, hastaEl.value));
+
+  await loadExecutiveMetrics(panel, '', '');
+}
+
+// ---------------------------------------------------------------------------
+// loadExecutiveMetrics — fetches /api/reportes/advanced for the given range
+// (empty desde/hasta = all-time) and renders into #mym-data, leaving the
+// filter bar untouched.
+// ---------------------------------------------------------------------------
+async function loadExecutiveMetrics(panel, desde, hasta) {
+  const dataEl = panel.querySelector('#mym-data');
+  if (!dataEl) return;
+
+  dataEl.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+  try {
+    const qs = desde && hasta
+      ? `?fecha_desde=${encodeURIComponent(desde)}&fecha_hasta=${encodeURIComponent(hasta)}`
+      : '';
+    const res  = await api.get('/api/reportes/advanced' + qs);
+    const rol  = res.rol ?? 'Ejecutivo';
+    const { top_clientes = [], leaderboard = [] } = res.data ?? {};
+    dataEl.innerHTML =
       _buildTopClientesTable(top_clientes) +
       _buildLeaderboardTable(leaderboard, rol);
   } catch (err) {
-    panel.innerHTML = `<div class="empty-state"><p>Error cargando métricas: ${escHtml(err.message)}</p></div>`;
+    dataEl.innerHTML = `<div class="empty-state"><p>Error cargando métricas: ${escHtml(err.message)}</p></div>`;
   }
 }
 
@@ -249,6 +409,7 @@ export async function renderReportes(panel) {
           <input class="form-control" type="date" id="rep-hasta" value="${defHasta}" style="min-width:150px;" />
         </div>
         <button class="btn btn-primary btn-sm" id="rep-apply" style="align-self:flex-end;">Aplicar</button>
+        <button class="btn btn-ghost btn-sm" id="rep-pdf" style="align-self:flex-end;">📄 Generar PDF</button>
       </div>
     </div>
     <div id="reportes-data"><div class="page-loading"><div class="spinner"></div></div></div>
@@ -274,6 +435,9 @@ export async function renderReportes(panel) {
   panel.querySelector('#rep-apply').addEventListener('click', () => {
     loadReportesData(panel, desdeEl.value, hastaEl.value);
   });
+
+  panel.querySelector('#rep-pdf').addEventListener('click', (e) =>
+    downloadReportePdf(e.currentTarget, desdeEl.value, hastaEl.value));
 
   await loadReportesData(panel, defDesde, defHasta);
 }
@@ -335,6 +499,7 @@ function buildReportesDataHTML(progresoRes, advancedRes) {
     const {
       top_clientes = [],
       leaderboard  = [],
+      clientes_por_origen = [],
     } = advancedRes.data ?? {};
 
     return `
@@ -413,5 +578,8 @@ function buildReportesDataHTML(progresoRes, advancedRes) {
 
       <!-- ── BI: Executive Leaderboard ── -->
       ${_buildLeaderboardTable(leaderboard, rol)}
+
+      <!-- ── BI: Clientes por Origen ── -->
+      ${_buildClientesPorOrigenTable(clientes_por_origen)}
     `;
 }

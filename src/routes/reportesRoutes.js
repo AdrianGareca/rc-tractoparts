@@ -80,4 +80,43 @@ router.get('/progreso', ...progresoAuth, ReportesController.getProgreso);
  */
 router.get('/advanced', ...advancedAuth, ReportesController.getAdvancedReports);
 
+/**
+ * @swagger
+ * /api/reportes/pdf:
+ *   get:
+ *     summary: Exportar reporte en PDF (general para managers, individual para Ejecutivo)
+ *     description: |
+ *       Jefe / Administracion / SysAdmin reciben el reporte completo de la empresa
+ *       (volumen, conversión, por ejecutivo, top clientes, distribución por origen
+ *       de cliente). Ejecutivo recibe únicamente su propio reporte individual —
+ *       sin datos de otros ejecutivos ni agregados de la empresa.
+ *       Acepta fecha_desde/fecha_hasta (YYYY-MM-DD); si se omiten, los managers
+ *       ven el mes actual y el Ejecutivo ve el histórico completo.
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: fecha_desde
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: fecha_hasta
+ *         schema: { type: string, format: date }
+ *     responses:
+ *       200:
+ *         description: PDF generado exitosamente.
+ *         content:
+ *           application/pdf:
+ *             schema: { type: string, format: binary }
+ *       401:
+ *         description: Token ausente o inválido.
+ *       403:
+ *         description: Rol insuficiente.
+ *       422:
+ *         description: Rango de fechas inválido.
+ *       500:
+ *         description: Error interno al generar el PDF.
+ */
+router.get('/pdf', ...advancedAuth, ReportesController.getReportePdf);
+
 module.exports = router;

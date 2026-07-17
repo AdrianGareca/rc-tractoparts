@@ -146,6 +146,28 @@ INSERT INTO marcas (nombre) VALUES
   ('Alternativo');
 
 -- =============================================================================
+-- 3.5 ORIGENES_CLIENTE  (catalog: acquisition channel / client classification)
+--     Same shape as `marcas` — predefined seed rows, extensible via
+--     POST /api/origenes-cliente. Attribute of the CLIENT (set once, reused
+--     across all their cotizaciones) — never printed on the cotización PDF,
+--     only surfaced in reports.
+-- =============================================================================
+
+CREATE TABLE origenes_cliente (
+  id     INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  nombre VARCHAR(100) NOT NULL,
+  activo TINYINT(1)   NOT NULL DEFAULT 1,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_origenes_cliente_nombre (nombre)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO origenes_cliente (nombre) VALUES
+  ('Cliente'),
+  ('Cliente potencial'),
+  ('Publicidad RRSS'),
+  ('Otros');
+
+-- =============================================================================
 -- 4. CLIENTES
 -- =============================================================================
 
@@ -160,10 +182,14 @@ CREATE TABLE clientes (
     COMMENT 'Dirección postal o comercial del cliente',
   ciudad       VARCHAR(100) DEFAULT NULL
     COMMENT 'Ciudad donde opera el cliente',
+  id_origen_cliente INT UNSIGNED DEFAULT NULL
+    COMMENT 'FK->origenes_cliente — de dónde vino el cliente (para reportes, nunca para el PDF de cotización)',
   activo       TINYINT(1)   NOT NULL DEFAULT 1,
   creado_en    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_clientes_nit (nit)
+  UNIQUE KEY uq_clientes_nit (nit),
+  KEY idx_clientes_origen (id_origen_cliente),
+  FOREIGN KEY (id_origen_cliente) REFERENCES origenes_cliente (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =============================================================================

@@ -40,7 +40,7 @@ import { escHtml }        from '../helpers.js';
 //                  Callers use this to tell the user WHERE the file landed,
 //                  since in that path they never got to choose.
 // ---------------------------------------------------------------------------
-async function saveBlobAs(blob, fileName, fileType) {
+export async function saveBlobAs(blob, fileName, fileType) {
   // The picker is ONLY exposed in a secure context (HTTPS or http://localhost)
   // on Chromium browsers. Over plain HTTP on a LAN IP, or in Firefox/Safari, it
   // is undefined — so this branch is skipped and we fall back to a download.

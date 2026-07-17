@@ -14,7 +14,9 @@
 
 'use strict';
 
-const QuotationModel = require('../models/QuotationModel');
+const QuotationModel       = require('../models/QuotationModel');
+const reportePdfService    = require('../services/reportePdfService');
+const { logEvent, AuditActions } = require('../utils/auditLog');
 
 // Roles that may view company-wide aggregate data
 const MANAGER_ROLES = new Set(['Jefe', 'Administracion', 'SysAdmin']);
@@ -149,6 +151,74 @@ const ReportesController = {
       return res.status(500).json({
         success: false,
         message: 'Error al obtener el reporte avanzado. Intente nuevamente.',
+      });
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // getReportePdf — GET /api/reportes/pdf
+  //   Jefe / Administracion / SysAdmin → full company report (same RLS split
+  //   as /advanced, plus the /progreso stats grid, plus clientes_por_origen).
+  //   Ejecutivo → individual report scoped to their own quotations only
+  //   ("solo sus cotizaciones y nada más") — no company stats grid, no other
+  //   executives' data, no clientes_por_origen.
+  //
+  //   Optional query params: fecha_desde, fecha_hasta (YYYY-MM-DD).
+  //   Managers default to the current month (mirrors /progreso); Ejecutivo
+  //   defaults to all-time (mirrors /advanced) when omitted.
+  // ---------------------------------------------------------------------------
+  async getReportePdf(req, res) {
+    try {
+      const rol        = req.user.rol;
+      const isManager   = MANAGER_ROLES.has(rol);
+      const ejecutivoId = isManager ? null : req.user.id;
+
+      const range = resolveDateRange(req.query, /* defaultToMonth */ isManager);
+      if (range.error) {
+        return res.status(422).json({ success: false, message: range.error });
+      }
+
+      const advanced = await QuotationModel.getAdvancedReports(ejecutivoId, range.desde, range.hasta);
+      const progreso = isManager ? await QuotationModel.getProgreso(range.desde, range.hasta) : null;
+
+      const periodo = range.desde && range.hasta
+        ? (range.desde === range.hasta ? range.desde : `${range.desde} a ${range.hasta}`)
+        : 'Histórico (todas las fechas)';
+
+      const pdfBuffer = await reportePdfService.generateReportePdf({
+        mode:           isManager ? 'company' : 'individual',
+        periodo,
+        rol,
+        nombreUsuario:  req.user.nombre_usuario,
+        progreso,
+        topClientes:    advanced.top_clientes,
+        leaderboard:    advanced.leaderboard,
+        clientesPorOrigen: advanced.clientes_por_origen,
+      });
+
+      await logEvent({
+        id_usuario:     req.user.id,
+        nombre_usuario: req.user.nombre_usuario,
+        accion:         AuditActions.GENERAR_REPORTE_PDF,
+        entidad:        'reportes',
+        id_entidad:     null,
+        detalle:        { periodo, modo: isManager ? 'company' : 'individual' },
+        ip_origen:      req.ip || req.socket?.remoteAddress || null,
+        resultado:      'exito',
+      });
+
+      const safePeriodo = periodo.replace(/[^\w-]/g, '_');
+      const filename = `Reporte_${isManager ? 'General' : 'Individual'}_${safePeriodo}.pdf`;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.status(200).send(pdfBuffer);
+
+    } catch (error) {
+      console.error('[ReportesController.getReportePdf] Error:', error.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Error al generar el reporte en PDF. Intente nuevamente.',
       });
     }
   },

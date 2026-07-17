@@ -36,7 +36,7 @@ import {
   badgeHtml, roleBadgeHtml, fmtDate, escHtml, fmtAmount,
 } from './dashboard/helpers.js';
 import { wirePdfButton, wireExcelButton, buildTimelineHtml } from './dashboard/modules/timelineView.js';
-import { renderReportes, renderAdvancedReports } from './dashboard/modules/reportesView.js';
+import { renderReportes, renderExecutiveMetrics } from './dashboard/modules/reportesView.js';
 import { refreshNotifBadge, requestNotifPermission, startNotifPolling } from './dashboard/modules/notificationsView.js';
 import { mountAuditLogTab } from './dashboard/modules/auditView.js';
 import { mountClientsTab } from './dashboard/modules/clientsView.js';
@@ -648,7 +648,7 @@ class ExecutiveStrategy extends DashboardStrategy {
   async _loadMetrics() {
     const section = document.getElementById('metrics-section');
     if (!section) return;
-    await renderAdvancedReports(section);
+    await renderExecutiveMetrics(section);
   }
 
   async _loadProformasHoy() {

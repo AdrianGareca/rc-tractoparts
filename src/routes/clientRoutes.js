@@ -91,6 +91,10 @@ router.get('/', ...allRoles, ClientController.search);
  *                 maxLength: 100
  *                 description: Ciudad impresa en la grilla "DATOS GENERALES DEL CLIENTE" del PDF.
  *                 example: Santa Cruz de la Sierra
+ *               id_origen_cliente:
+ *                 type: integer
+ *                 description: FK->origenes_cliente. Solo para reportes — nunca se imprime en el PDF de cotización.
+ *                 example: 2
  *     responses:
  *       201:
  *         description: Cliente creado exitosamente.
@@ -211,6 +215,11 @@ router.get('/:id', ...allRoles, ClientController.getById);
  *                 description: >-
  *                   Omitir el campo conserva el valor almacenado; enviarlo como
  *                   null lo vacía explícitamente.
+ *               id_origen_cliente:
+ *                 type: integer
+ *                 description: >-
+ *                   FK->origenes_cliente. Omitir el campo conserva el valor
+ *                   almacenado; enviarlo como null lo vacía explícitamente.
  *               activo:
  *                 type: boolean
  *                 description: Permite reactivar un cliente previamente desactivado.

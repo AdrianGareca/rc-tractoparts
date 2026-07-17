@@ -98,7 +98,7 @@ const ClientController = {
   // Express client registration: used by the "Nuevo Cliente" in-form sub-modal.
   // ---------------------------------------------------------------------------
   async create(req, res) {
-    const { razon_social, nit, contacto, email, telefono, direccion, ciudad } = req.body;
+    const { razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente } = req.body;
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
     // ── Input validation ──────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ const ClientController = {
     }
 
     try {
-      const id = await ClientModel.create({ razon_social, nit, contacto, email, telefono, direccion, ciudad });
+      const id = await ClientModel.create({ razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente });
       const newClient = await ClientModel.findById(id);
 
       await logEvent({
@@ -211,7 +211,7 @@ const ClientController = {
       return res.status(400).json({ success: false, message: 'Invalid client ID.' });
     }
 
-    const { razon_social, nit, contacto, email, telefono, direccion, ciudad } = req.body;
+    const { razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente } = req.body;
 
     // ── Input validation (mirrors create) ─────────────────────────────────────
     if (!razon_social || !String(razon_social).trim()) {
@@ -272,11 +272,13 @@ const ClientController = {
       // stored value"; an explicit null/'' still clears the field on purpose.
       const nextDireccion = direccion !== undefined ? direccion : existing.direccion;
       const nextCiudad    = ciudad    !== undefined ? ciudad    : existing.ciudad;
+      const nextOrigen    = id_origen_cliente !== undefined ? id_origen_cliente : existing.id_origen_cliente;
 
       const updated = await ClientModel.update(id, {
         razon_social, nit, contacto, email, telefono,
         direccion: nextDireccion,
         ciudad:    nextCiudad,
+        id_origen_cliente: nextOrigen,
         activo,
       });
 
@@ -363,6 +365,7 @@ const ClientController = {
         telefono:     existing.telefono,
         direccion:    existing.direccion,
         ciudad:       existing.ciudad,
+        id_origen_cliente: existing.id_origen_cliente,
         activo:       0,
       });
 

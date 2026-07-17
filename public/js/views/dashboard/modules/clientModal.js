@@ -88,6 +88,25 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
                    value="${escHtml(client?.ciudad ?? '')}" />
           </div>
         </div>
+        <div class="form-group">
+          <label class="form-label" for="nc-origen">Origen del cliente</label>
+          <div style="display:flex;gap:4px;align-items:center;">
+            <select class="form-control" id="nc-origen" style="flex:1;min-width:0;">
+              <option value="">— Sin clasificar —</option>
+            </select>
+            <button type="button" id="nc-add-origen" title="Agregar nuevo origen"
+                    style="flex-shrink:0;width:28px;height:28px;padding:0;border-radius:50%;background:#16a34a;color:#fff;border:none;cursor:pointer;font-size:1rem;line-height:1;">
+              +
+            </button>
+          </div>
+          <div id="nc-origen-new" style="display:none;gap:.5rem;margin-top:.5rem;">
+            <input class="form-control" type="text" id="nc-origen-new-input"
+                   placeholder="Ej: Feria comercial" maxlength="100" style="flex:1;" />
+            <button type="button" class="btn btn-ghost btn-sm" id="nc-origen-new-save">Guardar</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="nc-origen-new-cancel">✕</button>
+          </div>
+          <span class="text-muted text-sm">Uso interno para reportes — no aparece en el PDF de la cotización.</span>
+        </div>
         <div class="form-alert" id="nc-alert" role="alert"></div>
         <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem;">
           <button type="button" class="btn btn-ghost" id="subm-cancel">Cancelar</button>
@@ -107,6 +126,66 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
   overlay.querySelector('#subm-close')?.addEventListener('click', close);
   overlay.querySelector('#subm-cancel')?.addEventListener('click', close);
 
+  // ── Origen del cliente — load catalog and preselect the client's current value ──
+  const origenSelect = overlay.querySelector('#nc-origen');
+  (async () => {
+    try {
+      const resp     = await api.get('/api/origenes-cliente');
+      const origenes = resp.data ?? [];
+      const current  = client?.id_origen_cliente ?? '';
+      origenSelect.innerHTML =
+        '<option value="">— Sin clasificar —</option>' +
+        origenes.map(o => `<option value="${o.id}"${String(o.id) === String(current) ? ' selected' : ''}>${escHtml(o.nombre)}</option>`).join('');
+    } catch {
+      // Non-fatal — the dropdown just stays at "— Sin clasificar —" if the catalog fails to load.
+    }
+  })();
+
+  // "+" reveals the inline add-new-origen row instead of stacking another sub-modal.
+  const origenNewRow   = overlay.querySelector('#nc-origen-new');
+  const origenNewInput = overlay.querySelector('#nc-origen-new-input');
+  overlay.querySelector('#nc-add-origen')?.addEventListener('click', () => {
+    origenNewRow.style.display = 'flex';
+    origenNewInput.focus();
+  });
+  overlay.querySelector('#nc-origen-new-cancel')?.addEventListener('click', () => {
+    origenNewRow.style.display = 'none';
+    origenNewInput.value = '';
+  });
+  overlay.querySelector('#nc-origen-new-save')?.addEventListener('click', async () => {
+    const nombre = origenNewInput.value.trim();
+    if (!nombre) return;
+    try {
+      const resp   = await api.post('/api/origenes-cliente', { nombre });
+      const origen = resp.data;
+      const opt    = document.createElement('option');
+      opt.value       = origen.id;
+      opt.textContent = origen.nombre;
+      opt.selected    = true;
+      origenSelect.appendChild(opt);
+      origenNewRow.style.display = 'none';
+      origenNewInput.value = '';
+      showToast(`Origen "${origen.nombre}" registrado y seleccionado.`, 'success');
+    } catch (err) {
+      // 409 — origin already exists: auto-select it instead of erroring out.
+      if (err.status === 409 && err.data?.data) {
+        const existing = err.data.data;
+        if (!origenSelect.querySelector(`option[value="${existing.id}"]`)) {
+          const opt = document.createElement('option');
+          opt.value = existing.id;
+          opt.textContent = existing.nombre;
+          origenSelect.appendChild(opt);
+        }
+        origenSelect.value = String(existing.id);
+        origenNewRow.style.display = 'none';
+        origenNewInput.value = '';
+        showToast(`Origen "${existing.nombre}" ya existe. Seleccionado automáticamente.`, 'info');
+        return;
+      }
+      showToast(err.data?.message || err.message || 'Error al crear el origen.', 'error');
+    }
+  });
+
   // Close on backdrop click
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) close();
@@ -120,6 +199,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
     const telefono     = overlay.querySelector('#nc-telefono')?.value.trim() || null;
     const direccion    = overlay.querySelector('#nc-direccion')?.value.trim() || null;
     const ciudad       = overlay.querySelector('#nc-ciudad')?.value.trim()    || null;
+    const id_origen_cliente = overlay.querySelector('#nc-origen')?.value || null;
 
     const alertEl  = overlay.querySelector('#nc-alert');
     const errRazon = overlay.querySelector('#nc-err-razon');
@@ -142,7 +222,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
     if (spinnerEl) spinnerEl.classList.remove('hidden');
 
     try {
-      const payload = { razon_social, nit, contacto, email, telefono, direccion, ciudad };
+      const payload = { razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente };
       const resp    = isEdit
         ? await api.put(`/api/clientes/${client.id}`, payload)
         : await api.post('/api/clientes', payload);

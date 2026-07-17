@@ -93,8 +93,8 @@ function buildItemLayout(showCodigo) {
   const w = {
     item:   20,
     codigo: showCodigo ? 48 : 0,
-    codAlt: 52,
-    desc:   showCodigo ? 130 : 178,   // DESCRIPCIÓN absorbs CÓDIGO's width when hidden
+    codAlt: showCodigo ? 52 : 0,
+    desc:   showCodigo ? 130 : 230,   // DESCRIPCIÓN absorbs CÓDIGO + CÓD. ALT. widths when hidden
     cant:   26,
     uni:    26,
     pUnit:  62,
@@ -787,11 +787,12 @@ function drawTableHeaderRow(doc, y, layout) {
     .strokeColor(C.BORDER_GRAY)
     .stroke();
 
-  // Column set — the CÓDIGO header is included only when the layout shows it.
+  // Column set — the CÓDIGO / CÓD. ALT. headers are included only when the
+  // layout shows codes (both toggle together off the same mostrar_codigos flag).
   const headers = [
     { key: 'item',    label: 'ITEM',        align: 'center' },
     ...(layout.showCodigo ? [{ key: 'codigo', label: 'CÓDIGO', align: 'center' }] : []),
-    { key: 'codAlt',  label: 'CÓD. ALT.',   align: 'center' },
+    ...(layout.showCodigo ? [{ key: 'codAlt', label: 'CÓD. ALT.', align: 'center' }] : []),
     { key: 'desc',    label: 'DESCRIPCIÓN', align: 'left'   },
     { key: 'cant',    label: 'CANT.',       align: 'right'  },
     { key: 'uni',     label: 'UNI',         align: 'center' },
@@ -945,13 +946,16 @@ function drawItemsTable(doc, quotation, startY) {
           { width: layout.w.codigo - 4, align: 'center', lineBreak: false });
     }
 
-    // CÓDIGO ALTERNATIVO — not yet stored in DB; renders placeholder
-    doc
-      .font('Helvetica')
-      .fontSize(7)
-      .fillColor(C.MID_GRAY)
-      .text(item.codigo_alternativo || '—', layout.x.codAlt + 2, ty,
-        { width: layout.w.codAlt - 4, align: 'center', lineBreak: false });
+    // CÓDIGO ALTERNATIVO — rendered only when the CÓDIGO column is visible for
+    // this quotation (same mostrar_codigos toggle as CÓDIGO).
+    if (layout.showCodigo) {
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor(C.MID_GRAY)
+        .text(item.codigo_alternativo || '—', layout.x.codAlt + 2, ty,
+          { width: layout.w.codAlt - 4, align: 'center', lineBreak: false });
+    }
 
     // DESCRIPCIÓN — top-aligned, wraps; brand name as a muted italic subtitle
     doc
@@ -1019,8 +1023,8 @@ function drawItemsTable(doc, quotation, startY) {
 
     // Vertical column dividers for this row — one at the left edge of every
     // column except ITEM, following the visible column set.
-    ['codAlt', 'desc', 'cant', 'uni', 'pUnit', 'pTotal', 'entrega']
-      .concat(layout.showCodigo ? ['codigo'] : [])
+    ['desc', 'cant', 'uni', 'pUnit', 'pTotal', 'entrega']
+      .concat(layout.showCodigo ? ['codigo', 'codAlt'] : [])
       .forEach((key) => {
         const dx = layout.x[key];
         doc

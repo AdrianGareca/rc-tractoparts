@@ -1572,6 +1572,42 @@ const QuotationModel = {
       };
     });
 
+    // ── Clientes por Origen ─────────────────────────────────────────────────
+    // Manager-only breakdown (never computed for the Ejecutivo's personal
+    // report — "solo sus cotizaciones y nada más" per business rule): how many
+    // active clients fall into each origen_cliente bucket, and the revenue
+    // (within the selected date range, if any) attributed to each bucket.
+    // total_clientes counts ALL active clients regardless of date range (it's
+    // a client-attribute snapshot, not a period metric); total_usd/total_bob
+    // stay period-scoped like the rest of the report.
+    let clientesPorOrigen = [];
+    if (!isEjecutivo) {
+      const origenDateClause = hasRange ? 'AND c.fecha_emision BETWEEN ? AND ?' : '';
+      const origenParams     = hasRange ? [fechaDesde, fechaHasta] : [];
+      const origenSql = `
+          SELECT
+            COALESCE(oc.nombre, 'Sin clasificar')                         AS origen,
+            COUNT(DISTINCT cl.id)                                         AS total_clientes,
+            SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END) AS total_usd,
+            SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END) AS total_bob
+          FROM clientes cl
+          LEFT JOIN origenes_cliente oc ON oc.id = cl.id_origen_cliente
+          LEFT JOIN cotizaciones c
+                 ON c.id_cliente = cl.id
+                AND c.estado IN ('Confirmada', 'Aceptada', 'Enviada al cliente')
+                ${origenDateClause}
+          WHERE cl.activo = 1
+          GROUP BY oc.id, origen
+          ORDER BY total_clientes DESC`;
+      const [origenRows] = await pool.execute(origenSql, origenParams);
+      clientesPorOrigen = origenRows.map((r) => ({
+        origen:         r.origen,
+        total_clientes: parseInt(r.total_clientes || 0, 10),
+        total_usd:      parseFloat(r.total_usd || 0).toFixed(2),
+        total_bob:      parseFloat(r.total_bob || 0).toFixed(2),
+      }));
+    }
+
     return {
       top_clientes: topClientesRows.map((r) => ({
         cliente:           r.cliente,
@@ -1581,6 +1617,7 @@ const QuotationModel = {
         total_bob:         parseFloat(r.total_bob || 0).toFixed(2),
       })),
       leaderboard,
+      clientes_por_origen: clientesPorOrigen,
     };
   },
 

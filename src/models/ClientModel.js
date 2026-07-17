@@ -24,11 +24,13 @@ const ClientModel = {
     const escaped = String(q).trim().replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
     const like = `%${escaped}%`;
     const [rows] = await pool.execute(
-      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad
-         FROM clientes
-        WHERE activo = 1
-          AND (razon_social LIKE ? ESCAPE '\\\\' OR nit LIKE ? ESCAPE '\\\\')
-        ORDER BY razon_social ASC
+      `SELECT c.id, c.razon_social, c.nit, c.contacto, c.email, c.telefono, c.direccion, c.ciudad,
+              c.id_origen_cliente, oc.nombre AS origen_cliente
+         FROM clientes c
+         LEFT JOIN origenes_cliente oc ON oc.id = c.id_origen_cliente
+        WHERE c.activo = 1
+          AND (c.razon_social LIKE ? ESCAPE '\\\\' OR c.nit LIKE ? ESCAPE '\\\\')
+        ORDER BY c.razon_social ASC
         LIMIT 20`,
       [like, like]
     );
@@ -40,9 +42,11 @@ const ClientModel = {
   // ---------------------------------------------------------------------------
   async findById(id) {
     const [[row]] = await pool.execute(
-      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad
-         FROM clientes
-        WHERE id = ? AND activo = 1
+      `SELECT c.id, c.razon_social, c.nit, c.contacto, c.email, c.telefono, c.direccion, c.ciudad,
+              c.id_origen_cliente, oc.nombre AS origen_cliente
+         FROM clientes c
+         LEFT JOIN origenes_cliente oc ON oc.id = c.id_origen_cliente
+        WHERE c.id = ? AND c.activo = 1
         LIMIT 1`,
       [parseInt(id, 10)]
     );
@@ -57,9 +61,11 @@ const ClientModel = {
   // ---------------------------------------------------------------------------
   async findByIdAny(id) {
     const [[row]] = await pool.execute(
-      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad, activo
-         FROM clientes
-        WHERE id = ?
+      `SELECT c.id, c.razon_social, c.nit, c.contacto, c.email, c.telefono, c.direccion, c.ciudad,
+              c.id_origen_cliente, oc.nombre AS origen_cliente, c.activo
+         FROM clientes c
+         LEFT JOIN origenes_cliente oc ON oc.id = c.id_origen_cliente
+        WHERE c.id = ?
         LIMIT 1`,
       [parseInt(id, 10)]
     );
@@ -86,15 +92,17 @@ const ClientModel = {
     if (trimmed) {
       const escaped = trimmed.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
       const like = `%${escaped}%`;
-      whereClause = `WHERE (razon_social LIKE ? ESCAPE '\\\\' OR nit LIKE ? ESCAPE '\\\\')`;
+      whereClause = `WHERE (c.razon_social LIKE ? ESCAPE '\\\\' OR c.nit LIKE ? ESCAPE '\\\\')`;
       whereValues = [like, like];
     }
 
     const [rows] = await pool.execute(
-      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad, activo
-         FROM clientes
+      `SELECT c.id, c.razon_social, c.nit, c.contacto, c.email, c.telefono, c.direccion, c.ciudad,
+              c.id_origen_cliente, oc.nombre AS origen_cliente, c.activo
+         FROM clientes c
+         LEFT JOIN origenes_cliente oc ON oc.id = c.id_origen_cliente
          ${whereClause}
-        ORDER BY razon_social ASC
+        ORDER BY c.razon_social ASC
         LIMIT ${limitNum} OFFSET ${offset}`,
       whereValues
     );
@@ -145,10 +153,10 @@ const ClientModel = {
   // Returns the insertId of the newly created row.
   // Throws ER_DUP_ENTRY if the NIT already exists (handled by controller).
   // ---------------------------------------------------------------------------
-  async create({ razon_social, nit, contacto, email, telefono, direccion, ciudad }) {
+  async create({ razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente }) {
     const [result] = await pool.execute(
-      `INSERT INTO clientes (razon_social, nit, contacto, email, telefono, direccion, ciudad)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO clientes (razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         String(razon_social).trim(),
         nit       ? String(nit).trim()       : null,
@@ -157,6 +165,7 @@ const ClientModel = {
         telefono  ? String(telefono).trim()  : null,
         direccion ? String(direccion).trim() : null,
         ciudad    ? String(ciudad).trim()    : null,
+        id_origen_cliente ?? null,
       ]
     );
     return result.insertId;
@@ -176,17 +185,18 @@ const ClientModel = {
   // Throws ER_DUP_ENTRY if the new NIT belongs to a DIFFERENT client (handled
   // by controller, same as create).
   // ---------------------------------------------------------------------------
-  async update(id, { razon_social, nit, contacto, email, telefono, direccion, ciudad, activo }) {
+  async update(id, { razon_social, nit, contacto, email, telefono, direccion, ciudad, activo, id_origen_cliente }) {
     const [result] = await pool.execute(
       `UPDATE clientes
-          SET razon_social = ?,
-              nit          = ?,
-              contacto     = ?,
-              email        = ?,
-              telefono     = ?,
-              direccion    = ?,
-              ciudad       = ?,
-              activo       = ?
+          SET razon_social      = ?,
+              nit               = ?,
+              contacto          = ?,
+              email             = ?,
+              telefono          = ?,
+              direccion         = ?,
+              ciudad            = ?,
+              id_origen_cliente = ?,
+              activo            = ?
         WHERE id = ?`,
       [
         String(razon_social).trim(),
@@ -196,6 +206,7 @@ const ClientModel = {
         telefono  ? String(telefono).trim()  : null,
         direccion ? String(direccion).trim() : null,
         ciudad    ? String(ciudad).trim()    : null,
+        id_origen_cliente ?? null,
         activo ? 1 : 0,
         parseInt(id, 10),
       ]

@@ -39,6 +39,7 @@ const quotationRoutes   = require('./routes/quotationRoutes');
 const userRoutes        = require('./routes/userRoutes');
 const clientRoutes      = require('./routes/clientRoutes');
 const brandRoutes       = require('./routes/brandRoutes');
+const origenClienteRoutes = require('./routes/origenClienteRoutes');
 const reportesRoutes    = require('./routes/reportesRoutes');
 const auditoriaRoutes   = require('./routes/auditoriaRoutes');
 
@@ -252,6 +253,7 @@ app.use('/api/cotizaciones', quotationRoutes);    // CRUD /api/cotizaciones
 app.use('/api/usuarios',      userRoutes);         // CRUD /api/usuarios (Jefe only)
 app.use('/api/clientes',      clientRoutes);       // GET|POST /api/clientes (all roles)
 app.use('/api/marcas',        brandRoutes);        // GET|POST /api/marcas (brand catalog)
+app.use('/api/origenes-cliente', origenClienteRoutes); // GET|POST /api/origenes-cliente (client origin catalog)
 app.use('/api/reportes',      reportesRoutes);     // GET /api/reportes/progreso (Jefe/SysAdmin)
 app.use('/api/auditoria',     auditoriaRoutes);     // GET /api/auditoria (Jefe/Administracion/SysAdmin)
 
