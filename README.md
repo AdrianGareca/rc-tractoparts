@@ -749,6 +749,7 @@ docker compose exec db mysqldump -u root -p rc_tractoparts > backup.sql   # DB b
 | `upgrade_2026_fecha_confirmacion.sql` | `cotizaciones.fecha_confirmacion` + historical backfill |
 | `upgrade_2026_delegacion_ampliada.sql` | Delegation support (`can_approve_quotations`) |
 | `upgrade_2026_cliente_direccion_ciudad.sql` | `clientes.direccion` / `clientes.ciudad` (no-op on DBs whose schema already has them) |
+| `upgrade_2026_origenes_cliente.sql` | `origenes_cliente` catalog + `clientes.id_origen_cliente` (idempotent) |
 
 **Procedure** (order matters — migrate *before* rebuilding the app, so the new code never queries columns that don't exist yet; see the flow in [§3.7](#37-release--schema-migration-flow)):
 

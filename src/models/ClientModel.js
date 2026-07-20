@@ -24,13 +24,11 @@ const ClientModel = {
     const escaped = String(q).trim().replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
     const like = `%${escaped}%`;
     const [rows] = await pool.execute(
-      `SELECT c.id, c.razon_social, c.nit, c.contacto, c.email, c.telefono, c.direccion, c.ciudad,
-              c.id_origen_cliente, oc.nombre AS origen_cliente
-         FROM clientes c
-         LEFT JOIN origenes_cliente oc ON oc.id = c.id_origen_cliente
-        WHERE c.activo = 1
-          AND (c.razon_social LIKE ? ESCAPE '\\\\' OR c.nit LIKE ? ESCAPE '\\\\')
-        ORDER BY c.razon_social ASC
+      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente
+         FROM clientes
+        WHERE activo = 1
+          AND (razon_social LIKE ? ESCAPE '\\\\' OR nit LIKE ? ESCAPE '\\\\')
+        ORDER BY razon_social ASC
         LIMIT 20`,
       [like, like]
     );
@@ -42,11 +40,9 @@ const ClientModel = {
   // ---------------------------------------------------------------------------
   async findById(id) {
     const [[row]] = await pool.execute(
-      `SELECT c.id, c.razon_social, c.nit, c.contacto, c.email, c.telefono, c.direccion, c.ciudad,
-              c.id_origen_cliente, oc.nombre AS origen_cliente
-         FROM clientes c
-         LEFT JOIN origenes_cliente oc ON oc.id = c.id_origen_cliente
-        WHERE c.id = ? AND c.activo = 1
+      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente
+         FROM clientes
+        WHERE id = ? AND activo = 1
         LIMIT 1`,
       [parseInt(id, 10)]
     );
@@ -61,11 +57,9 @@ const ClientModel = {
   // ---------------------------------------------------------------------------
   async findByIdAny(id) {
     const [[row]] = await pool.execute(
-      `SELECT c.id, c.razon_social, c.nit, c.contacto, c.email, c.telefono, c.direccion, c.ciudad,
-              c.id_origen_cliente, oc.nombre AS origen_cliente, c.activo
-         FROM clientes c
-         LEFT JOIN origenes_cliente oc ON oc.id = c.id_origen_cliente
-        WHERE c.id = ?
+      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente, activo
+         FROM clientes
+        WHERE id = ?
         LIMIT 1`,
       [parseInt(id, 10)]
     );
@@ -92,17 +86,15 @@ const ClientModel = {
     if (trimmed) {
       const escaped = trimmed.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
       const like = `%${escaped}%`;
-      whereClause = `WHERE (c.razon_social LIKE ? ESCAPE '\\\\' OR c.nit LIKE ? ESCAPE '\\\\')`;
+      whereClause = `WHERE (razon_social LIKE ? ESCAPE '\\\\' OR nit LIKE ? ESCAPE '\\\\')`;
       whereValues = [like, like];
     }
 
     const [rows] = await pool.execute(
-      `SELECT c.id, c.razon_social, c.nit, c.contacto, c.email, c.telefono, c.direccion, c.ciudad,
-              c.id_origen_cliente, oc.nombre AS origen_cliente, c.activo
-         FROM clientes c
-         LEFT JOIN origenes_cliente oc ON oc.id = c.id_origen_cliente
+      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente, activo
+         FROM clientes
          ${whereClause}
-        ORDER BY c.razon_social ASC
+        ORDER BY razon_social ASC
         LIMIT ${limitNum} OFFSET ${offset}`,
       whereValues
     );

@@ -17,10 +17,8 @@ const authorize        = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
 
-// Jefe + Administracion + SysAdmin can view, create, and edit users
+// Jefe + Administracion + SysAdmin can view, create, edit, and deactivate users
 const userMgmtRoles = [authenticate, authorize(['Jefe', 'Administracion', 'SysAdmin'])];
-// Only Jefe and SysAdmin can deactivate users (destructive operation)
-const jefeOnly      = [authenticate, authorize(['Jefe', 'SysAdmin'])];
 
 /**
  * @swagger

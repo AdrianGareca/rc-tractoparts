@@ -1485,10 +1485,6 @@ class FormMediator {
 // Returns a cleanup function that removes event listeners when the form closes.
 // =============================================================================
 export function mountQuotationForm(container, { onSuccess, onCancel, quotation = null } = {}) {
-  // Diagnostic banner — if you DON'T see this in the console when opening the
-  // form, your browser is running an OLD cached copy of this file (do a hard
-  // reload: Ctrl+Shift+R, or DevTools → Network → "Disable cache").
-  console.log('%c[quotationForm] v3 — Enter no envía + click-fuera no cierra','color:#16a34a;font-weight:bold');
   const mediator = new FormMediator(container, quotation);
   mediator.render(onSuccess, onCancel);
   // Callable teardown, same as before — plus an `isDirty()` escape hatch so the

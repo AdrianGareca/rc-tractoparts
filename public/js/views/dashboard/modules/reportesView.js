@@ -67,6 +67,15 @@ function presetRange(preset) {
 // only forwards whatever range is currently selected.
 // ---------------------------------------------------------------------------
 async function downloadReportePdf(btn, desde, hasta) {
+  // A partial range (only one of the two dates filled) would otherwise be
+  // silently dropped below (desde && hasta) and fall back to the backend's
+  // default period with no indication to the user — mirror the explicit
+  // validation loadReportesData already does for the on-screen filter.
+  if ((desde && !hasta) || (!desde && hasta)) {
+    showToast('Selecciona una fecha de inicio y una de fin, o dejá ambas vacías para el histórico completo.', 'error');
+    return;
+  }
+
   const original = btn.textContent;
   btn.disabled = true;
   btn.textContent = '…';

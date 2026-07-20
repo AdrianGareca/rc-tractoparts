@@ -102,12 +102,20 @@ function initSocket(httpServer) {
 
   // ── Authentication — every connecting socket must present a valid, current JWT ──
   io.use(async (socket, next) => {
-    try {
-      const token = socket.handshake.auth?.token;
-      if (!token) return next(new Error('Authentication required.'));
+    const token = socket.handshake.auth?.token;
+    if (!token) return next(new Error('Authentication required.'));
 
-      const payload = jwt.verify(token, process.env.JWT_SECRET);
-      const user    = await UserModel.findById(payload.id);
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET);
+    } catch {
+      // Expired/invalid tokens are routine (not exceptional) — same silent
+      // treatment as authMiddleware's outer catch.
+      return next(new Error('Authentication failed.'));
+    }
+
+    try {
+      const user = await UserModel.findById(payload.id);
 
       if (!user || !user.activo) return next(new Error('Session no longer valid.'));
 
@@ -125,7 +133,10 @@ function initSocket(httpServer) {
         rol:              user.rol,
       };
       next();
-    } catch (err) {
+    } catch (dbErr) {
+      // Unlike an expired token, a DB lookup failure here is unexpected and
+      // worth surfacing — mirrors authMiddleware's non-fatal token_version warn.
+      console.warn('[socketServer] Auth DB lookup failed, connection rejected (non-fatal):', dbErr.message);
       next(new Error('Authentication failed.'));
     }
   });

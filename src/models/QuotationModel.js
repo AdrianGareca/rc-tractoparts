@@ -1268,40 +1268,6 @@ const QuotationModel = {
   // ===========================================================================
 
   // ---------------------------------------------------------------------------
-  // findProformasHoy — quotations whose fecha_emision equals the current server
-  // date (CURDATE()). Used by the "Proformas del Día" executive widget.
-  // Optionally scoped to a single executive.
-  // ---------------------------------------------------------------------------
-  async findProformasHoy(id_ejecutivo = null) {
-    const values = [];
-    let extraWhere = 'WHERE c.fecha_emision = CURDATE()';
-    if (id_ejecutivo) {
-      extraWhere += ' AND c.id_ejecutivo = ?';
-      values.push(parseInt(id_ejecutivo, 10));
-    }
-
-    const sql = `
-      SELECT
-        c.id,
-        c.numero_correlativo,
-        cl.razon_social    AS cliente_nombre,
-        u.nombre_completo   AS ejecutivo_nombre,
-        c.monto_total,
-        c.moneda,
-        c.estado,
-        c.fecha_emision,
-        c.fecha_validez
-      FROM cotizaciones c
-      ${BASE_JOINS}
-      ${extraWhere}
-      ORDER BY c.creado_en DESC
-    `;
-
-    const [rows] = await pool.execute(sql, values);
-    return rows;
-  },
-
-  // ---------------------------------------------------------------------------
   // findNotificacionesPendientes — Returns quotations that were sent back to
   // 'Pendiente' via a change-request from Administracion or Jefe, signalling
   // the assigned Ejecutivo that corrections are required.

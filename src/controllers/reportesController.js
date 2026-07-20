@@ -196,18 +196,30 @@ const ReportesController = {
         clientesPorOrigen: advanced.clientes_por_origen,
       });
 
-      await logEvent({
-        id_usuario:     req.user.id,
-        nombre_usuario: req.user.nombre_usuario,
-        accion:         AuditActions.GENERAR_REPORTE_PDF,
-        entidad:        'reportes',
-        id_entidad:     null,
-        detalle:        { periodo, modo: isManager ? 'company' : 'individual' },
-        ip_origen:      req.ip || req.socket?.remoteAddress || null,
-        resultado:      'exito',
-      });
+      // Audit logging failures must never mask a PDF that was already
+      // generated successfully — same non-fatal contract as
+      // quotationStateController.updateStatus.
+      try {
+        await logEvent({
+          id_usuario:     req.user.id,
+          nombre_usuario: req.user.nombre_usuario,
+          accion:         AuditActions.GENERAR_REPORTE_PDF,
+          entidad:        'reportes',
+          id_entidad:     null,
+          detalle:        { periodo, modo: isManager ? 'company' : 'individual' },
+          ip_origen:      req.ip || req.socket?.remoteAddress || null,
+          resultado:      'exito',
+        });
+      } catch (auditErr) {
+        console.warn('[ReportesController.getReportePdf] Audit logging failed (non-fatal):', auditErr.message);
+      }
 
-      const safePeriodo = periodo.replace(/[^\w-]/g, '_');
+      // Strip accents (NFD-decompose) before the safe-char filter so accented
+      // periods don't degrade into runs of underscores — mirrors
+      // buildDownloadBaseName's sanitize() in timelineView.js.
+      const safePeriodo = periodo
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^\w-]/g, '_');
       const filename = `Reporte_${isManager ? 'General' : 'Individual'}_${safePeriodo}.pdf`;
 
       res.setHeader('Content-Type', 'application/pdf');

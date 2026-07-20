@@ -128,9 +128,14 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
 
   // ── Origen del cliente — load catalog and preselect the client's current value ──
   const origenSelect = overlay.querySelector('#nc-origen');
+  // Guards against a race: if the user creates a new origin via "+" (below)
+  // before this initial GET resolves (slow/degraded network), a late
+  // innerHTML replacement here would silently wipe out that fresh selection.
+  let origenLocallyModified = false;
   (async () => {
     try {
       const resp     = await api.get('/api/origenes-cliente');
+      if (origenLocallyModified) return;
       const origenes = resp.data ?? [];
       const current  = client?.id_origen_cliente ?? '';
       origenSelect.innerHTML =
@@ -163,6 +168,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
       opt.textContent = origen.nombre;
       opt.selected    = true;
       origenSelect.appendChild(opt);
+      origenLocallyModified = true;
       origenNewRow.style.display = 'none';
       origenNewInput.value = '';
       showToast(`Origen "${origen.nombre}" registrado y seleccionado.`, 'success');
@@ -177,6 +183,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
           origenSelect.appendChild(opt);
         }
         origenSelect.value = String(existing.id);
+        origenLocallyModified = true;
         origenNewRow.style.display = 'none';
         origenNewInput.value = '';
         showToast(`Origen "${existing.nombre}" ya existe. Seleccionado automáticamente.`, 'info');
