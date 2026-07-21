@@ -193,6 +193,24 @@ class TotalsObserver extends Observer {
   }
 }
 
+// ---------------------------------------------------------------------------
+// nextCorrelativoOf — "SC-2026/000123" → "SC-2026/000124".
+//
+// Used only to show a second executive an APPROXIMATE preview while someone
+// else holds the draft reservation. It is deliberately not authoritative: the
+// real serial is assigned at save time by generateCorrelativo's
+// SELECT…FOR UPDATE, so the value shown here is informational.
+//
+// Returns null when the serial does not end in digits, so callers can fall
+// back rather than render a corrupted number.
+// ---------------------------------------------------------------------------
+function nextCorrelativoOf(numero) {
+  const m = /^(.*?)(\d+)$/.exec(String(numero ?? '').trim());
+  if (!m) return null;
+  const [, prefix, digits] = m;
+  return prefix + String(Number(digits) + 1).padStart(digits.length, '0');
+}
+
 // =============================================================================
 // MEDIATOR PATTERN — Form Mediator
 // =============================================================================
@@ -388,20 +406,36 @@ class FormMediator {
     }
   }
 
-  /** Render (or clear) the "someone else is drafting this number" banner. */
+  /** Render (or clear) the "someone else is drafting this number" notice. */
   _renderLockState(state) {
     const banner = this.#container.querySelector('#qf-lock-banner');
     if (!banner) return;
 
     if (state?.locked && !this.#hasDraftLock) {
-      const nombre = escText(state.ejecutivo?.nombre ?? 'otro ejecutivo');
-      const numero = escText(state.numero_correlativo ?? '');
+      // Informational, NOT a warning: there is no duplicate risk to avoid here.
+      // The serial is allocated atomically at save time (generateCorrelativo's
+      // SELECT…FOR UPDATE), so whoever saves first takes this number and this
+      // form simply gets the following one. Telling the user to wait would ask
+      // them to block on something the database already handles.
+      const nombre  = escText(state.ejecutivo?.nombre ?? 'otro ejecutivo');
+      const numero  = escText(state.numero_correlativo ?? '');
+      const proximo = nextCorrelativoOf(state.numero_correlativo);
+
       banner.innerHTML =
-        `⚠️ Atención: El ejecutivo <strong>${nombre}</strong> ya está redactando la cotización ` +
-        `<strong>${numero}</strong> en este momento. Espera a que termine o coordina con él para evitar duplicados.`;
-      banner.classList.add('show');
+        `ℹ️ <strong>${nombre}</strong> está redactando la cotización <strong>${numero}</strong> ` +
+        `en este momento. Podés continuar normalmente: al guardar se te asignará ` +
+        (proximo
+          ? `el siguiente número disponible (aprox. <strong>${escText(proximo)}</strong>).`
+          : `el siguiente número disponible.`);
+      banner.classList.remove('alert-warning');
+      banner.classList.add('alert-info', 'show');
+
+      // Show the approximate next serial instead of the one already taken, so
+      // the badge stops contradicting the notice right below it.
+      if (proximo) this._updateCorrelativoPreview(`${proximo} (aprox.)`);
     } else if (!state?.locked) {
-      banner.classList.remove('show');
+      banner.classList.remove('show', 'alert-info');
+      banner.classList.add('alert-warning');
       banner.innerHTML = '';
 
       // The previous holder just released the number — try to claim it as

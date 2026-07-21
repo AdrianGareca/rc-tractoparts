@@ -573,6 +573,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 .form-alert.alert-error   { background: rgba(239,68,68,.15);  border: 1px solid rgba(239,68,68,.4);  color: #fca5a5; }
 .form-alert.alert-warning { background: rgba(245,158,11,.15); border: 1px solid rgba(245,158,11,.4); color: #fcd34d; }
 .form-alert.alert-success { background: rgba(16,185,129,.15); border: 1px solid rgba(16,185,129,.4); color: #6ee7b7; }
+.form-alert.alert-info    { background: rgba(59,130,246,.15); border: 1px solid rgba(59,130,246,.4); color: #93c5fd; }
 
 /* ===== 12. BADGES / STATUS PILLS ===== */
 .badge {
