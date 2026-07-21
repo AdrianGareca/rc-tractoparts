@@ -393,7 +393,7 @@ export async function renderReportes(panel) {
     <div class="card" style="margin-bottom:1rem;">
       <div class="card-header">
         <h3>📅 Período del Reporte</h3>
-        <span class="text-muted text-sm">Filtra las métricas por un día o un rango de fechas</span>
+        <span class="text-muted text-sm">Filtra las métricas por fecha, ejecutivo y moneda</span>
       </div>
       <div class="filter-bar" style="padding:1rem;">
         <div class="form-group">
@@ -417,6 +417,19 @@ export async function renderReportes(panel) {
           <label class="form-label">Hasta</label>
           <input class="form-control" type="date" id="rep-hasta" value="${defHasta}" style="min-width:150px;" />
         </div>
+        <div class="form-group">
+          <label class="form-label">Ejecutivo</label>
+          <select class="form-control" id="rep-ejecutivo" style="min-width:170px;">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Moneda</label>
+          <select class="form-control" id="rep-moneda" style="min-width:130px;">
+            <option value="BOB" selected>Bolivianos (BOB)</option>
+            <option value="USD">Dólares (USD)</option>
+          </select>
+        </div>
         <button class="btn btn-primary btn-sm" id="rep-apply" style="align-self:flex-end;">Aplicar</button>
         <button class="btn btn-ghost btn-sm" id="rep-pdf" style="align-self:flex-end;">📄 Generar PDF</button>
       </div>
@@ -427,6 +440,24 @@ export async function renderReportes(panel) {
   const presetEl = panel.querySelector('#rep-preset');
   const desdeEl  = panel.querySelector('#rep-desde');
   const hastaEl  = panel.querySelector('#rep-hasta');
+  const ejecEl   = panel.querySelector('#rep-ejecutivo');
+  const monedaEl = panel.querySelector('#rep-moneda');
+
+  // Populate the Ejecutivo dropdown from /api/usuarios — same source and
+  // filtering as the "Todas las Cotizaciones" tab, so both filter bars always
+  // offer the identical list. Non-fatal: on failure it stays as "Todos" only.
+  try {
+    const usersResp  = await api.get('/api/usuarios');
+    const ejecutivos = (usersResp.data ?? [])
+      .filter((u) => u.rol === 'Ejecutivo' && u.activo)
+      .sort((a, b) => a.nombre_completo.localeCompare(b.nombre_completo));
+    for (const u of ejecutivos) {
+      const opt = document.createElement('option');
+      opt.value       = u.id;
+      opt.textContent = u.nombre_completo;
+      ejecEl.appendChild(opt);
+    }
+  } catch { /* dropdown degrades gracefully to "Todos" only */ }
 
   // Choosing a quick-range preset fills the two date inputs.
   presetEl.addEventListener('change', () => {
@@ -442,20 +473,39 @@ export async function renderReportes(panel) {
   );
 
   panel.querySelector('#rep-apply').addEventListener('click', () => {
-    loadReportesData(panel, desdeEl.value, hastaEl.value);
+    loadReportesData(panel, desdeEl.value, hastaEl.value, ejecEl.value, monedaEl.value);
+  });
+
+  // The currency selector is a pure display switch: both BOB and USD totals
+  // already come back in every response, so it re-renders from the cached
+  // payload instead of hitting the API again. Nothing is converted between
+  // currencies — each total counts only the quotations issued in that currency.
+  monedaEl.addEventListener('change', () => {
+    const cached = panel._reportesCache;
+    if (!cached) return;
+    const dataEl = panel.querySelector('#reportes-data');
+    if (dataEl) {
+      dataEl.innerHTML = buildReportesDataHTML(
+        cached.progresoRes, cached.advancedRes, monedaEl.value, cached.ejecutivoId
+      );
+    }
   });
 
   panel.querySelector('#rep-pdf').addEventListener('click', (e) =>
     downloadReportePdf(e.currentTarget, desdeEl.value, hastaEl.value));
 
-  await loadReportesData(panel, defDesde, defHasta);
+  await loadReportesData(panel, defDesde, defHasta, '', monedaEl.value);
 }
 
 // ---------------------------------------------------------------------------
-// loadReportesData — fetches both report endpoints for the given date range and
-// renders the data section (leaving the filter bar untouched).
+// loadReportesData — fetches both report endpoints for the given date range,
+// optionally scoped to one executive, and renders the data section (leaving the
+// filter bar untouched).
+//
+// @param {string} ejecutivoId — '' for the company-wide view, or a user id
+// @param {string} moneda      — 'BOB' | 'USD', which volume figure to display
 // ---------------------------------------------------------------------------
-async function loadReportesData(panel, desde, hasta) {
+async function loadReportesData(panel, desde, hasta, ejecutivoId = '', moneda = 'BOB') {
   const dataEl = panel.querySelector('#reportes-data');
   if (!dataEl) return;
 
@@ -470,14 +520,19 @@ async function loadReportesData(panel, desde, hasta) {
 
   dataEl.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
   try {
-    const qs = `?fecha_desde=${encodeURIComponent(desde)}&fecha_hasta=${encodeURIComponent(hasta)}`;
+    let qs = `?fecha_desde=${encodeURIComponent(desde)}&fecha_hasta=${encodeURIComponent(hasta)}`;
+    if (ejecutivoId) qs += `&id_ejecutivo=${encodeURIComponent(ejecutivoId)}`;
     // Fire both requests in parallel — independent data sets
     const [progresoRes, advancedRes] = await Promise.all([
       api.get('/api/reportes/progreso' + qs),
       api.get('/api/reportes/advanced' + qs),
     ]);
-    dataEl.innerHTML = buildReportesDataHTML(progresoRes, advancedRes);
+    // Cache the raw payloads so switching currency re-renders instantly
+    // without a second round-trip (both currencies are always present).
+    panel._reportesCache = { progresoRes, advancedRes, ejecutivoId };
+    dataEl.innerHTML = buildReportesDataHTML(progresoRes, advancedRes, moneda, ejecutivoId);
   } catch (err) {
+    panel._reportesCache = null;
     dataEl.innerHTML = `<div class="empty-state"><p>Error cargando reportes: ${escHtml(err.message)}</p></div>`;
   }
 }
@@ -486,7 +541,7 @@ async function loadReportesData(panel, desde, hasta) {
 // buildReportesDataHTML — builds the full analytics HTML (stats grid + monthly
 // executive breakdown + BI tables) from the two API responses.
 // ---------------------------------------------------------------------------
-function buildReportesDataHTML(progresoRes, advancedRes) {
+function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecutivoId = '') {
     // ── Progreso data ─────────────────────────────────────────────────────
     const {
       volumen       = {},
@@ -495,8 +550,16 @@ function buildReportesDataHTML(progresoRes, advancedRes) {
     } = progresoRes.data ?? {};
     const periodo = progresoRes.periodo ?? '—';
 
-    const volUSD     = Number(volumen.total_mes_usd   ?? 0).toFixed(2);
-    const volBOB     = Number(volumen.total_mes_bob   ?? 0).toFixed(2);
+    // Currency display switch — NOT a conversion. Each figure counts only the
+    // quotations issued in that currency, so BOB and USD are independent totals
+    // and never add up to a combined "grand total".
+    const isUSD      = moneda === 'USD';
+    const monLabel   = isUSD ? 'USD' : 'BOB';
+    const monAccent  = isUSD ? '#3B82F6' : '#8B5CF6';
+    const volSel     = Number(
+      (isUSD ? volumen.total_mes_usd : volumen.total_mes_bob) ?? 0
+    ).toFixed(2);
+
     const totalCot   = volumen.total_cotizaciones ?? 0;
     const ratioPct   = conversion.ratio_pct       ?? '0.0';
     const aceptadas  = conversion.total_aceptadas  ?? 0;
@@ -511,20 +574,27 @@ function buildReportesDataHTML(progresoRes, advancedRes) {
       clientes_por_origen = [],
     } = advancedRes.data ?? {};
 
+    // When one executive is selected, por_ejecutivo collapses to that single
+    // row — take their name from it so every heading states plainly whose
+    // figures are on screen rather than silently showing a narrowed report.
+    const scopedTo = ejecutivoId ? (por_ejecutivo[0]?.ejecutivo ?? null) : null;
+    const alcance  = scopedTo
+      ? ` · ${escHtml(scopedTo)}`
+      : (ejecutivoId ? ' · Ejecutivo seleccionado' : '');
+
     return `
       <!-- ── Stats grid ── -->
       <div class="card" style="margin-bottom:1rem;">
         <div class="card-header">
-          <h3>📊 Dashboard de Rendimiento — ${escHtml(periodo)}</h3>
+          <h3>📊 Dashboard de Rendimiento — ${escHtml(periodo)}${alcance}</h3>
+          ${ejecutivoId
+            ? `<span class="text-muted text-sm">Métricas de un solo ejecutivo — no son los totales de la empresa</span>`
+            : ''}
         </div>
         <div class="stats-grid" style="padding:1rem 1rem 0;">
-          <div class="stat-card" style="--stat-accent:#3B82F6;">
-            <div class="stat-card-value">${volUSD}</div>
-            <div class="stat-card-label">Volumen USD (período)</div>
-          </div>
-          <div class="stat-card" style="--stat-accent:#8B5CF6;">
-            <div class="stat-card-value">${volBOB}</div>
-            <div class="stat-card-label">Volumen BOB (período)</div>
+          <div class="stat-card" style="--stat-accent:${monAccent};">
+            <div class="stat-card-value">${volSel}</div>
+            <div class="stat-card-label">Volumen ${monLabel} (período)</div>
           </div>
           <div class="stat-card" style="--stat-accent:#F59E0B;">
             <div class="stat-card-value">${totalCot}</div>
@@ -560,7 +630,7 @@ function buildReportesDataHTML(progresoRes, advancedRes) {
                 <th class="text-right">Rechazadas</th>
                 <th class="text-right">Pendientes</th>
                 <th class="text-right">En Revisión</th>
-                <th class="text-right">Volumen USD</th>
+                <th class="text-right">Volumen ${monLabel}</th>
               </tr>
             </thead>
             <tbody>
@@ -574,7 +644,9 @@ function buildReportesDataHTML(progresoRes, advancedRes) {
                       <td class="text-right" style="color:#EF4444;">${e.rechazadas}</td>
                       <td class="text-right" style="color:#F59E0B;">${e.pendientes}</td>
                       <td class="text-right" style="color:#F97316;">${e.en_revision}</td>
-                      <td class="text-right fw-600">USD ${Number(e.volumen_usd).toFixed(2)}</td>
+                      <td class="text-right fw-600">${monLabel} ${Number(
+                        (isUSD ? e.volumen_usd : e.volumen_bob) ?? 0
+                      ).toFixed(2)}</td>
                     </tr>`).join('')
               }
             </tbody>
@@ -589,6 +661,11 @@ function buildReportesDataHTML(progresoRes, advancedRes) {
       ${_buildLeaderboardTable(leaderboard, rol)}
 
       <!-- ── BI: Clientes por Origen ── -->
-      ${_buildClientesPorOrigenTable(clientes_por_origen)}
+      <!-- Omitted when scoped to one executive: the backend only computes this
+           for company-wide reports (it counts ACTIVE CLIENTS, not quotations,
+           so it is not an executive-level metric). Rendering it would show an
+           empty "sin clientes clasificados" table that wrongly reads as
+           "there is no data" instead of "this metric does not apply here". -->
+      ${ejecutivoId ? '' : _buildClientesPorOrigenTable(clientes_por_origen)}
     `;
 }

@@ -19,12 +19,26 @@ const { pool } = require('../../config/db');
 //
 // @param {string} fechaDesde — 'YYYY-MM-DD' inclusive lower bound
 // @param {string} fechaHasta — 'YYYY-MM-DD' inclusive upper bound
+// @param {number|null} ejecutivoId — Optional: restrict every dataset to a
+//   single executive. null (the default) keeps the company-wide view, so all
+//   pre-existing callers are unaffected. The CALLER is responsible for deciding
+//   whether the requesting user is allowed to scope by executive — see
+//   ReportesController, which only honours it for MANAGER_ROLES.
 // ---------------------------------------------------------------------------
-async function getProgreso(fechaDesde, fechaHasta) {
+async function getProgreso(fechaDesde, fechaHasta, ejecutivoId = null) {
   // fecha_emision is a DATE column, so BETWEEN is an inclusive [desde, hasta]
   // range. The controller always resolves a concrete range (defaulting to the
   // current month) so every query here filters by the same window.
   const rangeParams = [fechaDesde, fechaHasta];
+
+  // Optional per-executive scoping. Built as a clause/param pair so the three
+  // queries below stay parameterized (the id is never interpolated into SQL).
+  // The two unaliased queries use the bare column; the third aliases the table.
+  const hasEjec    = ejecutivoId != null;
+  const ejecPlain  = hasEjec ? 'AND id_ejecutivo = ?'   : '';
+  const ejecScoped = hasEjec ? 'AND c.id_ejecutivo = ?' : '';
+  const ejecParam  = hasEjec ? [parseInt(ejecutivoId, 10)] : [];
+  const scopedParams = [...rangeParams, ...ejecParam];
 
   // Volume within the selected range
   const [volumenRows] = await pool.execute(`
@@ -34,7 +48,8 @@ async function getProgreso(fechaDesde, fechaHasta) {
         COUNT(*)                                                   AS total_cotizaciones
       FROM cotizaciones
       WHERE fecha_emision BETWEEN ? AND ?
-    `, rangeParams);
+        ${ejecPlain}
+    `, scopedParams);
 
   // Conversion ratio within the selected range.
   // Counts both 'Confirmada' (current) and legacy 'Aceptada' rows.
@@ -45,7 +60,8 @@ async function getProgreso(fechaDesde, fechaHasta) {
       FROM cotizaciones
       WHERE estado IN ('Confirmada', 'Aceptada', 'Rechazada')
         AND fecha_emision BETWEEN ? AND ?
-    `, rangeParams);
+        ${ejecPlain}
+    `, scopedParams);
 
   // Per-executive breakdown within the selected range
   const [porEjecutivoRows] = await pool.execute(`
@@ -56,13 +72,15 @@ async function getProgreso(fechaDesde, fechaHasta) {
         SUM(CASE WHEN c.estado = 'Rechazada' THEN 1 ELSE 0 END)      AS rechazadas,
         SUM(CASE WHEN c.estado = 'Pendiente' THEN 1 ELSE 0 END)      AS pendientes,
         SUM(CASE WHEN c.estado = 'En revision' THEN 1 ELSE 0 END)    AS en_revision,
-        SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END) AS volumen_usd
+        SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END) AS volumen_usd,
+        SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END) AS volumen_bob
       FROM cotizaciones c
       INNER JOIN usuarios u ON u.id = c.id_ejecutivo
       WHERE c.fecha_emision BETWEEN ? AND ?
+        ${ejecScoped}
       GROUP BY c.id_ejecutivo, u.nombre_completo
       ORDER BY volumen_usd DESC
-    `, rangeParams);
+    `, scopedParams);
 
   const vol        = volumenRows[0] || {};
   const conv       = conversionRows[0] || {};

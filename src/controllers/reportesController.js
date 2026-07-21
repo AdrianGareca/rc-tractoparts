@@ -69,6 +69,35 @@ function resolveDateRange(query, defaultToMonth) {
   return { desde: desde || null, hasta: hasta || null };
 }
 
+/**
+ * resolveEjecutivoScope — decides which executive the report is scoped to,
+ * and is the SINGLE place where that authorization decision is made.
+ *
+ * • Manager roles (Jefe / Administracion / SysAdmin) may pass ?id_ejecutivo=N
+ *   to drill into one executive; omitting it keeps the company-wide view.
+ * • Every other role is ALWAYS pinned to their own id. A supplied
+ *   id_ejecutivo is deliberately ignored rather than rejected, so an Ejecutivo
+ *   can never read another executive's figures by crafting the query string.
+ *
+ * @returns {{ ejecutivoId: number|null } | { error: string }}
+ */
+function resolveEjecutivoScope(req) {
+  if (!MANAGER_ROLES.has(req.user.rol)) {
+    return { ejecutivoId: req.user.id };
+  }
+
+  const raw = req.query.id_ejecutivo;
+  if (raw === undefined || raw === null || String(raw).trim() === '') {
+    return { ejecutivoId: null };   // company-wide
+  }
+
+  const parsed = parseInt(raw, 10);
+  if (isNaN(parsed) || parsed < 1 || String(parsed) !== String(raw).trim()) {
+    return { error: 'id_ejecutivo debe ser un entero positivo.' };
+  }
+  return { ejecutivoId: parsed };
+}
+
 const ReportesController = {
 
   // ---------------------------------------------------------------------------
@@ -83,7 +112,12 @@ const ReportesController = {
         return res.status(422).json({ success: false, message: range.error });
       }
 
-      const progreso = await QuotationModel.getProgreso(range.desde, range.hasta);
+      const scope = resolveEjecutivoScope(req);
+      if (scope.error) {
+        return res.status(422).json({ success: false, message: scope.error });
+      }
+
+      const progreso = await QuotationModel.getProgreso(range.desde, range.hasta, scope.ejecutivoId);
 
       // Human-readable label: a single day collapses to just that date.
       const periodo = range.desde === range.hasta
@@ -93,8 +127,9 @@ const ReportesController = {
       return res.status(200).json({
         success: true,
         periodo,
-        rango:   { desde: range.desde, hasta: range.hasta },
-        data:    progreso,
+        rango:        { desde: range.desde, hasta: range.hasta },
+        id_ejecutivo: scope.ejecutivoId,
+        data:         progreso,
       });
     } catch (error) {
       console.error('[ReportesController.getProgreso] Error:', error.message);
@@ -128,8 +163,13 @@ const ReportesController = {
       const rol = req.user.rol;
 
       // Enforce row-level isolation: executives only see their own records.
-      // MANAGER_ROLES bypass the filter and receive company-wide aggregates.
-      const ejecutivoId = MANAGER_ROLES.has(rol) ? null : req.user.id;
+      // MANAGER_ROLES receive company-wide aggregates, or a single executive's
+      // figures when they explicitly drill in via ?id_ejecutivo=N.
+      const scope = resolveEjecutivoScope(req);
+      if (scope.error) {
+        return res.status(422).json({ success: false, message: scope.error });
+      }
+      const ejecutivoId = scope.ejecutivoId;
 
       // Optional date range. Unlike /progreso, a missing bound means "all-time"
       // (defaultToMonth=false) so the executive personal dashboard is unchanged.
@@ -143,8 +183,9 @@ const ReportesController = {
       return res.status(200).json({
         success: true,
         rol,
-        rango:   { desde: range.desde, hasta: range.hasta },
-        data:    report,
+        rango:        { desde: range.desde, hasta: range.hasta },
+        id_ejecutivo: ejecutivoId,
+        data:         report,
       });
     } catch (error) {
       console.error('[ReportesController.getAdvancedReports] Error:', error.message);
