@@ -533,8 +533,9 @@ const QuotationController = {
 
   // ---------------------------------------------------------------------------
   // getQuotations — GET /api/cotizaciones  (All roles)
-  // Full filter set + pagination + sort. See QuotationModel._buildWhereClause
-  // for the complete list of accepted query parameters.
+  // Full filter set + pagination + sort. See buildWhereClause in
+  // src/models/quotation/whereBuilder.js for the complete list of accepted
+  // query parameters.
   // ---------------------------------------------------------------------------
   async getQuotations(req, res) {
     try {
