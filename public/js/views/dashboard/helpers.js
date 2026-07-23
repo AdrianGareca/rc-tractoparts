@@ -108,3 +108,22 @@ export function fmtAmount(n, currency = 'USD') {
   if (n == null) return '—';
   return `${currency} ${Number(n).toFixed(2)}`;
 }
+
+// File extension → emoji icon. Shared by licitacionModal.js (upload picker)
+// and licitacionesView.js (attached-documents list) so both stay in sync.
+const DOC_ICONS = {
+  pdf: '📄', doc: '📝', docx: '📝', xls: '📊', xlsx: '📊',
+  jpg: '🖼️', jpeg: '🖼️', png: '🖼️',
+};
+
+export function docIcon(nombre) {
+  const ext = (nombre.split('.').pop() || '').toLowerCase();
+  return DOC_ICONS[ext] || '📎';
+}
+
+export function fmtFileSize(bytes) {
+  if (bytes == null) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}

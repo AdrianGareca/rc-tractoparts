@@ -23,27 +23,9 @@
 
 import api, { showToast } from '../../../services/apiClient.js';
 import AuthSession from '../../../services/authSession.js';
-import { escHtml, fmtDate, fmtAmount, licitacionBadgeHtml } from '../helpers.js';
+import { escHtml, fmtDate, fmtAmount, licitacionBadgeHtml, docIcon, fmtFileSize } from '../helpers.js';
 import { buildTimelineHtml, saveBlobAs } from './timelineView.js';
 import { openLicitacionModal } from './licitacionModal.js';
-
-// File extension → emoji icon shown next to each document in the list.
-const DOC_ICONS = {
-  pdf: '📄', doc: '📝', docx: '📝', xls: '📊', xlsx: '📊',
-  jpg: '🖼️', jpeg: '🖼️', png: '🖼️',
-};
-
-function docIcon(nombre) {
-  const ext = (nombre.split('.').pop() || '').toLowerCase();
-  return DOC_ICONS[ext] || '📎';
-}
-
-function fmtFileSize(bytes) {
-  if (bytes == null) return '—';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 const ESTADOS = [
   'En preparacion', 'Cotizando', 'En evaluacion',
@@ -250,42 +232,25 @@ export async function mountLicitacionesTab(panel, opts = {}) {
       });
     });
 
+    // Adjuntar documentos (responsable/Jefe/SysAdmin, SIN restricción de estado
+    // — a diferencia de "Editar", disponible incluso en Presentada/Adjudicada/…)
+    overlay.querySelector('#licd-attach')?.addEventListener('click', () => {
+      openLicitacionModal({
+        mode: 'attach',
+        licitacion: lic,
+        mountTarget: document.body,
+        onSaved: () => { close(); openDetail(id); },
+      });
+    });
+
     // Create linked cotización (delegated Ejecutivo path)
     overlay.querySelector('#licd-crear-cot')?.addEventListener('click', () => {
       if (typeof onCreateCotizacion === 'function') { close(); onCreateCotizacion(lic); }
     });
 
-    // ── Documentos: subir (responsable/Jefe/SysAdmin) ────────────────────────
-    overlay.querySelector('#licd-doc-upload-btn')?.addEventListener('click', async () => {
-      const input = overlay.querySelector('#licd-doc-input');
-      const errEl = overlay.querySelector('#licd-doc-err');
-      if (errEl) errEl.textContent = '';
-
-      if (!input?.files || input.files.length === 0) {
-        if (errEl) errEl.textContent = 'Selecciona al menos un archivo.';
-        return;
-      }
-
-      const formData = new FormData();
-      Array.from(input.files).forEach((f) => formData.append('documentos', f));
-
-      const btn = overlay.querySelector('#licd-doc-upload-btn');
-      btn.disabled = true;
-      const original = btn.textContent;
-      btn.textContent = 'Subiendo…';
-      try {
-        await api.upload(`/api/licitaciones/${id}/documentos`, formData);
-        showToast('Documento(s) subido(s) correctamente.', 'success');
-        close();
-        openDetail(id); // reabre el detalle con la lista de documentos actualizada
-      } catch (err) {
-        if (errEl) errEl.textContent = err.data?.message || err.message || 'No se pudo subir el archivo.';
-        btn.disabled = false;
-        btn.textContent = original;
-      }
-    });
-
     // ── Documentos: descargar (todos los roles con acceso al detalle) ────────
+    // La subida de documentos se hace desde "Nueva/Editar Licitación"
+    // (licitacionModal.js) — aquí solo se listan, descargan y eliminan.
     overlay.querySelectorAll('[data-doc-download]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const docId   = btn.dataset.docDownload;
@@ -379,10 +344,22 @@ export async function mountLicitacionesTab(panel, opts = {}) {
       budgetHtml = `<div class="text-muted text-sm" style="margin-top:.5rem;">Sin presupuesto referencial definido.</div>`;
     }
 
-    // Linked cotizaciones table
+    // Linked cotizaciones table. El vínculo NO se crea desde acá: lo arma el
+    // ejecutivo comercial delegado (can_approve_quotations) desde su propio
+    // panel — por eso, si todavía no hay ninguna, se explica cómo se genera
+    // en vez de dejar el estado vacío sin contexto.
     const cots = lic.cotizaciones ?? [];
+    let noCotsHint = 'No se vinculó ninguna cotización a esta licitación.';
+    if (cots.length === 0 && lic.estado === 'En preparacion') {
+      noCotsHint = 'Pasá esta licitación a "Cotizando" para que el ejecutivo comercial delegado ' +
+        '(el que tiene el poder de aprobar cotizaciones) la vea en su panel de Licitaciones y pueda crear la cotización vinculada.';
+    } else if (cots.length === 0 && ['Cotizando', 'En evaluacion'].includes(lic.estado)) {
+      noCotsHint = 'El ejecutivo comercial delegado la crea desde su propio panel de Licitaciones ' +
+        '("➕ Crear cotización vinculada"), o cualquier ejecutivo puede vincularla eligiendo esta licitación ' +
+        'en el campo "Licitación asociada" al crear o editar una cotización normal.';
+    }
     const cotsHtml = cots.length === 0
-      ? '<p class="text-muted text-sm">Aún no hay cotizaciones vinculadas.</p>'
+      ? `<p class="text-muted text-sm">${escHtml(noCotsHint)}</p>`
       : `<div class="table-wrapper"><table class="data-table">
            <thead><tr><th>Correlativo</th><th>Estado</th><th>Monto</th><th>Ejecutivo</th></tr></thead>
            <tbody>${cots.map((c) => `
@@ -395,9 +372,10 @@ export async function mountLicitacionesTab(panel, opts = {}) {
            </tbody></table></div>`;
 
     // Documentos adjuntos: cualquiera con acceso al detalle puede ver/descargar;
-    // solo el responsable (o Jefe/SysAdmin) puede subir/eliminar.
+    // solo el responsable (o Jefe/SysAdmin) puede eliminarlos. La subida se hace
+    // desde "Nueva/Editar Licitación" (licitacionModal.js), no desde aquí.
     const docsListHtml = documentos.length === 0
-      ? '<p class="text-muted text-sm">Aún no hay documentos adjuntos.</p>'
+      ? `<p class="text-muted text-sm">Aún no hay documentos adjuntos.${canManageDocs ? ' Usá "📎 Adjuntar" para subir el primero.' : ''}</p>`
       : `<ul style="list-style:none;padding:0;margin:0;">
            ${documentos.map((d) => `
              <li style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px solid var(--border);">
@@ -409,15 +387,6 @@ export async function mountLicitacionesTab(panel, opts = {}) {
                ${canManageDocs ? `<button class="btn btn-ghost btn-sm" data-doc-delete="${d.id}" data-doc-name="${escHtml(d.nombre_original)}">🗑️</button>` : ''}
              </li>`).join('')}
          </ul>`;
-
-    const docsUploadHtml = canManageDocs
-      ? `<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.5rem;">
-           <input type="file" id="licd-doc-input" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" />
-           <button class="btn btn-primary btn-sm" id="licd-doc-upload-btn">Subir</button>
-         </div>
-         <span class="text-muted text-sm">PDF, Word, Excel o imágenes (JPG/PNG). Puedes seleccionar varios a la vez.</span>
-         <div class="form-error" id="licd-doc-err" style="color:var(--clr-red);min-height:1.2em;"></div>`
-      : '';
 
     const transButtons = trans.length > 0
       ? `<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem;">
@@ -440,6 +409,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
           <div style="display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between;">
             <div>${licitacionBadgeHtml(lic.estado)}
               ${canEdit ? '<button class="btn btn-ghost btn-sm" id="licd-edit" style="margin-left:.5rem;">✏️ Editar</button>' : ''}
+              ${canManageDocs ? '<button class="btn btn-ghost btn-sm" id="licd-attach" style="margin-left:.5rem;">📎 Adjuntar</button>' : ''}
               ${onCreateCotizacion && ['Cotizando', 'En evaluacion'].includes(lic.estado)
                 ? '<button class="btn btn-primary btn-sm" id="licd-crear-cot" style="margin-left:.5rem;">➕ Crear cotización vinculada</button>' : ''}
             </div>
@@ -460,7 +430,6 @@ export async function mountLicitacionesTab(panel, opts = {}) {
 
           <h5 style="margin:1rem 0 .35rem;">Documentos (${documentos.length})</h5>
           ${docsListHtml}
-          ${docsUploadHtml}
 
           <h5 style="margin:1rem 0 .35rem;">Cambiar estado</h5>
           ${transButtons}

@@ -1375,6 +1375,13 @@ body.modal-open .page-shell {
   max-width: 560px;
   box-shadow: var(--shadow-lg);
   animation: modal-pop .18s ease;
+  /* Cap the modal to the viewport (minus the overlay's 1rem padding on each
+     side) and lay it out as a column so the header stays pinned while only the
+     body scrolls. Without this, tall content (the licitación form / detail)
+     overflows the centered overlay off-screen with no way to scroll to it. */
+  max-height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
 }
 
 .sub-modal-header {
@@ -1383,6 +1390,7 @@ body.modal-open .page-shell {
   justify-content: space-between;
   padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;   /* header never shrinks — the body absorbs overflow instead */
 }
 
 .sub-modal-header h4 {
@@ -1392,6 +1400,9 @@ body.modal-open .page-shell {
 
 .sub-modal-body {
   padding: 1.25rem;
+  overflow-y: auto;   /* scroll the content internally when it exceeds the cap */
+  min-height: 0;      /* flexbox gotcha: without this a flex item won't shrink
+                         below its content, so overflow-y:auto never engages */
 }
 
 /* ===== 24. JEFE — APPROVAL STATE MACHINE BUTTONS ===== */
