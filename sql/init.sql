@@ -32,9 +32,10 @@
 --   13. Seed data
 --
 -- NOTE: The usuarios table is seeded with the three INITIAL PRODUCTION accounts
---       (SysAdmin, Jefe, Administradora). Their bcrypt hashes are real and were
---       generated with bcryptjs (cost 10). To rotate a password, generate a new
---       hash and replace it inline — see the "RAW PASSWORD" comments in section 2.
+--       (SysAdmin, Jefe, Administradora) in a LOCKED state — no credentials
+--       (plaintext or hashes) are stored in this repository. Activate them by
+--       running `npm run seed:execute` with the SEED_* passwords set in .env
+--       (see section 2 and scripts/seed-users.js).
 --       All Sales Executive ('Ejecutivo') accounts are created later, manually,
 --       from inside the platform by any of these three privileged accounts.
 -- =============================================================================
@@ -102,26 +103,26 @@ CREATE TABLE usuarios (
 -- =============================================================================
 -- INITIAL PRODUCTION ACCOUNTS  (exactly three — no test/fake users)
 -- =============================================================================
--- The login identifier is `nombre_usuario`. Hashes are real bcrypt (cost 10).
+-- SECURITY: NO credentials live in this repository. The three accounts below
+-- are seeded in a LOCKED state — the placeholder in password_hash is not a
+-- valid bcrypt hash, so bcrypt.compare() can never succeed and login is
+-- impossible until real passwords are provisioned.
 --
--- RAW PASSWORDS (rotate in production — regenerate the hash and replace inline):
---   id_rol reference → 1=Ejecutivo, 2=Administracion, 3=Jefe, 4=SysAdmin
+-- To activate them, set SEED_SYSADMIN_PASSWORD / SEED_JEFE_PASSWORD /
+-- SEED_ADMIN_PASSWORD in your local .env (never committed) and run:
 --
---   1) SysAdmin                 (SysAdmin)      RAW PASSWORD: Admin#RC2026
---   2) ronald                   (Jefe / Chief)  RAW PASSWORD: Ronald#RC2026
---   3) angelica                 (Administradora) RAW PASSWORD: Angelica#RC2026
+--   npm run seed:execute        # scripts/seed-users.js — hashes from .env
 --
--- To change a password: run
---   node -e "require('bcryptjs').hash('NEW_PASSWORD',10).then(console.log)"
--- and paste the resulting hash over the corresponding password_hash below.
+-- The script upserts by nombre_usuario, replacing the locked placeholder with
+-- a real bcrypt hash generated at runtime. See README § Installation.
 --
--- Sales Executives ('Ejecutivo', id_rol=1) are NOT seeded here; they are created
--- on demand from within the platform by any of the three accounts below
+-- Sales Executives ('Ejecutivo', id_rol=1) and 'Proyectos' users are NOT
+-- seeded here; they are created on demand from within the platform
 -- (POST /api/usuarios is authorized for Jefe, Administracion and SysAdmin).
 INSERT INTO usuarios (id, nombre_completo, nombre_usuario, password_hash, id_rol) VALUES
-  (1, 'Master Admin', 'SysAdmin', '$2a$10$9thlUvAa55IvprZJI77Hy.MnsgWkQPCrLahCQLJGmg79XocDGeYMm', 4), -- SysAdmin
-  (2, 'Ronald',       'ronald',                  '$2a$10$ZVlZ5jhQxYwXSCIiPYYdG.UsnafoQHa3a.231NwTVDN/CFb7Qpi9m', 3), -- Jefe
-  (3, 'Angélica',     'angelica',                '$2a$10$ClB54.CipxhexdK2.8GZbeH0R5kc5nIOmv5Zeqg21rjNjOoHmN95i', 2); -- Administradora
+  (1, 'Master Admin', 'SysAdmin',  '*LOCKED*run-seed-script-to-activate*', 4), -- SysAdmin
+  (2, 'Ronald',       'ronald',    '*LOCKED*run-seed-script-to-activate*', 3), -- Jefe
+  (3, 'Angélica',     'angelica',  '*LOCKED*run-seed-script-to-activate*', 2); -- Administradora
 
 -- =============================================================================
 -- 3. MARCAS  (Spare Part Brands Catalog)

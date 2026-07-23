@@ -41,7 +41,8 @@ El backend es una API REST en Node.js + Express respaldada por MySQL. El fronten
 
 - **Propósito:** Reemplazar las hojas de cálculo de proformas manuales con un flujo de trabajo controlado y auditado: los ejecutivos construyen cotizaciones, los jefes las aprueban, y el sistema genera un PDF corporativo consistente para el cliente.
 - **Empresa:** La entidad emisora principal es **Empresa unipersonal de Ronald Roca Cartagena** (anteriormente con la marca "RC Tractoparts"), permaneciendo **Roca Importaciones S.R.L.** activa como segunda entidad emisora. Importador de repuestos para maquinaria pesada (Volvo, Komatsu, John Deere, JCB, CAT, CASE) con sede en Santa Cruz, Bolivia. Ver [§14 Entidad de Negocio y Nomenclatura Legal](#14-entidad-de-negocio-y-nomenclatura-legal) para el detalle completo del refactor de renombrado y la tolerancia a datos heredados.
-- **Usuarios / roles:** `Ejecutivo`, `Administracion`, `Jefe`, `SysAdmin`, más un indicador de delegación por usuario `can_approve_quotations` (Delegación de Funciones).
+- **Usuarios / roles:** `Ejecutivo`, `Administracion`, `Jefe`, `SysAdmin`, `Proyectos` (ejecutivo de licitaciones), más un indicador de delegación por usuario `can_approve_quotations` (Delegación de Funciones).
+- **Módulo de Licitaciones:** entidad paraguas *licitación* (`1 licitación → N cotizaciones`). El rol `Proyectos` arma la licitación (convocante, presupuesto referencial, fecha límite) y la pasa al ejecutivo comercial delegado, que cotiza las vinculadas; entre ambos deciden si entra en presupuesto. Ciclo de vida completo con historial, auditoría y notificaciones — espejo del flujo de cotizaciones.
 - **Invariantes clave:** cada cambio de estado es validado por rol y auditado; cada cotización posee exactamente **un** PDF físico (regenerado en cada cambio relevante); todo el SQL es parametrizado; el correlativo se genera atómicamente bajo bloqueo de fila.
 
 ---
@@ -69,7 +70,7 @@ El backend es una API REST en Node.js + Express respaldada por MySQL. El fronten
 | Frontend | Vanilla JS (ES Modules), sin build |
 | Contenedorización | Docker (multi-stage) + Docker Compose |
 
-**Tablas de base de datos** (`sql/init.sql`): `roles`, `usuarios`, `marcas`, `clientes`, `productos`, `cotizaciones_correlativo`, `cotizaciones`, `cotizacion_detalles`, `auditoria`, `bitacora_auditoria`, `cotizacion_historial_estados`, `notificaciones`.
+**Tablas de base de datos** (`sql/init.sql`): `roles`, `usuarios`, `marcas`, `origenes_cliente`, `clientes`, `productos`, `cotizaciones_correlativo`, `cotizacion_borrador_lock`, `cotizaciones`, `cuentas_bancarias`, `cotizacion_detalles`, `auditoria`, `bitacora_auditoria`, `cotizacion_historial_estados`, `licitaciones_correlativo`, `licitaciones`, `licitacion_historial_estados`, `notificaciones`.
 
 La columna `cotizaciones.entidad_emisora` (razón social emisora impresa en el encabezado de cada PDF) se almacena como **`VARCHAR(150)`**, con amplio margen para el nombre legal de 44 caracteres `Empresa unipersonal de Ronald Roca Cartagena`.
 
@@ -78,6 +79,14 @@ La columna `cotizaciones.entidad_emisora` (razón social emisora impresa en el e
 ```
 Pendiente → En revision → En espera → Aprobada internamente → Enviada al cliente → Confirmada / Rechazada → Archivada
 ```
+
+**Máquina de estados de licitaciones** (aplicada por actor en `LicitacionModel.LICITACION_ROLE_TRANSITIONS` — *responsable* Proyectos, ejecutivo *delegado*, o Jefe/SysAdmin):
+
+```
+En preparacion → Cotizando → En evaluacion → Presentada → Adjudicada / No adjudicada → Archivada
+```
+
+Su correlativo (`LIC-YYYY/NNNN`) usa contador propio (`licitaciones_correlativo`) y nunca interfiere con la serie de cotizaciones.
 
 > **Nota histórica:** el estado de cotización confirmada fue renombrado de `Aceptada` a `Confirmada`. Una migración en `sql/init.sql` reescribe las filas heredadas `Aceptada` (y sus entradas de historial) a `Confirmada`, y el valor se conserva en listas de permitidos tolerantes para que los datos previos al renombrado nunca rompan la validación.
 
@@ -296,9 +305,9 @@ rc-tractoparts/
 │   ├── app.js                     # App Express: middlewares, Swagger, rutas, manejador de errores
 │   ├── config/
 │   │   └── db.js                  # Pool de conexiones MySQL (singleton) + ping de arranque
-│   ├── routes/                    # /api/auth, /api/cotizaciones, /api/usuarios, …
-│   ├── controllers/               # Manejadores de peticiones (incl. subcarpeta quotation/)
-│   ├── models/                    # ÚNICA capa que ejecuta SQL (todo parametrizado)
+│   ├── routes/                    # /api/auth, /api/cotizaciones, /api/licitaciones, /api/usuarios, …
+│   ├── controllers/               # Manejadores de peticiones (incl. quotation/ + licitacionController)
+│   ├── models/                    # ÚNICA capa que ejecuta SQL (fachada QuotationModel + quotation/, LicitacionModel, …)
 │   ├── middlewares/               # authMiddleware, roleMiddleware, auditMiddleware
 │   ├── validators/                # Esquemas Zod + factory validate()
 │   ├── services/
@@ -318,7 +327,7 @@ rc-tractoparts/
 │   ├── init.js                    # Ejecuta init.sql (conexión admin, multipleStatements)
 │   └── upgrade_*.sql              # Migraciones ADITIVAS puntuales para BDs vivas (ver §16.7)
 ├── scripts/
-│   └── seed-users.js              # Genera hashes bcrypt; siembra usuarios de dev/test
+│   └── seed-users.js              # Provisión de cuentas desde .env (activa las cuentas sembradas BLOQUEADAS)
 ├── tests/
 │   ├── unit/                      # Sin BD requerida
 │   └── integration/               # Requiere la base de datos de prueba
@@ -388,15 +397,19 @@ docker compose down -v            # Detener y ADEMÁS eliminar volúmenes (destr
 
 > ⚠️ `sql/init.sql` es **destructivo** — en la primera inicialización elimina cualquier base de datos `rc_tractoparts` existente. Solo se ejecuta automáticamente cuando el volumen `db_data` está vacío (primer arranque).
 
-**Cuentas iniciales sembradas por `init.sql`** (cámbialas en producción):
+**Cuentas iniciales — bootstrap seguro (cero credenciales en este repositorio):**
 
-| Usuario | Rol | Contraseña |
-|---|---|---|
-| `SysAdmin` | SysAdmin (4) | `Admin#RC2026` |
-| `ronald` | Jefe (3) | `Ronald#RC2026` |
-| `angelica` | Administracion (2) | `Angelica#RC2026` |
+`init.sql` siembra las tres cuentas iniciales (`SysAdmin`, `ronald`, `angelica`) en estado **BLOQUEADO**: su `password_hash` contiene un placeholder que no es un hash bcrypt válido, por lo que es imposible iniciar sesión hasta provisionar contraseñas reales. Para activarlas:
 
-Las cuentas `Ejecutivo` **no** se siembran; se crean desde la plataforma mediante `POST /api/usuarios`.
+```bash
+# 1. Define contraseñas fuertes en .env (nunca se commitea) — ver .env.example:
+#    SEED_SYSADMIN_PASSWORD / SEED_JEFE_PASSWORD / SEED_ADMIN_PASSWORD
+
+# 2. Provisiona (genera hashes bcrypt en runtime y hace upsert):
+docker compose exec app npm run seed:execute
+```
+
+Volver a correr `seed:execute` con nuevos valores `SEED_*` **rota** esas contraseñas en cualquier momento. Las cuentas `Ejecutivo` y `Proyectos` **no** se siembran; se crean desde la plataforma mediante `POST /api/usuarios`.
 
 ---
 
@@ -414,9 +427,10 @@ cp .env.example .env          # PowerShell: Copy-Item .env.example .env
 # 4. Inicializar la base de datos (destructivo — elimina rc_tractoparts primero)
 npm run db:init
 
-# 5. (Opcional) Sembrar usuarios de desarrollo/test con hashes bcrypt frescos
-npm run seed            # SOLO PREVISUALIZACIÓN — imprime el SQL, no escribe nada
-npm run seed:execute    # Conecta e inserta/actualiza los usuarios de dev en la BD
+# 5. Provisionar las cuentas iniciales (OBLIGATORIO — se siembran BLOQUEADAS).
+#    Define antes SEED_SYSADMIN_PASSWORD / SEED_JEFE_PASSWORD / SEED_ADMIN_PASSWORD en .env.
+npm run seed            # SOLO PREVISUALIZACIÓN — valida .env, imprime el plan, no escribe nada
+npm run seed:execute    # Genera hashes bcrypt en runtime y hace upsert de las cuentas
 ```
 
 > `db:init` abre una conexión admin de un solo uso (sin BD preseleccionada, `multipleStatements` activado) y ejecuta el script completo `sql/init.sql`.
@@ -472,6 +486,9 @@ Todos los secretos y la configuración están externalizados en `.env` (nunca ve
 | `UPLOAD_DIR` | Cargas | Directorio de subida de PDFs (por defecto `uploads/cotizaciones`) |
 | `MAX_PDF_SIZE_MB` | Cargas | Tamaño máximo de PDF en MB |
 | `CORS_ORIGIN` | CORS | Orígenes permitidos separados por coma (tu dominio HTTPS público en producción) |
+| `SEED_SYSADMIN_PASSWORD` | Bootstrap | Contraseña provisionada para la cuenta `SysAdmin` por `npm run seed:execute` (**secreto**) |
+| `SEED_JEFE_PASSWORD` | Bootstrap | Contraseña provisionada para la cuenta `ronald` (Jefe) (**secreto**) |
+| `SEED_ADMIN_PASSWORD` | Bootstrap | Contraseña provisionada para la cuenta `angelica` (Administracion) (**secreto**) |
 
 > **Generación de secretos:** crea un JWT secret fuerte con `openssl rand -hex 64`. Nunca escribas secretos en el código fuente, el Dockerfile ni el `docker-compose.yml` — Compose los lee de `.env` en tiempo de ejecución.
 
@@ -492,7 +509,8 @@ Todos los secretos y la configuración están externalizados en `.env` (nunca ve
 | **Cotizaciones** | `GET /` (paginado+filtrado), `POST /`, `GET /:id`, `PUT /:id` (propietario, solo Pendiente), `GET /resumen`, `GET /pendientes-aprobacion`, `GET /:id/historial` | Todos los roles autenticados (escritura con restricción de rol) |
 | **Estado de cotización** | `PUT /:id/estado` (máquina de estados por rol), `POST /:id/aprobar` (Jefe/SysAdmin), `PATCH /:id/comentario-admin` (Administracion) | Restringido por rol |
 | **Archivos de cotización** | `POST /:id/pdf`, `POST /:id/upload` (PDF+Excel), `GET /:id/pdf`, `GET /:id/excel` | Ejecutivo sube / todos descargan |
-| **Notificaciones** | `GET /api/cotizaciones/notificaciones`, `POST /…/notificaciones/leer` | Ejecutivo |
+| **Licitaciones** | `GET /` (paginado+filtrado), `POST /` (Proyectos/Jefe/SysAdmin), `GET /:id` (detalle + cotizaciones vinculadas + comprometido-vs-presupuesto), `PUT /:id` (responsable; solo estados editables), `PUT /:id/estado` (matriz por actor), `GET /:id/historial`, `GET /next-correlativo` | Lectura autenticada / escritura restringida por actor |
+| **Notificaciones** | `GET /api/cotizaciones/notificaciones`, `POST /…/notificaciones/leer` | Ejecutivo / Proyectos |
 | **Usuarios** | `GET /`, `POST /`, `GET /:id`, `PUT /:id` (Jefe/Administracion/SysAdmin), `DELETE /:id` soft-delete (Jefe/SysAdmin) | Roles de gestión |
 | **Clientes** | `GET /` (autocompletado, 20 activos), `GET /all` (paginado, incl. inactivos), `GET /:id`, `POST /`, `PUT /:id` (también reactiva vía `activo`), `DELETE /:id` baja lógica | Todos los roles |
 | **Marcas** | `GET /api/marcas`, `POST /api/marcas` | Roles que crean cotizaciones |
@@ -507,7 +525,7 @@ Todos los secretos y la configuración están externalizados en `.env` (nunca ve
 - **Validación:** Esquemas Zod sanitizan y coercionan tipos en cada escritura; las claves desconocidas son eliminadas.
 - **Auditoría:** Las acciones significativas se escriben en `bitacora_auditoria` / `auditoria`; las transiciones de estado por cotización se registran en `cotizacion_historial_estados`.
 - **Motor PDF:** Genera una proforma corporativa A4 (logo, franja de marcas asociadas, grilla de cliente/solicitante/equipo, tabla de líneas con formato numérico es-BO, monto en palabras, datos bancarios y sello `APROBADO` en cotizaciones aprobadas). Los archivos subidos se validan por número mágico, no solo por tipo MIME declarado.
-- **Notificaciones:** Los usuarios `Ejecutivo` reciben notificaciones internas persistentes al cambiar el estado de una cotización; los elementos no leídos permanecen visibles hasta ser explícitamente marcados vía `POST /…/notificaciones/leer`.
+- **Notificaciones:** Los usuarios `Ejecutivo` y `Proyectos` reciben notificaciones internas persistentes; los elementos no leídos permanecen visibles hasta ser explícitamente marcados vía `POST /…/notificaciones/leer`. Flujo de licitaciones: al pasar una licitación a `Cotizando` se notifica a todos los ejecutivos delegados; cuando una cotización vinculada alcanza un hito clave (aprobada / enviada / confirmada) se notifica al responsable de la licitación.
 
 ---
 
@@ -515,9 +533,11 @@ Todos los secretos y la configuración están externalizados en `.env` (nunca ve
 
 El frontend es una SPA en JavaScript puro usando ES Modules — sin transpilador ni bundler. Patrones de diseño aplicados:
 
-**Patrón Strategy** — el renderizado basado en rol se delega a objetos estrategia concretos elegidos al iniciar sesión:
-- `ExecutiveStrategy` — Ejecutivo / Administracion: estadísticas resumen, tabla de cotizaciones propias, acción "Nueva Cotización".
-- `ManagerStrategy` — Jefe: vista global, cola de aprobaciones pendientes, panel CRUD de usuarios, espacio de trabajo de Logs de Auditoría.
+**Patrón Strategy** — el renderizado basado en rol se delega a objetos estrategia concretos elegidos al iniciar sesión (`dashboard/strategies/`):
+- `ExecutiveStrategy` — Ejecutivo: estadísticas resumen, tabla de cotizaciones propias, acción "Nueva Cotización"; los ejecutivos delegados (`can_approve_quotations`) obtienen además un panel de Licitaciones (filtro por defecto `Cotizando`) con el flujo "Crear cotización vinculada".
+- `ManagerStrategy` — Jefe / SysAdmin: vista global, cola de aprobaciones, todas las cotizaciones, pestaña Licitaciones (control total), panel CRUD de usuarios, Logs de Auditoría, Reportes.
+- `AdminStrategy` — Administracion: cola de revisión (en espera + comentario, sin aprobar/rechazar), todas las cotizaciones, pestaña Licitaciones de solo lectura, CRUD de usuarios, Auditoría, Reportes.
+- `ProyectosStrategy` — Proyectos: pestaña Licitaciones (crear/editar las propias, transicionar según matriz) + Gestión de Clientes. Sin ninguna superficie de creación de cotizaciones.
 
 **Patrón Command** — las mutaciones críticas están encapsuladas como objetos Command con un único método `execute()`:
 - `ApproveQuotationCommand` — `POST /:id/aprobar`
@@ -542,6 +562,10 @@ El frontend es una SPA en JavaScript puro usando ES Modules — sin transpilador
 | `dashboard/modules/auditView.js` | Espacio de trabajo de logs de auditoría (Jefe / SysAdmin) |
 | `dashboard/modules/clientsView.js` | Pestaña "Gestión de Clientes": listar, editar, desactivar, reactivar |
 | `dashboard/modules/clientModal.js` | Sub-modal compartido de creación/edición de cliente — único lugar donde viven los campos, la validación y el manejo de NIT duplicado |
+| `dashboard/modules/licitacionesView.js` | Pestaña Licitaciones: lista filtrable + sub-modal de detalle (cotizaciones vinculadas, comparación comprometido-vs-presupuesto, timeline, botones de transición según actor) |
+| `dashboard/modules/licitacionModal.js` | Sub-modal de creación/edición de licitación con autocompletado de convocante (reutiliza el dropdown y el modal de clientes) |
+| `dashboard/modules/userCrudModals.js` | Modales compartidos de creación/edición/baja de usuarios (el dropdown de rol incluye `Proyectos`) |
+| `dashboard/strategies/*.js` | Las cuatro estrategias de rol listadas arriba + la base abstracta `DashboardStrategy` |
 
 La UI es **responsiva mobile-first**: en anchos reducidos el dashboard colapsa a una sola columna apilada, y se expande a un diseño multicolumna en pantallas más grandes (ver [§3.4](#34-rendimiento-del-sistema-y-flujo-de-ui)).
 
@@ -564,6 +588,7 @@ La UI es **responsiva mobile-first**: en anchos reducidos el dashboard colapsa a
 | Manejo de errores | Handler global; stack traces / internos nunca expuestos en 5xx |
 | Auditoría | Todas las acciones significativas registradas en `bitacora_auditoria` |
 | Secretos | Externalizados en `.env`; nunca hardcodeados en código ni imágenes |
+| Credenciales de bootstrap | El repositorio contiene **cero** credenciales (ni texto plano ni hashes utilizables). `init.sql` siembra las cuentas iniciales BLOQUEADAS; las contraseñas se provisionan/rotan en runtime desde las variables `SEED_*` vía `npm run seed:execute` |
 | Contenedor | Corre como usuario `node` no-root; MySQL nunca expuesto a la red pública |
 
 ---
@@ -753,6 +778,7 @@ docker compose exec db mysqldump -u root -p rc_tractoparts > backup.sql   # resp
 | `upgrade_2026_delegacion_ampliada.sql` | Soporte de delegación (`can_approve_quotations`) |
 | `upgrade_2026_cliente_direccion_ciudad.sql` | `clientes.direccion` / `clientes.ciudad` (no-op en BDs cuyo esquema ya las tiene) |
 | `upgrade_2026_origenes_cliente.sql` | Catálogo `origenes_cliente` + `clientes.id_origen_cliente` (idempotente) |
+| `upgrade_2026_licitaciones.sql` | Módulo de licitaciones: rol `Proyectos` (5), tablas `licitaciones` / `licitaciones_correlativo` / `licitacion_historial_estados`, FK `cotizaciones.id_licitacion`, `notificaciones.id_licitacion` + valor ENUM `'licitacion'` (idempotente) |
 
 **Procedimiento** (el orden importa — migrar *antes* de reconstruir la app, para que el código nuevo nunca consulte columnas que aún no existen; ver el flujo en [§3.7](#37-flujo-de-release-y-migraciones-de-esquema)):
 

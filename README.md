@@ -41,7 +41,8 @@ The backend is a Node.js + Express REST API backed by MySQL. The frontend is a v
 
 - **Purpose:** Replace manual proforma spreadsheets with a controlled, audited workflow — executives build quotations, managers approve them, and the system emits a consistent branded PDF for the client.
 - **Company:** The primary issuing legal entity is **Empresa unipersonal de Ronald Roca Cartagena** (formerly branded "RC Tractoparts"), with **Roca Importaciones S.R.L.** remaining active as the second issuing entity. An importer of heavy-machinery spare parts (Volvo, Komatsu, John Deere, JCB, CAT, CASE) based in Santa Cruz, Bolivia. See [§14 Business Entity & Legal Naming](#14-business-entity--legal-naming) for the full rename refactor and legacy-tolerance details.
-- **Users / roles:** `Ejecutivo`, `Administracion`, `Jefe`, `SysAdmin`, plus a per-user `can_approve_quotations` delegation flag (Delegación de Funciones).
+- **Users / roles:** `Ejecutivo`, `Administracion`, `Jefe`, `SysAdmin`, `Proyectos` (tenders executive), plus a per-user `can_approve_quotations` delegation flag (Delegación de Funciones).
+- **Licitaciones module:** an umbrella *tender* entity (`1 licitación → N cotizaciones`). The `Proyectos` role builds the tender (client, referential budget, deadline) and hands it to the delegated commercial executive, who prices the linked quotations; both jointly decide whether it fits the budget. Full lifecycle, history, audit and notifications — mirroring the quotation workflow.
 - **Key invariants:** every state change is role-validated and audited; each quotation owns exactly **one** physical PDF (regenerated on every meaningful change); all SQL is parameterized; the correlativo serial is generated atomically under a row lock.
 
 ---
@@ -69,12 +70,15 @@ The backend is a Node.js + Express REST API backed by MySQL. The frontend is a v
 | Frontend | Vanilla JS (ES Modules), no build step |
 | Containerization | Docker (multi-stage) + Docker Compose |
 
-**Database tables** (`sql/init.sql`): `roles`, `usuarios`, `marcas`, `clientes`, `productos`, `cotizaciones_correlativo`, `cotizaciones`, `cotizacion_detalles`, `auditoria`, `bitacora_auditoria`, `cotizacion_historial_estados`, `notificaciones`.
+**Database tables** (`sql/init.sql`): `roles`, `usuarios`, `marcas`, `origenes_cliente`, `clientes`, `productos`, `cotizaciones_correlativo`, `cotizacion_borrador_lock`, `cotizaciones`, `cuentas_bancarias`, `cotizacion_detalles`, `auditoria`, `bitacora_auditoria`, `cotizacion_historial_estados`, `licitaciones_correlativo`, `licitaciones`, `licitacion_historial_estados`, `notificaciones`.
 
 The `cotizaciones.entidad_emisora` column (the issuing business name printed on each PDF header) is stored as **`VARCHAR(150)`**, providing ample headroom for the 44-character legal name `Empresa unipersonal de Ronald Roca Cartagena`.
 
 **Quotation state machine** (enforced per role in `QuotationModel.ROLE_TRANSITIONS`):
 `Pendiente → En revision → En espera → Aprobada internamente → Enviada al cliente → Confirmada / Rechazada → Archivada`.
+
+**Licitación state machine** (enforced per actor in `LicitacionModel.LICITACION_ROLE_TRANSITIONS` — *responsable* Proyectos, *delegated* executive, or Jefe/SysAdmin):
+`En preparacion → Cotizando → En evaluacion → Presentada → Adjudicada / No adjudicada → Archivada`. Its serial (`LIC-YYYY/NNNN`) uses its own counter (`licitaciones_correlativo`) and never interferes with the quotation series.
 
 > **Historical note:** the confirmed-quotation status was renamed from `Aceptada` to `Confirmada`. A migration in `sql/init.sql` rewrites legacy `Aceptada` rows (and their history entries) to `Confirmada`, and the value is retained in tolerant allow-lists so pre-rename data never breaks validation.
 
@@ -293,9 +297,9 @@ rc-tractoparts/
 │   ├── app.js                     # Express app: middleware, Swagger, routes, error handler
 │   ├── config/
 │   │   └── db.js                  # MySQL connection pool (singleton) + startup ping
-│   ├── routes/                    # /api/auth, /api/cotizaciones, /api/usuarios, …
-│   ├── controllers/               # Request handlers (incl. quotation/ subfolder)
-│   ├── models/                    # ONLY layer that runs SQL (all parameterized)
+│   ├── routes/                    # /api/auth, /api/cotizaciones, /api/licitaciones, /api/usuarios, …
+│   ├── controllers/               # Request handlers (incl. quotation/ subfolder + licitacionController)
+│   ├── models/                    # ONLY layer that runs SQL (QuotationModel facade + quotation/ split, LicitacionModel, …)
 │   ├── middlewares/               # authMiddleware, roleMiddleware, auditMiddleware
 │   ├── validators/                # Zod schemas + validate() factory
 │   ├── services/
@@ -315,7 +319,7 @@ rc-tractoparts/
 │   ├── init.js                    # Runs init.sql (admin connection, multipleStatements)
 │   └── upgrade_*.sql              # One-time ADDITIVE migrations for live DBs (see §16.7)
 ├── scripts/
-│   └── seed-users.js              # Generates bcrypt hashes; seeds dev/test users
+│   └── seed-users.js              # Env-driven account provisioning (activates the LOCKED seed accounts)
 ├── tests/
 │   ├── unit/                      # No DB required
 │   └── integration/               # Requires the test database
@@ -385,15 +389,19 @@ docker compose down -v            # Stop and ALSO remove volumes (destroys data)
 
 > ⚠️ `sql/init.sql` is **destructive** — on first initialization it drops any existing `rc_tractoparts` database. It only auto-runs when the `db_data` volume is empty (first boot).
 
-**Initial accounts seeded by `init.sql`** (rotate these in production):
+**Initial accounts — secure bootstrap (no credentials in this repository):**
 
-| Username | Role | Raw password |
-|---|---|---|
-| `SysAdmin` | SysAdmin (4) | `Admin#RC2026` |
-| `ronald` | Jefe (3) | `Ronald#RC2026` |
-| `angelica` | Administracion (2) | `Angelica#RC2026` |
+`init.sql` seeds the three initial accounts (`SysAdmin`, `ronald`, `angelica`) in a **LOCKED** state: their `password_hash` holds a non-bcrypt placeholder, so login is impossible until you provision real passwords. To activate them:
 
-`Ejecutivo` accounts are **not** seeded; they are created from inside the platform via `POST /api/usuarios`.
+```bash
+# 1. Set strong passwords in .env (never committed) — see .env.example:
+#    SEED_SYSADMIN_PASSWORD / SEED_JEFE_PASSWORD / SEED_ADMIN_PASSWORD
+
+# 2. Provision (generates bcrypt hashes at runtime and upserts):
+docker compose exec app npm run seed:execute
+```
+
+Re-running `seed:execute` with new `SEED_*` values **rotates** those passwords at any time. `Ejecutivo` and `Proyectos` accounts are **not** seeded; they are created from inside the platform via `POST /api/usuarios`.
 
 ---
 
@@ -411,9 +419,10 @@ cp .env.example .env          # Windows PowerShell: Copy-Item .env.example .env
 # 4. Initialize the database (destructive — drops rc_tractoparts first)
 npm run db:init
 
-# 5. (Optional) Seed development/test users with fresh bcrypt hashes
-npm run seed            # PREVIEW only — prints SQL, writes nothing
-npm run seed:execute    # Connects and upserts the dev users into the DB
+# 5. Provision the initial accounts (REQUIRED — they are seeded LOCKED).
+#    Set SEED_SYSADMIN_PASSWORD / SEED_JEFE_PASSWORD / SEED_ADMIN_PASSWORD in .env first.
+npm run seed            # PREVIEW only — validates .env, prints the plan, writes nothing
+npm run seed:execute    # Generates bcrypt hashes at runtime and upserts the accounts
 ```
 
 > `db:init` opens a one-shot admin connection (no pre-selected DB, `multipleStatements` enabled) and runs the whole `sql/init.sql` script.
@@ -469,6 +478,9 @@ All secrets and configuration are externalized to `.env` (never committed). Refe
 | `UPLOAD_DIR` | Uploads | PDF upload directory (default `uploads/cotizaciones`) |
 | `MAX_PDF_SIZE_MB` | Uploads | Maximum PDF size in MB |
 | `CORS_ORIGIN` | CORS | Comma-separated allowed origins (your public HTTPS domain in production) |
+| `SEED_SYSADMIN_PASSWORD` | Bootstrap | Password provisioned for the `SysAdmin` account by `npm run seed:execute` (**secret**) |
+| `SEED_JEFE_PASSWORD` | Bootstrap | Password provisioned for the `ronald` (Jefe) account (**secret**) |
+| `SEED_ADMIN_PASSWORD` | Bootstrap | Password provisioned for the `angelica` (Administracion) account (**secret**) |
 
 > **Secret generation:** create a strong JWT secret with `openssl rand -hex 64`. Never hardcode secrets in source, the Dockerfile, or `docker-compose.yml` — Compose reads them from `.env` at runtime.
 
@@ -489,7 +501,8 @@ All secrets and configuration are externalized to `.env` (never committed). Refe
 | **Quotations** | `GET /` (paginated+filtered), `POST /`, `GET /:id`, `PUT /:id` (owner, Pendiente only), `GET /resumen`, `GET /pendientes-aprobacion`, `GET /:id/historial` | All authenticated roles (writes role-scoped) |
 | **Quotation state** | `PUT /:id/estado` (role state machine), `POST /:id/aprobar` (Jefe/SysAdmin), `PATCH /:id/comentario-admin` (Administracion) | Role-restricted |
 | **Quotation files** | `POST /:id/pdf`, `POST /:id/upload` (PDF+Excel), `GET /:id/pdf`, `GET /:id/excel` | Ejecutivo upload / all download |
-| **Notifications** | `GET /api/cotizaciones/notificaciones`, `POST /…/notificaciones/leer` | Ejecutivo |
+| **Licitaciones** | `GET /` (paginated+filtered), `POST /` (Proyectos/Jefe/SysAdmin), `GET /:id` (detail + linked quotations + committed-vs-budget), `PUT /:id` (responsable; editable states only), `PUT /:id/estado` (actor matrix), `GET /:id/historial`, `GET /next-correlativo` | All authenticated read / writes actor-scoped |
+| **Notifications** | `GET /api/cotizaciones/notificaciones`, `POST /…/notificaciones/leer` | Ejecutivo / Proyectos |
 | **Users** | `GET /`, `POST /`, `GET /:id`, `PUT /:id` (Jefe/Administracion/SysAdmin), `DELETE /:id` soft-delete (Jefe/SysAdmin) | Management roles |
 | **Clients** | `GET /` (autocomplete, 20 active), `GET /all` (paginated, incl. inactive), `GET /:id`, `POST /`, `PUT /:id` (also reactivates via `activo`), `DELETE /:id` soft-delete | All roles |
 | **Brands** | `GET /api/marcas`, `POST /api/marcas` | Quote-creating roles |
@@ -504,7 +517,7 @@ All secrets and configuration are externalized to `.env` (never committed). Refe
 - **Validation:** Zod schemas sanitize and type-coerce every write at the boundary; unknown keys are stripped.
 - **Auditing:** significant actions are written to `bitacora_auditoria` / `auditoria`; per-quotation state transitions are recorded in `cotizacion_historial_estados`.
 - **PDF engine:** generates an A4 corporate proforma (logo, partner-brand strip, client/requester/equipment grid, line-item table with es-BO number formatting, amount-in-words, bank data, and an `APROBADO` stamp on approved quotations). Uploaded files are validated by magic number, not just declared MIME type.
-- **Notifications:** Ejecutivo users receive persistent in-app notifications on quotation state changes; unread items remain visible until explicitly acknowledged via `POST /…/notificaciones/leer`.
+- **Notifications:** Ejecutivo and Proyectos users receive persistent in-app notifications; unread items remain visible until explicitly acknowledged via `POST /…/notificaciones/leer`. Licitación flow: when a tender enters `Cotizando`, every delegated executive is notified; when a linked quotation reaches a key milestone (approved / sent / confirmed), the tender's responsable is notified.
 
 ---
 
@@ -512,9 +525,11 @@ All secrets and configuration are externalized to `.env` (never committed). Refe
 
 The frontend is a vanilla JavaScript SPA using ES Modules — no transpiler or bundler required. Design patterns applied:
 
-**Strategy Pattern** — role-based rendering is delegated to concrete strategy objects chosen at login time:
-- `ExecutiveStrategy` — Ejecutivo / Administracion: summary stats, own quotation table, "Nueva Cotización" action.
-- `ManagerStrategy` — Jefe: global overview, pending-approval queue, User CRUD panel, Audit Logs workspace.
+**Strategy Pattern** — role-based rendering is delegated to concrete strategy objects chosen at login time (`dashboard/strategies/`):
+- `ExecutiveStrategy` — Ejecutivo: summary stats, own quotation table, "Nueva Cotización" action; delegated executives (`can_approve_quotations`) additionally get a Licitaciones panel (default filter `Cotizando`) with a "Crear cotización vinculada" flow.
+- `ManagerStrategy` — Jefe / SysAdmin: global overview, pending-approval queue, all quotations, Licitaciones tab (full override), User CRUD panel, Audit Logs workspace, Reports.
+- `AdminStrategy` — Administracion: review queue (hold + comment, no approve/reject), all quotations, read-only Licitaciones tab, User CRUD, Audit Logs, Reports.
+- `ProyectosStrategy` — Proyectos: Licitaciones tab (create/edit own tenders, transition per matrix) + Client management. No quotation-creation surface at all.
 
 **Command Pattern** — critical mutations are encapsulated as Command objects with a single `execute()` method:
 - `ApproveQuotationCommand` — `POST /:id/aprobar`
@@ -539,6 +554,10 @@ The frontend is a vanilla JavaScript SPA using ES Modules — no transpiler or b
 | `dashboard/modules/auditView.js` | Audit-log workspace (Jefe / SysAdmin) |
 | `dashboard/modules/clientsView.js` | "Gestión de Clientes" tab: list, edit, deactivate, reactivate |
 | `dashboard/modules/clientModal.js` | Shared create/edit client sub-modal — the single place the client fields, validation, and duplicate-NIT handling live |
+| `dashboard/modules/licitacionesView.js` | Licitaciones tab: filtered list + detail sub-modal (linked quotations, committed-vs-budget comparison, timeline, actor-aware transition buttons) |
+| `dashboard/modules/licitacionModal.js` | Create/edit licitación sub-modal with convocante autocomplete (reuses the client dropdown + client modal) |
+| `dashboard/modules/userCrudModals.js` | Shared user create/edit/deactivate modals (role dropdown includes `Proyectos`) |
+| `dashboard/strategies/*.js` | The four role strategies listed above + the abstract `DashboardStrategy` base |
 
 The UI is **mobile-first responsive**: at narrow widths the dashboard collapses into a single stacked column, expanding into a multi-column layout on larger screens (see [§3.4](#34-system-performance--ui-flow)).
 
@@ -561,6 +580,7 @@ The UI is **mobile-first responsive**: at narrow widths the dashboard collapses 
 | Error handling | Global handler; stack traces / internals never exposed on 5xx |
 | Auditing | All significant actions logged to `bitacora_auditoria` |
 | Secrets | Externalized to `.env`; never hardcoded in source or images |
+| Bootstrap credentials | The repository contains **zero** credentials (no plaintext, no usable hashes). `init.sql` seeds the initial accounts LOCKED; passwords are provisioned/rotated at runtime from `SEED_*` env vars via `npm run seed:execute` |
 | Container | Runs as non-root `node` user; MySQL never exposed to the public network |
 
 ---
@@ -750,6 +770,7 @@ docker compose exec db mysqldump -u root -p rc_tractoparts > backup.sql   # DB b
 | `upgrade_2026_delegacion_ampliada.sql` | Delegation support (`can_approve_quotations`) |
 | `upgrade_2026_cliente_direccion_ciudad.sql` | `clientes.direccion` / `clientes.ciudad` (no-op on DBs whose schema already has them) |
 | `upgrade_2026_origenes_cliente.sql` | `origenes_cliente` catalog + `clientes.id_origen_cliente` (idempotent) |
+| `upgrade_2026_licitaciones.sql` | Licitaciones module: `Proyectos` role (5), `licitaciones` / `licitaciones_correlativo` / `licitacion_historial_estados` tables, `cotizaciones.id_licitacion` FK, `notificaciones.id_licitacion` + ENUM value `'licitacion'` (idempotent) |
 
 **Procedure** (order matters — migrate *before* rebuilding the app, so the new code never queries columns that don't exist yet; see the flow in [§3.7](#37-release--schema-migration-flow)):
 

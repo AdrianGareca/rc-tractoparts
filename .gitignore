@@ -3,6 +3,9 @@
 .env.local
 .env.production
 
+# Local credentials reference — NEVER commit this
+CREDENCIALES.md
+
 # Node dependencies
 node_modules/
 
