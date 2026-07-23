@@ -568,6 +568,37 @@ CREATE TABLE licitacion_historial_estados (
     FOREIGN KEY (id_usuario)    REFERENCES usuarios     (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- =============================================================================
+-- 11e. LICITACION_DOCUMENTOS
+--   Adjuntos de cualquier tipo (PDF, Word, Excel, imágenes) que Proyectos sube
+--   a una licitación para que el ejecutivo comercial delegado (y Jefe/SysAdmin)
+--   los revisen. Archivos físicos en storage/licitaciones/; solo la ruta relativa
+--   se persiste aquí (mismo patrón que cotizaciones.pdf_ruta / excel_ruta).
+-- =============================================================================
+
+CREATE TABLE licitacion_documentos (
+  id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_licitacion   INT UNSIGNED NOT NULL,
+  nombre_original VARCHAR(255) NOT NULL
+    COMMENT 'Nombre del archivo tal como lo subió el usuario (se muestra en la UI).',
+  ruta_archivo    VARCHAR(500) NOT NULL
+    COMMENT 'Ruta relativa en disco, p. ej. storage/licitaciones/LICDOC-12-....pdf',
+  mime_type       VARCHAR(100) NOT NULL
+    COMMENT 'MIME derivado de la extensión validada por magic-number, no del header del cliente.',
+  tamano_bytes    INT UNSIGNED NOT NULL,
+  id_usuario      INT UNSIGNED DEFAULT NULL
+    COMMENT 'Quién lo subió (Proyectos responsable, o Jefe/SysAdmin).',
+  nombre_usuario  VARCHAR(50)  DEFAULT NULL
+    COMMENT 'Nombre del usuario al momento de la subida — preservado aunque el usuario se desactive/renombre.',
+  creado_en       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_licdoc_licitacion (id_licitacion),
+  CONSTRAINT fk_licdoc_licitacion
+    FOREIGN KEY (id_licitacion) REFERENCES licitaciones (id) ON DELETE CASCADE  ON UPDATE CASCADE,
+  CONSTRAINT fk_licdoc_usuario
+    FOREIGN KEY (id_usuario)    REFERENCES usuarios     (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------------------------------------------------------------------------
 -- notificaciones — Targeted in-app notifications for the Ejecutivo feed.
 --

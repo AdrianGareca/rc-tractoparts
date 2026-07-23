@@ -8,20 +8,30 @@
 //    segmento literal como un :id y despacharía al handler equivocado.
 //
 // Matriz de autorización (el modelo decide el detalle de las transiciones):
-//   GET  /                 → todos los autenticados (Ejecutivo la usa p/ dropdown)
-//   GET  /next-correlativo → Proyectos, Jefe, SysAdmin
-//   POST /                 → Proyectos, Jefe, SysAdmin
-//   GET  /:id              → todos los autenticados
-//   GET  /:id/historial    → todos los autenticados
-//   PUT  /:id              → Proyectos, Jefe, SysAdmin  (ownership en controller)
-//   PUT  /:id/estado       → Proyectos, Ejecutivo, Jefe, SysAdmin (matriz decide)
+//   GET    /                    → todos los autenticados (Ejecutivo la usa p/ dropdown)
+//   GET    /next-correlativo    → Proyectos, Jefe, SysAdmin
+//   POST   /                    → Proyectos, Jefe, SysAdmin
+//   GET    /:id                 → todos los autenticados
+//   GET    /:id/historial       → todos los autenticados
+//   PUT    /:id                 → Proyectos, Jefe, SysAdmin  (ownership en controller)
+//   PUT    /:id/estado          → Proyectos, Ejecutivo, Jefe, SysAdmin (matriz decide)
+//   POST   /:id/documentos      → responsable, Jefe, SysAdmin (ownership en controller)
+//   GET    /:id/documentos      → todos los autenticados
+//   GET    /:id/documentos/:docId    → todos los autenticados
+//   DELETE /:id/documentos/:docId    → responsable, Jefe, SysAdmin (ownership en controller)
 // =============================================================================
 
 'use strict';
 
-const express = require('express');
+const express   = require('express');
+const multer    = require('multer');
+const path      = require('path');
+const fs        = require('fs');
+const crypto    = require('crypto');
+const rateLimit = require('express-rate-limit');
 
-const LicitacionController = require('../controllers/licitacionController');
+const LicitacionController         = require('../controllers/licitacionController');
+const LicitacionDocumentController = require('../controllers/licitacionDocumentController');
 const { authenticate }     = require('../middlewares/authMiddleware');
 const authorize            = require('../middlewares/roleMiddleware');
 const { validate }         = require('../validators/validate');
@@ -32,6 +42,66 @@ const {
 } = require('../validators/licitacionValidator');
 
 const router = express.Router();
+
+// =============================================================================
+// Multer — licitación document uploads (PDF, Word, Excel, images)
+//
+// Extension allowlist runs here (fast, first pass); the controller re-verifies
+// each file's actual content via magic-number check after multer writes it to
+// disk (see licitacionDocumentController.js) — the declared extension/MIME is
+// never trusted alone (OWASP A08).
+// =============================================================================
+
+const licDocsDir = path.resolve(process.cwd(), 'storage/licitaciones');
+if (!fs.existsSync(licDocsDir)) {
+  fs.mkdirSync(licDocsDir, { recursive: true });
+}
+
+const ALLOWED_DOC_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png']);
+const MAX_DOC_FILES = 10;
+
+const licDocStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, licDocsDir),
+  filename: (req, file, cb) => {
+    const licitacionId = req.params.id || 'draft';
+    const ext    = path.extname(file.originalname).toLowerCase();
+    const unique = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    cb(null, `LICDOC-${licitacionId}-${unique}${ext}`);
+  },
+});
+
+function licDocFileFilter(_req, file, cb) {
+  const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+  if (ALLOWED_DOC_EXTENSIONS.has(ext)) {
+    cb(null, true);
+  } else {
+    cb(new Error(
+      `Tipo de archivo no permitido: ".${ext}". Permitidos: PDF, Word (.doc/.docx), Excel (.xls/.xlsx), imágenes (.jpg/.jpeg/.png).`
+    ), false);
+  }
+}
+
+const maxDocBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024;
+
+const uploadLicDocs = multer({
+  storage:    licDocStorage,
+  fileFilter: licDocFileFilter,
+  limits:     { fileSize: maxDocBytes, files: MAX_DOC_FILES },
+});
+
+// Mirrors quotationRoutes.js's uploadLimiter — protects against disk-exhaustion
+// via repeated multi-file uploads from a single IP.
+const licDocUploadLimiter = rateLimit({
+  windowMs:        15 * 60 * 1000,
+  max:             20,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message: {
+    success: false,
+    message: 'Demasiados intentos de subida de documentos desde esta IP. Espere 15 minutos.',
+  },
+  skip: () => process.env.NODE_ENV === 'test',
+});
 
 // Role middleware shorthands (cada uno se hace spread en la cadena del handler).
 const allRoles     = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin', 'Proyectos'])];
@@ -308,5 +378,150 @@ router.put(
   validate(updateLicitacionStatusSchema),
   LicitacionController.updateStatus
 );
+
+/**
+ * @swagger
+ * /api/licitaciones/{id}/documentos:
+ *   post:
+ *     summary: Subir documentos a una licitación (responsable, Jefe, SysAdmin)
+ *     description: |
+ *       Sube uno o varios archivos (PDF, Word, Excel o imágenes) vinculados a la licitación,
+ *       para que el ejecutivo comercial delegado (y Jefe/SysAdmin) los revisen.
+ *       Cada archivo se verifica por número mágico después de escribirse en disco —
+ *       la extensión/MIME declarados por el cliente nunca son la única defensa.
+ *     tags: [Licitaciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               documentos:
+ *                 type: array
+ *                 items: { type: string, format: binary }
+ *                 description: Hasta 10 archivos por solicitud (PDF, .doc/.docx, .xls/.xlsx, .jpg/.jpeg/.png).
+ *     responses:
+ *       201: { description: Documentos subidos. }
+ *       403: { description: Solo el responsable de la licitación (o Jefe/SysAdmin) puede subir documentos. }
+ *       404: { description: Licitación no encontrada. }
+ *       422: { description: Sin archivos, tipo no permitido, o falló la verificación de contenido. }
+ */
+// POST /api/licitaciones/:id/documentos
+router.post(
+  '/:id/documentos',
+  ...manageRoles,
+  licDocUploadLimiter,
+  uploadLicDocs.array('documentos', MAX_DOC_FILES),
+  LicitacionDocumentController.uploadDocumentos
+);
+
+/**
+ * @swagger
+ * /api/licitaciones/{id}/documentos:
+ *   get:
+ *     summary: Listar los documentos adjuntos de una licitación
+ *     tags: [Licitaciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Lista de documentos. }
+ *       404: { description: Licitación no encontrada. }
+ */
+// GET /api/licitaciones/:id/documentos
+router.get(
+  '/:id/documentos',
+  ...allRoles,
+  LicitacionDocumentController.getDocumentos
+);
+
+/**
+ * @swagger
+ * /api/licitaciones/{id}/documentos/{docId}:
+ *   get:
+ *     summary: Descargar un documento adjunto
+ *     tags: [Licitaciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: docId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Archivo. }
+ *       404: { description: Documento no encontrado o ya no disponible en disco. }
+ */
+// GET /api/licitaciones/:id/documentos/:docId
+router.get(
+  '/:id/documentos/:docId',
+  ...allRoles,
+  LicitacionDocumentController.downloadDocumento
+);
+
+/**
+ * @swagger
+ * /api/licitaciones/{id}/documentos/{docId}:
+ *   delete:
+ *     summary: Eliminar un documento adjunto (responsable, Jefe, SysAdmin)
+ *     tags: [Licitaciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: docId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Documento eliminado. }
+ *       403: { description: Solo el responsable de la licitación (o Jefe/SysAdmin) puede eliminar documentos. }
+ *       404: { description: Documento no encontrado. }
+ */
+// DELETE /api/licitaciones/:id/documentos/:docId
+router.delete(
+  '/:id/documentos/:docId',
+  ...manageRoles,
+  LicitacionDocumentController.deleteDocumento
+);
+
+// =============================================================================
+// Multer error handler — must be a 4-argument Express error middleware and
+// declared AFTER all routes so it only catches errors bubbled up from within
+// this router (mirrors quotationRoutes.js's handler).
+// =============================================================================
+router.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    return res.status(422).json({
+      success: false,
+      message: `Error al subir el archivo: ${err.message}`,
+    });
+  }
+
+  if (err?.message?.startsWith('Tipo de archivo no permitido')) {
+    return res.status(422).json({ success: false, message: err.message });
+  }
+
+  next(err);
+});
 
 module.exports = router;

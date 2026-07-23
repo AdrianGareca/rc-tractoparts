@@ -24,8 +24,26 @@
 import api, { showToast } from '../../../services/apiClient.js';
 import AuthSession from '../../../services/authSession.js';
 import { escHtml, fmtDate, fmtAmount, licitacionBadgeHtml } from '../helpers.js';
-import { buildTimelineHtml } from './timelineView.js';
+import { buildTimelineHtml, saveBlobAs } from './timelineView.js';
 import { openLicitacionModal } from './licitacionModal.js';
+
+// File extension → emoji icon shown next to each document in the list.
+const DOC_ICONS = {
+  pdf: '📄', doc: '📝', docx: '📝', xls: '📊', xlsx: '📊',
+  jpg: '🖼️', jpeg: '🖼️', png: '🖼️',
+};
+
+function docIcon(nombre) {
+  const ext = (nombre.split('.').pop() || '').toLowerCase();
+  return DOC_ICONS[ext] || '📎';
+}
+
+function fmtFileSize(bytes) {
+  if (bytes == null) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 const ESTADOS = [
   'En preparacion', 'Cotizando', 'En evaluacion',
@@ -205,11 +223,17 @@ export async function mountLicitacionesTab(panel, opts = {}) {
       history = h.data ?? [];
     } catch (_) { /* timeline is best-effort */ }
 
+    let documentos = [];
+    try {
+      const d = await api.get(`/api/licitaciones/${id}/documentos`);
+      documentos = d.data ?? [];
+    } catch (_) { /* document list is best-effort */ }
+
     const overlay = document.createElement('div');
     overlay.className = 'sub-modal-overlay';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
-    overlay.innerHTML = renderDetailHtml(lic, history);
+    overlay.innerHTML = renderDetailHtml(lic, history, documentos);
     document.body.appendChild(overlay);
 
     const close = () => overlay.remove();
@@ -229,6 +253,76 @@ export async function mountLicitacionesTab(panel, opts = {}) {
     // Create linked cotización (delegated Ejecutivo path)
     overlay.querySelector('#licd-crear-cot')?.addEventListener('click', () => {
       if (typeof onCreateCotizacion === 'function') { close(); onCreateCotizacion(lic); }
+    });
+
+    // ── Documentos: subir (responsable/Jefe/SysAdmin) ────────────────────────
+    overlay.querySelector('#licd-doc-upload-btn')?.addEventListener('click', async () => {
+      const input = overlay.querySelector('#licd-doc-input');
+      const errEl = overlay.querySelector('#licd-doc-err');
+      if (errEl) errEl.textContent = '';
+
+      if (!input?.files || input.files.length === 0) {
+        if (errEl) errEl.textContent = 'Selecciona al menos un archivo.';
+        return;
+      }
+
+      const formData = new FormData();
+      Array.from(input.files).forEach((f) => formData.append('documentos', f));
+
+      const btn = overlay.querySelector('#licd-doc-upload-btn');
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = 'Subiendo…';
+      try {
+        await api.upload(`/api/licitaciones/${id}/documentos`, formData);
+        showToast('Documento(s) subido(s) correctamente.', 'success');
+        close();
+        openDetail(id); // reabre el detalle con la lista de documentos actualizada
+      } catch (err) {
+        if (errEl) errEl.textContent = err.data?.message || err.message || 'No se pudo subir el archivo.';
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    });
+
+    // ── Documentos: descargar (todos los roles con acceso al detalle) ────────
+    overlay.querySelectorAll('[data-doc-download]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const docId   = btn.dataset.docDownload;
+        const docName = btn.dataset.docName;
+        const original = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '…';
+        try {
+          const response = await api.get(`/api/licitaciones/${id}/documentos/${docId}`);
+          const blob = await response.blob();
+          const outcome = await saveBlobAs(blob, docName, { description: 'Documento', accept: {} });
+          if (outcome === 'saved')      showToast('Documento guardado en la ubicación elegida.', 'success', 2500);
+          else if (outcome === 'downloaded') showToast('Documento descargado a tu carpeta de Descargas.', 'info', 3500);
+        } catch (err) {
+          showToast(err.data?.message || err.message || 'No se pudo descargar el documento.', 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = original;
+        }
+      });
+    });
+
+    // ── Documentos: eliminar (responsable/Jefe/SysAdmin) ──────────────────────
+    overlay.querySelectorAll('[data-doc-delete]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const docId   = btn.dataset.docDelete;
+        const docName = btn.dataset.docName;
+        if (!confirm(`¿Eliminar el documento "${docName}"? Esta acción no se puede deshacer.`)) return;
+        try {
+          await api.delete(`/api/licitaciones/${id}/documentos/${docId}`);
+          showToast('Documento eliminado.', 'success');
+          close();
+          openDetail(id);
+        } catch (err) {
+          showToast(err.data?.message || err.message || 'No se pudo eliminar el documento.', 'error');
+        }
+      });
     });
 
     // Transition buttons
@@ -260,10 +354,13 @@ export async function mountLicitacionesTab(panel, opts = {}) {
     });
   }
 
-  function renderDetailHtml(lic, history) {
+  function renderDetailHtml(lic, history, documentos = []) {
     const trans = allowedTransitions(lic);
-    const canEdit = EDITABLE_STATES.includes(lic.estado) &&
-      (resolveActorType(lic) === 'responsable' || resolveActorType(lic) === 'jefe');
+    const actorType = resolveActorType(lic);
+    const canEdit = EDITABLE_STATES.includes(lic.estado) && (actorType === 'responsable' || actorType === 'jefe');
+    // A diferencia de canEdit, la gestión de documentos NO se restringe por
+    // estado — Proyectos/Jefe/SysAdmin pueden adjuntar en cualquier momento.
+    const canManageDocs = actorType === 'responsable' || actorType === 'jefe';
 
     // Budget comparison
     const comprometido = Number(lic.total_comprometido ?? 0);
@@ -296,6 +393,31 @@ export async function mountLicitacionesTab(panel, opts = {}) {
                <td>${escHtml(c.ejecutivo_nombre ?? '—')}</td>
              </tr>`).join('')}
            </tbody></table></div>`;
+
+    // Documentos adjuntos: cualquiera con acceso al detalle puede ver/descargar;
+    // solo el responsable (o Jefe/SysAdmin) puede subir/eliminar.
+    const docsListHtml = documentos.length === 0
+      ? '<p class="text-muted text-sm">Aún no hay documentos adjuntos.</p>'
+      : `<ul style="list-style:none;padding:0;margin:0;">
+           ${documentos.map((d) => `
+             <li style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px solid var(--border);">
+               <span>${docIcon(d.nombre_original)}</span>
+               <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(d.nombre_original)}">${escHtml(d.nombre_original)}</span>
+               <span class="text-muted text-sm">${fmtFileSize(d.tamano_bytes)}</span>
+               <span class="text-muted text-sm">${escHtml(d.nombre_usuario ?? '—')} · ${fmtDate(d.creado_en)}</span>
+               <button class="btn btn-ghost btn-sm" data-doc-download="${d.id}" data-doc-name="${escHtml(d.nombre_original)}">⬇️</button>
+               ${canManageDocs ? `<button class="btn btn-ghost btn-sm" data-doc-delete="${d.id}" data-doc-name="${escHtml(d.nombre_original)}">🗑️</button>` : ''}
+             </li>`).join('')}
+         </ul>`;
+
+    const docsUploadHtml = canManageDocs
+      ? `<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.5rem;">
+           <input type="file" id="licd-doc-input" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" />
+           <button class="btn btn-primary btn-sm" id="licd-doc-upload-btn">Subir</button>
+         </div>
+         <span class="text-muted text-sm">PDF, Word, Excel o imágenes (JPG/PNG). Puedes seleccionar varios a la vez.</span>
+         <div class="form-error" id="licd-doc-err" style="color:var(--clr-red);min-height:1.2em;"></div>`
+      : '';
 
     const transButtons = trans.length > 0
       ? `<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem;">
@@ -335,6 +457,10 @@ export async function mountLicitacionesTab(panel, opts = {}) {
 
           <h5 style="margin:1rem 0 .35rem;">Cotizaciones vinculadas (${cots.length})</h5>
           ${cotsHtml}
+
+          <h5 style="margin:1rem 0 .35rem;">Documentos (${documentos.length})</h5>
+          ${docsListHtml}
+          ${docsUploadHtml}
 
           <h5 style="margin:1rem 0 .35rem;">Cambiar estado</h5>
           ${transButtons}
