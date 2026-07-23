@@ -23,7 +23,7 @@
 
 import api, { showToast } from '../../../services/apiClient.js';
 import AuthSession from '../../../services/authSession.js';
-import { escHtml, fmtDate, fmtAmount, licitacionBadgeHtml, docIcon, fmtFileSize } from '../helpers.js';
+import { escHtml, fmtDate, licitacionBadgeHtml, docIcon, fmtFileSize } from '../helpers.js';
 import { buildTimelineHtml, saveBlobAs } from './timelineView.js';
 import { openLicitacionModal } from './licitacionModal.js';
 
@@ -441,7 +441,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
              background:${dentro ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)'};">
           <strong>${dentro ? '✅ Dentro de presupuesto' : '⚠️ Fuera de presupuesto'}</strong><br>
           <span class="text-sm">Comprometido (cotizaciones aprobadas/confirmadas):
-            ${fmtAmount(comprometido, lic.moneda)} de ${fmtAmount(presupuesto, lic.moneda)}</span>
+            ${fmtMoney(comprometido, lic.moneda)} de ${fmtMoney(presupuesto, lic.moneda)}</span>
         </div>`;
     } else {
       budgetHtml = `<div class="text-muted text-sm" style="margin-top:.5rem;">Sin presupuesto referencial definido.</div>`;
@@ -469,7 +469,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
              <tr>
                <td class="fw-600">${escHtml(c.numero_correlativo)}</td>
                <td>${escHtml(c.estado)}</td>
-               <td>${fmtAmount(c.monto_total, c.moneda)}</td>
+               <td>${fmtMoney(c.monto_total, c.moneda)}</td>
                <td>${escHtml(c.ejecutivo_nombre ?? '—')}</td>
                <td><button class="btn btn-ghost btn-sm" data-cot-pdf="${c.id}" data-cot-name="${escHtml(c.numero_correlativo)}">📄 Ver</button></td>
              </tr>`).join('')}

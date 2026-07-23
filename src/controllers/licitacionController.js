@@ -49,8 +49,17 @@ const LicitacionController = {
       res.setHeader('Content-Disposition', `inline; filename="Expediente_${safeName}.pdf"`);
 
       const doc = licitacionPdfService.createDoc(licitacion);
+      doc.on('error', (streamErr) => {
+        console.error('[LicitacionController.downloadPdf] PDF stream error:', streamErr.message);
+      });
       doc.pipe(res);
-      licitacionPdfService.renderExpediente(doc, licitacion);
+      try {
+        licitacionPdfService.renderExpediente(doc, licitacion);
+      } catch (renderErr) {
+        // Nunca dejar la petición colgada: cerramos el stream aunque el layout
+        // falle (el cliente recibiría un PDF parcial en vez de un botón trabado).
+        console.error('[LicitacionController.downloadPdf] Render error:', renderErr.message);
+      }
       doc.end();
 
       // Auditoría no fatal (el stream ya se está enviando).

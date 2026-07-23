@@ -1,15 +1,18 @@
 // =============================================================================
 // src/services/licitacionPdfService.js
-// PDF generator for the licitación "expediente" (case file) — self-contained,
-// separate from the ornate quotation proforma in pdfService.js.
+// PDF generator for the licitación "expediente" (case file).
+//
+// Self-contained (separate from the ornate quotation proforma in pdfService.js)
+// but mirrors its corporate look: navy header band, white-on-navy section
+// titles, tinted boxes, colored status pill, and navy-headed tables.
 //
 // Generated ON DEMAND and streamed directly to the response (never persisted),
 // so it always reflects the licitación's current cotizaciones/gastos/estado.
 //
 // Exported:
-//   renderExpediente(doc, licitacion) — draws the whole document into a
-//   caller-provided PDFDocument. The controller owns creating the doc, setting
-//   the HTTP headers, piping to res, and calling doc.end().
+//   createDoc(licitacion)             — a configured A4 PDFDocument.
+//   renderExpediente(doc, licitacion) — draws the whole document into it. The
+//   controller owns piping to res and calling doc.end().
 // =============================================================================
 
 'use strict';
@@ -21,181 +24,229 @@ const PDFDocument = require('pdfkit');
 const ASSETS_DIR = path.join(__dirname, '..', 'assets', 'images');
 const LOGO_PATH  = path.join(ASSETS_DIR, 'rc_logo.png');
 
-const MARGIN = 45;
+// A4 geometry
+const PW = 595.28, PH = 841.89, MARGIN = 40;
+const CW = PW - MARGIN * 2;
+
+// Corporate palette (mirrors pdfService.js)
 const C = {
-  INK:     '#1f2937',
-  MUTED:   '#6b7280',
-  BORDER:  '#d1d5db',
-  HEAD_BG: '#f3f4f6',
-  GREEN:   '#059669',
-  RED:     '#dc2626',
-  BLUE:    '#2563eb',
+  NAVY:   '#1B2B4B',
+  ORANGE: '#C85A0F',
+  WHITE:  '#FFFFFF',
+  LIGHT:  '#F7F8FA',
+  DARK:   '#2D3748',
+  MID:    '#6B7280',
+  BORDER: '#CBD5E0',
+  GREEN:  '#059669',
+  RED:    '#DC2626',
+  TINT:   '#EFF6FF',
 };
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// Licitación state → pill color
+const ESTADO_COLOR = {
+  'En preparacion': '#6B7280',
+  'Cotizando':      '#D97706',
+  'En evaluacion':  '#6366F1',
+  'Presentada':     '#2563EB',
+  'Adjudicada':     '#059669',
+  'No adjudicada':  '#DC2626',
+  'Archivada':      '#6B7280',
+};
+
+// ── formatting helpers ───────────────────────────────────────────────────────
 function fmtMoney(amount, moneda = 'BOB') {
   if (amount == null || isNaN(parseFloat(amount))) return '—';
   const s = parseFloat(amount).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return moneda === 'USD' ? `$ ${s}` : `Bs. ${s}`;
 }
-
 function fmtDate(v) {
   if (!v) return '—';
   const s = String(v);
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-    const [y, m, d] = s.slice(0, 10).split('-');
-    return `${d}/${m}/${y}`;
-  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) { const [y, m, d] = s.slice(0, 10).split('-'); return `${d}/${m}/${y}`; }
   const dt = new Date(v);
   return isNaN(dt.getTime()) ? s : dt.toLocaleDateString('es-BO');
 }
 
-const ESTADO_LABEL = (e) => String(e || '—');
-
-// A newPage-aware Y cursor helper: if we're about to overflow, add a page.
+// ── layout primitives ────────────────────────────────────────────────────────
 function ensureSpace(doc, y, needed) {
-  const bottom = doc.page.height - MARGIN - 30;
-  if (y + needed > bottom) {
-    doc.addPage();
-    return MARGIN;
-  }
+  if (y + needed > PH - MARGIN - 24) { doc.addPage(); return MARGIN + 6; }
   return y;
 }
 
+// Section title: navy left stripe + bold navy text + hairline underline.
 function sectionTitle(doc, y, text) {
-  y = ensureSpace(doc, y, 30);
-  doc.fillColor(C.INK).font('Helvetica-Bold').fontSize(11).text(text, MARGIN, y);
-  const yy = doc.y + 3;
-  doc.moveTo(MARGIN, yy).lineTo(doc.page.width - MARGIN, yy).lineWidth(0.5).strokeColor(C.BORDER).stroke();
+  y = ensureSpace(doc, y, 26);
+  doc.rect(MARGIN, y, 3.5, 12).fill(C.ORANGE);
+  doc.fillColor(C.NAVY).font('Helvetica-Bold').fontSize(10.5).text(text.toUpperCase(), MARGIN + 9, y);
+  const yy = y + 16;
+  doc.moveTo(MARGIN, yy).lineTo(PW - MARGIN, yy).lineWidth(0.6).strokeColor(C.BORDER).stroke();
   return yy + 8;
 }
 
-// Simple two-column definition list.
-function defRow(doc, y, label, value) {
-  y = ensureSpace(doc, y, 18);
-  const labelW = 130;
-  doc.font('Helvetica').fontSize(9).fillColor(C.MUTED).text(label, MARGIN, y, { width: labelW });
-  doc.font('Helvetica').fontSize(9).fillColor(C.INK)
-    .text(value == null || value === '' ? '—' : String(value), MARGIN + labelW, y, { width: doc.page.width - MARGIN * 2 - labelW });
-  return Math.max(doc.y, y + 14) + 2;
+// Key/value row inside a boxed area.
+function kvRow(doc, y, label, value) {
+  const labelW = 135;
+  const valW   = CW - labelW - 24;
+  const vh = doc.font('Helvetica').fontSize(9).heightOfString(value == null || value === '' ? '—' : String(value), { width: valW });
+  const rowH = Math.max(15, vh + 4);
+  y = ensureSpace(doc, y, rowH);
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(C.MID).text(label, MARGIN + 12, y + 1, { width: labelW });
+  doc.font('Helvetica').fontSize(9).fillColor(C.DARK)
+    .text(value == null || value === '' ? '—' : String(value), MARGIN + 12 + labelW, y + 1, { width: valW });
+  return y + rowH;
 }
 
-// Generic table: columns = [{ title, key, width, align, render? }]
-function drawTable(doc, y, columns, rows, emptyText) {
-  const tableW = doc.page.width - MARGIN * 2;
-  const totalW = columns.reduce((a, c) => a + c.width, 0);
-  const scale  = tableW / totalW;
-  const colX = [];
-  let cx = MARGIN;
-  columns.forEach((c) => { colX.push(cx); cx += c.width * scale; });
+// Generic table with navy header + zebra rows.
+function table(doc, y, columns, rows, emptyText) {
+  const totalW = columns.reduce((a, c) => a + c.w, 0);
+  const scale  = CW / totalW;
+  const xs = []; let cx = MARGIN;
+  columns.forEach((c) => { xs.push(cx); cx += c.w * scale; });
 
-  // header row
-  y = ensureSpace(doc, y, 22);
-  doc.rect(MARGIN, y, tableW, 18).fill(C.HEAD_BG);
-  doc.fillColor(C.INK).font('Helvetica-Bold').fontSize(8.5);
-  columns.forEach((c, i) => {
-    doc.text(c.title, colX[i] + 4, y + 5, { width: c.width * scale - 8, align: c.align || 'left' });
-  });
-  y += 18;
+  // header
+  y = ensureSpace(doc, y, 20);
+  doc.rect(MARGIN, y, CW, 17).fill(C.NAVY);
+  doc.fillColor(C.WHITE).font('Helvetica-Bold').fontSize(8);
+  columns.forEach((c, i) => doc.text(c.t, xs[i] + 5, y + 5, { width: c.w * scale - 10, align: c.align || 'left' }));
+  y += 17;
 
   if (!rows || rows.length === 0) {
-    doc.font('Helvetica-Oblique').fontSize(9).fillColor(C.MUTED).text(emptyText || 'Sin registros.', MARGIN + 4, y + 4);
-    return y + 20;
+    doc.rect(MARGIN, y, CW, 18).fill(C.LIGHT);
+    doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(C.MID).text(emptyText || 'Sin registros.', MARGIN + 6, y + 5);
+    return y + 22;
   }
 
-  doc.font('Helvetica').fontSize(8.5).fillColor(C.INK);
-  rows.forEach((r) => {
-    // measure row height by the tallest cell
-    const cells = columns.map((c) => (c.render ? c.render(r) : String(r[c.key] ?? '—')));
-    const heights = cells.map((txt, i) =>
-      doc.heightOfString(txt, { width: columns[i].width * scale - 8 }));
-    const rowH = Math.max(16, Math.max(...heights) + 6);
+  doc.font('Helvetica').fontSize(8.5);
+  rows.forEach((r, idx) => {
+    const cells = columns.map((c) => (c.r ? c.r(r) : String(r[c.k] ?? '—')));
+    const rowH = Math.max(15, Math.max(...cells.map((t, i) => doc.heightOfString(t, { width: columns[i].w * scale - 10 }))) + 6);
     y = ensureSpace(doc, y, rowH);
+    if (idx % 2 === 1) doc.rect(MARGIN, y, CW, rowH).fill(C.LIGHT);
     columns.forEach((c, i) => {
-      doc.fillColor(C.INK).text(cells[i], colX[i] + 4, y + 3, { width: c.width * scale - 8, align: c.align || 'left' });
+      doc.fillColor(c.color ? c.color(r) : C.DARK).font(c.bold ? 'Helvetica-Bold' : 'Helvetica')
+        .text(cells[i], xs[i] + 5, y + 3.5, { width: c.w * scale - 10, align: c.align || 'left' });
     });
-    doc.moveTo(MARGIN, y + rowH).lineTo(MARGIN + tableW, y + rowH).lineWidth(0.4).strokeColor(C.BORDER).stroke();
     y += rowH;
   });
+  // bottom border
+  doc.moveTo(MARGIN, y).lineTo(PW - MARGIN, y).lineWidth(0.6).strokeColor(C.BORDER).stroke();
   return y + 4;
 }
 
 // ── main render ──────────────────────────────────────────────────────────────
 function renderExpediente(doc, lic) {
-  // Header band
-  if (fs.existsSync(LOGO_PATH)) {
-    try { doc.image(LOGO_PATH, MARGIN, MARGIN - 8, { width: 70 }); } catch { /* ignore */ }
-  }
-  doc.fillColor(C.INK).font('Helvetica-Bold').fontSize(16)
-    .text('EXPEDIENTE DE LICITACIÓN', MARGIN + 85, MARGIN, { width: doc.page.width - MARGIN * 2 - 85 });
-  doc.font('Helvetica').fontSize(10).fillColor(C.MUTED)
-    .text(`${lic.codigo}  ·  ${ESTADO_LABEL(lic.estado)}`, MARGIN + 85, MARGIN + 22);
-  doc.fontSize(8).fillColor(C.MUTED)
-    .text(`Generado: ${new Date().toLocaleString('es-BO')}`, MARGIN + 85, MARGIN + 37);
+  const moneda = lic.moneda || 'BOB';
 
-  let y = MARGIN + 60;
-  doc.moveTo(MARGIN, y).lineTo(doc.page.width - MARGIN, y).lineWidth(1).strokeColor(C.BLUE).stroke();
+  // ── Header band ──────────────────────────────────────────────────────────
+  const bandH = 62;
+  doc.rect(0, 0, PW, bandH).fill(C.NAVY);
+  // logo on a white rounded chip so it reads on navy
+  if (fs.existsSync(LOGO_PATH)) {
+    try {
+      doc.roundedRect(MARGIN, 12, 58, 38, 5).fill(C.WHITE);
+      doc.image(LOGO_PATH, MARGIN + 5, 15, { fit: [48, 32] });
+    } catch { /* ignore */ }
+  }
+  doc.fillColor(C.WHITE).font('Helvetica-Bold').fontSize(15)
+    .text('EXPEDIENTE DE LICITACIÓN', MARGIN + 72, 14, { width: CW - 72 });
+  doc.font('Helvetica').fontSize(10).fillColor('#C7D2FE')
+    .text(`${lic.codigo}`, MARGIN + 72, 33);
+  // estado pill (top-right)
+  const pillColor = ESTADO_COLOR[lic.estado] || C.MID;
+  const estadoTxt = String(lic.estado || '—').toUpperCase();
+  const pillW = doc.font('Helvetica-Bold').fontSize(8).widthOfString(estadoTxt) + 16;
+  doc.roundedRect(PW - MARGIN - pillW, 20, pillW, 16, 8).fill(pillColor);
+  doc.fillColor(C.WHITE).font('Helvetica-Bold').fontSize(8).text(estadoTxt, PW - MARGIN - pillW + 8, 24.5);
+  doc.fillColor('#C7D2FE').font('Helvetica').fontSize(7)
+    .text(`Generado: ${new Date().toLocaleString('es-BO')}`, PW - MARGIN - 200, 42, { width: 200, align: 'right' });
+
+  let y = bandH + 14;
+
+  // ── 1. Datos de la licitación ────────────────────────────────────────────
+  y = sectionTitle(doc, y, 'Datos de la licitación');
+  const boxTop = y;
+  doc.rect(MARGIN, boxTop, CW, 2).fill(C.WHITE); // spacer anchor
+  y += 2;
+  y = kvRow(doc, y, 'Nombre', lic.nombre);
+  y = kvRow(doc, y, 'Convocante', `${lic.cliente_nombre ?? '—'}${lic.cliente_nit ? '   ·   NIT ' + lic.cliente_nit : ''}`);
+  y = kvRow(doc, y, 'Responsable (Proyectos)', lic.responsable_nombre);
+  y = kvRow(doc, y, 'Fecha límite', fmtDate(lic.fecha_limite));
+  if (lic.descripcion)             y = kvRow(doc, y, 'Descripción', lic.descripcion);
+  if (lic.observaciones_resultado) y = kvRow(doc, y, 'Observaciones', lic.observaciones_resultado);
+  // frame around the data box
+  doc.roundedRect(MARGIN, boxTop, CW, y - boxTop + 2, 3).lineWidth(0.6).strokeColor(C.BORDER).stroke();
   y += 12;
 
-  // 1. Datos de la licitación
-  y = sectionTitle(doc, y, 'Datos de la licitación');
-  y = defRow(doc, y, 'Nombre', lic.nombre);
-  y = defRow(doc, y, 'Convocante', `${lic.cliente_nombre ?? '—'}${lic.cliente_nit ? '  (NIT ' + lic.cliente_nit + ')' : ''}`);
-  y = defRow(doc, y, 'Responsable', lic.responsable_nombre);
-  y = defRow(doc, y, 'Fecha límite', fmtDate(lic.fecha_limite));
-  y = defRow(doc, y, 'Estado', ESTADO_LABEL(lic.estado));
-  if (lic.descripcion)             y = defRow(doc, y, 'Descripción', lic.descripcion);
-  if (lic.observaciones_resultado) y = defRow(doc, y, 'Resultado', lic.observaciones_resultado);
-  y += 6;
-
-  // 2. Resumen económico
+  // ── 2. Resumen económico ─────────────────────────────────────────────────
   y = sectionTitle(doc, y, 'Resumen económico');
-  const moneda = lic.moneda || 'BOB';
-  if (lic.presupuesto_referencial != null) {
-    y = defRow(doc, y, 'Presupuesto referencial', fmtMoney(lic.presupuesto_referencial, moneda));
-  }
-  y = defRow(doc, y, 'Total cotizado (ingreso)', fmtMoney(lic.total_comprometido, moneda));
-  y = defRow(doc, y, 'Total gastos', fmtMoney(lic.total_gastos, moneda));
+  const ingreso   = Number(lic.total_comprometido ?? 0);
+  const gastosT   = Number(lic.total_gastos ?? 0);
+  const resultado = Number(lic.resultado ?? (ingreso - gastosT));
+  const ganancia  = resultado >= 0;
 
-  // Resultado destacado
-  const resultado = Number(lic.resultado ?? (Number(lic.total_comprometido || 0) - Number(lic.total_gastos || 0)));
-  const esGanancia = resultado >= 0;
-  y = ensureSpace(doc, y, 26);
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(esGanancia ? C.GREEN : C.RED)
-    .text(`${esGanancia ? 'Ganancia' : 'Pérdida'}: ${fmtMoney(Math.abs(resultado), moneda)}`, MARGIN, y + 2);
-  y = doc.y + 10;
+  // small figures grid
+  y = ensureSpace(doc, y, 46);
+  const cardW = (CW - 16) / 3;
+  const cards = [
+    { label: 'Presupuesto ref.', value: lic.presupuesto_referencial != null ? fmtMoney(lic.presupuesto_referencial, moneda) : '—', color: C.NAVY },
+    { label: 'Ingreso (cotizado)', value: fmtMoney(ingreso, moneda), color: C.NAVY },
+    { label: 'Total gastos', value: fmtMoney(gastosT, moneda), color: C.ORANGE },
+  ];
+  cards.forEach((cd, i) => {
+    const cx = MARGIN + i * (cardW + 8);
+    doc.roundedRect(cx, y, cardW, 40, 3).fill(C.LIGHT);
+    doc.fillColor(C.MID).font('Helvetica-Bold').fontSize(7.5).text(cd.label.toUpperCase(), cx + 8, y + 7, { width: cardW - 16 });
+    doc.fillColor(cd.color).font('Helvetica-Bold').fontSize(12).text(cd.value, cx + 8, y + 20, { width: cardW - 16 });
+  });
+  y += 50;
 
-  // 3. Cotizaciones vinculadas
+  // Resultado banner
+  y = ensureSpace(doc, y, 40);
+  doc.roundedRect(MARGIN, y, CW, 34, 4).fill(ganancia ? '#ECFDF5' : '#FEF2F2');
+  doc.roundedRect(MARGIN, y, 5, 34, 2).fill(ganancia ? C.GREEN : C.RED);
+  doc.fillColor(ganancia ? C.GREEN : C.RED).font('Helvetica-Bold').fontSize(13)
+    .text(`${ganancia ? 'GANANCIA' : 'PÉRDIDA'}: ${fmtMoney(Math.abs(resultado), moneda)}`, MARGIN + 16, y + 6);
+  doc.fillColor(C.MID).font('Helvetica').fontSize(8)
+    .text(`Ingreso ${fmtMoney(ingreso, moneda)}  −  Gastos ${fmtMoney(gastosT, moneda)}`, MARGIN + 16, y + 22);
+  y += 44;
+
+  // ── 3. Cotizaciones vinculadas ───────────────────────────────────────────
   y = sectionTitle(doc, y, `Cotizaciones vinculadas (${(lic.cotizaciones || []).length})`);
-  y = drawTable(doc, y, [
-    { title: 'Correlativo', key: 'numero_correlativo', width: 30 },
-    { title: 'Estado',      key: 'estado',             width: 26 },
-    { title: 'Monto',       width: 22, align: 'right', render: (r) => fmtMoney(r.monto_total, r.moneda) },
-    { title: 'Ejecutivo',   key: 'ejecutivo_nombre',   width: 30 },
+  y = table(doc, y, [
+    { t: 'Correlativo', k: 'numero_correlativo', w: 34, bold: true },
+    { t: 'Estado',      k: 'estado',             w: 30 },
+    { t: 'Monto',       w: 22, align: 'right', r: (r) => fmtMoney(r.monto_total, r.moneda) },
+    { t: 'Ejecutivo',   k: 'ejecutivo_nombre',   w: 34 },
   ], lic.cotizaciones, 'Sin cotizaciones vinculadas.');
-  y += 6;
+  y += 8;
 
-  // 4. Gastos
+  // ── 4. Gastos ────────────────────────────────────────────────────────────
   y = sectionTitle(doc, y, `Gastos (${(lic.gastos || []).length})`);
-  y = drawTable(doc, y, [
-    { title: 'Concepto', key: 'concepto', width: 46 },
-    { title: 'Monto',    width: 22, align: 'right', render: (r) => fmtMoney(r.monto, r.moneda) },
-    { title: 'Registró', key: 'nombre_usuario', width: 22 },
-    { title: 'Fecha',    width: 20, render: (r) => fmtDate(r.creado_en) },
+  y = table(doc, y, [
+    { t: 'Concepto', k: 'concepto',       w: 48 },
+    { t: 'Monto',    w: 20, align: 'right', r: (r) => fmtMoney(r.monto, r.moneda), color: () => C.ORANGE, bold: true },
+    { t: 'Registró', k: 'nombre_usuario', w: 22 },
+    { t: 'Fecha',    w: 18, r: (r) => fmtDate(r.creado_en) },
   ], lic.gastos, 'Sin gastos registrados.');
 
-  // Footer
-  const fy = doc.page.height - MARGIN - 14;
-  doc.font('Helvetica').fontSize(7.5).fillColor(C.MUTED)
-    .text('RC Tractoparts — Empresa unipersonal de Ronald Roca Cartagena · Documento interno de seguimiento de licitación',
-      MARGIN, fy, { width: doc.page.width - MARGIN * 2, align: 'center' });
+  // ── Footer on every page ─────────────────────────────────────────────────
+  const range = doc.bufferedPageRange();
+  for (let i = range.start; i < range.start + range.count; i++) {
+    doc.switchToPage(i);
+    doc.moveTo(MARGIN, PH - MARGIN - 12).lineTo(PW - MARGIN, PH - MARGIN - 12).lineWidth(0.5).strokeColor(C.BORDER).stroke();
+    doc.font('Helvetica').fontSize(7).fillColor(C.MID)
+      .text('RC Tractoparts — Empresa unipersonal de Ronald Roca Cartagena  ·  Documento interno de seguimiento de licitación',
+        MARGIN, PH - MARGIN - 9, { width: CW - 40, align: 'left' });
+    doc.text(`Pág. ${i - range.start + 1} de ${range.count}`, PW - MARGIN - 60, PH - MARGIN - 9, { width: 60, align: 'right' });
+  }
 }
 
-// Convenience: create a standard A4 document for the expediente.
+// Standard A4 document. bufferPages:true so the footer can paginate all pages.
 function createDoc(lic) {
   return new PDFDocument({
     size: 'A4',
     margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN },
+    bufferPages: true,
     info: {
       Title:   `Expediente Licitación ${lic.codigo}`,
       Author:  'RC Tractoparts — Sistema de Gestión',

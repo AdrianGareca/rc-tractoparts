@@ -46,10 +46,15 @@ export async function saveBlobAs(blob, fileName, fileType) {
   // is undefined — so this branch is skipped and we fall back to a download.
   if (typeof window.showSaveFilePicker === 'function') {
     try {
-      const handle   = await window.showSaveFilePicker({
-        suggestedName: fileName,
-        types:         [fileType],
-      });
+      // showSaveFilePicker rejects a `types` entry whose `accept` is empty
+      // (TypeError). Only pass `types` when a real MIME→extension map is given,
+      // so callers can request "any file" (e.g. arbitrary licitación documents)
+      // by passing an empty/omitted accept without breaking the picker.
+      const pickerOpts = { suggestedName: fileName };
+      if (fileType && fileType.accept && Object.keys(fileType.accept).length > 0) {
+        pickerOpts.types = [fileType];
+      }
+      const handle   = await window.showSaveFilePicker(pickerOpts);
       const writable = await handle.createWritable();
       await writable.write(blob);
       await writable.close();
