@@ -57,6 +57,7 @@ function _pushDesktopNotif(title, body, icon = '/assets/images/rc_logo.png') {
 function _tipoStyle(tipo) {
   if (tipo === 'aprobacion')    return { icon: '✅', borderColor: '#10B981', labelColor: '#065F46' };
   if (tipo === 'envio_cliente') return { icon: '📤', borderColor: '#3B82F6', labelColor: '#1D4ED8' };
+  if (tipo === 'licitacion')    return { icon: '📑', borderColor: '#14B8A6', labelColor: '#0F766E' };
   return                               { icon: '⚠️', borderColor: '#F97316', labelColor: '#9A3412' }; // correccion
 }
 
@@ -130,33 +131,32 @@ export async function refreshNotifBadge(UI) {
 
           // Partition OUTSIDE the modal callback so the reference is available
           // for the markNotificacionesLeidas call wired to the explicit button.
+          //   • aprobaciones/envios + licitacion → live in the `notificaciones`
+          //     table and are cleared by POST /notificaciones/leer.
+          //   • correcciones → derived from the state history; self-clear when the
+          //     quote is re-submitted (NOT cleared by the button).
           const aprobaciones = rows.filter(r => r.tipo === 'aprobacion' || r.tipo === 'envio_cliente');
+          const licitaciones = rows.filter(r => r.tipo === 'licitacion');
           const correcciones = rows.filter(r => r.tipo === 'correccion');
+          // All table-backed notifications the "marcar leídas" button clears.
+          const marcables = aprobaciones.length + licitaciones.length;
 
           UI.openModal('🔔 Notificaciones', (body) => {
-            const aprobSection = aprobaciones.length > 0 ? `
-              <p class="text-sm fw-600" style="color:#065F46;margin:.75rem 0 .35rem;">
-                ✅ Aprobaciones y envíos recientes
-              </p>
+            const sectionHtml = (titleColor, title, items) => items.length > 0 ? `
+              <p class="text-sm fw-600" style="color:${titleColor};margin:.75rem 0 .35rem;">${title}</p>
               <ul style="list-style:none;padding:0;margin:0 0 .75rem;">
-                ${aprobaciones.map(_buildNotifItem).join('')}
+                ${items.map(_buildNotifItem).join('')}
               </ul>` : '';
 
-            const corrSection = correcciones.length > 0 ? `
-              <p class="text-sm fw-600" style="color:#9A3412;margin:.75rem 0 .35rem;">
-                ⚠️ Proformas que requieren correcciones
-              </p>
-              <ul style="list-style:none;padding:0;margin:0 0 .75rem;">
-                ${correcciones.map(_buildNotifItem).join('')}
-              </ul>` : '';
+            const aprobSection = sectionHtml('#065F46', '✅ Aprobaciones y envíos recientes', aprobaciones);
+            const licSection   = sectionHtml('#0F766E', '📑 Licitaciones', licitaciones);
+            const corrSection  = sectionHtml('#9A3412', '⚠️ Proformas que requieren correcciones', correcciones);
 
-            // Explicit "mark as read" button — aprobaciones only persist until
-            // the user consciously dismisses them.  Corrections self-clear when
-            // the Ejecutivo re-submits the corrected quote.
-            const markReadBtn = aprobaciones.length > 0
-              ? `<button id="btn-marcar-leidas" class="btn btn-ghost btn-sm"
-                   style="margin-top:.75rem;">
-                   ✅ Marcar aprobaciones como leídas
+            // "Mark as read" clears every table-backed notification (aprobaciones,
+            // envíos y licitaciones). Se muestra siempre que haya alguna marcable.
+            const markReadBtn = marcables > 0
+              ? `<button id="btn-marcar-leidas" class="btn btn-ghost btn-sm" style="margin-top:.75rem;">
+                   ✅ Marcar como leídas
                  </button>`
               : '';
 
@@ -165,16 +165,14 @@ export async function refreshNotifBadge(UI) {
                 Tienes <strong>${rows.length}</strong> notificación${rows.length > 1 ? 'es' : ''} pendiente${rows.length > 1 ? 's' : ''}.
               </p>
               ${aprobSection}
+              ${licSection}
               ${corrSection}
-              <p class="text-sm text-muted" style="margin-top:.75rem;">
-                Abre la cotización desde "Mis Cotizaciones" para ver el detalle completo.
-              </p>
               ${markReadBtn}`;
 
             // Wire the explicit mark-as-read button AFTER innerHTML is set
             body.querySelector('#btn-marcar-leidas')?.addEventListener('click', async () => {
               await api.post('/api/cotizaciones/notificaciones/leer', {}).catch(() => {});
-              showToast('Notificaciones de aprobación marcadas como leídas.', 'success');
+              showToast('Notificaciones marcadas como leídas.', 'success');
               // Refresh badge immediately so the count updates
               await refreshNotifBadge(UI);
             });
