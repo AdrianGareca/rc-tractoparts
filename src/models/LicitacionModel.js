@@ -366,14 +366,23 @@ async function findById(id) {
   // Total cotizado (solo las vinculadas ya aprobadas/confirmadas cuentan para
   // la comparación contra el presupuesto — una cotización 'Pendiente' aún no
   // representa un compromiso de precio).
+  //
+  // Moneda: el presupuesto_referencial está en licitacion.moneda, así que el
+  // total SOLO suma cotizaciones en esa MISMA moneda (sumar montos de monedas
+  // distintas daría una comparación sin sentido). Si hay cotizaciones
+  // aprobadas/confirmadas en OTRA moneda, se marca la bandera para avisarlo en
+  // la UI en vez de mezclarlas silenciosamente.
   const [totales] = await pool.execute(
-    `SELECT COALESCE(SUM(c.monto_total), 0) AS total_comprometido
+    `SELECT
+        COALESCE(SUM(CASE WHEN c.moneda = ? THEN c.monto_total ELSE 0 END), 0) AS total_comprometido,
+        SUM(CASE WHEN c.moneda <> ? THEN 1 ELSE 0 END) AS otras_monedas
        FROM cotizaciones c
        WHERE c.id_licitacion = ?
          AND c.estado IN ('Aprobada internamente', 'Enviada al cliente', 'Confirmada', 'Aceptada')`,
-    [id]
+    [licitacion.moneda, licitacion.moneda, id]
   );
-  licitacion.total_comprometido = totales[0].total_comprometido;
+  licitacion.total_comprometido            = totales[0].total_comprometido;
+  licitacion.tiene_cotizaciones_otra_moneda = Number(totales[0].otras_monedas) > 0;
 
   // Gastos de la licitación (solo relevantes tras adjudicación) + análisis de
   // resultado: Resultado = Ingreso (total_comprometido) − Total gastos.

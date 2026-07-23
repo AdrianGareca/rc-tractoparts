@@ -442,6 +442,9 @@ export async function mountLicitacionesTab(panel, opts = {}) {
           <strong>${dentro ? '✅ Dentro de presupuesto' : '⚠️ Fuera de presupuesto'}</strong><br>
           <span class="text-sm">Comprometido (cotizaciones aprobadas/confirmadas):
             ${fmtMoney(comprometido, lic.moneda)} de ${fmtMoney(presupuesto, lic.moneda)}</span>
+          ${lic.tiene_cotizaciones_otra_moneda
+            ? `<br><span class="text-sm" style="color:var(--clr-amber);">⚠️ Hay cotizaciones vinculadas en otra moneda que no se incluyen en esta comparación (el presupuesto está en ${escHtml(lic.moneda || 'BOB')}).</span>`
+            : ''}
         </div>`;
     } else {
       budgetHtml = `<div class="text-muted text-sm" style="margin-top:.5rem;">Sin presupuesto referencial definido.</div>`;
