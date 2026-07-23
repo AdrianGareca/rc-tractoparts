@@ -375,6 +375,32 @@ async function findById(id) {
   );
   licitacion.total_comprometido = totales[0].total_comprometido;
 
+  // Gastos de la licitación (solo relevantes tras adjudicación) + análisis de
+  // resultado: Resultado = Ingreso (total_comprometido) − Total gastos.
+  // La tabla puede no existir en una BD que aún no corrió el upgrade de gastos;
+  // se degrada con gracia a lista vacía / cero para no romper el detalle.
+  let gastos = [];
+  let totalGastos = 0;
+  try {
+    const [gastoRows] = await pool.execute(
+      `SELECT id, concepto, monto, moneda, id_usuario, nombre_usuario, creado_en
+         FROM licitacion_gastos
+        WHERE id_licitacion = ?
+        ORDER BY creado_en DESC`,
+      [id]
+    );
+    gastos = gastoRows;
+    totalGastos = gastoRows.reduce((acc, g) => acc + Number(g.monto), 0);
+  } catch (err) {
+    if (!/doesn't exist|Unknown table|no such table/i.test(err.message || '')) {
+      console.warn('[LicitacionModel.findById] Gastos lookup failed (non-fatal):', err.message);
+    }
+  }
+  licitacion.gastos       = gastos;
+  licitacion.total_gastos = totalGastos;
+  // Resultado (ganancia/pérdida): positivo = ganancia, negativo = pérdida.
+  licitacion.resultado    = Number(licitacion.total_comprometido) - Number(totalGastos);
+
   return licitacion;
 }
 

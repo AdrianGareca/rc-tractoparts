@@ -32,6 +32,7 @@ const rateLimit = require('express-rate-limit');
 
 const LicitacionController         = require('../controllers/licitacionController');
 const LicitacionDocumentController = require('../controllers/licitacionDocumentController');
+const LicitacionGastoController    = require('../controllers/licitacionGastoController');
 const { authenticate }     = require('../middlewares/authMiddleware');
 const authorize            = require('../middlewares/roleMiddleware');
 const { validate }         = require('../validators/validate');
@@ -39,6 +40,7 @@ const {
   createLicitacionSchema,
   updateLicitacionSchema,
   updateLicitacionStatusSchema,
+  createGastoSchema,
 } = require('../validators/licitacionValidator');
 
 const router = express.Router();
@@ -107,6 +109,10 @@ const licDocUploadLimiter = rateLimit({
 const allRoles     = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin', 'Proyectos'])];
 const manageRoles  = [authenticate, authorize(['Proyectos', 'Jefe', 'SysAdmin'])];
 const stateRoles   = [authenticate, authorize(['Proyectos', 'Ejecutivo', 'Jefe', 'SysAdmin'])];
+// Gastos: Administración participa del análisis de resultado (junto a Proyectos
+// y Jefe/SysAdmin). El ownership fino (Proyectos = responsable) y el gate de
+// estado (Adjudicada/Archivada) los aplica el controller.
+const gastoRoles   = [authenticate, authorize(['Administracion', 'Proyectos', 'Jefe', 'SysAdmin'])];
 
 /**
  * @swagger
@@ -502,6 +508,122 @@ router.delete(
   '/:id/documentos/:docId',
   ...manageRoles,
   LicitacionDocumentController.deleteDocumento
+);
+
+// =============================================================================
+// GASTOS — análisis de resultado (post-adjudicación)
+// =============================================================================
+
+/**
+ * @swagger
+ * /api/licitaciones/{id}/gastos:
+ *   post:
+ *     summary: Registrar un gasto operativo (Administración, responsable Proyectos, Jefe, SysAdmin)
+ *     description: Solo permitido cuando la licitación está 'Adjudicada' o 'Archivada'. Alimenta el resultado (ingreso − gastos).
+ *     tags: [Licitaciones]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [concepto, monto]
+ *             properties:
+ *               concepto: { type: string, example: "Transporte a obra" }
+ *               monto:    { type: number, format: float, example: 1200.50 }
+ *               moneda:   { type: string, enum: [BOB, USD], default: BOB }
+ *     responses:
+ *       201: { description: Gasto registrado. }
+ *       403: { description: Rol sin permiso para cargar gastos. }
+ *       409: { description: La licitación no está adjudicada. }
+ */
+// POST /api/licitaciones/:id/gastos
+router.post(
+  '/:id/gastos',
+  ...gastoRoles,
+  validate(createGastoSchema),
+  LicitacionGastoController.addGasto
+);
+
+/**
+ * @swagger
+ * /api/licitaciones/{id}/gastos:
+ *   get:
+ *     summary: Listar gastos + resumen de resultado (ingreso − gastos)
+ *     tags: [Licitaciones]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Lista de gastos + totales + resultado. }
+ *       404: { description: Licitación no encontrada. }
+ */
+// GET /api/licitaciones/:id/gastos
+router.get(
+  '/:id/gastos',
+  ...allRoles,
+  LicitacionGastoController.getGastos
+);
+
+/**
+ * @swagger
+ * /api/licitaciones/{id}/gastos/{gastoId}:
+ *   delete:
+ *     summary: Eliminar un gasto (Administración, responsable Proyectos, Jefe, SysAdmin)
+ *     tags: [Licitaciones]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *       - in: path
+ *         name: gastoId
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: Gasto eliminado. }
+ *       403: { description: Rol sin permiso. }
+ *       404: { description: Gasto no encontrado. }
+ */
+// DELETE /api/licitaciones/:id/gastos/:gastoId
+router.delete(
+  '/:id/gastos/:gastoId',
+  ...gastoRoles,
+  LicitacionGastoController.deleteGasto
+);
+
+/**
+ * @swagger
+ * /api/licitaciones/{id}/pdf:
+ *   get:
+ *     summary: Descargar el expediente PDF de la licitación
+ *     description: Genera on-demand un PDF con datos, resumen económico (ingreso/gastos/resultado), cotizaciones vinculadas y gastos.
+ *     tags: [Licitaciones]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: integer }
+ *     responses:
+ *       200: { description: PDF del expediente. }
+ *       404: { description: Licitación no encontrada. }
+ */
+// GET /api/licitaciones/:id/pdf
+router.get(
+  '/:id/pdf',
+  ...allRoles,
+  LicitacionController.downloadPdf
 );
 
 // =============================================================================

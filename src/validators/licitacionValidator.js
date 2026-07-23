@@ -119,8 +119,34 @@ const updateLicitacionStatusSchema = z
     }
   );
 
+// ---------------------------------------------------------------------------
+// createGastoSchema — POST /api/licitaciones/:id/gastos
+// Gasto operativo cargado a una licitación adjudicada (análisis de resultado).
+// ---------------------------------------------------------------------------
+const createGastoSchema = z.object({
+  concepto: z
+    .string({ required_error: 'El concepto del gasto es obligatorio.' })
+    .trim()
+    .min(1,   'El concepto no puede estar vacío.')
+    .max(200, 'El concepto no puede exceder 200 caracteres.'),
+
+  monto: z
+    .number({ required_error: 'El monto es obligatorio.', invalid_type_error: 'El monto debe ser un número.' })
+    .positive('El monto debe ser mayor a 0.')
+    .max(9999999999999.99, 'El monto es demasiado grande.'),
+
+  moneda: z
+    .string()
+    .toUpperCase()
+    .refine((v) => VALID_CURRENCIES.includes(v), {
+      message: `moneda debe ser una de: ${VALID_CURRENCIES.join(', ')}.`,
+    })
+    .default('BOB'),
+});
+
 module.exports = {
   createLicitacionSchema,
   updateLicitacionSchema,
   updateLicitacionStatusSchema,
+  createGastoSchema,
 };

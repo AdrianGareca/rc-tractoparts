@@ -599,6 +599,36 @@ CREATE TABLE licitacion_documentos (
     FOREIGN KEY (id_usuario)    REFERENCES usuarios     (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- =============================================================================
+-- 11f. LICITACION_GASTOS
+--   Gastos operativos (transporte, encomienda, viaje, etc.) que se cargan a una
+--   licitación YA ADJUDICADA para el análisis de resultado (ganancia/pérdida):
+--     Resultado = Σ(cotizaciones vinculadas aprobadas/confirmadas)  −  Σ(gastos)
+--   Los cargan Administracion y el responsable Proyectos (y Jefe/SysAdmin). El
+--   controller sólo permite altas cuando la licitación está en 'Adjudicada' o
+--   'Archivada' (ver licitacionGastoController).
+-- =============================================================================
+
+CREATE TABLE licitacion_gastos (
+  id              INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  id_licitacion   INT UNSIGNED  NOT NULL,
+  concepto        VARCHAR(200)  NOT NULL
+    COMMENT 'Descripción del gasto (ej. Transporte a obra, Encomienda, Viáticos).',
+  monto           DECIMAL(15,2) NOT NULL,
+  moneda          CHAR(3)       NOT NULL DEFAULT 'BOB',
+  id_usuario      INT UNSIGNED  DEFAULT NULL
+    COMMENT 'Quién registró el gasto (Administracion o Proyectos responsable, o Jefe/SysAdmin).',
+  nombre_usuario  VARCHAR(50)   DEFAULT NULL
+    COMMENT 'Nombre del usuario al momento del registro — preservado aunque se desactive/renombre.',
+  creado_en       DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_licgasto_licitacion (id_licitacion),
+  CONSTRAINT fk_licgasto_licitacion
+    FOREIGN KEY (id_licitacion) REFERENCES licitaciones (id) ON DELETE CASCADE  ON UPDATE CASCADE,
+  CONSTRAINT fk_licgasto_usuario
+    FOREIGN KEY (id_usuario)    REFERENCES usuarios     (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------------------------------------------------------------------------
 -- notificaciones — Targeted in-app notifications for the Ejecutivo feed.
 --

@@ -22,8 +22,55 @@ const LicitacionModel            = require('../models/LicitacionModel');
 const QuotationModel             = require('../models/QuotationModel');
 const UserModel                  = require('../models/UserModel');
 const { logEvent, AuditActions } = require('../utils/auditLog');
+const licitacionPdfService       = require('../services/licitacionPdfService');
 
 const LicitacionController = {
+
+  // ---------------------------------------------------------------------------
+  // downloadPdf — GET /api/licitaciones/:id/pdf  (todos los autenticados)
+  // Genera el expediente de la licitación ON-DEMAND (no se persiste) y lo
+  // transmite directo, así siempre refleja el estado/cotizaciones/gastos actual.
+  // ---------------------------------------------------------------------------
+  async downloadPdf(req, res) {
+    const id       = parseInt(req.params.id, 10);
+    const clientIp = req.ip || req.socket?.remoteAddress || null;
+    if (isNaN(id) || id < 1) {
+      return res.status(400).json({ success: false, message: 'ID de licitación inválido.' });
+    }
+
+    try {
+      const licitacion = await LicitacionModel.findById(id);
+      if (!licitacion) {
+        return res.status(404).json({ success: false, message: `No se encontró la licitación con ID ${id}.` });
+      }
+
+      const safeName = String(licitacion.codigo || `LIC-${id}`).replace(/[^\w\-]/g, '_');
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="Expediente_${safeName}.pdf"`);
+
+      const doc = licitacionPdfService.createDoc(licitacion);
+      doc.pipe(res);
+      licitacionPdfService.renderExpediente(doc, licitacion);
+      doc.end();
+
+      // Auditoría no fatal (el stream ya se está enviando).
+      logEvent({
+        id_usuario:     req.user.id,
+        nombre_usuario: req.user.nombre_usuario,
+        accion:         AuditActions.DESCARGAR_PDF_LICITACION,
+        entidad:        'licitaciones',
+        id_entidad:     id,
+        detalle:        { codigo: licitacion.codigo },
+        ip_origen:      clientIp,
+        resultado:      'exito',
+      }).catch(() => {});
+    } catch (error) {
+      console.error('[LicitacionController.downloadPdf] Error:', error.message);
+      if (!res.headersSent) {
+        return res.status(500).json({ success: false, message: 'No se pudo generar el PDF de la licitación.' });
+      }
+    }
+  },
 
   // ---------------------------------------------------------------------------
   // createLicitacion — POST /api/licitaciones  (Proyectos, Jefe, SysAdmin)

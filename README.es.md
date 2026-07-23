@@ -779,6 +779,8 @@ docker compose exec db mysqldump -u root -p rc_tractoparts > backup.sql   # resp
 | `upgrade_2026_cliente_direccion_ciudad.sql` | `clientes.direccion` / `clientes.ciudad` (no-op en BDs cuyo esquema ya las tiene) |
 | `upgrade_2026_origenes_cliente.sql` | Catálogo `origenes_cliente` + `clientes.id_origen_cliente` (idempotente) |
 | `upgrade_2026_licitaciones.sql` | Módulo de licitaciones: rol `Proyectos` (5), tablas `licitaciones` / `licitaciones_correlativo` / `licitacion_historial_estados`, FK `cotizaciones.id_licitacion`, `notificaciones.id_licitacion` + valor ENUM `'licitacion'` (idempotente) |
+| `upgrade_2026_licitacion_documentos.sql` | `licitacion_documentos` — adjuntos multi-archivo (PDF/Word/Excel/imágenes) por licitación (idempotente; correr DESPUÉS de `upgrade_2026_licitaciones.sql`) |
+| `upgrade_2026_licitacion_gastos.sql` | `licitacion_gastos` — gastos operativos para el análisis de resultado (ganancia/pérdida) post-adjudicación (idempotente; correr DESPUÉS de `upgrade_2026_licitaciones.sql`) |
 
 **Procedimiento** (el orden importa — migrar *antes* de reconstruir la app, para que el código nuevo nunca consulte columnas que aún no existen; ver el flujo en [§3.7](#37-flujo-de-release-y-migraciones-de-esquema)):
 

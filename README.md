@@ -771,6 +771,8 @@ docker compose exec db mysqldump -u root -p rc_tractoparts > backup.sql   # DB b
 | `upgrade_2026_cliente_direccion_ciudad.sql` | `clientes.direccion` / `clientes.ciudad` (no-op on DBs whose schema already has them) |
 | `upgrade_2026_origenes_cliente.sql` | `origenes_cliente` catalog + `clientes.id_origen_cliente` (idempotent) |
 | `upgrade_2026_licitaciones.sql` | Licitaciones module: `Proyectos` role (5), `licitaciones` / `licitaciones_correlativo` / `licitacion_historial_estados` tables, `cotizaciones.id_licitacion` FK, `notificaciones.id_licitacion` + ENUM value `'licitacion'` (idempotent) |
+| `upgrade_2026_licitacion_documentos.sql` | `licitacion_documentos` — multi-file attachments (PDF/Word/Excel/images) per licitación (idempotent; run AFTER `upgrade_2026_licitaciones.sql`) |
+| `upgrade_2026_licitacion_gastos.sql` | `licitacion_gastos` — operating expenses for the post-adjudication profit/loss analysis (idempotent; run AFTER `upgrade_2026_licitaciones.sql`) |
 
 **Procedure** (order matters — migrate *before* rebuilding the app, so the new code never queries columns that don't exist yet; see the flow in [§3.7](#37-release--schema-migration-flow)):
 

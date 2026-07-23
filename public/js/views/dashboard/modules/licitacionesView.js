@@ -81,6 +81,24 @@ function allowedTransitions(licitacion) {
   return TRANSITIONS[actor][licitacion.estado] || [];
 }
 
+// Los gastos (análisis de resultado) sólo aplican una vez adjudicada.
+const GASTO_STATES = ['Adjudicada', 'Archivada'];
+
+// Quién puede cargar/eliminar gastos: Administración + responsable Proyectos +
+// Jefe/SysAdmin (distinto de resolveActorType, que deja a Administración en solo
+// lectura para el resto de la licitación).
+function canManageGastos(licitacion) {
+  const role = AuthSession.getRole();
+  if (role === 'Jefe' || role === 'SysAdmin' || role === 'Administracion') return true;
+  return role === 'Proyectos' && AuthSession.getUserId() === licitacion.id_responsable;
+}
+
+function fmtMoney(n, moneda = 'BOB') {
+  if (n == null) return '—';
+  const s = Number(n).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return moneda === 'USD' ? `$ ${s}` : `Bs. ${s}`;
+}
+
 // ---------------------------------------------------------------------------
 // mountLicitacionesTab
 // ---------------------------------------------------------------------------
@@ -290,6 +308,91 @@ export async function mountLicitacionesTab(panel, opts = {}) {
       });
     });
 
+    // ── Expediente PDF de la licitación ──────────────────────────────────────
+    overlay.querySelector('#licd-pdf')?.addEventListener('click', async () => {
+      const btn = overlay.querySelector('#licd-pdf');
+      const original = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Generando…';
+      try {
+        const response = await api.get(`/api/licitaciones/${id}/pdf`);
+        const blob = await response.blob();
+        const outcome = await saveBlobAs(blob, `Expediente_${lic.codigo}.pdf`, {
+          description: 'Documento PDF', accept: { 'application/pdf': ['.pdf'] },
+        });
+        if (outcome === 'saved')      showToast('Expediente guardado.', 'success', 2500);
+        else if (outcome === 'downloaded') showToast('Expediente descargado a tu carpeta de Descargas.', 'info', 3500);
+      } catch (err) {
+        showToast(err.data?.message || err.message || 'No se pudo generar el PDF.', 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = original;
+      }
+    });
+
+    // ── Ver proforma (PDF) de una cotización vinculada ───────────────────────
+    overlay.querySelectorAll('[data-cot-pdf]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const cotId = btn.dataset.cotPdf;
+        const cotName = btn.dataset.cotName || `cotizacion-${cotId}`;
+        const original = btn.textContent;
+        btn.disabled = true; btn.textContent = '…';
+        try {
+          const response = await api.get(`/api/cotizaciones/${cotId}/pdf`);
+          const blob = await response.blob();
+          const safe = String(cotName).replace(/[^\w\-]/g, '_');
+          const outcome = await saveBlobAs(blob, `${safe}.pdf`, {
+            description: 'Documento PDF', accept: { 'application/pdf': ['.pdf'] },
+          });
+          if (outcome === 'saved')      showToast('Proforma guardada.', 'success', 2500);
+          else if (outcome === 'downloaded') showToast('Proforma descargada a tu carpeta de Descargas.', 'info', 3500);
+        } catch (err) {
+          showToast(err.data?.message || err.message || 'No se pudo abrir la proforma.', 'error');
+        } finally {
+          btn.disabled = false; btn.textContent = original;
+        }
+      });
+    });
+
+    // ── Gastos: agregar (Admin / responsable Proyectos / Jefe / SysAdmin) ────
+    overlay.querySelector('#licd-gasto-add')?.addEventListener('click', async () => {
+      const errEl = overlay.querySelector('#licd-gasto-err');
+      if (errEl) errEl.textContent = '';
+      const concepto = overlay.querySelector('#licd-gasto-concepto')?.value.trim();
+      const montoRaw = overlay.querySelector('#licd-gasto-monto')?.value;
+      const monto = parseFloat(montoRaw);
+
+      if (!concepto) { if (errEl) errEl.textContent = 'Indicá el concepto del gasto.'; return; }
+      if (isNaN(monto) || monto <= 0) { if (errEl) errEl.textContent = 'El monto debe ser mayor a 0.'; return; }
+
+      const btn = overlay.querySelector('#licd-gasto-add');
+      btn.disabled = true;
+      try {
+        await api.post(`/api/licitaciones/${id}/gastos`, { concepto, monto, moneda: lic.moneda || 'BOB' });
+        showToast('Gasto registrado.', 'success');
+        close();
+        openDetail(id); // reabre el detalle con el gasto y el resultado recalculado
+      } catch (err) {
+        if (errEl) errEl.textContent = err.data?.message || err.message || 'No se pudo registrar el gasto.';
+        btn.disabled = false;
+      }
+    });
+
+    // ── Gastos: eliminar ──────────────────────────────────────────────────────
+    overlay.querySelectorAll('[data-gasto-delete]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const gastoId = btn.dataset.gastoDelete;
+        const concepto = btn.dataset.gastoConcepto || 'este gasto';
+        if (!confirm(`¿Eliminar el gasto "${concepto}"?`)) return;
+        try {
+          await api.delete(`/api/licitaciones/${id}/gastos/${gastoId}`);
+          showToast('Gasto eliminado.', 'success');
+          close();
+          openDetail(id);
+        } catch (err) {
+          showToast(err.data?.message || err.message || 'No se pudo eliminar el gasto.', 'error');
+        }
+      });
+    });
+
     // Transition buttons
     overlay.querySelectorAll('[data-lic-transition]').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -361,15 +464,70 @@ export async function mountLicitacionesTab(panel, opts = {}) {
     const cotsHtml = cots.length === 0
       ? `<p class="text-muted text-sm">${escHtml(noCotsHint)}</p>`
       : `<div class="table-wrapper"><table class="data-table">
-           <thead><tr><th>Correlativo</th><th>Estado</th><th>Monto</th><th>Ejecutivo</th></tr></thead>
+           <thead><tr><th>Correlativo</th><th>Estado</th><th>Monto</th><th>Ejecutivo</th><th>Proforma</th></tr></thead>
            <tbody>${cots.map((c) => `
              <tr>
                <td class="fw-600">${escHtml(c.numero_correlativo)}</td>
                <td>${escHtml(c.estado)}</td>
                <td>${fmtAmount(c.monto_total, c.moneda)}</td>
                <td>${escHtml(c.ejecutivo_nombre ?? '—')}</td>
+               <td><button class="btn btn-ghost btn-sm" data-cot-pdf="${c.id}" data-cot-name="${escHtml(c.numero_correlativo)}">📄 Ver</button></td>
              </tr>`).join('')}
            </tbody></table></div>`;
+
+    // ── Resultado (ganancia/pérdida) y gastos — solo post-adjudicación ─────────
+    const isAdjudicada = GASTO_STATES.includes(lic.estado);
+    const canGastos    = canManageGastos(lic);
+
+    let resultadoHtml = '';
+    let gastosSectionHtml = '';
+    if (isAdjudicada) {
+      const ingreso   = Number(lic.total_comprometido ?? 0);
+      const gastosT   = Number(lic.total_gastos ?? 0);
+      const resultado = Number(lic.resultado ?? (ingreso - gastosT));
+      const ganancia  = resultado >= 0;
+      resultadoHtml = `
+        <div style="margin-top:.5rem;padding:.6rem .8rem;border-radius:8px;
+             background:${ganancia ? 'rgba(16,185,129,.14)' : 'rgba(239,68,68,.14)'};">
+          <strong style="font-size:1.02rem;">${ganancia ? '📈 Ganancia' : '📉 Pérdida'}: ${fmtMoney(Math.abs(resultado), lic.moneda)}</strong><br>
+          <span class="text-sm">Ingreso (cotizado aprobado/confirmado): ${fmtMoney(ingreso, lic.moneda)}
+            &nbsp;−&nbsp; Gastos: ${fmtMoney(gastosT, lic.moneda)}</span>
+        </div>`;
+
+      const gastos = lic.gastos ?? [];
+      const gastosList = gastos.length === 0
+        ? `<p class="text-muted text-sm">Aún no hay gastos registrados.${canGastos ? ' Agregá el primero abajo.' : ''}</p>`
+        : `<div class="table-wrapper"><table class="data-table">
+             <thead><tr><th>Concepto</th><th>Monto</th><th>Registró</th><th>Fecha</th>${canGastos ? '<th></th>' : ''}</tr></thead>
+             <tbody>${gastos.map((g) => `
+               <tr>
+                 <td>${escHtml(g.concepto)}</td>
+                 <td>${fmtMoney(g.monto, g.moneda)}</td>
+                 <td>${escHtml(g.nombre_usuario ?? '—')}</td>
+                 <td>${fmtDate(g.creado_en)}</td>
+                 ${canGastos ? `<td><button class="btn btn-ghost btn-sm" data-gasto-delete="${g.id}" data-gasto-concepto="${escHtml(g.concepto)}">🗑️</button></td>` : ''}
+               </tr>`).join('')}
+             </tbody></table></div>`;
+
+      const addForm = canGastos ? `
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:.5rem;">
+          <div class="form-group" style="flex:2;min-width:160px;margin:0;">
+            <label class="form-label text-sm" for="licd-gasto-concepto">Concepto</label>
+            <input class="form-control" id="licd-gasto-concepto" type="text" maxlength="200" placeholder="Ej. Transporte a obra" />
+          </div>
+          <div class="form-group" style="width:130px;margin:0;">
+            <label class="form-label text-sm" for="licd-gasto-monto">Monto (${escHtml(lic.moneda || 'BOB')})</label>
+            <input class="form-control" id="licd-gasto-monto" type="number" min="0" step="0.01" placeholder="0.00" />
+          </div>
+          <button class="btn btn-primary btn-sm" id="licd-gasto-add">Agregar gasto</button>
+        </div>
+        <div class="form-error" id="licd-gasto-err" style="color:var(--clr-red);min-height:1.2em;"></div>` : '';
+
+      gastosSectionHtml = `
+        <h5 style="margin:1rem 0 .35rem;">Gastos (${gastos.length})</h5>
+        ${gastosList}
+        ${addForm}`;
+    }
 
     // Documentos adjuntos: cualquiera con acceso al detalle puede ver/descargar;
     // solo el responsable (o Jefe/SysAdmin) puede eliminarlos. La subida se hace
@@ -410,6 +568,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
             <div>${licitacionBadgeHtml(lic.estado)}
               ${canEdit ? '<button class="btn btn-ghost btn-sm" id="licd-edit" style="margin-left:.5rem;">✏️ Editar</button>' : ''}
               ${canManageDocs ? '<button class="btn btn-ghost btn-sm" id="licd-attach" style="margin-left:.5rem;">📎 Adjuntar</button>' : ''}
+              <button class="btn btn-ghost btn-sm" id="licd-pdf" style="margin-left:.5rem;">📄 Expediente PDF</button>
               ${onCreateCotizacion && ['Cotizando', 'En evaluacion'].includes(lic.estado)
                 ? '<button class="btn btn-primary btn-sm" id="licd-crear-cot" style="margin-left:.5rem;">➕ Crear cotización vinculada</button>' : ''}
             </div>
@@ -424,9 +583,12 @@ export async function mountLicitacionesTab(panel, opts = {}) {
           </dl>
 
           ${budgetHtml}
+          ${resultadoHtml}
 
           <h5 style="margin:1rem 0 .35rem;">Cotizaciones vinculadas (${cots.length})</h5>
           ${cotsHtml}
+
+          ${gastosSectionHtml}
 
           <h5 style="margin:1rem 0 .35rem;">Documentos (${documentos.length})</h5>
           ${docsListHtml}
