@@ -58,6 +58,13 @@ function buildWhereClause(filters = {}) {
     values.push(parseInt(filters.id_ejecutivo, 10));
   }
 
+  // Cotizaciones vinculadas a una licitación concreta (para el detalle de la
+  // licitación y el filtro "por licitación" del listado de cotizaciones).
+  if (filters.id_licitacion) {
+    conditions.push('c.id_licitacion = ?');
+    values.push(parseInt(filters.id_licitacion, 10));
+  }
+
   if (filters.fecha_desde) {
     conditions.push('c.fecha_emision >= ?');
     values.push(filters.fecha_desde);

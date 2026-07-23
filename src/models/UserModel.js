@@ -76,6 +76,28 @@ const UserModel = {
   },
 
   // ---------------------------------------------------------------------------
+  // findDelegatedExecutives
+  // Active Sales Executives holding the delegation flag (can_approve_quotations=1).
+  // These are the commercial executives empowered to operate the licitaciones
+  // workflow, so they are the recipients notified when a licitación enters
+  // 'Cotizando' (Proyectos handed it over for pricing).
+  //
+  // @returns {Array<{ id, nombre_completo, nombre_usuario }>}
+  // ---------------------------------------------------------------------------
+  async findDelegatedExecutives() {
+    const sql = `
+      SELECT u.id, u.nombre_completo, u.nombre_usuario
+      FROM usuarios u
+      INNER JOIN roles r ON r.id = u.id_rol
+      WHERE r.nombre = 'Ejecutivo'
+        AND u.activo = 1
+        AND u.can_approve_quotations = 1
+    `;
+    const [rows] = await pool.execute(sql);
+    return rows;
+  },
+
+  // ---------------------------------------------------------------------------
   // findAll
   // List all users with their role names. Available only to the Jefe role.
   //

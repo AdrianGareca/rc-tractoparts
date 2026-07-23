@@ -36,6 +36,7 @@ const jwt         = require('jsonwebtoken'); // Verifies the short-lived docs-ac
 // Route modules
 const authRoutes        = require('./routes/authRoutes');
 const quotationRoutes   = require('./routes/quotationRoutes');
+const licitacionRoutes  = require('./routes/licitacionRoutes');
 const userRoutes        = require('./routes/userRoutes');
 const clientRoutes      = require('./routes/clientRoutes');
 const brandRoutes       = require('./routes/brandRoutes');
@@ -250,6 +251,7 @@ app.use('/api-docs', requireDocsAccess, swaggerUi.setup(swaggerDocs));
 // ---------------------------------------------------------------------------
 app.use('/api/auth',         authRoutes);         // POST /api/auth/login|logout
 app.use('/api/cotizaciones', quotationRoutes);    // CRUD /api/cotizaciones
+app.use('/api/licitaciones', licitacionRoutes);   // CRUD /api/licitaciones (módulo licitaciones)
 app.use('/api/usuarios',      userRoutes);         // CRUD /api/usuarios (Jefe only)
 app.use('/api/clientes',      clientRoutes);       // GET|POST /api/clientes (all roles)
 app.use('/api/marcas',        brandRoutes);        // GET|POST /api/marcas (brand catalog)

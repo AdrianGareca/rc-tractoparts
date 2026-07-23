@@ -601,8 +601,19 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 .badge-role-jefe        { background: rgba(16,185,129,.2);   color: var(--clr-green); }
 .badge-role-ejecutivo   { background: rgba(59,130,246,.2);   color: var(--clr-blue);  }
 .badge-role-admin       { background: rgba(245,158,11,.2);   color: var(--clr-amber); }
+.badge-role-sysadmin    { background: rgba(139,92,246,.2);   color: #c4b5fd; }
+.badge-role-proyectos   { background: rgba(20,184,166,.2);   color: #5eead4; }
 .badge-active           { background: rgba(16,185,129,.2);   color: var(--clr-green); }
 .badge-inactive         { background: rgba(239,68,68,.2);    color: var(--clr-red);   }
+
+/* Licitación lifecycle state badges */
+.badge-lic-preparacion  { background: rgba(107,114,128,.2);  color: #cbd5e1; }
+.badge-lic-cotizando    { background: rgba(245,158,11,.2);   color: #fcd34d; }
+.badge-lic-evaluacion   { background: rgba(99,102,241,.2);   color: #a5b4fc; }
+.badge-lic-presentada   { background: rgba(59,130,246,.2);   color: #93c5fd; }
+.badge-lic-adjudicada   { background: rgba(16,185,129,.2);   color: #6ee7b7; }
+.badge-lic-noadjudicada { background: rgba(239,68,68,.2);    color: #fca5a5; }
+.badge-lic-archivada    { background: rgba(100,116,139,.2);  color: #94a3b8; }
 
 /* Audit log — acción category badges (semantic color by action family) */
 .badge-audit-auth       { background: rgba(139,92,246,.2);   color: #c4b5fd; }  /* LOGIN/LOGOUT — violet */
@@ -756,6 +767,9 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 /* ===== 16. MODAL ===== */
 .modal-overlay {
   position: fixed;
+  /* Longhand fallback first, then `inset` shorthand: Safari < 14.1 ignores
+     `inset` and would otherwise leave the backdrop unstretched (broken modal). */
+  top: 0; right: 0; bottom: 0; left: 0;
   inset: 0;
   background: rgba(0,0,0,.65);
   display: flex;
@@ -871,7 +885,7 @@ body.modal-open .page-shell {
 }
 
 .drop-zone input[type="file"] {
-  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  position: absolute; top: 0; left: 0; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
 }
 
 .drop-zone-icon { font-size: 2rem; margin-bottom: .5rem; color: var(--text-muted); }
@@ -1340,6 +1354,8 @@ body.modal-open .page-shell {
 /* ===== 23. EXPRESS CLIENT SUB-MODAL ===== */
 .sub-modal-overlay {
   position: fixed;
+  /* Longhand fallback for Safari < 14.1 (no `inset` shorthand) — see .modal-overlay. */
+  top: 0; right: 0; bottom: 0; left: 0;
   inset: 0;
   background: rgba(0,0,0,.65);
   display: flex;

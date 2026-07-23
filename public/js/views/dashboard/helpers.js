@@ -25,7 +25,24 @@ export const ROLE_BADGE = {
   'Ejecutivo':      'badge-role-ejecutivo',
   'Administracion': 'badge-role-admin',
   'SysAdmin':       'badge-role-sysadmin',
+  'Proyectos':      'badge-role-proyectos',
 };
+
+// Licitación lifecycle states → CSS badge class (see styles.css .badge-lic-*).
+export const LICITACION_STATE_BADGE = {
+  'En preparacion': 'badge-lic-preparacion',
+  'Cotizando':      'badge-lic-cotizando',
+  'En evaluacion':  'badge-lic-evaluacion',
+  'Presentada':     'badge-lic-presentada',
+  'Adjudicada':     'badge-lic-adjudicada',
+  'No adjudicada':  'badge-lic-noadjudicada',
+  'Archivada':      'badge-lic-archivada',
+};
+
+export function licitacionBadgeHtml(estado) {
+  const cls = LICITACION_STATE_BADGE[estado] ?? 'badge-lic-preparacion';
+  return `<span class="badge ${cls}">${escHtml(estado)}</span>`;
+}
 
 export const STAT_COLOR = {
   'Pendiente':             '#F59E0B',

@@ -16,6 +16,7 @@ import { STAT_COLOR, badgeHtml, fmtDate, escHtml, fmtAmount } from '../helpers.j
 import { wirePdfButton, wireExcelButton, buildTimelineHtml }  from '../modules/timelineView.js';
 import { renderExecutiveMetrics } from '../modules/reportesView.js';
 import { mountClientsTab }        from '../modules/clientsView.js';
+import { mountLicitacionesTab }   from '../modules/licitacionesView.js';
 import { UI }                     from '../modalUI.js';
 import { CommandInvoker, ChangeStatusCommand } from '../commands.js';
 import { buildProformaHTML }      from '../modules/proformaTemplate.js';
@@ -93,6 +94,9 @@ export class ExecutiveStrategy extends DashboardStrategy {
 
         <div class="card-footer" id="pagination-footer"></div>
       </div>
+
+      <!-- Licitaciones (only for delegated executives — mounted after render) -->
+      <div id="exec-licitaciones-section" style="margin-top:1.25rem;"></div>
     `;
 
     document.getElementById('btn-new-quotation')?.addEventListener('click', () => {
@@ -140,6 +144,46 @@ export class ExecutiveStrategy extends DashboardStrategy {
       this._loadProformasHoy(),
       this._loadMetrics(),
     ]);
+
+    // Delegated executives (can_approve_quotations) get a Licitaciones panel:
+    // they see what Proyectos handed over ('Cotizando') and can create the
+    // linked cotización straight from a licitación's detail.
+    this._mountLicitacionesSection();
+  }
+
+  async _mountLicitacionesSection() {
+    const section = document.getElementById('exec-licitaciones-section');
+    if (!section) return;
+    if (!AuthSession.canApproveQuotations()) { section.innerHTML = ''; return; }
+
+    await mountLicitacionesTab(section, {
+      canCreate: false,           // delegated exec manages, but does not own/create licitaciones
+      defaultEstado: 'Cotizando', // the handoff state they act on first
+      onCreateCotizacion: (lic) => this._openLinkedQuotationForm(lic),
+    });
+  }
+
+  // Opens the quotation form prefilled with the licitación's client + link, so
+  // the delegated executive prices it and sends it back into the licitación flow.
+  _openLinkedQuotationForm(lic) {
+    UI.openModal(`Cotización vinculada — ${lic.codigo}`, (body) => {
+      const destroy = mountQuotationForm(body, {
+        prefill: {
+          id_cliente:      lic.id_cliente,
+          cliente_nombre:  lic.cliente_nombre,
+          id_licitacion:   lic.id,
+          licitacion_label: `${lic.codigo} — ${lic.nombre}`,
+        },
+        onSuccess: (q) => {
+          UI.closeModal();
+          showToast(`Cotización ${q?.numero_correlativo ?? ''} creada y vinculada a ${lic.codigo}.`, 'success');
+          this.refresh();
+        },
+        onCancel: () => UI.closeModal(),
+      });
+      UI.registerCleanup(destroy);
+      UI.registerCloseGuard(() => !destroy.isDirty() || confirm(DISCARD_QUOTATION_MSG));
+    }, { wide: true, dismissOnBackdrop: false });
   }
 
   async refresh() {

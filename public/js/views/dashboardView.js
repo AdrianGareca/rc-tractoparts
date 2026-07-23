@@ -35,6 +35,7 @@ import { DISCARD_QUOTATION_MSG } from './dashboard/constants.js';
 import { ExecutiveStrategy } from './dashboard/strategies/executiveStrategy.js';
 import { ManagerStrategy }   from './dashboard/strategies/managerStrategy.js';
 import { AdminStrategy }     from './dashboard/strategies/adminStrategy.js';
+import { ProyectosStrategy } from './dashboard/strategies/proyectosStrategy.js';
 
 // =============================================================================
 // DASHBOARD CONTROLLER
@@ -72,7 +73,9 @@ class DashboardController {
       ? new ManagerStrategy(user)
       : role === 'Administracion'
         ? new AdminStrategy(user)
-        : new ExecutiveStrategy(user);
+        : role === 'Proyectos'
+          ? new ProyectosStrategy(user)
+          : new ExecutiveStrategy(user);
 
     // Render sidebar
     this._renderSidebar(role);
@@ -92,7 +95,7 @@ class DashboardController {
     // ── Notification badge (Ejecutivo only) ───────────────────────────────
     // Start periodic polling so the badge stays current across soft navigations.
     // startNotifPolling fetches immediately then re-polls every 90 s.
-    if (role === 'Ejecutivo') {
+    if (role === 'Ejecutivo' || role === 'Proyectos') {
       requestNotifPermission();
       startNotifPolling(UI);
     }
@@ -177,6 +180,19 @@ class DashboardController {
         <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
           <span class="link-icon">🚪</span> Cerrar Sesión
         </button>`;
+    } else if (role === 'Proyectos') {
+      links = `
+        <span class="sidebar-section-label">Área de Proyectos</span>
+        <button class="sidebar-link active" data-section="licitaciones">
+          <span class="link-icon">📑</span> Licitaciones
+        </button>
+        <button class="sidebar-link" data-section="clientes">
+          <span class="link-icon">🏢</span> Gestión de Clientes
+        </button>
+        <span class="sidebar-section-label">Cuenta</span>
+        <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
+          <span class="link-icon">🚪</span> Cerrar Sesión
+        </button>`;
     } else {
       links = `
         <span class="sidebar-section-label">Mi Trabajo</span>
@@ -247,8 +263,10 @@ class DashboardController {
         const topbarTitle = document.getElementById('topbar-title');
         if (topbarTitle) topbarTitle.textContent = title;
 
-        // ManagerStrategy and AdminStrategy both have _renderPanel
-        if (this.#strategy instanceof ManagerStrategy || this.#strategy instanceof AdminStrategy) {
+        // ManagerStrategy, AdminStrategy and ProyectosStrategy all have _renderPanel
+        if (this.#strategy instanceof ManagerStrategy ||
+            this.#strategy instanceof AdminStrategy ||
+            this.#strategy instanceof ProyectosStrategy) {
           this.#strategy._renderPanel(btn.dataset.section);
         }
       });

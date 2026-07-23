@@ -69,7 +69,8 @@ INSERT INTO roles (id, nombre, descripcion) VALUES
   (1, 'Ejecutivo',      'Sales executive; registers quotations and uploads PDFs'),
   (2, 'Administracion', 'Administrative staff; manages clients and reviews records'),
   (3, 'Jefe',           'Department head; approves quotations and manages users'),
-  (4, 'SysAdmin',       'Systems administrator; absolute system-wide authority over all entities');
+  (4, 'SysAdmin',       'Systems administrator; absolute system-wide authority over all entities'),
+  (5, 'Proyectos',      'Projects/tenders executive; manages licitaciones, does not create quotations');
 
 -- =============================================================================
 -- 2. USUARIOS
@@ -326,6 +327,8 @@ CREATE TABLE cotizaciones (
     COMMENT 'Condiciones de pago personalizadas (ej. 60% ANTICIPO Y SALDO CONTRA ENTREGA). NULL → frontend default shown.',
   mostrar_codigos          TINYINT(1)    NOT NULL DEFAULT 1
     COMMENT '1 = mostrar columna CÓDIGO en el PDF generado; 0 = ocultar (útil cuando no hay códigos de parte)',
+  id_licitacion      INT UNSIGNED  DEFAULT NULL
+    COMMENT 'FK->licitaciones(id) — vincula la cotización a una licitación paraguas. NULL = cotización normal (suelta). ON DELETE SET NULL: borrar la licitación NO destruye la cotización, solo la desvincula.',
   creado_en          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   actualizado_en     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -333,12 +336,15 @@ CREATE TABLE cotizaciones (
   KEY idx_cot_estado        (estado),
   KEY idx_cot_fecha_emision (fecha_emision),
   KEY idx_cot_creado_en     (creado_en),
+  KEY idx_cot_licitacion    (id_licitacion),
   CONSTRAINT fk_cot_cliente
     FOREIGN KEY (id_cliente)   REFERENCES clientes (id) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT fk_cot_ejecutivo
     FOREIGN KEY (id_ejecutivo) REFERENCES usuarios (id) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT fk_cot_aprobador
-    FOREIGN KEY (aprobado_por) REFERENCES usuarios (id) ON DELETE SET NULL  ON UPDATE CASCADE
+    FOREIGN KEY (aprobado_por) REFERENCES usuarios (id) ON DELETE SET NULL  ON UPDATE CASCADE,
+  CONSTRAINT fk_cot_licitacion
+    FOREIGN KEY (id_licitacion) REFERENCES licitaciones (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =============================================================================
@@ -478,6 +484,89 @@ CREATE TABLE cotizacion_historial_estados (
     FOREIGN KEY (id_usuario)    REFERENCES usuarios      (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- =============================================================================
+-- 11b. LICITACIONES_CORRELATIVO
+--   Contador anual PROPIO de las licitaciones — espejo de
+--   cotizaciones_correlativo pero en su propia tabla, para que la serie
+--   'LIC-2026/####' nunca interfiera con la de cotizaciones ('SC-2026/######').
+-- =============================================================================
+
+CREATE TABLE licitaciones_correlativo (
+  anio       YEAR         NOT NULL,
+  ultimo_nro INT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (anio)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =============================================================================
+-- 11c. LICITACIONES  (Tenders — entidad paraguas: 1 licitación → N cotizaciones)
+--   Gestionada por el rol Proyectos (id_responsable). El ejecutivo comercial
+--   delegado (Ejecutivo con can_approve_quotations=1) arma las cotizaciones
+--   vinculadas (cotizaciones.id_licitacion) y ambos deciden si entra en
+--   presupuesto. Jefe/SysAdmin pueden intervenir siempre.
+-- =============================================================================
+
+CREATE TABLE licitaciones (
+  id                     INT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  codigo                 VARCHAR(20)   NOT NULL
+    COMMENT 'Correlativo legible: LIC-2026/0001. Generado por LicitacionModel.generateCorrelativo.',
+  nombre                 VARCHAR(200)  NOT NULL,
+  id_cliente             INT UNSIGNED  NOT NULL
+    COMMENT 'Entidad convocante — reutiliza el CRUD de clientes.',
+  descripcion            TEXT          DEFAULT NULL,
+  presupuesto_referencial DECIMAL(15,2) DEFAULT NULL
+    COMMENT 'Techo presupuestario de referencia; se compara contra la suma de las cotizaciones vinculadas confirmadas/aprobadas.',
+  moneda                 CHAR(3)       NOT NULL DEFAULT 'BOB',
+  fecha_limite           DATE          DEFAULT NULL
+    COMMENT 'Fecha límite de presentación de la licitación.',
+  estado                 ENUM(
+                           'En preparacion',
+                           'Cotizando',
+                           'En evaluacion',
+                           'Presentada',
+                           'Adjudicada',
+                           'No adjudicada',
+                           'Archivada'
+                         ) NOT NULL DEFAULT 'En preparacion',
+  observaciones_resultado TEXT         DEFAULT NULL
+    COMMENT 'Notas del desenlace (por qué se adjudicó / no se adjudicó).',
+  id_responsable         INT UNSIGNED  NOT NULL
+    COMMENT 'Usuario del rol Proyectos dueño de la licitación.',
+  creado_en              DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  actualizado_en         DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_licitaciones_codigo (codigo),
+  KEY idx_lic_estado      (estado),
+  KEY idx_lic_responsable (id_responsable),
+  KEY idx_lic_cliente     (id_cliente),
+  CONSTRAINT fk_lic_cliente
+    FOREIGN KEY (id_cliente)     REFERENCES clientes (id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_lic_responsable
+    FOREIGN KEY (id_responsable) REFERENCES usuarios (id) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =============================================================================
+-- 11d. LICITACION_HISTORIAL_ESTADOS  (espejo de cotizacion_historial_estados)
+-- =============================================================================
+
+CREATE TABLE licitacion_historial_estados (
+  id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  id_licitacion   INT UNSIGNED NOT NULL,
+  estado_anterior VARCHAR(30)  DEFAULT NULL,
+  estado_nuevo    VARCHAR(30)  NOT NULL,
+  id_usuario      INT UNSIGNED DEFAULT NULL,
+  nombre_usuario  VARCHAR(50)  DEFAULT NULL,
+  rol_usuario     VARCHAR(30)  DEFAULT NULL,
+  observacion     TEXT         DEFAULT NULL,
+  ip_origen       VARCHAR(45)  DEFAULT NULL,
+  creado_en       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_lic_hist_licitacion (id_licitacion),
+  CONSTRAINT fk_lic_historial_licitacion
+    FOREIGN KEY (id_licitacion) REFERENCES licitaciones (id) ON DELETE CASCADE  ON UPDATE CASCADE,
+  CONSTRAINT fk_lic_historial_usuario
+    FOREIGN KEY (id_usuario)    REFERENCES usuarios     (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- ---------------------------------------------------------------------------
 -- notificaciones — Targeted in-app notifications for the Ejecutivo feed.
 --
@@ -489,18 +578,24 @@ CREATE TABLE cotizacion_historial_estados (
 -- ---------------------------------------------------------------------------
 CREATE TABLE notificaciones (
   id              INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  id_usuario      INT UNSIGNED NOT NULL,           -- recipient Ejecutivo
-  id_cotizacion   INT UNSIGNED NOT NULL,
-  tipo            ENUM('correccion','aprobacion','envio_cliente') NOT NULL DEFAULT 'aprobacion',
+  id_usuario      INT UNSIGNED NOT NULL,           -- recipient (Ejecutivo o Proyectos)
+  id_cotizacion   INT UNSIGNED DEFAULT NULL
+    COMMENT 'Cotización asociada. NULL cuando la notificación es de una licitación (id_licitacion).',
+  id_licitacion   INT UNSIGNED DEFAULT NULL
+    COMMENT 'Licitación asociada. NULL cuando la notificación es de una cotización (id_cotizacion). Exactamente una de las dos suele estar poblada.',
+  tipo            ENUM('correccion','aprobacion','envio_cliente','licitacion') NOT NULL DEFAULT 'aprobacion',
   mensaje         TEXT         NOT NULL,
   leida           TINYINT(1)   NOT NULL DEFAULT 0,
   creado_en       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_notif_usuario_leida (id_usuario, leida),
+  KEY idx_notif_licitacion (id_licitacion),
   CONSTRAINT fk_notif_usuario
     FOREIGN KEY (id_usuario)    REFERENCES usuarios    (id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_notif_cotizacion
-    FOREIGN KEY (id_cotizacion) REFERENCES cotizaciones (id) ON DELETE CASCADE ON UPDATE CASCADE
+    FOREIGN KEY (id_cotizacion) REFERENCES cotizaciones (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_notif_licitacion
+    FOREIGN KEY (id_licitacion) REFERENCES licitaciones (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -536,3 +631,7 @@ INSERT INTO clientes (id, razon_social, nit, contacto, email, telefono, direccio
 -- series at SC-2026/000692. Any later year not seeded here defaults to
 -- starting at 1 (see QuotationModel.generateCorrelativo's "no row" branch).
 INSERT INTO cotizaciones_correlativo (anio, ultimo_nro) VALUES (2026, 691);
+
+-- Contador de licitaciones para 2026 — arranca en 0: la primera licitación
+-- será LIC-2026/0001 (no hay serie histórica previa que continuar).
+INSERT INTO licitaciones_correlativo (anio, ultimo_nro) VALUES (2026, 0);

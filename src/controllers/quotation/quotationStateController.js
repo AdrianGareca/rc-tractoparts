@@ -15,6 +15,7 @@
 'use strict';
 
 const QuotationModel             = require('../../models/QuotationModel');
+const LicitacionModel            = require('../../models/LicitacionModel');
 const UserModel                  = require('../../models/UserModel');
 const { logEvent, AuditActions } = require('../../utils/auditLog');
 const pdfService                 = require('../../services/pdfService');
@@ -233,6 +234,29 @@ const QuotationStateController = {
           });
         } catch (notifErr) {
           console.warn('[QuotationStateController.updateStatus] Notification insert failed (non-fatal):', notifErr.message);
+        }
+      }
+
+      // ── Notificación al responsable de la licitación vinculada ──────────────
+      // Si esta cotización pertenece a una licitación y avanza a un hito clave
+      // (aprobada internamente / enviada / confirmada), se avisa al responsable
+      // Proyectos para que lleve el control del concurso. Skip auto-notificación
+      // si el propio responsable ejecutó la transición. Todo no fatal.
+      if (quotation.id_licitacion != null &&
+          ['Aprobada internamente', 'Enviada al cliente', 'Confirmada', 'Aceptada'].includes(nuevo_estado)) {
+        try {
+          const lic = await LicitacionModel.findById(quotation.id_licitacion);
+          if (lic && lic.id_responsable !== req.user.id) {
+            await QuotationModel.insertNotificacion({
+              id_usuario:    lic.id_responsable,
+              id_licitacion: lic.id,
+              tipo:          'licitacion',
+              mensaje: `La cotización #${quotation.numero_correlativo} vinculada a la licitación ` +
+                       `${lic.codigo} cambió a "${nuevo_estado}".`,
+            });
+          }
+        } catch (licNotifErr) {
+          console.warn('[QuotationStateController.updateStatus] Licitación notification failed (non-fatal):', licNotifErr.message);
         }
       }
 

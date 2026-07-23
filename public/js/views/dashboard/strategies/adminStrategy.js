@@ -18,6 +18,7 @@ import { renderReportes }      from '../modules/reportesView.js';
 import { mountClientsTab }     from '../modules/clientsView.js';
 import { mountAuditLogTab }    from '../modules/auditView.js';
 import { mountAllQuotationsTab } from '../modules/allQuotationsTab.js';
+import { mountLicitacionesTab } from '../modules/licitacionesView.js';
 import { buildProformaHTML }   from '../modules/proformaTemplate.js';
 import {
   showCreateUserModal, showEditUserModal, confirmDeactivateUser, confirmActivateUser,
@@ -42,6 +43,7 @@ export class AdminStrategy extends DashboardStrategy {
       <div class="tab-bar" id="admin-tabs">
         <button class="tab-btn active" data-tab="review">Cola de Revisión</button>
         <button class="tab-btn" data-tab="quotations">Todas las Cotizaciones</button>
+        <button class="tab-btn" data-tab="licitaciones">📑 Licitaciones</button>
         <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
         <button class="tab-btn" data-tab="clientes">Gestión de Clientes</button>
         <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
@@ -72,6 +74,7 @@ export class AdminStrategy extends DashboardStrategy {
     switch (tab) {
       case 'review':     await this._renderReviewQueue(panel);    break;
       case 'quotations': await this._renderAllQuotations(panel);  break;
+      case 'licitaciones': await mountLicitacionesTab(panel, { canCreate: false }); break;
       case 'users':      await this._renderUsers(panel);          break;
       case 'clientes':   await mountClientsTab(panel);            break;
       case 'audit':      await this._renderAuditLogs(panel);      break;

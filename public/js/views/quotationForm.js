@@ -233,11 +233,14 @@ class FormMediator {
   #hasDraftLock = false;   // true once THIS socket owns the global next-number reservation
   #dirty        = false;   // true once the user has entered/changed anything — gates the close-confirmation
 
-  constructor(container, quotation = null) {
+  #prefill = null;  // Optional { id_cliente, cliente_nombre, id_licitacion, licitacion_label } for a pre-linked create
+
+  constructor(container, quotation = null, prefill = null) {
     this.#container = container;
     this.#subject   = new LineItemsSubject();
     this.#editData  = quotation;
     this.#editId    = quotation?.id ?? null;
+    this.#prefill   = prefill;
   }
 
   // ── Public mount entry point ───────────────────────────────────────────────
@@ -305,6 +308,18 @@ class FormMediator {
 
     // Pre-fill header fields when editing
     if (this.#editId) this._populateHeaderForEdit();
+
+    // Populate the "Licitación asociada" dropdown (non-fatal) and apply any
+    // pre-linked selection (edit mode or delegated-executive prefill).
+    this._populateLicitaciones();
+
+    // Apply create-mode prefill (delegated executive creating a linked cotización)
+    if (!this.#editId && this.#prefill) {
+      const hid = this.#container.querySelector('#id_cliente');
+      const search = this.#container.querySelector('#cliente-search');
+      if (this.#prefill.id_cliente && hid)   hid.value = String(this.#prefill.id_cliente);
+      if (this.#prefill.cliente_nombre && search) search.value = this.#prefill.cliente_nombre;
+    }
 
     // Wire discount input — updates totals in real-time without touching items
     elDiscount?.addEventListener('input', () => {
@@ -539,6 +554,45 @@ class FormMediator {
     if (chkCodigos) chkCodigos.checked = mostrarCodigos;
   }
 
+  // ── Private: populate the "Licitación asociada" dropdown ────────────────────
+  // Lists licitaciones currently in 'Cotizando' (the handoff state where the
+  // commercial executive prices them). In edit mode (or via prefill) the already
+  // linked licitación is guaranteed to be present and selected even if it has
+  // since advanced past 'Cotizando'. Non-fatal: on any failure the dropdown just
+  // stays at "Sin licitación" so normal quoting is never blocked.
+  async _populateLicitaciones() {
+    const sel = this.#container.querySelector('#id_licitacion');
+    if (!sel) return;
+
+    // The id to pre-select: edit mode uses the stored link; create mode uses prefill.
+    const selectedId = this.#editData?.id_licitacion ?? this.#prefill?.id_licitacion ?? null;
+
+    let options = [];
+    try {
+      const body = await api.get('/api/licitaciones?estado=Cotizando&limit=100&sort_by=creado_en&sort_order=DESC');
+      options = body.data ?? [];
+    } catch (_) { /* non-fatal — dropdown stays minimal */ }
+
+    // Ensure the currently-linked licitación appears even if not in the Cotizando list.
+    if (selectedId != null && !options.some((l) => String(l.id) === String(selectedId))) {
+      try {
+        const one = await api.get(`/api/licitaciones/${selectedId}`);
+        if (one?.data) options.unshift(one.data);
+      } catch (_) { /* fall back to a generic label below */ }
+    }
+
+    const opts = options.map((l) =>
+      `<option value="${l.id}">${escText(`${l.codigo} — ${l.nombre}`)}</option>`).join('');
+    sel.insertAdjacentHTML('beforeend', opts);
+
+    // If the linked id still isn't an option (lookup failed), add a placeholder
+    // so the value is preserved on save.
+    if (selectedId != null && !sel.querySelector(`option[value="${selectedId}"]`)) {
+      sel.insertAdjacentHTML('beforeend', `<option value="${selectedId}">Licitación #${escText(String(selectedId))}</option>`);
+    }
+    if (selectedId != null) sel.value = String(selectedId);
+  }
+
   // ── Private: forma_pago select helpers ─────────────────────────────────────
 
   /**
@@ -636,6 +690,14 @@ class FormMediator {
             <input class="form-control" type="date" id="fecha_emision" required />
             <span class="field-error" id="err-fecha"></span>
           </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="id_licitacion">Licitación asociada <span class="text-muted">(opcional)</span></label>
+          <select class="form-control" id="id_licitacion">
+            <option value="">— Sin licitación (cotización suelta) —</option>
+          </select>
+          <span class="field-hint text-muted text-sm">Vincula esta cotización a una licitación en curso para que Proyectos la vea en su seguimiento.</span>
         </div>
 
         <div class="form-group">
@@ -1456,6 +1518,11 @@ class FormMediator {
       equipo_modelo:            this.#container.querySelector('#equipo_modelo')?.value.trim()  || null,
       equipo_serie:             this.#container.querySelector('#equipo_serie')?.value.trim()   || null,
       equipo_motor:             this.#container.querySelector('#equipo_motor')?.value.trim()   || null,
+      // Licitación paraguas asociada (opcional). '' → null (cotización suelta).
+      id_licitacion:            (() => {
+        const v = this.#container.querySelector('#id_licitacion')?.value;
+        return v ? parseInt(v, 10) : null;
+      })(),
       detalles:                 filteredDetalles,
     };
 
@@ -1518,8 +1585,8 @@ class FormMediator {
 // Mounts the quotation form into the given container element.
 // Returns a cleanup function that removes event listeners when the form closes.
 // =============================================================================
-export function mountQuotationForm(container, { onSuccess, onCancel, quotation = null } = {}) {
-  const mediator = new FormMediator(container, quotation);
+export function mountQuotationForm(container, { onSuccess, onCancel, quotation = null, prefill = null } = {}) {
+  const mediator = new FormMediator(container, quotation, prefill);
   mediator.render(onSuccess, onCancel);
   // Callable teardown, same as before — plus an `isDirty()` escape hatch so the
   // host (the modal) can confirm before discarding an in-progress draft.

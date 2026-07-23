@@ -50,6 +50,7 @@ export function showCreateUserModal(onDone) {
             <option value="1">Ejecutivo</option>
             <option value="2">Administracion</option>
             <option value="3">Jefe</option>
+            <option value="5">Proyectos</option>
           </select>
         </div>
       </div>
@@ -120,6 +121,7 @@ export function showEditUserModal(id, nombre, idRol, canApprove, onDone) {
           <option value="1" ${idRol == 1 ? 'selected' : ''}>Ejecutivo</option>
           <option value="2" ${idRol == 2 ? 'selected' : ''}>Administracion</option>
           <option value="3" ${idRol == 3 ? 'selected' : ''}>Jefe</option>
+          <option value="5" ${idRol == 5 ? 'selected' : ''}>Proyectos</option>
         </select>
       </div>
       ${canDelegate ? `

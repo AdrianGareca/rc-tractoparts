@@ -17,6 +17,7 @@
 
 const { pool }                    = require('../config/db');
 const QuotationModel              = require('../models/QuotationModel');
+const LicitacionModel             = require('../models/LicitacionModel');
 const QuotationLockModel          = require('../models/QuotationLockModel');
 const { logEvent, AuditActions }  = require('../utils/auditLog');
 const pdfService                  = require('../services/pdfService');
@@ -62,6 +63,7 @@ const QuotationController = {
       descuento_manual,
       forma_pago,
       mostrar_codigos,
+      id_licitacion,
       detalles = [],
     } = req.body;
 
@@ -91,6 +93,24 @@ const QuotationController = {
         message: 'Validation failed.',
         errors:  validationErrors,
       });
+    }
+
+    // ── Licitación link validation (optional) ─────────────────────────────────
+    // If the quotation is being linked to a licitación, verify it exists so we
+    // never store a dangling FK reference. Non-fatal for normal quotations:
+    // id_licitacion absent/null → skipped entirely.
+    if (id_licitacion != null) {
+      try {
+        const lic = await LicitacionModel.findById(parseInt(id_licitacion, 10));
+        if (!lic) {
+          return res.status(422).json({
+            success: false,
+            message: `La licitación #${id_licitacion} indicada no existe.`,
+          });
+        }
+      } catch (licErr) {
+        console.warn('[QuotationController.createQuotation] Licitación lookup failed (non-fatal):', licErr.message);
+      }
     }
 
     // ── Duplicate detection (RF06 — non-blocking) ─────────────────────────────
@@ -188,6 +208,7 @@ const QuotationController = {
             descuento_manual:         descuento_manual         != null ? parseFloat(descuento_manual) : null,
             forma_pago:               forma_pago               || null,
             mostrar_codigos:          mostrar_codigos          != null ? mostrar_codigos : true,
+            id_licitacion:            id_licitacion            != null ? parseInt(id_licitacion, 10) : null,
           });
 
           if (detalles.length > 0) {
@@ -417,6 +438,7 @@ const QuotationController = {
         descuento_manual:         req.body.descuento_manual != null ? parseFloat(req.body.descuento_manual) : null,
         forma_pago:               req.body.forma_pago               || null,
         mostrar_codigos:          req.body.mostrar_codigos          != null ? req.body.mostrar_codigos : true,
+        id_licitacion:            req.body.id_licitacion            != null ? parseInt(req.body.id_licitacion, 10) : null,
       });
 
       if (!headerUpdated) {
@@ -570,6 +592,14 @@ const QuotationController = {
           return res.status(422).json({ success: false, message: 'id_ejecutivo must be a positive integer.' });
         }
         filters.id_ejecutivo = parsed;
+      }
+
+      if (req.query.id_licitacion) {
+        const parsed = parseInt(req.query.id_licitacion, 10);
+        if (isNaN(parsed) || parsed < 1) {
+          return res.status(422).json({ success: false, message: 'id_licitacion must be a positive integer.' });
+        }
+        filters.id_licitacion = parsed;
       }
 
       if (req.query.fecha_desde) {
@@ -799,9 +829,9 @@ const QuotationController = {
   // ---------------------------------------------------------------------------
   async getNotificaciones(req, res) {
     try {
-      // Only Ejecutivos receive personal notifications.
+      // Only Ejecutivos and Proyectos receive personal notifications.
       // Jefe / Admin see all state changes via the audit log.
-      if (req.user.rol !== 'Ejecutivo') {
+      if (req.user.rol !== 'Ejecutivo' && req.user.rol !== 'Proyectos') {
         return res.status(200).json({ success: true, total: 0, data: [] });
       }
 
@@ -833,7 +863,7 @@ const QuotationController = {
   // Correction notifications are implicitly cleared when the quote is re-submitted.
   async markNotificacionesLeidas(req, res) {
     try {
-      if (req.user.rol !== 'Ejecutivo') {
+      if (req.user.rol !== 'Ejecutivo' && req.user.rol !== 'Proyectos') {
         return res.status(200).json({ success: true });
       }
       await QuotationModel.markNotificacionesLeidas(req.user.id);

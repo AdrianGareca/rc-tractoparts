@@ -12,8 +12,10 @@ const authorize        = require('../middlewares/roleMiddleware');
 
 const router = express.Router();
 
-// All three roles can search and register clients
-const allRoles = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe'])];
+// All these roles can search and register clients. 'Proyectos' is included so
+// the tenders executive can pick/create the convocante (entidad convocante) of a
+// licitación, reusing the same client CRUD.
+const allRoles = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'Proyectos'])];
 
 /**
  * @swagger

@@ -58,6 +58,7 @@ async function findById(id) {
         c.descuento_manual,
         c.forma_pago,
         c.mostrar_codigos,
+        c.id_licitacion,
         c.creado_en,
         c.actualizado_en
       FROM cotizaciones c
@@ -113,6 +114,12 @@ async function findById(id) {
     if (msg.includes("Unknown column 'c.solicitante_nombre'")) {
       console.warn('[QuotationModel.findById] solicitante_nombre column missing — retrying with NULL.');
       fallbackSql = fallbackSql.replace('        c.solicitante_nombre       AS nombre_sol,\n', '        NULL AS nombre_sol,\n');
+      patched = true;
+    }
+    if (msg.includes("Unknown column 'c.id_licitacion'")) {
+      console.warn('[QuotationModel.findById] id_licitacion column missing — retrying with NULL. ' +
+        'Run sql/upgrade_2026_licitaciones.sql to enable the licitaciones link.');
+      fallbackSql = fallbackSql.replace('        c.id_licitacion,\n', '        NULL AS id_licitacion,\n');
       patched = true;
     }
     if (patched) {
@@ -228,7 +235,7 @@ async function findAll(filters = {}, pagination = {}, sort = {}) {
   // that omits the column, mapping tiene_excel to a constant FALSE so callers
   // receive a consistent row shape. Run the ALTER TABLE migration in init.sql to
   // permanently resolve the issue on any affected database instance.
-  const buildSql = (includeExcel) => `
+  const buildSql = (includeExcel, includeLicitacion) => `
       SELECT
         c.id,
         c.numero_correlativo,
@@ -244,6 +251,9 @@ async function findAll(filters = {}, pagination = {}, sort = {}) {
         ${includeExcel
     ? 'c.excel_ruta IS NOT NULL AS tiene_excel,'
     : 'FALSE                    AS tiene_excel,'}
+        ${includeLicitacion
+    ? 'c.id_licitacion,'
+    : 'NULL AS id_licitacion,'}
         c.fecha_emision,
         c.fecha_validez,
         c.aprobado_por,
@@ -262,20 +272,37 @@ async function findAll(filters = {}, pagination = {}, sort = {}) {
   // mysql2 v3 prepared statements mistype them as DOUBLE, causing
   // "Incorrect arguments to mysqld_stmt_execute". Both values are
   // validated integers (Math.min / Math.max / parseInt) so this is safe.
-  try {
-    const [rows] = await pool.execute(buildSql(true), whereValues);
-    return rows;
-  } catch (err) {
-    // Graceful degradation: if the column is absent on a legacy DB, retry
-    // without it so the rest of the application continues to function.
-    if (err.message && err.message.includes("Unknown column 'c.excel_ruta'")) {
-      console.warn('[QuotationModel.findAll] excel_ruta column missing — retrying without it. ' +
-        'Run the ALTER TABLE migration in init.sql to fix this permanently.');
-      const [rows] = await pool.execute(buildSql(false), whereValues);
+  //
+  // Graceful degradation: excel_ruta and id_licitacion are optional columns
+  // that may be absent on a legacy DB that has not run its migration. On an
+  // "Unknown column" error we retry with the offending column omitted so the
+  // listing keeps working. Both flags are independent.
+  let includeExcel      = true;
+  let includeLicitacion = true;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const [rows] = await pool.execute(buildSql(includeExcel, includeLicitacion), whereValues);
       return rows;
+    } catch (err) {
+      const m = err.message || '';
+      if (includeExcel && m.includes("Unknown column 'c.excel_ruta'")) {
+        console.warn('[QuotationModel.findAll] excel_ruta column missing — retrying without it. ' +
+          'Run the ALTER TABLE migration in init.sql to fix this permanently.');
+        includeExcel = false;
+        continue;
+      }
+      if (includeLicitacion && m.includes("Unknown column 'c.id_licitacion'")) {
+        console.warn('[QuotationModel.findAll] id_licitacion column missing — retrying without it. ' +
+          'Run sql/upgrade_2026_licitaciones.sql to enable the licitaciones link.');
+        includeLicitacion = false;
+        continue;
+      }
+      throw err;
     }
-    throw err;
   }
+  // All degradations exhausted — final attempt with the most conservative query.
+  const [rows] = await pool.execute(buildSql(false, false), whereValues);
+  return rows;
 }
 
 // ---------------------------------------------------------------------------

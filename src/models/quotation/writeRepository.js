@@ -18,6 +18,19 @@ const { calcularSubtotal } = require('../../utils/quotationTotals');
 // Initial state is 'Pendiente' — the only valid initial ENUM value in the DB.
 // ---------------------------------------------------------------------------
 async function create(connection, data) {
+  // id_licitacion es una columna OPCIONAL y NUEVA. Solo se incluye en el INSERT
+  // cuando la cotización se vincula a una licitación, de modo que el alta normal
+  // (cotización suelta) siga funcionando idéntica en una BD que aún no corrió
+  // sql/upgrade_2026_licitaciones.sql (donde la columna todavía no existe).
+  const extraCols   = [];
+  const extraVals   = [];
+  const extraParams = [];
+  if (data.id_licitacion != null) {
+    extraCols.push('id_licitacion');
+    extraVals.push('?');
+    extraParams.push(parseInt(data.id_licitacion, 10));
+  }
+
   const sql = `
     INSERT INTO cotizaciones
       (numero_correlativo, id_cliente, id_ejecutivo, descripcion,
@@ -25,9 +38,9 @@ async function create(connection, data) {
        tipo_pedido, tiempo_entrega,
        solicitante_nombre, solicitante_no_solicitud, solicitante_area, solicitante_celular, solicitante_correo,
        equipo_marca, equipo_tipo, equipo_modelo, equipo_serie, equipo_motor,
-       descuento_manual, forma_pago, mostrar_codigos)
+       descuento_manual, forma_pago, mostrar_codigos${extraCols.length ? ', ' + extraCols.join(', ') : ''})
     VALUES
-      (?, ?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (?, ?, ?, ?, ?, ?, ?, 'Pendiente', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${extraVals.length ? ', ' + extraVals.join(', ') : ''})
   `;
 
   const [result] = await connection.execute(sql, [
@@ -56,6 +69,7 @@ async function create(connection, data) {
     data.descuento_manual         ?? null,
     data.forma_pago               || null,
     data.mostrar_codigos          != null ? (data.mostrar_codigos ? 1 : 0) : 1,
+    ...extraParams,
   ]);
 
   return result.insertId;
@@ -116,6 +130,16 @@ async function createDetalles(connection, id_cotizacion, detalles) {
 // and approval metadata are deliberately NOT touchable here.
 // ---------------------------------------------------------------------------
 async function updateEditableHeader(connection, id, data) {
+  // id_licitacion: solo se toca cuando se está vinculando la cotización a una
+  // licitación (mismo criterio defensivo que create). Editar una cotización sin
+  // vincularla no menciona la columna → sigue funcionando en una BD sin migrar.
+  const extraSet    = [];
+  const extraParams = [];
+  if (data.id_licitacion != null) {
+    extraSet.push('id_licitacion = ?');
+    extraParams.push(parseInt(data.id_licitacion, 10));
+  }
+
   const sql = `
     UPDATE cotizaciones SET
       id_cliente               = ?,
@@ -140,7 +164,7 @@ async function updateEditableHeader(connection, id, data) {
       equipo_motor             = ?,
       descuento_manual         = ?,
       forma_pago               = ?,
-      mostrar_codigos          = ?
+      mostrar_codigos          = ?${extraSet.length ? ',\n      ' + extraSet.join(',\n      ') : ''}
     WHERE id = ? AND estado = 'Pendiente'
   `;
 
@@ -168,6 +192,7 @@ async function updateEditableHeader(connection, id, data) {
     data.descuento_manual         ?? null,
     data.forma_pago               || null,
     data.mostrar_codigos          != null ? (data.mostrar_codigos ? 1 : 0) : 1,
+    ...extraParams,
     id,
   ]);
 

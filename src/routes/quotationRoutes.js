@@ -156,7 +156,10 @@ const uploadLimiter = rateLimit({
 // Each is an array spread into the route handler chain.
 // =============================================================================
 
-const allRoles      = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin'])];
+// 'Proyectos' tiene acceso de LECTURA a cotizaciones (tab de solo lectura de su
+// panel) y recibe notificaciones de licitación por GET/POST /notificaciones.
+// NO se incluye en writeRoles → no puede crear/editar cotizaciones.
+const allRoles      = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin', 'Proyectos'])];
 const writeRoles    = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin'])];
 const jefeOnly      = [authenticate, authorize(['Jefe', 'SysAdmin'])];
 const adminOnly     = [authenticate, authorize(['Administracion'])];

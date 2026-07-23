@@ -141,6 +141,16 @@ const quotationShape = {
     .int('id_cliente must be an integer.')
     .positive('id_cliente must be a positive integer.'),
 
+  // Licitación paraguas a la que se vincula la cotización (opcional).
+  // NULL / ausente = cotización normal (suelta). El controller verifica que la
+  // licitación exista antes de asociarla.
+  id_licitacion: z
+    .number({ invalid_type_error: 'id_licitacion must be a number.' })
+    .int('id_licitacion must be an integer.')
+    .positive('id_licitacion must be a positive integer.')
+    .optional()
+    .nullable(),
+
   descripcion: z
     .string({ required_error: 'Description is required.' })
     .trim()
