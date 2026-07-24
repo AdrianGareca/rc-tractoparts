@@ -396,6 +396,25 @@ const QuotationController = {
         });
       }
 
+      // ── Licitación link validation ────────────────────────────────────────
+      // Mirror createQuotation: if the edit links/relinks to a licitación, verify
+      // it exists so a bad id returns a clean 422 instead of a raw FK-violation
+      // 500. null (unlink) skips the check. A lookup error is non-fatal — the FK
+      // constraint remains the last line of defense.
+      if (req.body.id_licitacion != null) {
+        try {
+          const lic = await LicitacionModel.findById(parseInt(req.body.id_licitacion, 10));
+          if (!lic) {
+            return res.status(422).json({
+              success: false,
+              message: `La licitación #${req.body.id_licitacion} indicada no existe.`,
+            });
+          }
+        } catch (licErr) {
+          console.warn('[QuotationController.updateQuotation] Licitación lookup failed (non-fatal):', licErr.message);
+        }
+      }
+
       // Recalculate the header total server-side from the line items so the
       // stored total always matches the actual detail rows (client value ignored).
       // A manual cash discount is subtracted when provided.

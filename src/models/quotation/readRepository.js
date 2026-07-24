@@ -67,67 +67,7 @@ async function findById(id) {
       LIMIT 1
     `;
 
-  // Graceful degradation: if excel_ruta is absent on a legacy DB, retry
-  // with NULL so downstream code (PDF/Excel button rendering) degrades
-  // cleanly instead of crashing the entire detail view.
-  let headerRows;
-  try {
-    [headerRows] = await pool.execute(sqlHeader, [id]);
-  } catch (err) {
-    // Graceful degradation for legacy databases that predate one or more
-    // optional columns. Rewrite each missing column to a NULL alias and retry
-    // so the detail view never crashes on a schema that is behind the code.
-    const msg = err.message || '';
-    let fallbackSql = sqlHeader;
-    let patched = false;
-    if (msg.includes("Unknown column 'c.excel_ruta'")) {
-      console.warn('[QuotationModel.findById] excel_ruta column missing — retrying without it.');
-      fallbackSql = fallbackSql.replace('        c.excel_ruta,\n', '        NULL AS excel_ruta,\n');
-      patched = true;
-    }
-    if (msg.includes("Unknown column 'c.entidad_emisora'")) {
-      console.warn('[QuotationModel.findById] entidad_emisora column missing — retrying with default.');
-      fallbackSql = fallbackSql.replace('        c.entidad_emisora,\n', "        'Empresa unipersonal de Ronald Roca Cartagena' AS entidad_emisora,\n");
-      patched = true;
-    }
-    if (msg.includes("Unknown column 'c.fecha_confirmacion'")) {
-      console.warn('[QuotationModel.findById] fecha_confirmacion column missing — retrying with NULL. ' +
-        'Run the ALTER TABLE upgrade in sql/upgrade_2026_fecha_confirmacion.sql to fix this permanently.');
-      fallbackSql = fallbackSql.replace('        c.fecha_confirmacion,\n', '        NULL AS fecha_confirmacion,\n');
-      patched = true;
-    }
-    if (msg.includes("Unknown column 'c.descuento_manual'")) {
-      console.warn('[QuotationModel.findById] descuento_manual column missing — retrying with NULL.');
-      fallbackSql = fallbackSql.replace('        c.descuento_manual,\n', '        NULL AS descuento_manual,\n');
-      patched = true;
-    }
-    if (msg.includes("Unknown column 'c.forma_pago'")) {
-      console.warn('[QuotationModel.findById] forma_pago column missing — retrying with NULL.');
-      fallbackSql = fallbackSql.replace('        c.forma_pago,\n', '        NULL AS forma_pago,\n');
-      patched = true;
-    }
-    if (msg.includes("Unknown column 'c.mostrar_codigos'")) {
-      console.warn('[QuotationModel.findById] mostrar_codigos column missing — retrying with 1.');
-      fallbackSql = fallbackSql.replace('        c.mostrar_codigos,\n', '        1 AS mostrar_codigos,\n');
-      patched = true;
-    }
-    if (msg.includes("Unknown column 'c.solicitante_nombre'")) {
-      console.warn('[QuotationModel.findById] solicitante_nombre column missing — retrying with NULL.');
-      fallbackSql = fallbackSql.replace('        c.solicitante_nombre       AS nombre_sol,\n', '        NULL AS nombre_sol,\n');
-      patched = true;
-    }
-    if (msg.includes("Unknown column 'c.id_licitacion'")) {
-      console.warn('[QuotationModel.findById] id_licitacion column missing — retrying with NULL. ' +
-        'Run sql/upgrade_2026_licitaciones.sql to enable the licitaciones link.');
-      fallbackSql = fallbackSql.replace('        c.id_licitacion,\n', '        NULL AS id_licitacion,\n');
-      patched = true;
-    }
-    if (patched) {
-      [headerRows] = await pool.execute(fallbackSql, [id]);
-    } else {
-      throw err;
-    }
-  }
+  const [headerRows] = await pool.execute(sqlHeader, [id]);
 
   if (!headerRows[0]) return null;
   const quotation = headerRows[0];
@@ -228,14 +168,11 @@ async function findAll(filters = {}, pagination = {}, sort = {}) {
 
   const { clause: whereClause, values: whereValues } = buildWhereClause(filters);
 
-  // Primary query: includes excel_ruta column (present in all up-to-date schemas).
-  // If the column does not yet exist on a legacy staging database that has not
-  // been migrated, MySQL throws "Unknown column 'c.excel_ruta' in 'field list'".
-  // The catch block detects this specific error and retries with a fallback query
-  // that omits the column, mapping tiene_excel to a constant FALSE so callers
-  // receive a consistent row shape. Run the ALTER TABLE migration in init.sql to
-  // permanently resolve the issue on any affected database instance.
-  const buildSql = (includeExcel, includeLicitacion) => `
+  // LIMIT and OFFSET are embedded as SQL literals (not bound params) because
+  // mysql2 v3 prepared statements mistype them as DOUBLE, causing
+  // "Incorrect arguments to mysqld_stmt_execute". Both values are
+  // validated integers (Math.min / Math.max / parseInt) so this is safe.
+  const sql = `
       SELECT
         c.id,
         c.numero_correlativo,
@@ -248,12 +185,8 @@ async function findAll(filters = {}, pagination = {}, sort = {}) {
         c.moneda,
         c.estado,
         c.pdf_ruta   IS NOT NULL AS tiene_pdf,
-        ${includeExcel
-    ? 'c.excel_ruta IS NOT NULL AS tiene_excel,'
-    : 'FALSE                    AS tiene_excel,'}
-        ${includeLicitacion
-    ? 'c.id_licitacion,'
-    : 'NULL AS id_licitacion,'}
+        c.excel_ruta IS NOT NULL AS tiene_excel,
+        c.id_licitacion,
         c.fecha_emision,
         c.fecha_validez,
         c.aprobado_por,
@@ -268,40 +201,7 @@ async function findAll(filters = {}, pagination = {}, sort = {}) {
       LIMIT ${limit} OFFSET ${offset}
     `;
 
-  // LIMIT and OFFSET are embedded as SQL literals (not bound params) because
-  // mysql2 v3 prepared statements mistype them as DOUBLE, causing
-  // "Incorrect arguments to mysqld_stmt_execute". Both values are
-  // validated integers (Math.min / Math.max / parseInt) so this is safe.
-  //
-  // Graceful degradation: excel_ruta and id_licitacion are optional columns
-  // that may be absent on a legacy DB that has not run its migration. On an
-  // "Unknown column" error we retry with the offending column omitted so the
-  // listing keeps working. Both flags are independent.
-  let includeExcel      = true;
-  let includeLicitacion = true;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const [rows] = await pool.execute(buildSql(includeExcel, includeLicitacion), whereValues);
-      return rows;
-    } catch (err) {
-      const m = err.message || '';
-      if (includeExcel && m.includes("Unknown column 'c.excel_ruta'")) {
-        console.warn('[QuotationModel.findAll] excel_ruta column missing — retrying without it. ' +
-          'Run the ALTER TABLE migration in init.sql to fix this permanently.');
-        includeExcel = false;
-        continue;
-      }
-      if (includeLicitacion && m.includes("Unknown column 'c.id_licitacion'")) {
-        console.warn('[QuotationModel.findAll] id_licitacion column missing — retrying without it. ' +
-          'Run sql/upgrade_2026_licitaciones.sql to enable the licitaciones link.');
-        includeLicitacion = false;
-        continue;
-      }
-      throw err;
-    }
-  }
-  // All degradations exhausted — final attempt with the most conservative query.
-  const [rows] = await pool.execute(buildSql(false, false), whereValues);
+  const [rows] = await pool.execute(sql, whereValues);
   return rows;
 }
 
