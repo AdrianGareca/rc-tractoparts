@@ -23,6 +23,7 @@ import api          from '../services/apiClient.js';
 import { showToast } from '../services/apiClient.js';
 import { connectSocket } from '../services/socketClient.js';
 import { openClienteModal } from './dashboard/modules/clientModal.js';
+import { sumSubtotals, clampDiscount, computeTotal, validateDetalle } from '../shared/quotationTotals.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -43,14 +44,10 @@ function escText(v) {
     .replace(/'/g, '&#39;');
 }
 
-/** Sum all item subtotals from the items array */
-function sumSubtotals(items) {
-  return items.reduce((acc, it) => {
-    const qty   = parseFloat(it.cantidad)       || 0;
-    const price = parseFloat(it.precio_unitario) || 0;
-    return acc + qty * price;
-  }, 0);
-}
+// NOTE: sumSubtotals / clampDiscount / computeTotal / validateDetalle live in
+// public/js/shared/quotationTotals.js (imported above) — the SINGLE source of
+// truth shared with the backend's rounding rules. Do not reintroduce a local
+// copy: the on-screen total must always match what the server computes and saves.
 
 // =============================================================================
 // OBSERVER PATTERN — Subject (Observable)
@@ -185,9 +182,10 @@ class TotalsObserver extends Observer {
   setDiscountEl(el) { this.#discountEl = el; }
 
   update(items) {
-    const subtotal  = sumSubtotals(items);
-    const discount  = this.#discountEl ? (parseFloat(this.#discountEl.value) || 0) : 0;
-    const total     = Math.max(0, subtotal - discount);
+    const subtotal = sumSubtotals(items);
+    // computeTotal clamps the discount to >= 0, so a negative entry can never
+    // inflate the preview above the subtotal (it maps to no discount at all).
+    const total    = computeTotal(subtotal, this.#discountEl ? this.#discountEl.value : 0);
     this.#subtotalEl.textContent = fmt(subtotal);
     this.#totalEl.textContent    = fmt(total);
   }
@@ -1461,10 +1459,25 @@ class FormMediator {
       return;
     }
 
-    // Compute monto_total from items
+    // Compute monto_total from items (round-per-line, shared with the backend)
     const subtotal         = sumSubtotals(items);
-    const discountRaw      = parseFloat(this.#container.querySelector('#totals-discount')?.value) || 0;
-    const descuento_manual = discountRaw > 0 ? discountRaw : null;
+    const clampedDiscount  = clampDiscount(this.#container.querySelector('#totals-discount')?.value);
+    const descuento_manual = clampedDiscount > 0 ? clampedDiscount : null;
+
+    // ── Line-item validation (client-side, mirrors the backend rule) ─────────
+    // Only rows carrying a description are submitted; each must have cantidad > 0
+    // and precio_unitario >= 0. Surfacing this here gives immediate feedback
+    // instead of a late (and previously swallowed) 422 from the server.
+    const submittableRows = items.filter(i => i.descripcion_item?.trim());
+    for (const row of submittableRows) {
+      const problems = validateDetalle(row);
+      if (problems.length > 0) {
+        alert.textContent = `Revisá el ítem "${row.descripcion_item.trim()}": ` +
+          problems.map(p => p.message).join(' ');
+        alert.className = 'form-alert show alert-error';
+        return;
+      }
+    }
 
     // Build the filtered detalles array — drop rows with no description
     const filteredDetalles = items.filter(i => i.descripcion_item?.trim()).map(i => ({
