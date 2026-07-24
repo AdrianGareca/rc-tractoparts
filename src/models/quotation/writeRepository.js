@@ -130,18 +130,7 @@ async function createDetalles(connection, id_cotizacion, detalles) {
 // and approval metadata are deliberately NOT touchable here.
 // ---------------------------------------------------------------------------
 async function updateEditableHeader(connection, id, data) {
-  // id_licitacion: solo se toca cuando se está vinculando la cotización a una
-  // licitación (mismo criterio defensivo que create). Editar una cotización sin
-  // vincularla no menciona la columna → sigue funcionando en una BD sin migrar.
-  const extraSet    = [];
-  const extraParams = [];
-  if (data.id_licitacion != null) {
-    extraSet.push('id_licitacion = ?');
-    extraParams.push(parseInt(data.id_licitacion, 10));
-  }
-
-  const sql = `
-    UPDATE cotizaciones SET
+  const baseSet = `
       id_cliente               = ?,
       descripcion              = ?,
       monto_total              = ?,
@@ -164,11 +153,9 @@ async function updateEditableHeader(connection, id, data) {
       equipo_motor             = ?,
       descuento_manual         = ?,
       forma_pago               = ?,
-      mostrar_codigos          = ?${extraSet.length ? ',\n      ' + extraSet.join(',\n      ') : ''}
-    WHERE id = ? AND estado = 'Pendiente'
-  `;
+      mostrar_codigos          = ?`;
 
-  const [result] = await connection.execute(sql, [
+  const baseParams = [
     data.id_cliente,
     data.descripcion,
     data.monto_total              ?? null,
@@ -192,11 +179,35 @@ async function updateEditableHeader(connection, id, data) {
     data.descuento_manual         ?? null,
     data.forma_pago               || null,
     data.mostrar_codigos          != null ? (data.mostrar_codigos ? 1 : 0) : 1,
-    ...extraParams,
-    id,
-  ]);
+  ];
 
-  return result.affectedRows > 0;
+  // id_licitacion se manda SIEMPRE, a diferencia de create(): acá `null` es un
+  // valor válido y distinto de "no tocar la columna" — es como el Ejecutivo
+  // desvincula la cotización de una licitación (elige "Sin licitación" en el
+  // form y guarda). Omitir la columna cuando data.id_licitacion es null, como
+  // hacía antes, dejaba el vínculo anterior pegado para siempre.
+  //
+  // Se intenta primero incluyendo la columna; en una BD que aún no corrió
+  // sql/upgrade_2026_licitaciones.sql (columna inexistente) se degrada sin
+  // ella para no romper la edición normal de cotizaciones sueltas.
+  const licitacionParam = data.id_licitacion != null ? parseInt(data.id_licitacion, 10) : null;
+
+  try {
+    const [result] = await connection.execute(
+      `UPDATE cotizaciones SET ${baseSet}, id_licitacion = ? WHERE id = ? AND estado = 'Pendiente'`,
+      [...baseParams, licitacionParam, id]
+    );
+    return result.affectedRows > 0;
+  } catch (err) {
+    if (!/Unknown column '.*id_licitacion'/i.test(err.message || '')) throw err;
+    console.warn('[QuotationModel.updateEditableHeader] id_licitacion column missing — retrying without it. ' +
+      'Run sql/upgrade_2026_licitaciones.sql to enable the licitaciones link.');
+    const [result] = await connection.execute(
+      `UPDATE cotizaciones SET ${baseSet} WHERE id = ? AND estado = 'Pendiente'`,
+      [...baseParams, id]
+    );
+    return result.affectedRows > 0;
+  }
 }
 
 // ---------------------------------------------------------------------------

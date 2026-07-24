@@ -122,6 +122,7 @@ export function showEditUserModal(id, nombre, idRol, canApprove, onDone) {
           <option value="2" ${idRol == 2 ? 'selected' : ''}>Administracion</option>
           <option value="3" ${idRol == 3 ? 'selected' : ''}>Jefe</option>
           <option value="5" ${idRol == 5 ? 'selected' : ''}>Proyectos</option>
+          ${idRol == 4 ? '<option value="4" selected>SysAdmin</option>' : ''}
         </select>
       </div>
       ${canDelegate ? `

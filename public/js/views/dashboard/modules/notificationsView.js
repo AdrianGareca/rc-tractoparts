@@ -180,6 +180,10 @@ export async function refreshNotifBadge(UI) {
         }).catch(() => showToast('No se pudo cargar las notificaciones.', 'error'));
       };
     } else {
+      // Reset the peak counter too — otherwise a later, smaller batch of new
+      // notifications (e.g. total=1 after everything was marked read) would
+      // never exceed the stale prevTotal and the desktop push would stay silent.
+      btn.dataset.prevTotal = '0';
       btn.style.display = 'none';
     }
   } catch (_) { /* non-fatal — badge failure must not break the dashboard */ }

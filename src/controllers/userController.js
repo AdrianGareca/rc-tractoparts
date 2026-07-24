@@ -190,10 +190,11 @@ const UserController = {
 
       await UserModel.update(id, updateData);
 
-      // Role or active-status changes must invalidate any already-issued JWT for
-      // this user immediately — otherwise a demoted/deactivated user keeps their
-      // old privileges until the token naturally expires (up to JWT_EXPIRES_IN).
-      if (updateData.id_rol !== undefined || updateData.activo !== undefined) {
+      // Role, active-status, or password changes must invalidate any already-issued
+      // JWT for this user immediately — otherwise a demoted/deactivated user, or a
+      // stolen token reset via password change, keeps working until the token
+      // naturally expires (up to JWT_EXPIRES_IN).
+      if (updateData.id_rol !== undefined || updateData.activo !== undefined || updateData.password_hash !== undefined) {
         await UserModel.incrementTokenVersion(id);
       }
 

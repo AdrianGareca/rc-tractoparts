@@ -131,7 +131,7 @@ export function buildProformaHTML(q, id, viewMode) {
         <label class="form-label" for="admin-comment-input">Comentario de Supervisión</label>
         <textarea class="form-control" id="admin-comment-input" rows="3"
                   placeholder="Ej: Verificar disponibilidad con proveedor antes de aprobar..."
-                  style="resize:vertical;">${q.comentarios_admin ?? ''}</textarea>
+                  style="resize:vertical;">${escHtml(q.comentarios_admin ?? '')}</textarea>
         <span class="field-error" id="admin-comment-err"></span>
       </div>
       <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
