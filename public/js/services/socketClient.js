@@ -9,15 +9,15 @@
 // =============================================================================
 
 import AuthSession from './authSession.js';
+import { createRetryableCache } from '../shared/asyncCache.js';
 
-let ioPromise = null;
-
-function loadIo() {
-  if (!ioPromise) {
-    ioPromise = import('/socket.io/socket.io.esm.min.js').then((mod) => mod.io);
-  }
-  return ioPromise;
-}
+// Memoize the Socket.IO client import, but DO NOT cache a rejection: a transient
+// failure loading /socket.io/... must not poison the cache for the rest of the
+// page's life. createRetryableCache clears itself on rejection so the next
+// connectSocket() call retries the import.
+const loadIo = createRetryableCache(() =>
+  import('/socket.io/socket.io.esm.min.js').then((mod) => mod.io)
+);
 
 /**
  * Opens a new authenticated Socket.IO connection using the current session's

@@ -24,6 +24,7 @@ import { showToast } from '../services/apiClient.js';
 import { connectSocket } from '../services/socketClient.js';
 import { openClienteModal } from './dashboard/modules/clientModal.js';
 import { sumSubtotals, clampDiscount, computeTotal, validateDetalle } from '../shared/quotationTotals.js';
+import { mapFieldErrors } from '../shared/quotationFieldErrors.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -229,6 +230,7 @@ class FormMediator {
   #totalsObserver = null; // Kept for discount-input wiring
   #lockSocket   = null;    // Realtime draft-lock connection (creation mode only)
   #hasDraftLock = false;   // true once THIS socket owns the global next-number reservation
+  #destroyed    = false;   // true once the form was torn down — guards the async draft-lock connect
   #dirty        = false;   // true once the user has entered/changed anything — gates the close-confirmation
 
   #prefill = null;  // Optional { id_cliente, cliente_nombre, id_licitacion, licitacion_label } for a pre-linked create
@@ -388,7 +390,19 @@ class FormMediator {
     if (this.#editId) return; // Editing never reserves a new correlativo
 
     try {
-      this.#lockSocket = await connectSocket();
+      const socket = await connectSocket();
+
+      // The form may have been closed (cancel / destroy) WHILE connectSocket was
+      // still resolving. In that window _releaseDraftLock ran as a no-op (there
+      // was no #lockSocket yet), so if we adopted this socket now it would leak
+      // and leave a stale "está redactando" banner for everyone else. Bail out
+      // and tear the just-opened socket down immediately.
+      if (this.#destroyed) {
+        socket.disconnect();
+        return;
+      }
+
+      this.#lockSocket = socket;
       this.#lockSocket.on('cotizacion:draft:update', (state) => this._renderLockState(state));
 
       // .timeout() guards against a hung ack (e.g. server restarted between
@@ -474,6 +488,9 @@ class FormMediator {
 
   /** Release this socket's reservation (if any) and tear down the connection. Idempotent. */
   _releaseDraftLock() {
+    // Mark teardown so an in-flight _initDraftLock connect that resolves AFTER
+    // this point disconnects the socket instead of adopting (and leaking) it.
+    this.#destroyed = true;
     if (!this.#lockSocket) return;
     if (this.#hasDraftLock) {
       this.#lockSocket.emit('cotizacion:draft:leave');
@@ -1263,6 +1280,9 @@ class FormMediator {
 
     /** Called when the user picks a client from the list or after express creation */
     const selectClient = (id, label) => {
+      // Cancel any pending debounced search so a stale query can't fire AFTER the
+      // selection and repopulate/reopen the dropdown over the chosen client.
+      clearTimeout(debounceTimer);
       this.#dirty = true;
       hiddenInput.value  = id;
       searchInput.value  = label;
@@ -1335,6 +1355,9 @@ class FormMediator {
 
     // Close dropdown when focus leaves the search field
     searchInput.addEventListener('blur', () => {
+      // Cancel any pending debounced search so it can't reopen the dropdown after
+      // the user has already moved on to another field.
+      clearTimeout(debounceTimer);
       // Small delay so mousedown on an item can fire first
       setTimeout(closeDropdown, 200);
     });
@@ -1579,14 +1602,19 @@ class FormMediator {
       if (label)  label.textContent = originalLabel;
       if (spinner)spinner.classList.add('hidden');
 
-      // Surface server-side Zod field errors
-      const fieldErrors = err.data?.errors ?? [];
-      for (const { field, message } of fieldErrors) {
-        const errEl = this.#container.querySelector(`#err-${field}`);
+      // Surface server-side Zod field errors. mapFieldErrors routes header-field
+      // errors to their inline span and everything else (line-item / nested
+      // paths like `detalles.0.cantidad`) to `general` — so we never build an
+      // invalid CSS selector (which used to throw here and swallow the message).
+      const { perField, general } = mapFieldErrors(err.data?.errors);
+      for (const { id, message } of perField) {
+        const errEl = this.#container.querySelector(`#${id}`);
         if (errEl) errEl.textContent = message;
       }
 
-      const msg = err.data?.message || err.message || 'Error al crear la cotización.';
+      const msg = general.length > 0
+        ? general.join(' ')
+        : (err.data?.message || err.message || 'Error al crear la cotización.');
       alert.textContent = msg;
       alert.className   = 'form-alert show alert-error';
     }
