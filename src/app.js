@@ -133,8 +133,13 @@ app.use(globalLimiter);
 // ---------------------------------------------------------------------------
 // 5. HTTP Request Logging — morgan
 // ---------------------------------------------------------------------------
-const morganFormat = process.env.NODE_ENV === 'production' ? 'combined' : 'dev';
-app.use(morgan(morganFormat));
+// Skip HTTP request logging entirely under `test` — otherwise morgan's colored
+// 'dev' output prints one line per request during the suite (including the
+// intentional 4xx from negative-path tests), which reads as a wall of errors.
+if (process.env.NODE_ENV !== 'test') {
+  const morganFormat = process.env.NODE_ENV === 'production' ? 'combined' : 'dev';
+  app.use(morgan(morganFormat));
+}
 
 // ---------------------------------------------------------------------------
 // 6. Body Parsers

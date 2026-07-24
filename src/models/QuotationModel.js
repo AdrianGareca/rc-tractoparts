@@ -56,11 +56,12 @@ const QuotationModel = {
   ...analyticsRepository,
 
   // ── Exported constants (used by controllers, routes, and tests) ──────────
-  VALID_STATES:           constants.VALID_STATES,
-  STATE_TRANSITIONS:      constants.STATE_TRANSITIONS,
-  ROLE_TRANSITIONS:       constants.ROLE_TRANSITIONS,
-  APPROVAL_SOURCE_STATES: constants.APPROVAL_SOURCE_STATES,
-  SORTABLE_COLUMNS:       constants.SORTABLE_COLUMNS,
+  VALID_STATES:                 constants.VALID_STATES,
+  STATE_TRANSITIONS:            constants.STATE_TRANSITIONS,
+  ROLE_TRANSITIONS:             constants.ROLE_TRANSITIONS,
+  APPROVAL_SOURCE_STATES:       constants.APPROVAL_SOURCE_STATES,
+  REVIEW_REQUIRED_TARGET_STATES: constants.REVIEW_REQUIRED_TARGET_STATES,
+  SORTABLE_COLUMNS:             constants.SORTABLE_COLUMNS,
 };
 
 module.exports = QuotationModel;

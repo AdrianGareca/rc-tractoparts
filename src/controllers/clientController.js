@@ -265,17 +265,27 @@ const ClientController = {
 
       const activo = req.body.activo != null ? (req.body.activo ? 1 : 0) : existing.activo;
 
-      // direccion/ciudad follow the same resolve-from-existing rule as `activo`:
-      // ClientModel.update always writes every column, so a caller that omits
-      // these (e.g. the reactivation button, which posts a fixed field list)
-      // would otherwise blank them out. `undefined` means "not sent — keep the
-      // stored value"; an explicit null/'' still clears the field on purpose.
+      // Every optional field follows the same resolve-from-existing rule as
+      // `activo`: ClientModel.update always writes EVERY column, so a caller that
+      // omits a field (e.g. the reactivation button or a rename-only action, which
+      // post a fixed field list) would otherwise blank it out. `undefined` means
+      // "not sent — keep the stored value"; an explicit null/'' still clears the
+      // field on purpose. This guard MUST cover contacto/email/telefono/nit too —
+      // omitting it there was silently wiping stored contact info.
+      const nextNit       = nit       !== undefined ? nit       : existing.nit;
+      const nextContacto  = contacto  !== undefined ? contacto  : existing.contacto;
+      const nextEmail     = email     !== undefined ? email     : existing.email;
+      const nextTelefono  = telefono  !== undefined ? telefono  : existing.telefono;
       const nextDireccion = direccion !== undefined ? direccion : existing.direccion;
       const nextCiudad    = ciudad    !== undefined ? ciudad    : existing.ciudad;
       const nextOrigen    = id_origen_cliente !== undefined ? id_origen_cliente : existing.id_origen_cliente;
 
       const updated = await ClientModel.update(id, {
-        razon_social, nit, contacto, email, telefono,
+        razon_social,
+        nit:       nextNit,
+        contacto:  nextContacto,
+        email:     nextEmail,
+        telefono:  nextTelefono,
         direccion: nextDireccion,
         ciudad:    nextCiudad,
         id_origen_cliente: nextOrigen,

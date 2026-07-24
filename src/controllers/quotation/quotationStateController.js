@@ -108,15 +108,19 @@ const QuotationStateController = {
         });
       }
 
-      // ── Special pre-flight check for 'En revision' transition ─────────────
-      // The quotation must be complete before it can enter the approval queue.
-      if (nuevo_estado === 'En revision') {
+      // ── Pre-submission checklist for ANY move into the approval pipeline ───
+      // The quotation must be complete (≥1 line item, monto_total, fecha_validez)
+      // before it can enter review OR be approved/sent/confirmed. Enforced on
+      // every forward target — not just 'En revision' — so a Jefe/SysAdmin (or a
+      // delegated Ejecutivo) cannot bypass it by jumping straight to approval.
+      // Pull-backs (Rechazada, En espera, Pendiente) are intentionally exempt.
+      if (QuotationModel.REVIEW_REQUIRED_TARGET_STATES.includes(nuevo_estado)) {
         const reviewErrors = await QuotationModel.validateForReview(id);
 
         if (reviewErrors.length > 0) {
           return res.status(422).json({
             success: false,
-            message: 'The quotation does not meet all requirements for submission to review. ' +
+            message: 'The quotation does not meet all requirements to enter the approval pipeline. ' +
                      'Resolve the following issues and try again.',
             errors:  reviewErrors,
           });
@@ -376,6 +380,24 @@ const QuotationStateController = {
           message: `Cannot approve/reject a quotation in state '${estadoAnterior}'. ` +
                    `Only ${QuotationModel.APPROVAL_SOURCE_STATES.join(', ')} are eligible.`,
         });
+      }
+
+      // ── Pre-submission checklist — APPROVAL only ──────────────────────────
+      // Approving via this dedicated endpoint must satisfy the same checklist as
+      // any other entry into the approval pipeline (≥1 line item, monto_total,
+      // fecha_validez). Rejection is exempt: you reject BECAUSE the quote is
+      // incomplete/wrong, so blocking a rejection on completeness makes no sense.
+      if (aprobado === true) {
+        const reviewErrors = await QuotationModel.validateForReview(id);
+
+        if (reviewErrors.length > 0) {
+          return res.status(422).json({
+            success: false,
+            message: 'The quotation does not meet all requirements for approval. ' +
+                     'Resolve the following issues and try again.',
+            errors:  reviewErrors,
+          });
+        }
       }
 
       const approved = await QuotationModel.approve(id, req.user.id, aprobado, obsText, estadoAnterior);

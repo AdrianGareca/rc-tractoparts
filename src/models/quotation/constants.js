@@ -127,6 +127,27 @@ const ROLE_TRANSITIONS = {
 const APPROVAL_SOURCE_STATES = ['Pendiente', 'En revision', 'En espera'];
 
 // ---------------------------------------------------------------------------
+// REVIEW_REQUIRED_TARGET_STATES — target states a quotation may only reach once
+// it satisfies the pre-submission checklist (validateForReview: ≥1 line item,
+// monto_total set, fecha_validez set). Historically the checklist was enforced
+// ONLY on the 'En revision' transition, letting a Jefe/SysAdmin (or a delegated
+// Ejecutivo) bypass it entirely by jumping straight to approval/send — or via
+// the dedicated POST /:id/aprobar endpoint. Both entry points now gate on this
+// set so an incomplete quotation can never enter the committed/approval phase.
+//
+// NOT included (deliberately): 'En espera', 'Pendiente', 'Rechazada', 'Archivada'.
+// Rejecting or holding an INCOMPLETE quotation is legitimate — the checklist
+// only guards forward movement into approval/delivery, never a pull-back.
+// ---------------------------------------------------------------------------
+const REVIEW_REQUIRED_TARGET_STATES = [
+  'En revision',
+  'Aprobada internamente',
+  'Enviada al cliente',
+  'Confirmada',
+  'Aceptada',   // LEGACY alias of 'Confirmada'
+];
+
+// ---------------------------------------------------------------------------
 // STATE_TRANSITIONS — flat fallback matrix (used only for reference / tests).
 // ROLE_TRANSITIONS is always the authoritative source in the application.
 // ---------------------------------------------------------------------------
@@ -164,6 +185,7 @@ module.exports = {
   VALID_STATES,
   ROLE_TRANSITIONS,
   APPROVAL_SOURCE_STATES,
+  REVIEW_REQUIRED_TARGET_STATES,
   STATE_TRANSITIONS,
   SORTABLE_COLUMNS,
   BASE_JOINS,
