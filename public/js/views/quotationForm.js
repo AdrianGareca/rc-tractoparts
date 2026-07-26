@@ -23,27 +23,20 @@ import api          from '../services/apiClient.js';
 import { showToast } from '../services/apiClient.js';
 import { connectSocket } from '../services/socketClient.js';
 import { openClienteModal } from './dashboard/modules/clientModal.js';
-import { sumSubtotals, clampDiscount, computeTotal, validateDetalle } from '../shared/quotationTotals.js';
+// computeTotal se usa ahora dentro de quotationForm/observers.js (TotalsObserver).
+import { sumSubtotals, clampDiscount, validateDetalle } from '../shared/quotationTotals.js';
 import { mapFieldErrors } from '../shared/quotationFieldErrors.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Format a number as a currency string (2 decimal places, no locale-specific symbol) */
-function fmt(n) {
-  return isNaN(n) ? '0.00' : Number(n).toFixed(2);
-}
-
-/** HTML-entity-encode a value before interpolating as text content in innerHTML.
- *  Prevents stored-XSS when rendering user-controlled strings (OWASP A03). */
-function escText(v) {
-  if (v == null) return '';
-  return String(v)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// fmt / escText / nextCorrelativoOf viven en quotationForm/helpers.js
+// (funciones puras, cubiertas por tests/unit/quotationFormHelpers.test.js).
+// fmt se usa ahora dentro de quotationForm/observers.js (los dos Observers).
+import { escText, nextCorrelativoOf } from './quotationForm/helpers.js';
+import {
+  LineItemsSubject,
+  RowSubtotalObserver,
+  TotalsObserver,
+} from './quotationForm/observers.js';
 
 // NOTE: sumSubtotals / clampDiscount / computeTotal / validateDetalle live in
 // public/js/shared/quotationTotals.js (imported above) — the SINGLE source of
@@ -51,164 +44,10 @@ function escText(v) {
 // copy: the on-screen total must always match what the server computes and saves.
 
 // =============================================================================
-// OBSERVER PATTERN — Subject (Observable)
+// PATRÓN OBSERVER — LineItemsSubject + Observers concretos
+// Viven en quotationForm/observers.js (cubiertos por
+// tests/unit/quotationFormObservers.test.js).
 // =============================================================================
-
-/**
- * LineItemsSubject
- * Holds the authoritative array of line items and notifies all registered
- * Observer instances whenever the array mutates.
- */
-class LineItemsSubject {
-  #items     = [];   // Array<{ descripcion_item, cantidad, precio_unitario }>
-  #observers = [];
-
-  subscribe(observer) {
-    this.#observers.push(observer);
-  }
-
-  unsubscribe(observer) {
-    this.#observers = this.#observers.filter(o => o !== observer);
-  }
-
-  /**
-   * Returns a shallow-copy snapshot of the items array.
-   * Callers receive independent array instances so that no external reference
-   * can mutate the internal #items state — the Subject is the single source of
-   * truth and must only be modified through addItem / removeItem / updateItem.
-   */
-  getItems() { return this.#items.map(i => ({ ...i })); }
-
-  addItem() {
-    this.#items.push({
-      descripcion_item:   '',
-      codigo:             '',
-      codigo_alternativo: '',
-      unidad:             'UND',
-      cantidad:           1,
-      precio_unitario:    0,
-      marca_id:           null,
-      tiempo_entrega:     '',
-    });
-    this._notify();
-    return this.#items.length - 1; // new index
-  }
-
-  /**
-   * Seed a pre-filled item (used in edit mode to hydrate existing line items).
-   * Returns the new index. Missing fields fall back to sane defaults so the
-   * row renders identically to a freshly-added one.
-   */
-  addItemData(item = {}) {
-    this.#items.push({
-      descripcion_item:   item.descripcion_item   ?? '',
-      codigo:             item.codigo             ?? '',
-      codigo_alternativo: item.codigo_alternativo ?? '',
-      unidad:             item.unidad             ?? 'UND',
-      cantidad:           item.cantidad           ?? 1,
-      precio_unitario:    item.precio_unitario    ?? 0,
-      marca_id:           item.marca_id           ?? null,
-      tiempo_entrega:     item.tiempo_entrega     ?? '',
-    });
-    this._notify();
-    return this.#items.length - 1;
-  }
-
-  removeItem(index) {
-    this.#items.splice(index, 1);
-    this._notify();
-  }
-
-  updateItem(index, field, value) {
-    if (!this.#items[index]) return;
-    this.#items[index][field] = value;
-    this._notify();
-  }
-
-  _notify() {
-    // Provide a shallow copy so observers can't mutate the internal array
-    const snapshot = this.#items.map(i => ({ ...i }));
-    this.#observers.forEach(o => o.update(snapshot));
-  }
-}
-
-// =============================================================================
-// OBSERVER PATTERN — Concrete Observers
-// =============================================================================
-
-/** Observer base class */
-class Observer {
-  /** @param {Array} items — snapshot of the items array */
-  // eslint-disable-next-line no-unused-vars
-  update(items) {}
-}
-
-/**
- * RowSubtotalObserver
- * Updates each row's subtotal cell when quantities or prices change.
- * Reads DOM nodes by data-item-subtotal="<index>" attributes.
- */
-class RowSubtotalObserver extends Observer {
-  #container;
-  constructor(container) { super(); this.#container = container; }
-
-  update(items) {
-    items.forEach((item, idx) => {
-      const cell = this.#container.querySelector(`[data-item-subtotal="${idx}"]`);
-      if (!cell) return;
-      const sub = (parseFloat(item.cantidad) || 0) * (parseFloat(item.precio_unitario) || 0);
-      cell.textContent = fmt(sub);
-    });
-  }
-}
-
-/**
- * TotalsObserver
- * Keeps the subtotal display and the final total (subtotal − descuento_manual) in sync.
- * Reads the optional #discountEl input for the live discount amount.
- */
-class TotalsObserver extends Observer {
-  #subtotalEl;
-  #totalEl;
-  #discountEl;   // <input> for the manual cash discount (may be null during init)
-
-  constructor(subtotalEl, totalEl, discountEl) {
-    super();
-    this.#subtotalEl = subtotalEl;
-    this.#totalEl    = totalEl;
-    this.#discountEl = discountEl;
-  }
-
-  /** Update the discount element reference (wired after render) */
-  setDiscountEl(el) { this.#discountEl = el; }
-
-  update(items) {
-    const subtotal = sumSubtotals(items);
-    // computeTotal clamps the discount to >= 0, so a negative entry can never
-    // inflate the preview above the subtotal (it maps to no discount at all).
-    const total    = computeTotal(subtotal, this.#discountEl ? this.#discountEl.value : 0);
-    this.#subtotalEl.textContent = fmt(subtotal);
-    this.#totalEl.textContent    = fmt(total);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// nextCorrelativoOf — "SC-2026/000123" → "SC-2026/000124".
-//
-// Used only to show a second executive an APPROXIMATE preview while someone
-// else holds the draft reservation. It is deliberately not authoritative: the
-// real serial is assigned at save time by generateCorrelativo's
-// SELECT…FOR UPDATE, so the value shown here is informational.
-//
-// Returns null when the serial does not end in digits, so callers can fall
-// back rather than render a corrupted number.
-// ---------------------------------------------------------------------------
-function nextCorrelativoOf(numero) {
-  const m = /^(.*?)(\d+)$/.exec(String(numero ?? '').trim());
-  if (!m) return null;
-  const [, prefix, digits] = m;
-  return prefix + String(Number(digits) + 1).padStart(digits.length, '0');
-}
 
 // =============================================================================
 // MEDIATOR PATTERN — Form Mediator
