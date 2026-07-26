@@ -438,7 +438,11 @@ const QuotationController = {
         descripcion:              String(descripcion).trim(),
         monto_total:              calculatedTotal,
         moneda:                   req.body.moneda || existing.moneda || 'BOB',
-        entidad_emisora:          req.body.entidad_emisora || existing.entidad_emisora || 'RC Tractoparts',
+        // cotizaciones.entidad_emisora es NOT NULL DEFAULT 'Empresa unipersonal…'
+        // (sql/init.sql), así que `existing` siempre trae un valor válido: no hace
+        // falta un tercer fallback — el que había usaba el nombre comercial legado
+        // ('RC Tractoparts'), que no es ninguna de las dos opciones del formulario.
+        entidad_emisora:          req.body.entidad_emisora || existing.entidad_emisora,
         observaciones:            req.body.observaciones,
         fecha_emision,
         fecha_validez:            req.body.fecha_validez,
