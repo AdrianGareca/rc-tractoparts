@@ -67,15 +67,26 @@ function _buildAllowedOrigins() {
 // ---------------------------------------------------------------------------
 async function _releaseIfOwner(socket) {
   if (!socketOwnsLock.has(socket.id)) return;
-  socketOwnsLock.delete(socket.id);
 
+  // La propiedad se suelta DESPUÉS de que el DELETE haya ido bien. Si se
+  // soltara antes, un fallo transitorio de la BD en el 'leave' dejaría la fila
+  // viva en cotizacion_borrador_lock y el 'disconnect' posterior saldría por el
+  // return de arriba: nadie volvería a intentarlo y el cartel "Fulano está
+  // redactando SC-…" quedaría pegado para todos hasta reiniciar el proceso
+  // (releaseAll sólo corre en el arranque).
+  let released;
   try {
-    const released = await QuotationLockModel.releaseBySocketId(socket.id);
-    if (released) {
-      io.to(DRAFT_ROOM).emit('cotizacion:draft:update', { locked: false });
-    }
+    released = await QuotationLockModel.releaseBySocketId(socket.id);
   } catch (err) {
     console.error('[socketServer] Failed to release draft lock:', err.message);
+    return; // Conservamos la propiedad: el 'disconnect' vuelve a intentarlo.
+  }
+
+  socketOwnsLock.delete(socket.id);
+
+  // `io` puede ser null si initSocket todavía no corrió (sólo en tests).
+  if (released && io) {
+    io.to(DRAFT_ROOM).emit('cotizacion:draft:update', { locked: false });
   }
 }
 
@@ -211,4 +222,14 @@ function broadcastDraftReleased() {
   if (io) io.to(DRAFT_ROOM).emit('cotizacion:draft:update', { locked: false });
 }
 
-module.exports = { initSocket, getIO, broadcastDraftReleased, DRAFT_ROOM };
+module.exports = {
+  initSocket,
+  getIO,
+  broadcastDraftReleased,
+  DRAFT_ROOM,
+  // Expuestos SOLO para los tests: la liberación del lock tiene reglas de
+  // reintento (ver _releaseIfOwner) que no se pueden ejercitar a través de
+  // Socket.IO sin levantar un servidor real.
+  _releaseIfOwner,
+  _draftLockOwners: socketOwnsLock,
+};
