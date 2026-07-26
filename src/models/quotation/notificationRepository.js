@@ -89,11 +89,11 @@ async function insertNotificacion({ id_usuario, id_cotizacion = null, id_licitac
 // so the frontend can render both correction and approval alerts uniformly.
 // ---------------------------------------------------------------------------
 async function findNotificacionesEjecutivo(id_ejecutivo) {
-  // Primary query: LEFT JOINs so BOTH quotation notifications (id_cotizacion set)
-  // AND licitación notifications (id_licitacion set, id_cotizacion NULL) surface.
+  // LEFT JOINs so BOTH quotation notifications (id_cotizacion set) AND licitación
+  // notifications (id_licitacion set, id_cotizacion NULL) surface.
   // numero_correlativo / cliente_nombre degrade to the licitación's codigo /
   // convocante when the notification is licitación-driven.
-  const sqlWithLicitacion = `
+  const sql = `
       SELECT
         n.id                AS notificacion_id,
         n.tipo,
@@ -116,41 +116,8 @@ async function findNotificacionesEjecutivo(id_ejecutivo) {
       ORDER BY n.creado_en DESC
     `;
 
-  try {
-    const [rows] = await pool.execute(sqlWithLicitacion, [parseInt(id_ejecutivo, 10)]);
-    return rows;
-  } catch (err) {
-    // Graceful degradation for a DB that has not run
-    // sql/upgrade_2026_licitaciones.sql yet (no id_licitacion column / no
-    // licitaciones table). Fall back to the original quotation-only query so
-    // existing Ejecutivo notifications keep working unchanged.
-    const m = err.message || '';
-    if (!/Unknown column|doesn't exist|Unknown table/i.test(m)) throw err;
-    console.warn('[QuotationModel.findNotificacionesEjecutivo] Licitación columns missing — falling back to quotation-only notifications. ' +
-      'Run sql/upgrade_2026_licitaciones.sql to enable licitación notifications.');
-
-    const sqlLegacy = `
-        SELECT
-          n.id                AS notificacion_id,
-          n.tipo,
-          n.mensaje           AS observacion,
-          n.creado_en         AS fecha_solicitud,
-          c.id                AS id_cotizacion,
-          c.numero_correlativo,
-          cl.razon_social     AS cliente_nombre,
-          u.nombre_completo   AS solicitado_por,
-          u.nombre_completo   AS rol_solicitante
-        FROM notificaciones n
-        INNER JOIN cotizaciones c  ON c.id  = n.id_cotizacion
-        INNER JOIN clientes    cl  ON cl.id = c.id_cliente
-        INNER JOIN usuarios    u   ON u.id  = c.id_ejecutivo
-        WHERE n.id_usuario = ?
-          AND n.leida      = 0
-        ORDER BY n.creado_en DESC
-      `;
-    const [rows] = await pool.execute(sqlLegacy, [parseInt(id_ejecutivo, 10)]);
-    return rows;
-  }
+  const [rows] = await pool.execute(sql, [parseInt(id_ejecutivo, 10)]);
+  return rows;
 }
 
 // ---------------------------------------------------------------------------
