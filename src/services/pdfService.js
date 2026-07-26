@@ -236,6 +236,24 @@ function _buildWords(n) {
   return _lt1000(n);
 }
 
+// Render the full integer part, extending _buildWords (which covers 0–999,999)
+// to the millones (10^6) and billones (10^12) groups. The group COUNT is rendered
+// RECURSIVELY so a count above 999 never indexes past the hundreds table — that
+// out-of-range access is what produced the literal "undefined" for n >= 10^9.
+function _integerToWords(n) {
+  if (n < 1000000) return _buildWords(n);
+  if (n < 1000000000000) {
+    const millones = Math.floor(n / 1000000);
+    const resto    = n % 1000000;
+    const head = millones === 1 ? 'UN MILLÓN' : `${_integerToWords(millones)} MILLONES`;
+    return head + (resto > 0 ? ' ' + _buildWords(resto) : '');
+  }
+  const billones = Math.floor(n / 1000000000000);
+  const resto    = n % 1000000000000;
+  const head = billones === 1 ? 'UN BILLÓN' : `${_integerToWords(billones)} BILLONES`;
+  return head + (resto > 0 ? ' ' + _integerToWords(resto) : '');
+}
+
 function numberToWordsES(amount) {
   if (amount == null || isNaN(parseFloat(amount))) return 'CERO CON 00/100';
   const abs   = Math.abs(parseFloat(amount));
@@ -244,15 +262,7 @@ function numberToWordsES(amount) {
   const cc    = String(cents).padStart(2, '0');
   if (n === 0) return `CERO CON ${cc}/100`;
 
-  let w = '';
-  if (n >= 1000000) {
-    const m = Math.floor(n / 1000000);
-    w += m === 1 ? 'UN MILLÓN' : `${_lt1000(m)} MILLONES`;
-    const r = n % 1000000;
-    if (r > 0) w += ' ' + _buildWords(r);
-  } else {
-    w = _buildWords(n);
-  }
+  const w = _integerToWords(n);
   return `${w.trim()} CON ${cc}/100`;
 }
 
@@ -1567,5 +1577,5 @@ async function purgeQuotationPdf(relativePath) {
   }
 }
 
-module.exports = { generateQuotationPdf, purgeQuotationPdf };
+module.exports = { generateQuotationPdf, purgeQuotationPdf, numberToWordsES };
 

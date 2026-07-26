@@ -124,16 +124,20 @@ const ClientModel = {
   },
 
   // ---------------------------------------------------------------------------
-  // findByNit — Return a single active client whose NIT matches exactly.
-  // Used to tell the caller WHICH client already owns a NIT on a 409 conflict,
-  // instead of only reporting that a conflict happened.
+  // findByNit — Return the single client whose NIT matches exactly, ACTIVE OR NOT.
+  // Used to tell the caller WHICH client already owns a NIT on a 409 conflict.
+  // The clientes.nit UNIQUE index is table-wide, so a NIT collision can be with a
+  // DEACTIVATED client — filtering by activo would hide exactly the row the
+  // "reactivate/select this client instead" flow needs. There is at most one row
+  // per NIT (the unique index guarantees it), so no active/inactive ambiguity.
+  // Includes `activo` so the caller can tell whether the match is deactivated.
   // ---------------------------------------------------------------------------
   async findByNit(nit) {
     if (!nit) return null;
     const [[row]] = await pool.execute(
-      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad
+      `SELECT id, razon_social, nit, contacto, email, telefono, direccion, ciudad, activo
          FROM clientes
-        WHERE activo = 1 AND nit = ?
+        WHERE nit = ?
         LIMIT 1`,
       [String(nit).trim()]
     );

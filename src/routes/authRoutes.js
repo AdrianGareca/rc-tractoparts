@@ -152,4 +152,25 @@ router.post('/logout', authenticate, AuthController.logout);
  */
 router.get('/docs-token', authenticate, authorize(['Jefe', 'SysAdmin']), AuthController.getDocsToken);
 
+/**
+ * @swagger
+ * /api/auth/me:
+ *   get:
+ *     summary: Usuario actual (fresco de la BD)
+ *     description: >-
+ *       Devuelve el usuario autenticado leído en vivo de la base de datos, en el
+ *       mismo formato que data.user del login. El SPA lo usa al cargar el dashboard
+ *       para re-hidratar la sesión, de modo que la UI dependiente de rol/delegación
+ *       (can_approve_quotations, que no viaja en el JWT) refleje el valor actual.
+ *     tags: [Autenticación]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Usuario actual.
+ *       401:
+ *         description: Token ausente/ inválido, o cuenta inactiva.
+ */
+router.get('/me', authenticate, AuthController.getMe);
+
 module.exports = router;

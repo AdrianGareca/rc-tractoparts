@@ -194,6 +194,44 @@ const AuthController = {
   },
 
   // ---------------------------------------------------------------------------
+  // getMe — GET /api/auth/me  (any authenticated role)
+  //
+  // Returns the CURRENT user record read fresh from the DB, in the same shape as
+  // the login response's `data.user`. The SPA calls this on dashboard load to
+  // re-hydrate AuthSession, so role-driven UI (notably the delegated
+  // can_approve_quotations flag, which is NOT carried in the JWT) reflects the
+  // live database value instead of the snapshot cached at login. Authorization
+  // for every action is still enforced server-side; this only keeps the UI honest.
+  // ---------------------------------------------------------------------------
+  async getMe(req, res) {
+    try {
+      const user = await UserModel.findById(req.user.id);
+
+      // The token verified, but the account may have been deactivated or deleted
+      // since it was issued — treat that as an invalid session.
+      if (!user || !user.activo) {
+        return res.status(401).json({ success: false, message: 'Session user not found or inactive.' });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          user: {
+            id:              user.id,
+            nombre_completo: user.nombre_completo,
+            nombre_usuario:  user.nombre_usuario,
+            rol:             user.rol,
+            can_approve_quotations: Boolean(user.can_approve_quotations),
+          },
+        },
+      });
+    } catch (error) {
+      console.error('[AuthController.getMe] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to load current user.' });
+    }
+  },
+
+  // ---------------------------------------------------------------------------
   // logout — POST /api/auth/logout
   // Adds the current JWT to the in-memory revoked set. The authenticate
   // middleware has already verified the token and attached req.token.

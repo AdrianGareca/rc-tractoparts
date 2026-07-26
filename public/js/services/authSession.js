@@ -34,6 +34,19 @@ class _SessionManager {
   }
 
   // ---------------------------------------------------------------------------
+  // updateUser
+  // Replaces the cached user object WITHOUT touching the token. Used to
+  // re-hydrate the session from GET /api/auth/me on dashboard load so role-driven
+  // UI (e.g. the delegated can_approve_quotations flag, which is not in the JWT)
+  // reflects the live DB value instead of the snapshot cached at login.
+  // @param {object} user — { id, nombre_completo, nombre_usuario, rol, can_approve_quotations }
+  // ---------------------------------------------------------------------------
+  updateUser(user) {
+    if (!user) return;
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  }
+
+  // ---------------------------------------------------------------------------
   // getToken — returns the raw JWT string or null
   // ---------------------------------------------------------------------------
   getToken() {

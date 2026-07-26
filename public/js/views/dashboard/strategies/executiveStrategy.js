@@ -35,6 +35,11 @@ export class ExecutiveStrategy extends DashboardStrategy {
   #scope          = 'mias';
   #allRows        = [];
   #loadAbortCtrl  = null;
+  // Monotonic refresh token: each refresh() bumps it, and the summary/proformas/
+  // metrics loaders capture it and bail before writing if a newer refresh has
+  // started — so a slow earlier response can't overwrite fresher data (the
+  // stat/proformas widgets lacked the AbortController guard _loadQuotations has).
+  #refreshGen     = 0;
 
   constructor(user) { super(); this.#user = user; }
 
@@ -187,25 +192,30 @@ export class ExecutiveStrategy extends DashboardStrategy {
   }
 
   async refresh() {
-    if (this.#container) await Promise.all([
-      this._loadSummary(),
-      this._loadQuotations(),
-      this._loadProformasHoy(),
-      this._loadMetrics(),
+    if (!this.#container) return;
+    const gen = ++this.#refreshGen;
+    await Promise.all([
+      this._loadSummary(gen),
+      this._loadQuotations(),   // has its own AbortController race guard
+      this._loadProformasHoy(gen),
+      this._loadMetrics(gen),
     ]);
   }
 
-  async _loadMetrics() {
+  async _loadMetrics(gen) {
     const section = document.getElementById('metrics-section');
     if (!section) return;
+    if (gen != null && gen !== this.#refreshGen) return; // superseded by a newer refresh
     await renderExecutiveMetrics(section);
   }
 
-  async _loadProformasHoy() {
+  async _loadProformasHoy(gen) {
     const section = document.getElementById('proformas-hoy-section');
     if (!section) return;
     try {
       const data = await api.get('/api/cotizaciones?hoy=true&limit=50&sort_by=creado_en&sort_order=DESC');
+      // Bail if a newer refresh started while this request was in flight.
+      if (gen != null && gen !== this.#refreshGen) return;
       const rows = data.data ?? [];
       const today = new Date().toLocaleDateString('es-BO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -246,9 +256,11 @@ export class ExecutiveStrategy extends DashboardStrategy {
     } catch (_) { /* non-fatal — widget failure must not break main view */ }
   }
 
-  async _loadSummary() {
+  async _loadSummary(gen) {
     try {
       const data = await api.get('/api/cotizaciones/resumen');
+      // Bail if a newer refresh started while this request was in flight.
+      if (gen != null && gen !== this.#refreshGen) return;
       const totals = data.data || {};
       const statsEl = document.getElementById('stats-section');
       if (!statsEl) return;

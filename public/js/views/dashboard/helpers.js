@@ -57,12 +57,12 @@ export const STAT_COLOR = {
 
 export function badgeHtml(estado) {
   const cls = STATE_BADGE[estado] ?? 'badge-borrador';
-  return `<span class="badge ${cls}">${estado}</span>`;
+  return `<span class="badge ${cls}">${escHtml(estado)}</span>`;
 }
 
 export function roleBadgeHtml(rol) {
   const cls = ROLE_BADGE[rol] ?? '';
-  return `<span class="badge ${cls}">${rol}</span>`;
+  return `<span class="badge ${cls}">${escHtml(rol)}</span>`;
 }
 
 export function fmtDate(iso) {

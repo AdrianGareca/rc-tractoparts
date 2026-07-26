@@ -23,7 +23,7 @@
 
 import api, { showToast } from '../../../services/apiClient.js';
 import AuthSession from '../../../services/authSession.js';
-import { escHtml, fmtDate, licitacionBadgeHtml, docIcon, fmtFileSize } from '../helpers.js';
+import { escHtml, fmtDate, fmtDateTime, licitacionBadgeHtml, docIcon, fmtFileSize } from '../helpers.js';
 import { buildTimelineHtml, saveBlobAs } from './timelineView.js';
 import { openLicitacionModal } from './licitacionModal.js';
 
@@ -507,7 +507,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
                  <td>${escHtml(g.concepto)}</td>
                  <td>${fmtMoney(g.monto, g.moneda)}</td>
                  <td>${escHtml(g.nombre_usuario ?? '—')}</td>
-                 <td>${fmtDate(g.creado_en)}</td>
+                 <td>${fmtDateTime(g.creado_en)}</td>
                  ${canGastos ? `<td><button class="btn btn-ghost btn-sm" data-gasto-delete="${g.id}" data-gasto-concepto="${escHtml(g.concepto)}">🗑️</button></td>` : ''}
                </tr>`).join('')}
              </tbody></table></div>`;
@@ -543,7 +543,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
                <span>${docIcon(d.nombre_original)}</span>
                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(d.nombre_original)}">${escHtml(d.nombre_original)}</span>
                <span class="text-muted text-sm">${fmtFileSize(d.tamano_bytes)}</span>
-               <span class="text-muted text-sm">${escHtml(d.nombre_usuario ?? '—')} · ${fmtDate(d.creado_en)}</span>
+               <span class="text-muted text-sm">${escHtml(d.nombre_usuario ?? '—')} · ${fmtDateTime(d.creado_en)}</span>
                <button class="btn btn-ghost btn-sm" data-doc-download="${d.id}" data-doc-name="${escHtml(d.nombre_original)}">⬇️</button>
                ${canManageDocs ? `<button class="btn btn-ghost btn-sm" data-doc-delete="${d.id}" data-doc-name="${escHtml(d.nombre_original)}">🗑️</button>` : ''}
              </li>`).join('')}

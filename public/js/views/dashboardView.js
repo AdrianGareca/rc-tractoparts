@@ -52,6 +52,17 @@ class DashboardController {
       return;
     }
 
+    // Re-hydrate the cached user from the DB so role-driven UI reflects the LIVE
+    // state — notably the delegated can_approve_quotations flag, which is not
+    // carried in the JWT and would otherwise stay frozen at its login-time value
+    // for the whole session. Non-fatal: on any failure we keep the cached
+    // snapshot rather than block the dashboard. A 401 (token revoked / account
+    // deactivated) is handled by apiClient, which clears the session and redirects.
+    try {
+      const me = await api.get('/api/auth/me');
+      if (me?.data?.user) AuthSession.updateUser(me.data.user);
+    } catch (_) { /* keep the login-time cached user */ }
+
     const user = AuthSession.getUser();
     const role = AuthSession.getRole();
 
