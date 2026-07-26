@@ -54,6 +54,22 @@ async function run(useTestDb = false) {
     );
   }
 
+  // SEGURO: init.sql empieza con DROP DATABASE. Desde que `pretest` lo dispara
+  // en cada `npm test`, esto corre sin intervención humana — un DB_NAME_TEST mal
+  // configurado (igual a DB_NAME) borraría la base de producción en silencio.
+  // La comparación normaliza mayúsculas/espacios porque MySQL trata los nombres
+  // de base como equivalentes en Windows/macOS.
+  if (useTestDb) {
+    const norm = (v) => String(v ?? '').trim().toLowerCase();
+    if (norm(targetDb) === norm(process.env.DB_NAME)) {
+      throw new Error(
+        `[db:init] ABORTADO: DB_NAME_TEST ('${targetDb}') apunta a la MISMA base que ` +
+        `DB_NAME ('${process.env.DB_NAME}'). Correr esto borraria los datos de produccion. ` +
+        `Corregi DB_NAME_TEST en el .env antes de reintentar.`
+      );
+    }
+  }
+
   const rawSql = fs.readFileSync(SQL_FILE, 'utf8');
   const sql    = rawSql.replace(/\brc_tractoparts\b/g, targetDb);
 
