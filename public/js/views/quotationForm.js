@@ -264,6 +264,14 @@ class FormMediator {
       } catch (_) { /* non-fatal */ }
     }
 
+    // El host (el modal) puede haberse cerrado MIENTRAS esperábamos los
+    // catálogos de arriba: mountQuotationForm devuelve el destroy de forma
+    // síncrona, así que destroy() ya corrió y este render llega tarde.
+    // Escribir igual pisaría #modal-body, que para este momento puede
+    // pertenecer a OTRO modal (Gestión de Clientes, detalle de proforma…),
+    // dejando un formulario muerto dentro de una ventana que no es la suya.
+    if (this.#destroyed) return;
+
     this.#container.innerHTML = this._buildFormHTML(nextCorrelativo);
 
     // Mark the form dirty on ANY user edit (delegated — covers every current
