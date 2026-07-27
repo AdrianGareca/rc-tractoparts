@@ -18,7 +18,9 @@ const QuotationModel             = require('../../models/QuotationModel');
 const LicitacionModel            = require('../../models/LicitacionModel');
 const UserModel                  = require('../../models/UserModel');
 const { logEvent, AuditActions } = require('../../utils/auditLog');
-const pdfService                 = require('../../services/pdfService');
+// La regeneración del PDF (purgar + generar + guardar ruta, no fatal) estaba
+// duplicada en cuatro controllers; ahora vive en pdfRegeneration.js.
+const { regenerateQuotationPdf } = require('./pdfRegeneration');
 
 const QuotationStateController = {
 
@@ -194,19 +196,10 @@ const QuotationStateController = {
       // SINGLE-PDF INVARIANT: a quotation may only ever own ONE physical file.
       // We purge the previously stored PDF from disk BEFORE generating the new
       // one, so storage never accumulates a trail of stale state PDFs.
-      try {
-        const refreshed = await QuotationModel.findById(id);
-        if (refreshed) {
-          await pdfService.purgeQuotationPdf(refreshed.pdf_ruta);
-          const newPdfPath = await pdfService.generateQuotationPdf(refreshed);
-          await QuotationModel.updatePdfPath(id, newPdfPath);
-        }
-      } catch (pdfErr) {
-        console.warn(
-          `[QuotationStateController.updateStatus] PDF regeneration after transition to '${nuevo_estado}' failed (non-fatal):`,
-          pdfErr.message
-        );
-      }
+      const refreshed = await QuotationModel.findById(id);
+      await regenerateQuotationPdf(refreshed, {
+        label: `QuotationStateController.updateStatus → '${nuevo_estado}'`,
+      });
 
       // ── Notification for the owning Ejecutivo ──────────────────────────────
       // Fires whenever a quotation reaches 'Enviada al cliente' or 'Confirmada',
@@ -460,18 +453,9 @@ const QuotationStateController = {
       //
       // SINGLE-PDF INVARIANT: purge the previously stored file from disk BEFORE
       // generating the replacement so a quotation never owns more than one PDF.
-      if (postApprovalQuotation) {
-        try {
-          await pdfService.purgeQuotationPdf(postApprovalQuotation.pdf_ruta);
-          const newPdfPath = await pdfService.generateQuotationPdf(postApprovalQuotation);
-          await QuotationModel.updatePdfPath(id, newPdfPath);
-        } catch (pdfErr) {
-          console.warn(
-            `[QuotationStateController] PDF regeneration after ${aprobado ? 'approval' : 'rejection'} failed (non-fatal):`,
-            pdfErr.message
-          );
-        }
-      }
+      await regenerateQuotationPdf(postApprovalQuotation, {
+        label: `QuotationStateController.approveQuotation (${aprobado ? 'approval' : 'rejection'})`,
+      });
 
       // ── Approval notification — target the Ejecutivo who owns this quote ────
       // Fires only on approval (aprobado === true). Rejection does not generate

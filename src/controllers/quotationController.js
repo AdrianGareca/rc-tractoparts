@@ -15,18 +15,22 @@
 
 'use strict';
 
-const { pool }                    = require('../config/db');
+// El pool y pdfService los usan ahora quotation/transactionHelpers.js y
+// quotation/pdfRegeneration.js respectivamente.
 const QuotationModel              = require('../models/QuotationModel');
 const LicitacionModel             = require('../models/LicitacionModel');
 const QuotationLockModel          = require('../models/QuotationLockModel');
 const { logEvent, AuditActions }  = require('../utils/auditLog');
-const pdfService                  = require('../services/pdfService');
 const { broadcastDraftReleased }  = require('../realtime/socketServer');
 const { calcularMontoTotal }      = require('../utils/quotationTotals');
 
 // Sub-controllers extraidos (ver el bloque de exports al final del archivo)
 const QuotationQueryController        = require('./quotation/quotationQueryController');
 const QuotationNotificationController = require('./quotation/quotationNotificationController');
+
+// Helpers compartidos: transaccion con reintento y regeneracion del PDF
+const { withDeadlockRetry }      = require('./quotation/transactionHelpers');
+const { regenerateQuotationPdf } = require('./quotation/pdfRegeneration');
 
 
 const QuotationController = {
@@ -71,31 +75,11 @@ const QuotationController = {
 
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    // ── Input validation ──────────────────────────────────────────────────────
-    const validationErrors = [];
-    if (!id_cliente)    validationErrors.push({ field: 'id_cliente',    message: 'Client ID is required.' });
-    if (!descripcion)   validationErrors.push({ field: 'descripcion',   message: 'Description is required.' });
-    if (!fecha_emision) validationErrors.push({ field: 'fecha_emision', message: 'Emission date is required.' });
-
-    detalles.forEach((item, idx) => {
-      if (!item.descripcion_item) {
-        validationErrors.push({ field: `detalles[${idx}].descripcion_item`, message: 'Item description is required.' });
-      }
-      if (item.cantidad == null || parseFloat(item.cantidad) <= 0) {
-        validationErrors.push({ field: `detalles[${idx}].cantidad`, message: 'Quantity must be greater than 0.' });
-      }
-      if (item.precio_unitario == null || parseFloat(item.precio_unitario) < 0) {
-        validationErrors.push({ field: `detalles[${idx}].precio_unitario`, message: 'Unit price must be 0 or greater.' });
-      }
-    });
-
-    if (validationErrors.length > 0) {
-      return res.status(422).json({
-        success: false,
-        message: 'Validation failed.',
-        errors:  validationErrors,
-      });
-    }
+    // NOTA: acá había una validación manual de id_cliente / descripcion /
+    // fecha_emision y de cada detalle. Era inalcanzable: la ruta corre
+    // validate(createQuotationSchema) ANTES del controller, y ese schema ya
+    // exige exactamente lo mismo (y responde 422 con más detalle). Ver
+    // src/routes/quotationRoutes.js y src/validators/quotationValidator.js.
 
     // ── Licitación link validation (optional) ─────────────────────────────────
     // If the quotation is being linked to a licitación, verify it exists so we
@@ -161,100 +145,50 @@ const QuotationController = {
       calculatedTotal = parseFloat(monto_total);
     }
 
-    // ── Atomic transaction, retried on transient InnoDB deadlocks ─────────────
-    // Under real concurrent load, many simultaneous INSERTs referencing the
-    // same parent rows (same id_cliente, same correlativo-counter row) can
-    // trigger a genuine MySQL "Deadlock found when trying to get lock; try
-    // restarting transaction" (ER_LOCK_DEADLOCK) — this is normal, expected
-    // InnoDB behavior under contention, not a bug in the lock ordering itself.
-    // MySQL's own guidance is that the client must retry the whole
-    // transaction. Without this retry, a legitimate concurrent user simply
-    // gets an opaque 500 error (reproduced with 20 simultaneous creations
-    // against the same client).
-    const MAX_DEADLOCK_RETRIES = 3;
-    let connection;
+    // ── Transacción atómica, con reintento ante deadlocks de InnoDB ───────────
+    // El bucle de reintento y el manejo de la conexión viven en
+    // quotation/transactionHelpers.js (cubiertos por
+    // tests/unit/transactionHelpers.test.js).
     let numeroCorrelativo;
     let quotationId;
 
     try {
-      for (let attempt = 1; attempt <= MAX_DEADLOCK_RETRIES; attempt++) {
-        try {
-          connection = await pool.getConnection();
-          await connection.beginTransaction();
+      await withDeadlockRetry(async (connection) => {
+        numeroCorrelativo = await QuotationModel.generateCorrelativo(connection);
 
-          numeroCorrelativo = await QuotationModel.generateCorrelativo(connection);
+        quotationId = await QuotationModel.create(connection, {
+          numero_correlativo:       numeroCorrelativo,
+          id_cliente:               parseInt(id_cliente, 10),
+          id_ejecutivo:             req.user.id,
+          descripcion:              String(descripcion).trim(),
+          monto_total:              calculatedTotal,
+          moneda:                   moneda || 'BOB',
+          entidad_emisora:          entidad_emisora || 'Empresa unipersonal de Ronald Roca Cartagena',
+          observaciones:            observaciones            || null,
+          fecha_emision,
+          fecha_validez:            fecha_validez            || null,
+          tipo_pedido:              tipo_pedido              || null,
+          tiempo_entrega:           tiempo_entrega           || null,
+          solicitante_nombre:       solicitante_nombre       || null,
+          solicitante_no_solicitud: solicitante_no_solicitud || null,
+          solicitante_area:         solicitante_area         || null,
+          solicitante_celular:      solicitante_celular      || null,
+          solicitante_correo:       solicitante_correo       || null,
+          equipo_marca:             equipo_marca             || null,
+          equipo_tipo:              equipo_tipo              || null,
+          equipo_modelo:            equipo_modelo            || null,
+          equipo_serie:             equipo_serie             || null,
+          equipo_motor:             equipo_motor             || null,
+          descuento_manual:         descuento_manual         != null ? parseFloat(descuento_manual) : null,
+          forma_pago:               forma_pago               || null,
+          mostrar_codigos:          mostrar_codigos          != null ? mostrar_codigos : true,
+          id_licitacion:            id_licitacion            != null ? parseInt(id_licitacion, 10) : null,
+        });
 
-          quotationId = await QuotationModel.create(connection, {
-            numero_correlativo:       numeroCorrelativo,
-            id_cliente:               parseInt(id_cliente, 10),
-            id_ejecutivo:             req.user.id,
-            descripcion:              String(descripcion).trim(),
-            monto_total:              calculatedTotal,
-            moneda:                   moneda || 'BOB',
-            entidad_emisora:          entidad_emisora || 'Empresa unipersonal de Ronald Roca Cartagena',
-            observaciones:            observaciones            || null,
-            fecha_emision,
-            fecha_validez:            fecha_validez            || null,
-            tipo_pedido:              tipo_pedido              || null,
-            tiempo_entrega:           tiempo_entrega           || null,
-            solicitante_nombre:       solicitante_nombre       || null,
-            solicitante_no_solicitud: solicitante_no_solicitud || null,
-            solicitante_area:         solicitante_area         || null,
-            solicitante_celular:      solicitante_celular      || null,
-            solicitante_correo:       solicitante_correo       || null,
-            equipo_marca:             equipo_marca             || null,
-            equipo_tipo:              equipo_tipo              || null,
-            equipo_modelo:            equipo_modelo            || null,
-            equipo_serie:             equipo_serie             || null,
-            equipo_motor:             equipo_motor             || null,
-            descuento_manual:         descuento_manual         != null ? parseFloat(descuento_manual) : null,
-            forma_pago:               forma_pago               || null,
-            mostrar_codigos:          mostrar_codigos          != null ? mostrar_codigos : true,
-            id_licitacion:            id_licitacion            != null ? parseInt(id_licitacion, 10) : null,
-          });
-
-          if (detalles.length > 0) {
-            await QuotationModel.createDetalles(connection, quotationId, detalles);
-          }
-
-          await connection.commit();
-
-          // Release the transaction connection back to the pool IMMEDIATELY
-          // after commit. Everything below (lock release, findById, PDF
-          // generation, audit logging) uses the shared `pool` for its own
-          // short-lived connections — it must NOT run while this request is
-          // still holding a checked-out connection. Holding it through those
-          // steps meant each in-flight request occupied one of the
-          // DB_CONNECTION_LIMIT pool slots for its ENTIRE duration, including
-          // the multi-second PDF render. Once concurrent requests reached the
-          // pool limit, every held connection ended up waiting on a
-          // pool.execute() call for a connection that could only come from one
-          // of those very same held connections — a full pool self-deadlock
-          // that never resolves (reproduced with DB_CONNECTION_LIMIT=10 and
-          // 10+ concurrent creations).
-          connection.release();
-          connection = null;
-          break; // success — exit the retry loop
-        } catch (txErr) {
-          if (connection) {
-            try { await connection.rollback(); } catch (rbErr) {
-              console.error('[QuotationController] Rollback error:', rbErr.message);
-            }
-            connection.release();
-            connection = null;
-          }
-
-          const isDeadlock = txErr.code === 'ER_LOCK_DEADLOCK';
-          if (isDeadlock && attempt < MAX_DEADLOCK_RETRIES) {
-            console.warn(
-              `[QuotationController.createQuotation] Deadlock detected, retrying transaction ` +
-              `(attempt ${attempt + 1}/${MAX_DEADLOCK_RETRIES})...`
-            );
-            continue;
-          }
-          throw txErr; // Exhausted retries, or a non-deadlock error — let the outer catch handle it
+        if (detalles.length > 0) {
+          await QuotationModel.createDetalles(connection, quotationId, detalles);
         }
-      }
+      }, { label: 'QuotationController.createQuotation' });
 
       // Safety net: clear the draft lock for this serial if it is still
       // present. Normally the client releases its own reservation via the
@@ -271,17 +205,12 @@ const QuotationController = {
       // ── Post-commit: fetch full record, generate PDF, write audit ───────────
       const createdQuotation = await QuotationModel.findById(quotationId);
 
-      // Auto-generate PDF — non-fatal: the quotation is saved regardless
-      try {
-        const pdfRelativePath = await pdfService.generateQuotationPdf(createdQuotation);
-        await QuotationModel.updatePdfPath(quotationId, pdfRelativePath);
-        createdQuotation.pdf_ruta = pdfRelativePath;
-      } catch (pdfErr) {
-        console.error(
-          `[QuotationController] Auto PDF generation failed for ${numeroCorrelativo}:`,
-          pdfErr.message
-        );
-      }
+      // PDF automático — no fatal: la cotización queda guardada igual.
+      // purge:false porque es un registro nuevo: no hay archivo anterior.
+      await regenerateQuotationPdf(createdQuotation, {
+        purge: false,
+        label: `QuotationController.createQuotation ${numeroCorrelativo}`,
+      });
 
       // Initial history record ('Pendiente' is the DB-valid initial state)
       // Non-fatal: audit logging failures must never mask a successfully committed quotation.
@@ -318,12 +247,7 @@ const QuotationController = {
         data:             createdQuotation,
       });
     } catch (error) {
-      if (connection) {
-        try { await connection.rollback(); } catch (rbErr) {
-          console.error('[QuotationController] Rollback error:', rbErr.message);
-        }
-      }
-
+      // El rollback y la devolución de la conexión ya los hizo withDeadlockRetry.
       await logEvent({
         id_usuario:     req.user?.id    || null,
         nombre_usuario: req.user?.nombre_usuario || null,
@@ -341,8 +265,6 @@ const QuotationController = {
         success: false,
         message: 'Failed to create quotation due to an internal error. Please try again.',
       });
-    } finally {
-      if (connection) connection.release();
     }
   },
 
@@ -372,7 +294,6 @@ const QuotationController = {
 
     const { id_cliente, descripcion, fecha_emision, detalles = [] } = req.body;
 
-    let connection;
     try {
       const existing = await QuotationModel.findById(id);
 
@@ -432,10 +353,8 @@ const QuotationController = {
       const discountUpdate = req.body.descuento_manual != null ? parseFloat(req.body.descuento_manual) : 0;
       const calculatedTotal = parseFloat(Math.max(0, subtotalFromItems - discountUpdate).toFixed(2));
 
-      connection = await pool.getConnection();
-      await connection.beginTransaction();
-
-      const headerUpdated = await QuotationModel.updateEditableHeader(connection, id, {
+      await withDeadlockRetry(async (connection) => {
+        const headerUpdated = await QuotationModel.updateEditableHeader(connection, id, {
         id_cliente:               parseInt(id_cliente, 10),
         descripcion:              String(descripcion).trim(),
         monto_total:              calculatedTotal,
@@ -466,37 +385,25 @@ const QuotationController = {
         id_licitacion:            req.body.id_licitacion            != null ? parseInt(req.body.id_licitacion, 10) : null,
       });
 
-      if (!headerUpdated) {
-        await connection.rollback();
-        return res.status(409).json({
-          success: false,
-          message: "Quotation state changed concurrently. It is no longer 'Pendiente'. Refresh and try again.",
-        });
-      }
+        if (!headerUpdated) {
+          // El UPDATE lleva `AND estado = 'Pendiente'`: 0 filas significa que la
+          // cotización cambió de estado entre nuestra lectura y esta escritura.
+          // Se corta con un error tipado para que el helper haga el rollback y
+          // el catch de abajo lo traduzca a un 409.
+          throw Object.assign(new Error('Quotation state changed concurrently.'), {
+            code: 'STATE_CHANGED_CONCURRENTLY',
+          });
+        }
 
-      await QuotationModel.replaceDetalles(connection, id, detalles);
-
-      await connection.commit();
-
-      // Release the transaction connection back to the pool immediately after
-      // commit — see the matching comment in createQuotation for why holding
-      // it through the post-commit PDF/audit steps (which need their own
-      // pool connections) risks a full connection-pool deadlock under
-      // concurrent load.
-      connection.release();
-      connection = null;
+        await QuotationModel.replaceDetalles(connection, id, detalles);
+      }, { label: 'QuotationController.updateQuotation' });
 
       // ── Post-commit: refetch, regenerate PDF (single-PDF invariant), audit ──
       const updatedQuotation = await QuotationModel.findById(id);
 
-      try {
-        await pdfService.purgeQuotationPdf(updatedQuotation.pdf_ruta);
-        const newPdfPath = await pdfService.generateQuotationPdf(updatedQuotation);
-        await QuotationModel.updatePdfPath(id, newPdfPath);
-        updatedQuotation.pdf_ruta = newPdfPath;
-      } catch (pdfErr) {
-        console.warn('[QuotationController.updateQuotation] PDF regeneration failed (non-fatal):', pdfErr.message);
-      }
+      await regenerateQuotationPdf(updatedQuotation, {
+        label: 'QuotationController.updateQuotation',
+      });
 
       try {
         await logEvent({
@@ -519,15 +426,14 @@ const QuotationController = {
         data:    updatedQuotation,
       });
     } catch (error) {
-      if (connection) {
-        try { await connection.rollback(); } catch (rbErr) {
-          console.error('[QuotationController.updateQuotation] Rollback error:', rbErr.message);
-        }
+      if (error.code === 'STATE_CHANGED_CONCURRENTLY') {
+        return res.status(409).json({
+          success: false,
+          message: "Quotation state changed concurrently. It is no longer 'Pendiente'. Refresh and try again.",
+        });
       }
       console.error('[QuotationController.updateQuotation] Error:', error.message);
       return res.status(500).json({ success: false, message: 'Failed to update quotation.' });
-    } finally {
-      if (connection) connection.release();
     }
   },
 
