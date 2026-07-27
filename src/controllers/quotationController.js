@@ -24,8 +24,10 @@ const pdfService                  = require('../services/pdfService');
 const { broadcastDraftReleased }  = require('../realtime/socketServer');
 const { calcularMontoTotal }      = require('../utils/quotationTotals');
 
-// Valid sort column keys exposed to GET /api/cotizaciones callers
-const VALID_SORT_KEYS = Object.keys(QuotationModel.SORTABLE_COLUMNS);
+// Sub-controllers extraidos (ver el bloque de exports al final del archivo)
+const QuotationQueryController        = require('./quotation/quotationQueryController');
+const QuotationNotificationController = require('./quotation/quotationNotificationController');
+
 
 const QuotationController = {
 
@@ -572,194 +574,6 @@ const QuotationController = {
   },
 
   // ===========================================================================
-  // SPRINT 2 STEP 1 — Advanced read operations
-  // (uploadPdf / downloadPdf moved to quotation/quotationPdfController.js)
-  // ===========================================================================
-
-  // ---------------------------------------------------------------------------
-  // getQuotations — GET /api/cotizaciones  (All roles)
-  // Full filter set + pagination + sort. See buildWhereClause in
-  // src/models/quotation/whereBuilder.js for the complete list of accepted
-  // query parameters.
-  // ---------------------------------------------------------------------------
-  async getQuotations(req, res) {
-    try {
-      const filters  = {};
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-
-      if (req.query.q)            filters.q            = String(req.query.q);
-      if (req.query.razon_social) filters.razon_social = String(req.query.razon_social);
-      if (req.query.nit)          filters.nit          = String(req.query.nit);
-
-      if (req.query.estado) {
-        if (!QuotationModel.VALID_STATES.includes(req.query.estado)) {
-          return res.status(422).json({
-            success: false,
-            message: `Invalid estado '${req.query.estado}'. Valid values: [${QuotationModel.VALID_STATES.join(', ')}]`,
-          });
-        }
-        filters.estado = req.query.estado;
-      }
-
-      if (req.query.id_cliente) {
-        const parsed = parseInt(req.query.id_cliente, 10);
-        if (isNaN(parsed) || parsed < 1) {
-          return res.status(422).json({ success: false, message: 'id_cliente must be a positive integer.' });
-        }
-        filters.id_cliente = parsed;
-      }
-
-      if (req.query.id_ejecutivo) {
-        const parsed = parseInt(req.query.id_ejecutivo, 10);
-        if (isNaN(parsed) || parsed < 1) {
-          return res.status(422).json({ success: false, message: 'id_ejecutivo must be a positive integer.' });
-        }
-        filters.id_ejecutivo = parsed;
-      }
-
-      if (req.query.id_licitacion) {
-        const parsed = parseInt(req.query.id_licitacion, 10);
-        if (isNaN(parsed) || parsed < 1) {
-          return res.status(422).json({ success: false, message: 'id_licitacion must be a positive integer.' });
-        }
-        filters.id_licitacion = parsed;
-      }
-
-      if (req.query.fecha_desde) {
-        if (!dateRegex.test(req.query.fecha_desde)) {
-          return res.status(422).json({ success: false, message: 'fecha_desde must be in YYYY-MM-DD format.' });
-        }
-        filters.fecha_desde = req.query.fecha_desde;
-      }
-
-      if (req.query.fecha_hasta) {
-        if (!dateRegex.test(req.query.fecha_hasta)) {
-          return res.status(422).json({ success: false, message: 'fecha_hasta must be in YYYY-MM-DD format.' });
-        }
-        filters.fecha_hasta = req.query.fecha_hasta;
-      }
-
-      if (filters.fecha_desde && filters.fecha_hasta && filters.fecha_desde > filters.fecha_hasta) {
-        return res.status(422).json({ success: false, message: 'fecha_desde cannot be later than fecha_hasta.' });
-      }
-
-      if (req.query.moneda) {
-        const moneda = String(req.query.moneda).toUpperCase();
-        if (!['USD', 'BOB'].includes(moneda)) {
-          return res.status(422).json({ success: false, message: "moneda must be 'USD' or 'BOB'." });
-        }
-        filters.moneda = moneda;
-      }
-
-      if (req.query.tiene_pdf !== undefined) {
-        if      (req.query.tiene_pdf === 'true')  filters.tiene_pdf = true;
-        else if (req.query.tiene_pdf === 'false') filters.tiene_pdf = false;
-        else return res.status(422).json({ success: false, message: "tiene_pdf must be 'true' or 'false'." });
-      }
-
-      // Shortcut filter: hoy=true constrains fecha_emision to today (CURDATE()).
-      // Overrides any explicit fecha_desde / fecha_hasta values — used by the
-      // "Proformas del Día" executive widget.
-      if (req.query.hoy === 'true') {
-        // 'en-CA' formats as YYYY-MM-DD. Computed in Bolivia's timezone —
-        // toISOString() (UTC) would roll over to *tomorrow* at 20:00 local
-        // (UTC-4) on a UTC server, emptying the "Proformas del Día" widget
-        // every evening even though today's quotations exist.
-        const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/La_Paz' });
-        filters.fecha_desde = today;
-        filters.fecha_hasta = today;
-      }
-
-      // Explicit parseInt(..., 10) guarantees strict integer type before injection
-      // into the MySQL prepared-statement parameter array (prevents the
-      // "Incorrect arguments to mysqld_stmt_execute" error from raw string coercion).
-      const page      = Math.max(1, parseInt(req.query.page,  10) || 1);
-      const limit     = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
-      const sortBy    = req.query.sort_by || 'creado_en';
-      const sortOrder = (req.query.sort_order || '').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-
-      if (!VALID_SORT_KEYS.includes(sortBy)) {
-        return res.status(422).json({
-          success: false,
-          message: `Invalid sort_by '${sortBy}'. Valid keys: [${VALID_SORT_KEYS.join(', ')}]`,
-        });
-      }
-
-      // Fire data query and count query in parallel to halve round-trip latency
-      const [rows, totalRecords] = await Promise.all([
-        QuotationModel.findAll(filters, { page, limit }, { by: sortBy, order: sortOrder }),
-        QuotationModel.countAll(filters),
-      ]);
-
-      const totalPages = Math.ceil(totalRecords / limit) || 1;
-
-      return res.status(200).json({
-        success: true,
-        data:    rows,
-        pagination: {
-          page,
-          limit,
-          totalRecords,
-          totalPages,
-          hasNext: page < totalPages,
-          hasPrev: page > 1,
-        },
-      });
-    } catch (error) {
-      console.error('[QuotationController.getQuotations] Error:', error.message);
-      return res.status(500).json({ success: false, message: 'Failed to retrieve quotations.' });
-    }
-  },
-
-  // ---------------------------------------------------------------------------
-  // getPendingApproval — GET /api/cotizaciones/pendientes-aprobacion  (Jefe)
-  // The Jefe's approval queue: all quotations in 'Pendiente', 'En revision',
-  // or 'En espera' states, ordered oldest-first (HU08 — all active states).
-  // ---------------------------------------------------------------------------
-  async getPendingApproval(req, res) {
-    try {
-      const rows = await QuotationModel.findPendingApproval();
-      return res.status(200).json({ success: true, total: rows.length, data: rows });
-    } catch (error) {
-      console.error('[QuotationController.getPendingApproval] Error:', error.message);
-      return res.status(500).json({ success: false, message: 'Failed to retrieve approval queue.' });
-    }
-  },
-
-  // ---------------------------------------------------------------------------
-  // getStateSummary — GET /api/cotizaciones/resumen  (All roles)
-  // Ejecutivos see only their own counts; Jefe/Admin see all (or scoped by param).
-  // ---------------------------------------------------------------------------
-  async getStateSummary(req, res) {
-    try {
-      let id_ejecutivo = null;
-
-      if (req.user.rol === 'Ejecutivo') {
-        id_ejecutivo = req.user.id;  // Always scoped to self for Ejecutivo
-      } else if (req.query.id_ejecutivo) {
-        const parsed = parseInt(req.query.id_ejecutivo, 10);
-        if (!isNaN(parsed) && parsed > 0) id_ejecutivo = parsed;
-      }
-
-      const summary = await QuotationModel.findSummaryByState(id_ejecutivo);
-
-      // Always return all 8 states so the frontend never has to handle missing keys
-      const totals = Object.fromEntries(
-        QuotationModel.VALID_STATES.map((s) => [s, 0])
-      );
-
-      summary.forEach((row) => { totals[row.estado] = row.total; });
-
-      const grandTotal = Object.values(totals).reduce((a, b) => a + b, 0);
-
-      return res.status(200).json({ success: true, data: totals, grandTotal });
-    } catch (error) {
-      console.error('[QuotationController.getStateSummary] Error:', error.message);
-      return res.status(500).json({ success: false, message: 'Failed to retrieve state summary.' });
-    }
-  },
-
-  // ===========================================================================
   // SPRINT 2 STEP 2 — State machine + approval workflow
   // (updateStatus, approveQuotation, getStateHistory moved to
   //  quotation/quotationStateController.js)
@@ -832,70 +646,21 @@ const QuotationController = {
       return res.status(500).json({ success: false, message: 'Failed to update admin comment.' });
     }
   },
-
-  // ---------------------------------------------------------------------------
-  // getNotificaciones — GET /api/cotizaciones/notificaciones  (Role: Ejecutivo)
-  // Returns two notification streams merged into a single response:
-  //   1. Correction notifications — quotations sent back to 'Pendiente'
-  //      (from cotizacion_historial_estados, existing behaviour)
-  //   2. Approval notifications   — quotations approved / sent to client by Jefe
-  //      (from the dedicated notificaciones table, new behaviour)
-  //
-  // Each row carries a `tipo` field so the frontend can style them differently:
-  //   tipo = 'correccion'    — from stream 1 (correction needed)
-  //   tipo = 'aprobacion'    — Jefe approved to 'Aprobada internamente'
-  //   tipo = 'envio_cliente' — Jefe sent to 'Enviada al cliente'
-  //
-  // Opening the modal triggers markNotificacionesLeidas so the badge resets
-  // for approval notifications (correction notifications clear naturally when
-  // the Ejecutivo re-submits the quote and it leaves 'Pendiente').
-  // ---------------------------------------------------------------------------
-  async getNotificaciones(req, res) {
-    try {
-      // Only Ejecutivos and Proyectos receive personal notifications.
-      // Jefe / Admin see all state changes via the audit log.
-      if (req.user.rol !== 'Ejecutivo' && req.user.rol !== 'Proyectos') {
-        return res.status(200).json({ success: true, total: 0, data: [] });
-      }
-
-      // Fetch both notification streams in parallel
-      const [correcciones, aprobaciones] = await Promise.all([
-        QuotationModel.findNotificacionesPendientes(req.user.id),
-        QuotationModel.findNotificacionesEjecutivo(req.user.id),
-      ]);
-
-      // Tag correction rows so the frontend can distinguish them
-      const taggedCorrecciones = correcciones.map(r => ({ ...r, tipo: 'correccion' }));
-
-      const combined = [...taggedCorrecciones, ...aprobaciones]
-        .sort((a, b) => new Date(b.fecha_solicitud) - new Date(a.fecha_solicitud));
-
-      return res.status(200).json({
-        success: true,
-        total:   combined.length,
-        data:    combined,
-      });
-    } catch (error) {
-      console.error('[QuotationController.getNotificaciones] Error:', error.message);
-      return res.status(500).json({ success: false, message: 'Failed to retrieve notifications.' });
-    }
-  },
-
-  // markNotificacionesLeidas — POST /api/cotizaciones/notificaciones/leer  (Ejecutivo)
-  // Marks all unread approval/envio notifications as read for the caller.
-  // Correction notifications are implicitly cleared when the quote is re-submitted.
-  async markNotificacionesLeidas(req, res) {
-    try {
-      if (req.user.rol !== 'Ejecutivo' && req.user.rol !== 'Proyectos') {
-        return res.status(200).json({ success: true });
-      }
-      await QuotationModel.markNotificacionesLeidas(req.user.id);
-      return res.status(200).json({ success: true });
-    } catch (error) {
-      console.error('[QuotationController.markNotificacionesLeidas] Error:', error.message);
-      return res.status(500).json({ success: false, message: 'Failed to mark notifications as read.' });
-    }
-  },
 };
 
-module.exports = QuotationController;
+// ===========================================================================
+// Superficie publica — este archivo sigue siendo el unico punto de entrada
+// que importan las rutas (QuotationController.X), pero la implementacion de
+// lectura y notificaciones vive en sus propios modulos.
+// ===========================================================================
+
+module.exports = {
+  ...QuotationController,
+
+  // Lecturas: listado + filtros, cola de aprobacion, resumen por estado
+  ...QuotationQueryController,
+
+  // Feed personal de notificaciones (Ejecutivo / Proyectos)
+  getNotificaciones:        QuotationNotificationController.getNotificaciones,
+  markNotificacionesLeidas: QuotationNotificationController.markNotificacionesLeidas,
+};
