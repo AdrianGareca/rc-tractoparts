@@ -15,6 +15,7 @@
 'use strict';
 
 const { pool } = require('../config/db');
+const { sumGastosEnMoneda } = require('../utils/licitacionTotals');
 
 // ---------------------------------------------------------------------------
 // VALID_STATES — debe reflejar EXACTAMENTE el ENUM de licitaciones.estado en
@@ -393,9 +394,14 @@ async function findById(id) {
       ORDER BY creado_en DESC`,
     [id]
   );
-  const totalGastos = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
-  licitacion.gastos       = gastos;
-  licitacion.total_gastos = totalGastos;
+  // Los gastos se suman con el MISMO criterio de moneda que las cotizaciones de
+  // arriba: sólo los que están en licitacion.moneda. Antes se sumaban todos sin
+  // filtrar, así que un gasto en USD se restaba a un ingreso en BOB como si
+  // fueran la misma unidad y el "resultado" salía mal por el tipo de cambio.
+  const { total: totalGastos, tieneOtraMoneda } = sumGastosEnMoneda(gastos, licitacion.moneda);
+  licitacion.gastos                    = gastos;
+  licitacion.total_gastos              = totalGastos;
+  licitacion.tiene_gastos_otra_moneda  = tieneOtraMoneda;
   // Resultado (ganancia/pérdida): positivo = ganancia, negativo = pérdida.
   licitacion.resultado    = Number(licitacion.total_comprometido) - Number(totalGastos);
 

@@ -18,6 +18,7 @@
 const LicitacionModel            = require('../models/LicitacionModel');
 const LicitacionGastoModel       = require('../models/LicitacionGastoModel');
 const { logEvent, AuditActions } = require('../utils/auditLog');
+const { sumGastosEnMoneda }      = require('../utils/licitacionTotals');
 
 // Estados en los que se pueden gestionar gastos (post-adjudicación).
 const GASTO_ALLOWED_STATES = ['Adjudicada', 'Archivada'];
@@ -67,11 +68,26 @@ const LicitacionGastoController = {
         });
       }
 
+      // El gasto DEBE ir en la moneda de la licitación: el resultado
+      // (ingreso − gastos) se calcula en esa moneda, así que uno en otra
+      // divisa quedaría excluido del total y el usuario lo vería en la lista
+      // sin entender por qué no afecta la ganancia. La UI ya manda siempre
+      // licitacion.moneda; esto cierra la puerta para los clientes de API.
+      const monedaGasto = moneda || licitacion.moneda || 'BOB';
+      if (licitacion.moneda && monedaGasto !== licitacion.moneda) {
+        return res.status(422).json({
+          success: false,
+          message: `El gasto debe registrarse en la moneda de la licitación ` +
+                   `('${licitacion.moneda}'), no en '${monedaGasto}'. ` +
+                   `El resultado se calcula en la moneda de la licitación.`,
+        });
+      }
+
       const gastoId = await LicitacionGastoModel.create({
         id_licitacion:  id,
         concepto:       String(concepto).trim(),
         monto:          Number(monto),
-        moneda:         moneda || licitacion.moneda || 'BOB',
+        moneda:         monedaGasto,
         id_usuario:     req.user.id,
         nombre_usuario: req.user.nombre_usuario,
       });
@@ -112,14 +128,17 @@ const LicitacionGastoController = {
         return res.status(404).json({ success: false, message: `No se encontró la licitación con ID ${id}.` });
       }
       const gastos = await LicitacionGastoModel.findByLicitacion(id);
-      const totalGastos = gastos.reduce((acc, g) => acc + Number(g.monto), 0);
+      // Mismo criterio de moneda que LicitacionModel.findById: sólo se suman
+      // los gastos en la moneda de la licitación (ver utils/licitacionTotals.js).
+      const { total: totalGastos, tieneOtraMoneda } = sumGastosEnMoneda(gastos, licitacion.moneda);
       return res.status(200).json({
-        success:            true,
-        total:              gastos.length,
-        total_gastos:       totalGastos,
-        total_comprometido: licitacion.total_comprometido,
-        resultado:          Number(licitacion.total_comprometido) - totalGastos,
-        data:               gastos,
+        success:                  true,
+        total:                    gastos.length,
+        total_gastos:             totalGastos,
+        tiene_gastos_otra_moneda: tieneOtraMoneda,
+        total_comprometido:       licitacion.total_comprometido,
+        resultado:                Number(licitacion.total_comprometido) - totalGastos,
+        data:                     gastos,
       });
     } catch (error) {
       console.error('[LicitacionGastoController.getGastos] Error:', error.message);

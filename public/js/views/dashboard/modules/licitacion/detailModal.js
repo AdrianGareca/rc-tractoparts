@@ -338,6 +338,9 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
         <strong style="font-size:1.02rem;">${ganancia ? '📈 Ganancia' : '📉 Pérdida'}: ${fmtMoney(Math.abs(resultado), lic.moneda)}</strong><br>
         <span class="text-sm">Ingreso (cotizado aprobado/confirmado): ${fmtMoney(ingreso, lic.moneda)}
           &nbsp;−&nbsp; Gastos: ${fmtMoney(gastosT, lic.moneda)}</span>
+        ${lic.tiene_gastos_otra_moneda
+          ? `<br><span class="text-sm" style="color:var(--clr-amber);">⚠️ Hay gastos registrados en otra moneda que no se incluyen en este cálculo (el resultado está en ${escHtml(lic.moneda || 'BOB')}).</span>`
+          : ''}
       </div>`;
 
     const gastos = lic.gastos ?? [];
