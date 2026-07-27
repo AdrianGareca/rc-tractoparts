@@ -94,15 +94,14 @@ export function fmtDateTime(iso) {
  * @param   {any} str  - Value to encode (null/undefined become empty string)
  * @returns {string}
  */
-export function escHtml(str) {
-  if (str == null) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// escHtml es el nombre histórico del escapador en el dashboard. La
+// implementación vive en shared/escapeHtml.js: había una copia idéntica en
+// quotationForm/helpers.js (escText) y duplicar código de seguridad significa
+// que un refuerzo futuro sólo llegaría a una de las dos.
+// Se importa con alias (y no un re-export directo) porque este mismo archivo lo
+// usa en badgeHtml / roleBadgeHtml.
+import { escapeHtml as escHtml } from '../../shared/escapeHtml.js';
+export { escHtml };
 
 export function fmtAmount(n, currency = 'USD') {
   if (n == null) return '—';

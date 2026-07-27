@@ -11,18 +11,11 @@ export function fmt(n) {
   return isNaN(n) ? '0.00' : Number(n).toFixed(2);
 }
 
-/** Escapa entidades HTML antes de interpolar un valor como texto en innerHTML.
- *  Previene XSS almacenado al renderizar strings controlados por el usuario
- *  (OWASP A03). */
-export function escText(v) {
-  if (v == null) return '';
-  return String(v)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// escText es el nombre histórico del escapador dentro del formulario. La
+// implementación vive en shared/escapeHtml.js: había una copia idéntica en
+// dashboard/helpers.js y duplicar código de seguridad significa que un refuerzo
+// futuro sólo llegaría a una de las dos.
+export { escapeHtml as escText } from '../../shared/escapeHtml.js';
 
 // ---------------------------------------------------------------------------
 // nextCorrelativoOf — "SC-2026/000123" → "SC-2026/000124".
