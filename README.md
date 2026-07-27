@@ -298,22 +298,58 @@ rc-tractoparts/
 │   ├── config/
 │   │   └── db.js                  # MySQL connection pool (singleton) + startup ping
 │   ├── routes/                    # /api/auth, /api/cotizaciones, /api/licitaciones, /api/usuarios, …
-│   ├── controllers/               # Request handlers (incl. quotation/ subfolder + licitacionController)
-│   ├── models/                    # ONLY layer that runs SQL (QuotationModel facade + quotation/ split, LicitacionModel, …)
+│   ├── controllers/
+│   │   ├── quotationController.js # Facade: create/update/read — routes import ONLY this
+│   │   ├── quotation/             # Split by responsibility (see §11.1)
+│   │   │   ├── quotationQueryController.js       # Listing + filters, approval queue, summary
+│   │   │   ├── quotationFilters.js               # Pure query-param parsing/validation
+│   │   │   ├── quotationStateController.js       # State machine + approval workflow
+│   │   │   ├── quotationPdfController.js         # PDF/Excel upload + download
+│   │   │   ├── quotationNotificationController.js
+│   │   │   ├── transactionHelpers.js             # withDeadlockRetry (InnoDB retry + pool safety)
+│   │   │   └── pdfRegeneration.js                # Single-PDF invariant, shared by 4 callers
+│   │   └── licitacionController.js, clientController.js, …
+│   ├── models/                    # ONLY layer that runs SQL
+│   │   ├── QuotationModel.js      # Thin facade re-exporting quotation/*
+│   │   ├── quotation/             # constants, whereBuilder, read/write/analytics repos, stateMachine
+│   │   └── LicitacionModel.js, UserModel.js, …
 │   ├── middlewares/               # authMiddleware, roleMiddleware, auditMiddleware
 │   ├── validators/                # Zod schemas + validate() factory
 │   ├── services/
-│   │   └── pdfService.js          # PDFKit proforma layout engine
+│   │   ├── pdfService.js          # Orchestrator only — builds the doc and writes it
+│   │   └── pdf/                   # PDF engine, split by concern
+│   │       ├── constants.js       # Palette, A4 geometry, buildItemLayout, asset paths
+│   │       ├── format.js          # fmtNum / fmtPrice / formatDate (UTC-safe) / hLine
+│   │       ├── numberToWords.js   # numberToWordsES — the "SON:" amount-in-words line
+│   │       ├── bankData.js        # normalizeEntidad + per-entity bank accounts
+│   │       └── drawers/           # header, brandStrip, subtitle, infoGrid, itemsTable,
+│   │                              #   totals, observations, footer, watermark
 │   ├── realtime/
 │   │   └── socketServer.js        # Realtime socket layer (quotation locks / live events)
 │   ├── utils/
-│   │   └── auditLog.js
+│   │   ├── auditLog.js
+│   │   ├── quotationTotals.js     # Money math — mirrored by public/js/shared/
+│   │   └── licitacionTotals.js    # Currency-aware expense totals
 │   └── assets/images/             # rc_logo.png + brands/*.png (used by the PDF engine)
-├── public/                        # Static frontend (served by Express)
+├── public/                        # Static frontend (served by Express) — NO build step
 │   ├── index.html                 # Login
 │   ├── dashboard.html
-│   ├── css/styles.css
-│   └── js/{services,views}/        # apiClient, authSession, dashboard views
+│   ├── css/                       # 12 files by concern, linked in order (see §11.2)
+│   │   ├── tokens.css             # FIRST — everything else consumes its variables
+│   │   ├── base.css, layout.css, auth.css, buttons.css, forms.css
+│   │   ├── components.css, tables.css, modals.css
+│   │   ├── quotation-form.css, proforma.css
+│   │   └── responsive.css         # LAST — its media queries must be able to win
+│   └── js/
+│       ├── services/              # apiClient, authSession, socketClient
+│       ├── shared/                # quotationTotals, escapeHtml, quotationFieldErrors, asyncCache
+│       └── views/
+│           ├── quotationForm.js   # Mediator + mount point only
+│           ├── quotationForm/     # helpers, observers, formTemplate, lineItemsComponent,
+│           │                      #   brandModal, clientSearch, fileUpload, draftLock,
+│           │                      #   submitPayload, editHydration
+│           └── dashboard/         # strategies/ (per role) + modules/ (tabs, modals)
+│               └── modules/licitacion/  # permissions (transition matrix) + detailModal
 ├── sql/
 │   ├── init.sql                   # Single source of truth: full schema + seed data (DESTRUCTIVE)
 │   ├── init.js                    # Runs init.sql (admin connection, multipleStatements)
@@ -416,8 +452,9 @@ cp .env.example .env          # Windows PowerShell: Copy-Item .env.example .env
 
 # 3. Edit .env with your real values (keep DB_HOST=localhost for a local MySQL)
 
-# 4. Initialize the database (destructive — drops rc_tractoparts first)
-npm run db:init
+# 4. Initialize the database (DESTRUCTIVE — drops rc_tractoparts first).
+#    --force is mandatory: see the warning below.
+npm run db:init -- --force
 
 # 5. Provision the initial accounts (REQUIRED — they are seeded LOCKED).
 #    Set SEED_SYSADMIN_PASSWORD / SEED_JEFE_PASSWORD / SEED_ADMIN_PASSWORD in .env first.
@@ -426,6 +463,25 @@ npm run seed:execute    # Generates bcrypt hashes at runtime and upserts the acc
 ```
 
 > `db:init` opens a one-shot admin connection (no pre-selected DB, `multipleStatements` enabled) and runs the whole `sql/init.sql` script.
+
+### ⚠️ `db:init` requires `--force`, and here is why
+
+`sql/init.sql` begins with `DROP DATABASE`. Until recently, the only thing standing between "reinitialize the test database" and "wipe production" was six characters typed by hand:
+
+```bash
+npm run db:init:test    # reinitializes rc_tractoparts_test
+npm run db:init         # DESTROYS rc_tractoparts (production)
+```
+
+No confirmation prompt, no undo. A forgotten `:test`, a stale line recalled from shell history, a copy-paste from an old guide — and the data is gone. So the production path now **aborts before opening any connection** unless you pass `--force` explicitly:
+
+```bash
+npm run db:init -- --force   # bootstrapping a brand-new server: intentional
+```
+
+The test path (`db:init:test`) needs no flag — it has its own guard instead: it refuses to run if `DB_NAME_TEST` resolves to the same database as `DB_NAME`, and `--force` does **not** override that. Covered by `tests/unit/dbInitSafety.test.js`.
+
+For an existing production database, never use `db:init` at all — schema changes ship as additive `sql/upgrade_*.sql` scripts (see §16.7).
 
 ---
 
@@ -497,7 +553,7 @@ All secrets and configuration are externalized to `.env` (never committed). Refe
 
 | Area | Endpoints | Access |
 |---|---|---|
-| **Auth** | `POST /api/auth/login`, `POST /api/auth/logout` | Public / authenticated |
+| **Auth** | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | Public / authenticated |
 | **Quotations** | `GET /` (paginated+filtered), `POST /`, `GET /:id`, `PUT /:id` (owner, Pendiente only), `GET /resumen`, `GET /pendientes-aprobacion`, `GET /:id/historial` | All authenticated roles (writes role-scoped) |
 | **Quotation state** | `PUT /:id/estado` (role state machine), `POST /:id/aprobar` (Jefe/SysAdmin), `PATCH /:id/comentario-admin` (Administracion) | Role-restricted |
 | **Quotation files** | `POST /:id/pdf`, `POST /:id/upload` (PDF+Excel), `GET /:id/pdf`, `GET /:id/excel` | Ejecutivo upload / all download |
@@ -507,6 +563,8 @@ All secrets and configuration are externalized to `.env` (never committed). Refe
 | **Clients** | `GET /` (autocomplete, 20 active), `GET /all` (paginated, incl. inactive), `GET /:id`, `POST /`, `PUT /:id` (also reactivates via `activo`), `DELETE /:id` soft-delete | All roles |
 | **Brands** | `GET /api/marcas`, `POST /api/marcas` | Quote-creating roles |
 | **Reports** | `GET /api/reportes/progreso` (Jefe/SysAdmin), `GET /api/reportes/advanced` (row-level security for Ejecutivo) | Restricted |
+
+> **`GET /api/auth/me` exists for a specific reason.** The JWT carries the role *name* (`rol`), but **not** `can_approve_quotations` — the delegated-approval flag. If it did, granting or revoking a delegation would only take effect after the user logged out and back in. The dashboard calls `/me` on boot to re-hydrate the cached user from the database, so a change made by a Jefe applies on the next refresh. Server-side, every controller that depends on the flag reads it fresh from the DB rather than trusting the token.
 | **System** | `GET /health` | Public |
 | **API Docs** | `GET /api-docs` | Public (Swagger UI) |
 
@@ -561,6 +619,36 @@ The frontend is a vanilla JavaScript SPA using ES Modules — no transpiler or b
 
 The UI is **mobile-first responsive**: at narrow widths the dashboard collapses into a single stacked column, expanding into a multi-column layout on larger screens (see [§3.4](#34-system-performance--ui-flow)).
 
+### 11.1 Module split (why the big files were broken up)
+
+Several files had grown past 1,500 lines, which made bug-hunting painful and left large surfaces with no test coverage at all. Each was split **by responsibility**, moving code only — no behaviour changes — with tests written *before* the original was deleted:
+
+| Original | Was | Now | Split into |
+|---|---|---|---|
+| `dashboardView.js` | 2729 | 308 | `dashboard/` — strategies, modules, modal UI, commands |
+| `quotationForm.js` | 1637 | 409 | `quotationForm/` — 10 modules (see the tree in §4) |
+| `QuotationModel.js` | 1601 | 67 | `models/quotation/` — 7 repositories behind a facade |
+| `pdfService.js` | 1581 | 191 | `services/pdf/` + `pdf/drawers/` — 13 modules |
+| `styles.css` | 1559 | — | `public/css/` — 12 files by concern |
+| `quotationController.js` | 896 | 572 | `controllers/quotation/` — queries, notifications, helpers |
+| `licitacionesView.js` | 627 | 168 | `licitacion/` — permission matrix + detail modal |
+
+**The public surface never changed.** `quotationController.js` and `QuotationModel.js` remain thin facades re-exporting the same methods, so routes and call sites were untouched — verified programmatically against `git HEAD` (same method names, types and arity).
+
+Two invariants worth knowing before editing these modules:
+
+- **Money math lives in exactly one place per side.** `public/js/shared/quotationTotals.js` mirrors `src/utils/quotationTotals.js`, including the round-per-line-before-summing rule. Reintroducing a local copy makes the on-screen total drift from what the server stores.
+- **HTML escaping lives in `public/js/shared/escapeHtml.js`.** `escHtml` and `escText` are aliases of that single function — there used to be two identical copies, which meant a future hardening fix would only reach one of them.
+
+### 11.2 Stylesheet (no build step)
+
+`styles.css` was split into 12 files under `public/css/`, linked as separate `<link>` tags — **not** `@import`, which chains the downloads serially and blocks rendering. Load order is part of the contract:
+
+- `tokens.css` **first** — every other file consumes its custom properties.
+- `responsive.css` **last** — its media queries must be able to override.
+
+`tests/unit/cssBundle.test.js` enforces this: both HTML files must link the same files in the same order, no file may be orphaned or missing, and no `var()` without a fallback may point at an undefined token. It also fails if an inline `style=` attribute reappears in the HTML.
+
 ---
 
 ## 12. Security Model
@@ -588,21 +676,32 @@ The UI is **mobile-first responsive**: at narrow widths the dashboard collapses 
 ## 13. Tests
 
 ```bash
-npm run test:unit         # Unit tests — NO database required
-npm run test:integration  # Integration tests — REQUIRES rc_tractoparts_test DB
-npm test                  # Full Jest run (integration parts need the test DB)
+npm test                  # Full run — reinitializes the test DB first (see below)
+npm run test:unit         # Unit tests only — NO database required, ~40 s
+npm run test:integration  # Integration tests — REQUIRES rc_tractoparts_test
 ```
 
-**Test suites:**
+**`npm test` runs `pretest` automatically**, which reinitializes `rc_tractoparts_test` from `sql/init.sql`. This is not optional housekeeping: integration tests write real rows and leave them behind, so a run against a dirty database produces failures that have nothing to do with the code. Before this hook existed, that cost real debugging time.
 
-| File | Type | What it covers |
+> **Safety.** `sql/init.js` starts with `DROP DATABASE`. Because `pretest` now fires it on every `npm test` with no human in the loop, the script **aborts** if `DB_NAME_TEST` resolves to the same database as `DB_NAME` — before opening any connection. Passing `--force` does not bypass that check. See §7 for the production counterpart.
+
+**Frontend tests run too.** `babel-jest` transpiles the native ES modules under `public/js/**`, so a single `.test.js` can `import` a frontend module and `require()` a backend one. Babel transforms `.js`, **not** `.mjs`.
+
+**Coverage by area** (39 suites, 606 tests):
+
+| Area | Suites | What they protect |
 |---|---|---|
-| `tests/unit/calcularTotales.test.js` | Unit | Line-item total and grand-total calculation logic |
-| `tests/unit/validationEdgeCases.test.js` | Unit | Zod schema edge cases and boundary validation |
-| `tests/integration/correlativo.concurrencia.test.js` | Integration | Atomic correlativo generation under concurrent requests |
-| `tests/integration/newFeatures.test.js` | Integration | Admin notes visibility (NF-03) + persistent notifications (NF-04) |
+| Money math | `calcularTotales`, `quotationTotalsFront`, `licitacionTotals` | Round-per-line before summing; currency-aware expense totals |
+| Quotation form | `quotationForm*` (9 files) | Observers, template contract, line-item dedup, draft lock, payload build, edit hydration |
+| PDF engine | `pdfLayout`, `pdfFormat`, `pdfBankData`, `numberToWords`, `pdfGenerate` | Column widths sum exactly; UTC-safe dates; correct bank account per entity; the document actually renders |
+| Security | `escapeHtml`, `badgeHtmlEscape`, `licitacionPermissions` | XSS escaping (single implementation); client-side transition matrix |
+| Infrastructure | `transactionHelpers`, `draftLockRelease`, `dbInitSafety` | Connection always returns to the pool; deadlock retry; destructive-script guards |
+| Consistency | `frontendImports`, `cssBundle` | Every ES-module import resolves; stylesheet load order and completeness |
+| Integration | 7 files | Correlativo under 20 concurrent requests, approval checklist, `/api/auth/me`, NIT conflicts, licitación links |
 
-> Integration tests connect to the database named by `DB_NAME_TEST` when `NODE_ENV=test`. Create and initialize that database before running them.
+Two of these exist specifically because **there is no build step**: `frontendImports` catches a broken `import` or a symbol that stopped being exported (which otherwise only surfaces in the browser console), and `cssBundle` catches an unlinked or orphaned stylesheet.
+
+> Integration tests connect to the database named by `DB_NAME_TEST` when `NODE_ENV=test`.
 
 ---
 

@@ -306,22 +306,58 @@ rc-tractoparts/
 │   ├── config/
 │   │   └── db.js                  # Pool de conexiones MySQL (singleton) + ping de arranque
 │   ├── routes/                    # /api/auth, /api/cotizaciones, /api/licitaciones, /api/usuarios, …
-│   ├── controllers/               # Manejadores de peticiones (incl. quotation/ + licitacionController)
-│   ├── models/                    # ÚNICA capa que ejecuta SQL (fachada QuotationModel + quotation/, LicitacionModel, …)
+│   ├── controllers/
+│   │   ├── quotationController.js # Fachada: crear/editar/leer — las rutas importan SOLO esto
+│   │   ├── quotation/             # Dividido por responsabilidad (ver §11.1)
+│   │   │   ├── quotationQueryController.js       # Listado + filtros, cola de aprobación, resumen
+│   │   │   ├── quotationFilters.js               # Parseo/validación pura de query params
+│   │   │   ├── quotationStateController.js       # Máquina de estados + flujo de aprobación
+│   │   │   ├── quotationPdfController.js         # Subida/descarga de PDF y Excel
+│   │   │   ├── quotationNotificationController.js
+│   │   │   ├── transactionHelpers.js             # withDeadlockRetry (reintento InnoDB + pool seguro)
+│   │   │   └── pdfRegeneration.js                # Invariante de un solo PDF, usado por 4 llamadores
+│   │   └── licitacionController.js, clientController.js, …
+│   ├── models/                    # ÚNICA capa que ejecuta SQL
+│   │   ├── QuotationModel.js      # Fachada delgada que re-exporta quotation/*
+│   │   ├── quotation/             # constants, whereBuilder, repos de lectura/escritura/analytics, stateMachine
+│   │   └── LicitacionModel.js, UserModel.js, …
 │   ├── middlewares/               # authMiddleware, roleMiddleware, auditMiddleware
 │   ├── validators/                # Esquemas Zod + factory validate()
 │   ├── services/
-│   │   └── pdfService.js          # Motor de diseño de proformas con PDFKit
+│   │   ├── pdfService.js          # Solo orquestación — arma el documento y lo escribe
+│   │   └── pdf/                   # Motor PDF, dividido por concern
+│   │       ├── constants.js       # Paleta, geometría A4, buildItemLayout, rutas de assets
+│   │       ├── format.js          # fmtNum / fmtPrice / formatDate (UTC-safe) / hLine
+│   │       ├── numberToWords.js   # numberToWordsES — la línea "SON:" del bloque de totales
+│   │       ├── bankData.js        # normalizeEntidad + cuentas bancarias por entidad
+│   │       └── drawers/           # header, brandStrip, subtitle, infoGrid, itemsTable,
+│   │                              #   totals, observations, footer, watermark
 │   ├── realtime/
 │   │   └── socketServer.js        # Capa de sockets en tiempo real (candados / eventos en vivo)
 │   ├── utils/
-│   │   └── auditLog.js
+│   │   ├── auditLog.js
+│   │   ├── quotationTotals.js     # Cálculo de dinero — espejado en public/js/shared/
+│   │   └── licitacionTotals.js    # Totales de gastos respetando la moneda
 │   └── assets/images/             # rc_logo.png + marcas/*.png (para el motor PDF)
-├── public/                        # Frontend estático (servido por Express)
+├── public/                        # Frontend estático (servido por Express) — SIN paso de build
 │   ├── index.html                 # Login
 │   ├── dashboard.html
-│   ├── css/styles.css
-│   └── js/{services,views}/        # apiClient, authSession, vistas del dashboard
+│   ├── css/                       # 12 archivos por concern, enlazados en orden (ver §11.2)
+│   │   ├── tokens.css             # PRIMERO — todo lo demás consume sus variables
+│   │   ├── base.css, layout.css, auth.css, buttons.css, forms.css
+│   │   ├── components.css, tables.css, modals.css
+│   │   ├── quotation-form.css, proforma.css
+│   │   └── responsive.css         # ÚLTIMO — sus media queries deben poder ganar
+│   └── js/
+│       ├── services/              # apiClient, authSession, socketClient
+│       ├── shared/                # quotationTotals, escapeHtml, quotationFieldErrors, asyncCache
+│       └── views/
+│           ├── quotationForm.js   # Solo el Mediator y el punto de montaje
+│           ├── quotationForm/     # helpers, observers, formTemplate, lineItemsComponent,
+│           │                      #   brandModal, clientSearch, fileUpload, draftLock,
+│           │                      #   submitPayload, editHydration
+│           └── dashboard/         # strategies/ (por rol) + modules/ (pestañas, modales)
+│               └── modules/licitacion/  # permissions (matriz de transiciones) + detailModal
 ├── sql/
 │   ├── init.sql                   # Fuente única de verdad: esquema + datos iniciales (DESTRUCTIVO)
 │   ├── init.js                    # Ejecuta init.sql (conexión admin, multipleStatements)
@@ -424,8 +460,9 @@ cp .env.example .env          # PowerShell: Copy-Item .env.example .env
 
 # 3. Edita .env con tus valores reales (mantén DB_HOST=localhost para MySQL local)
 
-# 4. Inicializar la base de datos (destructivo — elimina rc_tractoparts primero)
-npm run db:init
+# 4. Inicializar la base de datos (DESTRUCTIVO — elimina rc_tractoparts primero).
+#    --force es obligatorio: ver la advertencia debajo.
+npm run db:init -- --force
 
 # 5. Provisionar las cuentas iniciales (OBLIGATORIO — se siembran BLOQUEADAS).
 #    Define antes SEED_SYSADMIN_PASSWORD / SEED_JEFE_PASSWORD / SEED_ADMIN_PASSWORD en .env.
@@ -434,6 +471,25 @@ npm run seed:execute    # Genera hashes bcrypt en runtime y hace upsert de las c
 ```
 
 > `db:init` abre una conexión admin de un solo uso (sin BD preseleccionada, `multipleStatements` activado) y ejecuta el script completo `sql/init.sql`.
+
+### ⚠️ `db:init` exige `--force`, y este es el motivo
+
+`sql/init.sql` empieza con `DROP DATABASE`. Hasta hace poco, lo único que separaba "reinicializar la base de test" de "borrar producción" eran seis caracteres tipeados a mano:
+
+```bash
+npm run db:init:test    # reinicializa rc_tractoparts_test
+npm run db:init         # DESTRUYE rc_tractoparts (producción)
+```
+
+Sin confirmación, sin vuelta atrás. Un `:test` que se olvida, una línea vieja recuperada del historial de la terminal, un copy-paste de una guía desactualizada — y los datos se fueron. Por eso la ruta de producción ahora **aborta antes de abrir ninguna conexión** salvo que se pase `--force` explícitamente:
+
+```bash
+npm run db:init -- --force   # bootstrap de un servidor nuevo: intencional
+```
+
+La ruta de test (`db:init:test`) no necesita bandera: tiene su propio seguro en cambio, y se niega a correr si `DB_NAME_TEST` resuelve a la misma base que `DB_NAME` — `--force` **no** lo saltea. Cubierto por `tests/unit/dbInitSafety.test.js`.
+
+Para una base de producción ya existente, no uses `db:init` en absoluto: los cambios de esquema se distribuyen como scripts aditivos `sql/upgrade_*.sql` (ver §16.7).
 
 ---
 
@@ -505,7 +561,7 @@ Todos los secretos y la configuración están externalizados en `.env` (nunca ve
 
 | Área | Endpoints | Acceso |
 |---|---|---|
-| **Auth** | `POST /api/auth/login`, `POST /api/auth/logout` | Público / autenticado |
+| **Auth** | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | Público / autenticado |
 | **Cotizaciones** | `GET /` (paginado+filtrado), `POST /`, `GET /:id`, `PUT /:id` (propietario, solo Pendiente), `GET /resumen`, `GET /pendientes-aprobacion`, `GET /:id/historial` | Todos los roles autenticados (escritura con restricción de rol) |
 | **Estado de cotización** | `PUT /:id/estado` (máquina de estados por rol), `POST /:id/aprobar` (Jefe/SysAdmin), `PATCH /:id/comentario-admin` (Administracion) | Restringido por rol |
 | **Archivos de cotización** | `POST /:id/pdf`, `POST /:id/upload` (PDF+Excel), `GET /:id/pdf`, `GET /:id/excel` | Ejecutivo sube / todos descargan |
@@ -515,6 +571,8 @@ Todos los secretos y la configuración están externalizados en `.env` (nunca ve
 | **Clientes** | `GET /` (autocompletado, 20 activos), `GET /all` (paginado, incl. inactivos), `GET /:id`, `POST /`, `PUT /:id` (también reactiva vía `activo`), `DELETE /:id` baja lógica | Todos los roles |
 | **Marcas** | `GET /api/marcas`, `POST /api/marcas` | Roles que crean cotizaciones |
 | **Reportes** | `GET /api/reportes/progreso` (Jefe/SysAdmin), `GET /api/reportes/advanced` (seguridad a nivel de fila para Ejecutivo) | Restringido |
+
+> **`GET /api/auth/me` existe por una razón concreta.** El JWT lleva el *nombre* del rol (`rol`), pero **no** `can_approve_quotations` — la bandera de aprobación delegada. Si la llevara, otorgar o revocar una delegación solo surtiría efecto después de que el usuario cerrara sesión y volviera a entrar. El dashboard llama a `/me` al arrancar para re-hidratar el usuario cacheado desde la base de datos, así que un cambio hecho por un Jefe se aplica en el siguiente refresco. Del lado del servidor, cada controller que depende de la bandera la lee fresca de la BD en vez de confiar en el token.
 | **Sistema** | `GET /health` | Público |
 | **Documentación** | `GET /api-docs` | Público (Swagger UI) |
 
@@ -569,6 +627,36 @@ El frontend es una SPA en JavaScript puro usando ES Modules — sin transpilador
 
 La UI es **responsiva mobile-first**: en anchos reducidos el dashboard colapsa a una sola columna apilada, y se expande a un diseño multicolumna en pantallas más grandes (ver [§3.4](#34-rendimiento-del-sistema-y-flujo-de-ui)).
 
+### 11.1 División en módulos (por qué se partieron los archivos grandes)
+
+Varios archivos habían superado las 1.500 líneas, lo que volvía penosa la caza de bugs y dejaba superficies enormes sin ninguna cobertura de tests. Cada uno se dividió **por responsabilidad**, moviendo código solamente — sin cambios de comportamiento — y escribiendo los tests *antes* de borrar el original:
+
+| Original | Antes | Ahora | Dividido en |
+|---|---|---|---|
+| `dashboardView.js` | 2729 | 308 | `dashboard/` — estrategias, módulos, UI de modal, comandos |
+| `quotationForm.js` | 1637 | 409 | `quotationForm/` — 10 módulos (ver el árbol en §4) |
+| `QuotationModel.js` | 1601 | 67 | `models/quotation/` — 7 repositorios tras una fachada |
+| `pdfService.js` | 1581 | 191 | `services/pdf/` + `pdf/drawers/` — 13 módulos |
+| `styles.css` | 1559 | — | `public/css/` — 12 archivos por concern |
+| `quotationController.js` | 896 | 572 | `controllers/quotation/` — consultas, notificaciones, helpers |
+| `licitacionesView.js` | 627 | 168 | `licitacion/` — matriz de permisos + modal de detalle |
+
+**La superficie pública nunca cambió.** `quotationController.js` y `QuotationModel.js` siguen siendo fachadas delgadas que re-exportan los mismos métodos, así que las rutas y los call sites quedaron intactos — verificado programáticamente contra `git HEAD` (mismos nombres, tipos y aridad).
+
+Dos invariantes que conviene conocer antes de editar estos módulos:
+
+- **El cálculo de dinero vive en exactamente un lugar por lado.** `public/js/shared/quotationTotals.js` espeja a `src/utils/quotationTotals.js`, incluida la regla de redondear cada línea ANTES de sumar. Reintroducir una copia local hace que el total en pantalla se desvíe del que el servidor guarda.
+- **El escapado de HTML vive en `public/js/shared/escapeHtml.js`.** `escHtml` y `escText` son alias de esa única función — antes había dos copias idénticas, lo que significaba que un refuerzo futuro llegaría a una sola de las dos.
+
+### 11.2 Hoja de estilos (sin paso de build)
+
+`styles.css` se dividió en 12 archivos bajo `public/css/`, enlazados como etiquetas `<link>` separadas — **no** con `@import`, que encadena las descargas en serie y bloquea el renderizado. El orden de carga es parte del contrato:
+
+- `tokens.css` **primero** — todos los demás consumen sus custom properties.
+- `responsive.css` **último** — sus media queries deben poder pisar al resto.
+
+`tests/unit/cssBundle.test.js` lo hace cumplir: ambos HTML deben enlazar los mismos archivos en el mismo orden, ninguno puede quedar huérfano ni faltar, y ninguna `var()` sin fallback puede apuntar a un token inexistente. También falla si reaparece un atributo `style=` inline en el HTML.
+
 ---
 
 ## 12. Modelo de Seguridad
@@ -596,21 +684,32 @@ La UI es **responsiva mobile-first**: en anchos reducidos el dashboard colapsa a
 ## 13. Pruebas
 
 ```bash
-npm run test:unit         # Tests unitarios — SIN base de datos requerida
-npm run test:integration  # Tests de integración — REQUIERE BD rc_tractoparts_test
-npm test                  # Jest completo (integración requiere la BD de test)
+npm test                  # Corrida completa — reinicializa la BD de test primero (ver abajo)
+npm run test:unit         # Solo unitarios — SIN base de datos, ~40 s
+npm run test:integration  # Integración — REQUIERE rc_tractoparts_test
 ```
 
-**Suites de prueba:**
+**`npm test` ejecuta `pretest` automáticamente**, que reinicializa `rc_tractoparts_test` desde `sql/init.sql`. No es limpieza opcional: los tests de integración escriben filas reales y las dejan ahí, así que una corrida contra una base sucia produce fallos que no tienen nada que ver con el código. Antes de que existiera este hook, eso costó tiempo real de depuración.
 
-| Archivo | Tipo | Qué cubre |
+> **Seguridad.** `sql/init.js` arranca con `DROP DATABASE`. Como `pretest` ahora lo dispara en cada `npm test` sin intervención humana, el script **aborta** si `DB_NAME_TEST` resuelve a la misma base que `DB_NAME` — antes de abrir ninguna conexión. Pasar `--force` no saltea ese chequeo. Ver §7 para la contraparte de producción.
+
+**Los tests del frontend también corren.** `babel-jest` transpila los ES modules nativos de `public/js/**`, así que un mismo `.test.js` puede `import` un módulo del frontend y `require()` uno del backend. Babel transforma `.js`, **no** `.mjs`.
+
+**Cobertura por área** (39 suites, 606 tests):
+
+| Área | Suites | Qué protegen |
 |---|---|---|
-| `tests/unit/calcularTotales.test.js` | Unitario | Lógica de cálculo de totales por línea y total general |
-| `tests/unit/validationEdgeCases.test.js` | Unitario | Casos borde del esquema Zod y validación de límites |
-| `tests/integration/correlativo.concurrencia.test.js` | Integración | Generación atómica de correlativo bajo peticiones concurrentes |
-| `tests/integration/newFeatures.test.js` | Integración | Visibilidad de notas de administrador (NF-03) + notificaciones persistentes (NF-04) |
+| Cálculo de dinero | `calcularTotales`, `quotationTotalsFront`, `licitacionTotals` | Redondeo por línea antes de sumar; totales de gastos respetando la moneda |
+| Formulario de cotización | `quotationForm*` (9 archivos) | Observers, contrato de la plantilla, deduplicación de ítems, draft-lock, armado del payload, hidratación de edición |
+| Motor PDF | `pdfLayout`, `pdfFormat`, `pdfBankData`, `numberToWords`, `pdfGenerate` | Los anchos de columna suman exacto; fechas UTC-safe; cuenta bancaria correcta por entidad; el documento realmente se genera |
+| Seguridad | `escapeHtml`, `badgeHtmlEscape`, `licitacionPermissions` | Escapado XSS (implementación única); matriz de transiciones del cliente |
+| Infraestructura | `transactionHelpers`, `draftLockRelease`, `dbInitSafety` | La conexión siempre vuelve al pool; reintento ante deadlock; seguros de los scripts destructivos |
+| Consistencia | `frontendImports`, `cssBundle` | Todos los imports ES module resuelven; orden y completitud de la hoja de estilos |
+| Integración | 7 archivos | Correlativo con 20 peticiones concurrentes, checklist de aprobación, `/api/auth/me`, conflictos de NIT, vínculos de licitación |
 
-> Los tests de integración se conectan a la base de datos nombrada por `DB_NAME_TEST` cuando `NODE_ENV=test`. Crea e inicializa esa base de datos antes de ejecutarlos.
+Dos de estas existen precisamente porque **no hay paso de build**: `frontendImports` detecta un `import` roto o un símbolo que dejó de exportarse (que de otro modo solo aparece en la consola del navegador), y `cssBundle` detecta una hoja sin enlazar o huérfana.
+
+> Los tests de integración se conectan a la base de datos nombrada por `DB_NAME_TEST` cuando `NODE_ENV=test`.
 
 ---
 
