@@ -18,9 +18,13 @@
 //   multipleStatements disabled for safety.
 //
 // Usage:
-//   npm run db:init           # via package.json — targets DB_NAME
-//   node sql/init.js          # directly — targets DB_NAME
-//   node sql/init.js --test   # targets DB_NAME_TEST (used by the test suite)
+//   npm run db:init:test          # reinicializa DB_NAME_TEST (lo corre `pretest`)
+//   npm run db:init -- --force    # bootstrap de DB_NAME — BORRA la base real
+//   node sql/init.js --test       # equivalente directo del primero
+//
+// ATENCION: init.sql arranca con DROP DATABASE. Contra DB_NAME hace falta
+// --force explicito; contra DB_NAME_TEST se aborta si coincide con DB_NAME.
+// Ver tests/unit/dbInitSafety.test.js.
 // =============================================================================
 
 'use strict';
@@ -45,7 +49,7 @@ const SQL_FILE = path.join(__dirname, 'init.sql');
 //
 // @param {boolean} useTestDb - When true, target DB_NAME_TEST instead of DB_NAME.
 // ---------------------------------------------------------------------------
-async function run(useTestDb = false) {
+async function run(useTestDb = false, { force = false } = {}) {
   const targetDb = useTestDb ? process.env.DB_NAME_TEST : process.env.DB_NAME;
 
   if (!targetDb) {
@@ -68,6 +72,20 @@ async function run(useTestDb = false) {
         `Corregi DB_NAME_TEST en el .env antes de reintentar.`
       );
     }
+  }
+
+  // SEGURO: contra la base de PRODUCCION hay que pedirlo explicitamente.
+  // La unica diferencia entre reinicializar la base de test y borrar la real
+  // eran seis caracteres tipeados a mano ('npm run db:init' vs ':test'), sin
+  // ninguna confirmacion de por medio. El bootstrap legitimo de un servidor
+  // nuevo se hace una sola vez: `npm run db:init -- --force`.
+  if (!useTestDb && !force) {
+    throw new Error(
+      `[db:init] ABORTADO: esto ejecuta DROP DATABASE sobre '${targetDb}' (produccion) ` +
+      `y borraria todos los datos. Si es realmente lo que queres, repetilo con --force:\n` +
+      `  npm run db:init -- --force\n` +
+      `Para reinicializar la base de TEST usa: npm run db:init:test`
+    );
   }
 
   const rawSql = fs.readFileSync(SQL_FILE, 'utf8');
@@ -96,7 +114,8 @@ async function run(useTestDb = false) {
 // Run immediately when invoked directly (node sql/init.js [--test]); export for reuse.
 if (require.main === module) {
   const useTestDb = process.argv.includes('--test');
-  run(useTestDb).catch((err) => {
+  const force     = process.argv.includes('--force');
+  run(useTestDb, { force }).catch((err) => {
     console.error('[db:init] Initialization failed:', err.message);
     process.exit(1);
   });

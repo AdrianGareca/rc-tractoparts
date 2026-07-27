@@ -62,6 +62,49 @@ describe('sql/init.js — seguro del modo --test', () => {
     expect(mysql.createConnection).not.toHaveBeenCalled();
   });
 
+  test('el modo produccion aborta sin --force', async () => {
+    process.env.DB_NAME      = 'rc_tractoparts';
+    process.env.DB_NAME_TEST = 'rc_tractoparts_test';
+
+    await expect(run(false)).rejects.toThrow(/--force/);
+
+    // Nada se ejecutó: la base de producción quedó intacta.
+    expect(mysql.createConnection).not.toHaveBeenCalled();
+  });
+
+  test('el modo produccion procede con --force explícito', async () => {
+    process.env.DB_NAME = 'rc_tractoparts';
+
+    const connection = { query: jest.fn().mockResolvedValue([]), end: jest.fn().mockResolvedValue() };
+    mysql.createConnection.mockResolvedValue(connection);
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+
+    await run(false, { force: true });
+
+    expect(connection.query).toHaveBeenCalledTimes(1);
+  });
+
+  test('--force NO es necesario en modo test (tiene su propio seguro)', async () => {
+    process.env.DB_NAME      = 'rc_tractoparts';
+    process.env.DB_NAME_TEST = 'rc_tractoparts_test';
+
+    const connection = { query: jest.fn().mockResolvedValue([]), end: jest.fn().mockResolvedValue() };
+    mysql.createConnection.mockResolvedValue(connection);
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+
+    await run(true);   // sin force
+
+    expect(connection.query).toHaveBeenCalledTimes(1);
+  });
+
+  test('--force NO saltea el seguro de test (no puede apuntar a produccion)', async () => {
+    process.env.DB_NAME      = 'rc_tractoparts';
+    process.env.DB_NAME_TEST = 'rc_tractoparts';
+
+    await expect(run(true, { force: true })).rejects.toThrow(/DB_NAME_TEST/);
+    expect(mysql.createConnection).not.toHaveBeenCalled();
+  });
+
   test('deja pasar una BD de test legítimamente distinta', async () => {
     process.env.DB_NAME      = 'rc_tractoparts';
     process.env.DB_NAME_TEST = 'rc_tractoparts_test';
