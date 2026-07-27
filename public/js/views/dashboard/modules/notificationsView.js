@@ -111,7 +111,10 @@ export async function refreshNotifBadge(UI) {
       const prevTotal = parseInt(btn.dataset.prevTotal ?? '0', 10);
       btn.dataset.prevTotal = String(total);
 
-      btn.style.display = 'inline-flex';
+      // Visibilidad por clase, no por element.style: los estilos del botón
+      // viven en css/components.css (.notif-btn) y mezclar ambos mecanismos
+      // hace que el estado final dependa de cuál escribió último.
+      btn.classList.remove('hidden');
       badge.textContent = total > 99 ? '99+' : String(total);
       btn.title         = `Tienes ${total} notificación${total > 1 ? 'es' : ''} pendiente${total > 1 ? 's' : ''}`;
 
@@ -184,7 +187,7 @@ export async function refreshNotifBadge(UI) {
       // notifications (e.g. total=1 after everything was marked read) would
       // never exceed the stale prevTotal and the desktop push would stay silent.
       btn.dataset.prevTotal = '0';
-      btn.style.display = 'none';
+      btn.classList.add('hidden');
     }
   } catch (_) { /* non-fatal — badge failure must not break the dashboard */ }
 }

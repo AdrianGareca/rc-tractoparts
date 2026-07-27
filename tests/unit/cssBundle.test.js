@@ -115,3 +115,16 @@ describe('contenido de la hoja de estilos', () => {
     expect(todo).not.toMatch(/@import/);
   });
 });
+
+describe('los HTML no llevan estilos inline', () => {
+  // Un style="" en el HTML se escapa de la hoja de estilos: no se puede
+  // reutilizar, no responde a media queries y gana sobre cualquier regla
+  // externa, así que el día que alguien intente re-estilar el componente desde
+  // el CSS no va a entender por qué no pasa nada.
+  test.each(HTMLS.map((h) => [path.basename(h), h]))('%s no tiene atributos style=', (_n, file) => {
+    const src = fs.readFileSync(file, 'utf8');
+    const inline = [...src.matchAll(/<(\w+)[^>]*\sstyle=/g)].map((m) => m[1]);
+
+    expect(inline).toEqual([]);
+  });
+});
