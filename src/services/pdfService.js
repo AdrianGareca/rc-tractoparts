@@ -22,249 +22,27 @@ const path        = require('path');
 const PDFDocument = require('pdfkit');
 
 // =============================================================================
-// Asset paths — resolved relative to this file's directory
-// =============================================================================
-
-const ASSETS_DIR  = path.join(__dirname, '..', 'assets', 'images');
-const LOGO_PATH   = path.join(ASSETS_DIR, 'rc_logo.png');
-const BRANDS_DIR  = path.join(ASSETS_DIR, 'brands');
-
-// Ordered list: filename → fallback display label
-const BRAND_DEFS = [
-  { file: 'volvo.png',      label: 'VOLVO'     },
-  { file: 'john_deere.png', label: 'JOHN DEERE' },
-  { file: 'komatsu.png',    label: 'KOMATSU'   },
-  { file: 'jcb.png',        label: 'JCB'       },
-  { file: 'cat.png',        label: 'CAT'       },
-  { file: 'case.png',       label: 'CASE'      },
-];
-
-// =============================================================================
-// Color palette
-// =============================================================================
-
-const C = {
-  NAVY:        '#1B2B4B',   // Primary navy — headers, totals box
-  ORANGE:      '#C85A0F',   // Accent — dividers, total value, SON line border
-  WHITE:       '#FFFFFF',
-  LIGHT_GRAY:  '#F7F8FA',   // Alternating row fill, tinted backgrounds
-  DARK_GRAY:   '#2D3748',   // Primary body text
-  MID_GRAY:    '#6B7280',   // Labels, row numbers, secondary text
-  BORDER_GRAY: '#CBD5E0',   // Table borders, section dividers
-  BLUE_ACCENT: '#3B82F6',   // Left stripe on 3-column section headers
-  BLUE_BG:     '#EFF6FF',   // 3-column section header background
-  BLUE_TITLE:  '#1D4ED8',   // 3-column section header text
-  TABLE_HEADER: '#1B2B4B',  // Items table header background (navy, matches NAVY)
-  TABLE_HEADER_TEXT: '#FFFFFF', // Items table header text (white on navy)
-  ALT_ROW:     '#F7F8FA',   // Alternating row tint inside the items table
-  STATUS: {
-    'Pendiente':             '#6B7280',
-    'En revision':           '#D97706',
-    'En espera':             '#D97706',
-    'Aprobada internamente': '#059669',
-    'Enviada al cliente':    '#2563EB',
-    'Confirmada':            '#059669',
-    'Aceptada':              '#059669',
-    'Rechazada':             '#DC2626',
-    'Archivada':             '#6B7280',
-  },
-};
-
-// =============================================================================
-// Page geometry — A4 (595.28 × 841.89 pt)
-// =============================================================================
-
-const PW     = 595.28;
-const PH     = 841.89;
-const MARGIN = 36;
-const CW     = PW - MARGIN * 2;  // 523.28 pt usable content width
-
-// =============================================================================
-// 9-column items table
-// Widths must sum exactly to CW (523.28 pt).
-// Last column absorbs the remainder to prevent rounding gaps.
-// =============================================================================
-
-// buildItemLayout — computes per-quotation column widths and left-edge X
-// positions for the items table. When `showCodigo` is false the CÓDIGO column
-// collapses to zero width and its 48 pt are absorbed by DESCRIPCIÓN so the
-// layout shifts gracefully instead of leaving a gap. Widths always sum to CW.
-function buildItemLayout(showCodigo) {
-  const w = {
-    item:   20,
-    codigo: showCodigo ? 48 : 0,
-    codAlt: showCodigo ? 52 : 0,
-    desc:   showCodigo ? 130 : 230,   // DESCRIPCIÓN absorbs CÓDIGO + CÓD. ALT. widths when hidden
-    cant:   26,
-    uni:    26,
-    pUnit:  62,
-    pTotal: 62,
-  };
-  // Last column (T. ENTREGA) absorbs the remainder to prevent rounding gaps.
-  w.entrega = parseFloat(
-    (CW - (w.item + w.codigo + w.codAlt + w.desc + w.cant + w.uni + w.pUnit + w.pTotal)).toFixed(2)
-  );
-
-  const x = {};
-  let cur = MARGIN;
-  for (const [k, width] of Object.entries(w)) {
-    x[k] = cur;
-    cur += width;
-  }
-
-  return { w, x, showCodigo };
-}
-
-const TABLE_HEADER_H = 24;   // Height of the pink column-header row
-const ROW_MIN_H      = 20;   // Minimum data-row height
-const ROW_PADDING    = 8;    // Vertical padding inside each data row
-const PAGE_BREAK_Y   = PH - MARGIN - 100; // Y threshold that triggers a new page
-
-// =============================================================================
-// Utility helpers
-// =============================================================================
-
-// ---------------------------------------------------------------------------
-// fmtNum — es-BO locale number format: thousands separator = '.' decimal = ','
-//          Example: 2100.5 → "2.100,50"
-// ---------------------------------------------------------------------------
-function fmtNum(amount) {
-  if (amount == null || amount === '' || isNaN(parseFloat(amount))) return '—';
-  return parseFloat(amount).toLocaleString('es-BO', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// fmtPrice — prepend currency symbol to the formatted number
-// ---------------------------------------------------------------------------
-function fmtPrice(amount, moneda) {
-  const s = fmtNum(amount);
-  if (s === '—') return '—';
-  return moneda === 'BOB' ? `Bs. ${s}` : `$ ${s}`;
-}
-
-// ---------------------------------------------------------------------------
-// formatDate — YYYY-MM-DD / Date → DD/MM/YYYY, UTC-safe
+// Módulos extraídos — este archivo se quedó con los "drawers" de sección y el
+// generador principal. Todo lo demás vive en src/services/pdf/:
 //
-// src/config/db.js sets `timezone: '+00:00'`, so mysql2 returns DATE/DATETIME
-// columns as JS Date objects representing a UTC instant. Reading those with
-// LOCAL getters (getDate/getMonth/getFullYear) shifts the printed date by a
-// day whenever the Node process runs in a timezone behind UTC (a midnight-UTC
-// value rolls back to the previous local day). Date objects must therefore
-// always be read with the UTC getters. Plain 'YYYY-MM-DD' strings are parsed
-// directly from their components instead of round-tripping through Date, so
-// the result never depends on the process's local timezone at all.
-// ---------------------------------------------------------------------------
-function formatDate(v) {
-  if (!v) return '—';
-
-  if (typeof v === 'string') {
-    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
-    if (match) {
-      const [, yyyy, mm, dd] = match;
-      return `${dd}/${mm}/${yyyy}`;
-    }
-    v = new Date(v);
-  }
-
-  const d = v;
-  if (isNaN(d.getTime())) return String(v);
-  const dd = String(d.getUTCDate()).padStart(2, '0');
-  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-  return `${dd}/${mm}/${d.getUTCFullYear()}`;
-}
-
-// ---------------------------------------------------------------------------
-// hLine — full-width horizontal rule between MARGIN edges
-// ---------------------------------------------------------------------------
-function hLine(doc, y, color = C.BORDER_GRAY, lw = 0.5) {
-  doc.save()
-    .moveTo(MARGIN, y)
-    .lineTo(PW - MARGIN, y)
-    .lineWidth(lw)
-    .strokeColor(color)
-    .stroke()
-    .restore();
-}
-
-// =============================================================================
-// Number → Spanish words  (used in the "SON:" totals line)
-// Example: numberToWordsES(3080.00) → "TRES MIL OCHENTA CON 00/100"
+//   constants.js     — paleta, geometría A4, buildItemLayout, rutas de assets
+//   format.js        — fmtNum, fmtPrice, formatDate, hLine
+//   numberToWords.js — numberToWordsES (línea "SON:" del bloque de totales)
+//   bankData.js      — normalizeEntidad, BANK_ACCOUNTS, resolveBankData
+//
+// Cubiertos por tests/unit/pdfLayout, pdfFormat, numberToWords y pdfBankData.
 // =============================================================================
 
-const _ONES = [
-  '', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO',
-  'NUEVE', 'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE',
-  'DIECISÉIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE',
-];
-const _TENS = [
-  '', '', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA',
-  'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA',
-];
-const _HUNS = [
-  '', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS',
-  'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS',
-];
-
-function _lt1000(n) {
-  if (n === 0) return '';
-  if (n === 100) return 'CIEN';
-  let s = '';
-  const h   = Math.floor(n / 100);
-  const rem = n % 100;
-  if (h) s += _HUNS[h];
-  if (h && rem) s += ' ';
-  if (rem > 0) {
-    if (rem < 20) {
-      s += _ONES[rem];
-    } else {
-      s += _TENS[Math.floor(rem / 10)];
-      if (rem % 10) s += ' Y ' + _ONES[rem % 10];
-    }
-  }
-  return s;
-}
-
-function _buildWords(n) {
-  if (n >= 1000) {
-    const t = Math.floor(n / 1000);
-    const r = n % 1000;
-    return (t === 1 ? 'MIL' : `${_lt1000(t)} MIL`) + (r > 0 ? ' ' + _lt1000(r) : '');
-  }
-  return _lt1000(n);
-}
-
-// Render the full integer part, extending _buildWords (which covers 0–999,999)
-// to the millones (10^6) and billones (10^12) groups. The group COUNT is rendered
-// RECURSIVELY so a count above 999 never indexes past the hundreds table — that
-// out-of-range access is what produced the literal "undefined" for n >= 10^9.
-function _integerToWords(n) {
-  if (n < 1000000) return _buildWords(n);
-  if (n < 1000000000000) {
-    const millones = Math.floor(n / 1000000);
-    const resto    = n % 1000000;
-    const head = millones === 1 ? 'UN MILLÓN' : `${_integerToWords(millones)} MILLONES`;
-    return head + (resto > 0 ? ' ' + _buildWords(resto) : '');
-  }
-  const billones = Math.floor(n / 1000000000000);
-  const resto    = n % 1000000000000;
-  const head = billones === 1 ? 'UN BILLÓN' : `${_integerToWords(billones)} BILLONES`;
-  return head + (resto > 0 ? ' ' + _integerToWords(resto) : '');
-}
-
-function numberToWordsES(amount) {
-  if (amount == null || isNaN(parseFloat(amount))) return 'CERO CON 00/100';
-  const abs   = Math.abs(parseFloat(amount));
-  const n     = Math.floor(abs);
-  const cents = Math.round((abs - n) * 100);
-  const cc    = String(cents).padStart(2, '0');
-  if (n === 0) return `CERO CON ${cc}/100`;
-
-  const w = _integerToWords(n);
-  return `${w.trim()} CON ${cc}/100`;
-}
+const {
+  LOGO_PATH, BRANDS_DIR, BRAND_DEFS,
+  C,
+  PW, PH, MARGIN, CW,
+  buildItemLayout,
+  TABLE_HEADER_H, ROW_MIN_H, ROW_PADDING, PAGE_BREAK_Y,
+} = require('./pdf/constants');
+const { fmtNum, fmtPrice, formatDate, hLine } = require('./pdf/format');
+const { numberToWordsES }                     = require('./pdf/numberToWords');
+const { normalizeEntidad, resolveBankData }   = require('./pdf/bankData');
 
 // =============================================================================
 // Section drawers
@@ -374,53 +152,8 @@ function renderWatermark(doc, quotation, tableBodyY) {
 // @param   {string|null|undefined} raw  quotation.entidad_emisora
 // @returns {string}
 // ---------------------------------------------------------------------------
-const PRIMARY_ENTIDAD = 'Empresa unipersonal de Ronald Roca Cartagena';
-function normalizeEntidad(raw) {
-  const value = (raw && String(raw).trim()) || PRIMARY_ENTIDAD;
-  return value === 'RC Tractoparts' ? PRIMARY_ENTIDAD : value;
-}
-
-// ---------------------------------------------------------------------------
-// Bank-account resolution (dynamic per issuing entity)
-//
-// BANK_ACCOUNTS holds the canonical DATOS BANCARIOS for each issuing entity.
-// It is the resilient FALLBACK used when the DB-provided bank fields are absent
-// (e.g. before the cuentas_bancarias migration is applied on a given
-// environment) — mirroring the graceful-degradation approach used elsewhere in
-// the codebase. Keys are the canonical entidad_emisora values produced by
-// normalizeEntidad().
-// ---------------------------------------------------------------------------
-const BANK_ACCOUNTS = {
-  'Empresa unipersonal de Ronald Roca Cartagena': {
-    beneficiario: 'Ronald Roca Cartagena',
-    banco:        'BANCO UNIÓN S.A.',
-    cuenta:       '10000060054760',
-  },
-  'Roca Importaciones S.R.L.': {
-    beneficiario: 'ROCA IMPORTACIONES S.R.L.',
-    banco:        'BANCO UNION S.A.',
-    cuenta:       '1-000-00-66027513',
-  },
-};
-
-// ---------------------------------------------------------------------------
-// resolveBankData
-// Returns the { beneficiario, banco, cuenta } to print in the DATOS BANCARIOS
-// block. DB-provided fields (attached by QuotationModel.findById from the
-// cuentas_bancarias table) take precedence; otherwise the built-in
-// BANK_ACCOUNTS map keyed by the normalized issuing entity is used.
-// ---------------------------------------------------------------------------
-function resolveBankData(quotation) {
-  if (quotation.banco_beneficiario || quotation.banco_nombre || quotation.banco_cuenta) {
-    return {
-      beneficiario: quotation.banco_beneficiario || '—',
-      banco:        quotation.banco_nombre       || '—',
-      cuenta:       quotation.banco_cuenta        || '—',
-    };
-  }
-  const entidad = normalizeEntidad(quotation.entidad_emisora);
-  return BANK_ACCOUNTS[entidad] || BANK_ACCOUNTS[PRIMARY_ENTIDAD];
-}
+// PRIMARY_ENTIDAD / normalizeEntidad / BANK_ACCOUNTS / resolveBankData viven en
+// pdf/bankData.js (ver tests/unit/pdfBankData.test.js).
 
 // ---------------------------------------------------------------------------
 // drawHeader
