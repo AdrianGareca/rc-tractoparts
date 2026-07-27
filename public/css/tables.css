@@ -1,0 +1,56 @@
+/* ===========================================================================
+   public/css/tables.css
+   Tabla de datos y utilidades de tabla.
+
+   Parte 8 de 12 de la hoja de estilos. El orden de carga IMPORTA:
+   se enlazan en este mismo orden desde index.html y dashboard.html.
+   =========================================================================== */
+/* ===== 15. DATA TABLE ===== */
+.table-wrapper {
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .875rem;
+}
+
+.data-table thead th {
+  background: var(--bg-raised);
+  padding: .65rem 1rem;
+  text-align: left;
+  font-size: .73rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background var(--transition);
+}
+
+.data-table tbody tr:last-child { border-bottom: none; }
+.data-table tbody tr:hover { background: var(--bg-hover); }
+
+.data-table tbody td {
+  padding: .7rem 1rem;
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.table-actions {
+  display: flex;
+  gap: .35rem;
+  align-items: center;
+  flex-wrap: nowrap;
+}
+
+/* ===== 28. TABLE utilities ===== */
+.text-right { text-align: right; }

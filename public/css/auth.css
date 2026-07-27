@@ -1,0 +1,85 @@
+/* ===========================================================================
+   public/css/auth.css
+   Pantalla de login (index.html).
+
+   Parte 4 de 12 de la hoja de estilos. El orden de carga IMPORTA:
+   se enlazan en este mismo orden desde index.html y dashboard.html.
+   =========================================================================== */
+/* ===== 8. AUTH PAGE ===== */
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(16,185,129,.08) 0%, transparent 60%),
+    var(--bg-deep);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 2.5rem 2rem;
+  box-shadow: var(--shadow-lg);
+}
+
+.auth-logo {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.auth-logo-icon {
+  width: auto;
+  height: auto;
+  max-width: 160px;
+  background: transparent;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  margin-bottom: .75rem;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.auth-logo-img {
+  width: auto !important;
+  height: auto !important;
+  max-width: 160px;
+  max-height: 72px;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+}
+
+.auth-logo-fallback {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+}
+
+.auth-logo h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.auth-logo p {
+  font-size: .82rem;
+  color: var(--text-muted);
+  margin-top: .2rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.auth-footer {
+  text-align: center;
+  margin-top: 1.5rem;
+  font-size: .75rem;
+  color: var(--text-muted);
+}

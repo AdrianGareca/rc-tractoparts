@@ -1,0 +1,102 @@
+/* ===========================================================================
+   public/css/proforma.css
+   Vista de detalle de la proforma.
+
+   Parte 11 de 12 de la hoja de estilos. El orden de carga IMPORTA:
+   se enlazan en este mismo orden desde index.html y dashboard.html.
+   =========================================================================== */
+/* ===== 25. PROFORMA DETAIL VIEW ===== */
+.proforma-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.proforma-meta-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: .75rem;
+  padding: 1rem;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1rem;
+}
+
+.proforma-meta-item .form-label {
+  font-size: .7rem;
+  margin-bottom: .2rem;
+  display: block;
+}
+
+.proforma-meta-item p {
+  font-size: .9rem;
+  color: var(--text-primary);
+}
+
+.proforma-meta-item small {
+  display: block;
+  font-size: .72rem;
+  color: var(--text-muted);
+}
+
+.proforma-description {
+  color: var(--text-secondary);
+  font-size: .875rem;
+  line-height: 1.6;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .65rem .85rem;
+}
+
+.proforma-items-wrapper {
+  border-radius: var(--radius-sm);
+}
+
+.proforma-items-table .text-right { text-align: right; }
+
+.proforma-totals {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .85rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.proforma-total-row {
+  display: flex;
+  justify-content: space-between;
+  padding: .3rem 0;
+  font-size: .875rem;
+  color: var(--text-secondary);
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+
+.proforma-total-row:last-child { border-bottom: none; }
+
+.proforma-grand-total {
+  color: var(--text-primary);
+  font-size: 1rem;
+  padding-top: .5rem;
+  margin-top: .2rem;
+}
+
+.proforma-pdf-bar {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-bottom: .5rem;
+}
+
+/* Outline variant for PDF button */
+.btn-outline {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}

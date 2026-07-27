@@ -1,0 +1,61 @@
+/* ===========================================================================
+   public/css/tokens.css
+   Design tokens: la paleta, la tipografia y los radios/sombras que todo lo demas consume.
+
+   Parte 1 de 12 de la hoja de estilos. El orden de carga IMPORTA:
+   se enlazan en este mismo orden desde index.html y dashboard.html.
+   =========================================================================== */
+/* ===== 1. DESIGN TOKENS (CSS CUSTOM PROPERTIES) ===== */
+:root {
+  /* Backgrounds */
+  --bg-deep:    #0F172A;   /* slate-900 — page base */
+  --bg-surface: #1E293B;   /* slate-800 — cards, sidebar, topbar */
+  --bg-raised:  #263448;   /* slightly lighter surface */
+  --bg-hover:   #2E3F58;   /* hover state for rows / items */
+  --bg-input:   #0F172A;   /* input fields */
+
+  /* Borders */
+  --border:      #334155;  /* slate-700 */
+  --border-focus:#10B981;  /* emerald — focus ring */
+
+  /* Text */
+  --text-primary: #F1F5F9; /* slate-100 */
+  --text-secondary:#94A3B8;/* slate-400 */
+  --text-muted:   #64748B; /* slate-500 */
+
+  /* Accent — Status colors */
+  --clr-green:  #10B981;   /* emerald-500 — Aprobada, Confirmada */
+  --clr-amber:  #F59E0B;   /* amber-400   — Pendiente */
+  --clr-orange: #F97316;   /* orange-500  — En revision */
+  --clr-blue:   #3B82F6;   /* blue-500    — Enviada al cliente / primary action */
+  --clr-violet: #8B5CF6;   /* violet-500  — Confirmada (client) */
+  --clr-red:    #EF4444;   /* red-500     — Rechazada / danger */
+  --clr-gray:   #6B7280;   /* gray-500    — Archivada / draft */
+
+  /* Semantic role-colors */
+  --clr-primary:       var(--clr-blue);
+  --clr-success:       var(--clr-green);
+  --clr-warning:       var(--clr-amber);
+  --clr-danger:        var(--clr-red);
+
+  /* Sizing */
+  --sidebar-w: 260px;
+  --topbar-h:  64px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* Shadows */
+  --shadow-sm:  0 1px 3px rgba(0,0,0,.4);
+  --shadow-md:  0 4px 12px rgba(0,0,0,.5);
+  --shadow-lg:  0 12px 32px rgba(0,0,0,.6);
+  /* Elevated hover shadow + colored accent glow for interactive elements */
+  --shadow-hover: 0 8px 22px rgba(0,0,0,.55);
+  --glow-primary: 0 4px 14px rgba(59,130,246,.45);
+  --glow-success: 0 4px 14px rgba(16,185,129,.40);
+  --glow-danger:  0 4px 14px rgba(239,68,68,.40);
+
+  /* Transitions */
+  --transition: 150ms ease;
+  --transition-smooth: all 0.2s ease;
+}

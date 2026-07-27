@@ -1,0 +1,143 @@
+/* ===========================================================================
+   public/css/modals.css
+   Modal principal, dialogo de confirmacion, sub-modal de cliente y variante ancha.
+
+   Parte 9 de 12 de la hoja de estilos. El orden de carga IMPORTA:
+   se enlazan en este mismo orden desde index.html y dashboard.html.
+   =========================================================================== */
+/* ===== 16. MODAL ===== */
+.modal-overlay {
+  position: fixed;
+  /* Longhand fallback first, then `inset` shorthand: Safari < 14.1 ignores
+     `inset` and would otherwise leave the backdrop unstretched (broken modal). */
+  top: 0; right: 0; bottom: 0; left: 0;
+  inset: 0;
+  background: rgba(0,0,0,.65);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2rem 1rem;
+  z-index: 200;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .2s ease, visibility .2s ease;
+  overflow-y: auto;
+}
+
+.modal-overlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Belt-and-suspenders: while a modal is open, the page behind it (sidebar,
+   topbar, content) must be fully inert — no click, however it lands, should
+   ever reach a sidebar link or button underneath the backdrop. */
+body.modal-open .page-shell {
+  pointer-events: none;
+}
+
+.modal-dialog {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 680px;
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-10px) scale(.98);
+  transition: transform .2s ease;
+  margin: auto;
+  flex-shrink: 0;
+}
+
+.modal-overlay.open .modal-dialog {
+  transform: translateY(0) scale(1);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.modal-header h3 { font-size: 1rem; font-weight: 700; }
+
+.modal-body {
+  padding: 1.5rem;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: .5rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+/* ===== 26. CONFIRMATION DIALOG ===== */
+.confirm-dialog { text-align: center; padding: .5rem 0; }
+.confirm-dialog h4 { font-size: 1rem; margin-bottom: .5rem; }
+.confirm-dialog p  { font-size: .875rem; color: var(--text-secondary); margin-bottom: 1.25rem; }
+
+/* ===== 23. EXPRESS CLIENT SUB-MODAL ===== */
+.sub-modal-overlay {
+  position: fixed;
+  /* Longhand fallback for Safari < 14.1 (no `inset` shorthand) — see .modal-overlay. */
+  top: 0; right: 0; bottom: 0; left: 0;
+  inset: 0;
+  background: rgba(0,0,0,.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1rem;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+.sub-modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  width: 100%;
+  max-width: 560px;
+  box-shadow: var(--shadow-lg);
+  animation: modal-pop .18s ease;
+  /* Cap the modal to the viewport (minus the overlay's 1rem padding on each
+     side) and lay it out as a column so the header stays pinned while only the
+     body scrolls. Without this, tall content (the licitación form / detail)
+     overflows the centered overlay off-screen with no way to scroll to it. */
+  max-height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
+}
+
+.sub-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;   /* header never shrinks — the body absorbs overflow instead */
+}
+
+.sub-modal-header h4 {
+  font-size: .95rem;
+  font-weight: 600;
+}
+
+.sub-modal-body {
+  padding: 1.25rem;
+  overflow-y: auto;   /* scroll the content internally when it exceeds the cap */
+  min-height: 0;      /* flexbox gotcha: without this a flex item won't shrink
+                         below its content, so overflow-y:auto never engages */
+}
+
+/* ===== 27. MODAL WIDE — for proforma detail view ===== */
+.modal-dialog.modal-wide {
+  max-width: 820px;
+}

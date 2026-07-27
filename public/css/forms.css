@@ -1,0 +1,204 @@
+/* ===========================================================================
+   public/css/forms.css
+   Controles de formulario, alertas inline y el icono/tooltip de ayuda.
+
+   Parte 6 de 12 de la hoja de estilos. El orden de carga IMPORTA:
+   se enlazan en este mismo orden desde index.html y dashboard.html.
+   =========================================================================== */
+/* ===== 10. FORM CONTROLS ===== */
+.form-group {
+  margin-bottom: 1.1rem;
+  position: relative;
+}
+
+.form-label {
+  display: block;
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: .4rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+/* Delegación de Funciones — inline checkbox + caption (overrides block .form-label) */
+.form-label.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+  margin-bottom: 0;
+}
+.form-label.checkbox-label input[type="checkbox"] {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.form-control {
+  width: 100%;
+  padding: .6rem .85rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: .9rem;
+  transition: var(--transition-smooth);
+  font-family: inherit;
+}
+
+.form-control::placeholder { color: var(--text-muted); }
+.form-control:hover:not(:focus):not(:disabled) { border-color: var(--text-muted); }
+.form-control:focus { outline: none; border-color: var(--clr-green); box-shadow: 0 0 0 3px rgba(16,185,129,.18); }
+.form-control.is-invalid { border-color: var(--clr-red); box-shadow: 0 0 0 3px rgba(239,68,68,.18); }
+.form-control.is-invalid:focus { border-color: var(--clr-red); }
+
+select.form-control { cursor: pointer; }
+select.form-control option { background: var(--bg-surface); }
+
+textarea.form-control { resize: vertical; min-height: 90px; }
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: .75rem;
+}
+
+.field-error {
+  display: block;
+  margin-top: .25rem;
+  font-size: .775rem;
+  color: var(--clr-red);
+  min-height: 1rem;
+}
+
+/* ── Password visibility toggle ── */
+.input-password-wrapper {
+  position: relative;
+}
+
+.input-password-wrapper .form-control {
+  padding-right: 2.75rem;
+}
+
+.btn-password-toggle {
+  position: absolute;
+  right: .6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: .25rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition);
+}
+
+.btn-password-toggle:hover { color: var(--text-primary); }
+.btn-password-toggle:focus-visible { outline: 2px solid var(--clr-green); outline-offset: 2px; }
+
+.btn-password-toggle svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  pointer-events: none;
+}
+
+/* ===== 11. FORM ALERTS ===== */
+.form-alert {
+  padding: .7rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: .875rem;
+  margin-bottom: 1rem;
+  display: none;
+}
+
+.form-alert.show { display: block; }
+.form-alert.alert-error   { background: rgba(239,68,68,.15);  border: 1px solid rgba(239,68,68,.4);  color: #fca5a5; }
+.form-alert.alert-warning { background: rgba(245,158,11,.15); border: 1px solid rgba(245,158,11,.4); color: #fcd34d; }
+.form-alert.alert-success { background: rgba(16,185,129,.15); border: 1px solid rgba(16,185,129,.4); color: #6ee7b7; }
+.form-alert.alert-info    { background: rgba(59,130,246,.15); border: 1px solid rgba(59,130,246,.4); color: #93c5fd; }
+
+/* ===== 22. INFO ICON / TOOLTIP ===== */
+/* Extend form-label to flex only when it contains an info icon */
+.form-label:has(.info-icon) {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+}
+
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(59,130,246,.2);
+  color: var(--clr-blue);
+  font-size: .7rem;
+  font-weight: 700;
+  cursor: default;
+  position: relative;
+  flex-shrink: 0;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.info-icon::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 280px;
+  background: #1e293b;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .6rem .75rem;
+  font-size: .78rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: normal;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 180ms ease, visibility 180ms ease;
+  z-index: 600;
+  white-space: normal;
+}
+
+.info-icon::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--border);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 180ms ease, visibility 180ms ease;
+}
+
+.info-icon:hover::after,
+.info-icon:hover::before,
+.info-icon:focus::after,
+.info-icon:focus::before {
+  opacity: 1;
+  visibility: visible;
+}

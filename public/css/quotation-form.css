@@ -1,0 +1,256 @@
+/* ===========================================================================
+   public/css/quotation-form.css
+   Formulario de cotizacion: zona de arrastre, tabla de items, panel de totales y buscador de cliente.
+
+   Parte 10 de 12 de la hoja de estilos. El orden de carga IMPORTA:
+   se enlazan en este mismo orden desde index.html y dashboard.html.
+   =========================================================================== */
+/* ===== 18. DRAG & DROP ZONE ===== */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: 2rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+  position: relative;
+}
+
+.drop-zone:hover,
+.drop-zone.dragover {
+  border-color: var(--clr-green);
+  background: rgba(16,185,129,.05);
+}
+
+.drop-zone input[type="file"] {
+  position: absolute; top: 0; left: 0; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+
+.drop-zone-icon { font-size: 2rem; margin-bottom: .5rem; color: var(--text-muted); }
+.drop-zone-text { font-size: .875rem; color: var(--text-muted); }
+.drop-zone-hint { font-size: .75rem; color: var(--text-muted); margin-top: .25rem; }
+.drop-zone-file { font-size: .82rem; color: var(--clr-green); margin-top: .4rem; font-weight: 600; }
+
+/* ===== 19. LINE ITEMS TABLE (Quotation Form) ===== */
+.line-items-section { margin: 1.25rem 0; }
+
+.line-items-section h4 {
+  font-size: .82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  margin-bottom: .65rem;
+}
+
+.line-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .84rem;
+}
+
+.line-items-table th {
+  background: var(--bg-raised);
+  padding: .5rem .6rem;
+  text-align: left;
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  border-bottom: 1px solid var(--border);
+}
+
+.line-items-table td {
+  padding: .35rem .4rem;
+  border-bottom: 1px solid rgba(51,65,85,.5);
+  vertical-align: middle;
+}
+
+.line-items-table .item-input {
+  width: 100%;
+  padding: .3rem .45rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: .83rem;
+  font-family: inherit;
+}
+
+.line-items-table .item-input:focus {
+  outline: none;
+  border-color: var(--clr-green);
+  box-shadow: 0 0 0 2px rgba(16,185,129,.15);
+}
+
+.item-subtotal {
+  font-weight: 600;
+  color: var(--clr-green);
+  white-space: nowrap;
+  padding: .35rem .6rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.btn-remove-item {
+  background: none;
+  border: none;
+  color: var(--clr-red);
+  cursor: pointer;
+  padding: .2rem .4rem;
+  border-radius: 4px;
+  font-size: .9rem;
+  opacity: .7;
+  transition: opacity var(--transition), background var(--transition);
+}
+
+.btn-remove-item:hover { opacity: 1; background: rgba(239,68,68,.1); }
+
+.btn-add-item {
+  margin-top: .6rem;
+  font-size: .8rem;
+}
+
+/* ===== 20. TOTALS PANEL ===== */
+.totals-panel {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  margin-top: 1rem;
+}
+
+.totals-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .3rem 0;
+  font-size: .875rem;
+}
+
+.totals-row + .totals-row { border-top: 1px solid var(--border); }
+
+.totals-row.total-final {
+  border-top: 2px solid var(--border);
+  padding-top: .6rem;
+  margin-top: .2rem;
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--clr-green);
+}
+
+.totals-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* ===== 21. CLIENT SELECTOR / AUTOCOMPLETE ===== */
+.client-select-wrapper {
+  position: relative;
+}
+
+.client-search-group {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+}
+
+.client-search-group .form-control {
+  flex: 1;
+  min-width: 0;
+}
+
+/* "Outline Green" variant — less prominent than btn-success */
+.btn-outline-green {
+  background: transparent;
+  color: var(--clr-green);
+  border-color: var(--clr-green);
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-outline-green:hover:not(:disabled) {
+  background: rgba(16,185,129,.12);
+  transform: translateY(-1px);
+}
+
+/* Autocomplete dropdown */
+.client-dropdown {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  width: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 500;
+  display: none;
+}
+
+.client-dropdown.open { display: block; }
+
+.client-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .55rem .85rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--transition);
+}
+
+.client-dropdown-item:last-child { border-bottom: none; }
+
+.client-dropdown-item:hover,
+.client-dropdown-item:focus {
+  background: var(--bg-hover);
+  outline: none;
+}
+
+.cdi-name {
+  flex: 1;
+  font-size: .875rem;
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cdi-nit {
+  font-size: .75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cdi-edit {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: .8rem;
+  color: var(--text-muted);
+  padding: .15rem .4rem;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.cdi-edit:hover,
+.cdi-edit:focus {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+  outline: none;
+}
+
+.client-dropdown-empty {
+  padding: .75rem 1rem;
+  font-size: .85rem;
+  color: var(--text-muted);
+  text-align: center;
+}
