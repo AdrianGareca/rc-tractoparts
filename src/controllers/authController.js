@@ -87,8 +87,12 @@ const AuthController = {
       }
 
       // ── 4. Brute-force lockout check ──────────────────────────────────────────
-      if (user.bloqueado_hasta && new Date(user.bloqueado_hasta) > new Date()) {
-        const unlockTime = new Date(user.bloqueado_hasta).toISOString();
+      // `bloqueo_activo` lo calcula la propia consulta contra NOW() (ver
+      // UserModel.findByUsername). Comparar acá con `new Date()` NO funciona:
+      // MySQL guarda hora local y el driver la interpreta como UTC, así que la
+      // fecha llega cuatro horas en el pasado y el bloqueo nunca se aplicaba.
+      if (user.bloqueo_activo) {
+        const minutos = Math.max(1, Number(user.bloqueo_minutos_restantes) || 1);
 
         await logEvent({
           id_usuario:    user.id,
@@ -96,7 +100,7 @@ const AuthController = {
           accion:        AuditActions.LOGIN_FAILED,
           entidad:       'usuarios',
           id_entidad:    user.id,
-          detalle:       { reason: 'account_locked', bloqueado_hasta: unlockTime },
+          detalle:       { reason: 'account_locked', minutos_restantes: minutos },
           ip_origen:     clientIp,
           resultado:     'fallo',
         });
@@ -104,7 +108,7 @@ const AuthController = {
         return res.status(401).json({
           success: false,
           message: `Account temporarily locked due to repeated failed login attempts. ` +
-                   `Try again after ${unlockTime}.`,
+                   `Try again in ${minutos} minute(s).`,
         });
       }
 

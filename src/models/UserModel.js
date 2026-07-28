@@ -35,6 +35,21 @@ const UserModel = {
         u.token_version,              -- Persistent revocation counter (survives server restart)
         u.intentos_fallidos,
         u.bloqueado_hasta,
+        -- El estado del bloqueo se decide EN SQL, no comparando en JavaScript.
+        --
+        -- Por qué: MySQL corre con time_zone = SYSTEM (hora local de Bolivia,
+        -- UTC-4) mientras el driver está configurado con timezone: '+00:00'
+        -- (src/config/db.js), así que lee las horas locales COMO SI fueran UTC.
+        -- Un bloqueado_hasta recién escrito llega a Node cuatro horas en el
+        -- pasado, así que comparar la fecha en JavaScript daba SIEMPRE false:
+        -- la cuenta quedaba marcada como bloqueada en la base pero el login
+        -- entraba igual, o sea la defensa contra fuerza bruta no aplicaba nunca.
+        --
+        -- Comparando contra NOW() los dos lados viven en la misma zona y el
+        -- resultado no depende de cómo el driver serialice la fecha.
+        (u.bloqueado_hasta IS NOT NULL AND u.bloqueado_hasta > NOW()) AS bloqueo_activo,
+        -- Minutos que faltan para el desbloqueo, para el mensaje al usuario.
+        TIMESTAMPDIFF(MINUTE, NOW(), u.bloqueado_hasta) AS bloqueo_minutos_restantes,
         u.ultimo_acceso
       FROM usuarios u
       INNER JOIN roles r ON r.id = u.id_rol
@@ -183,16 +198,35 @@ const UserModel = {
     const maxAttempts   = parseInt(process.env.MAX_LOGIN_ATTEMPTS, 10)    || 3;
     const lockMinutes   = parseInt(process.env.LOCK_DURATION_MINUTES, 10) || 15;
 
-    // Use a single atomic UPDATE to increment and conditionally lock
+    // UPDATE único y atómico. Dos detalles importantes, ambos verificados por
+    // tests/integration/loginLockout.test.js:
+    //
+    // 1. MySQL evalúa las asignaciones de un UPDATE de IZQUIERDA A DERECHA, y la
+    //    segunda ya ve el valor actualizado de la primera. La versión anterior
+    //    comparaba `(intentos_fallidos + 1) >= max` en la segunda asignación,
+    //    o sea sumaba el incremento dos veces: con MAX_LOGIN_ATTEMPTS=3
+    //    bloqueaba al SEGUNDO fallo. Acá se compara `intentos_fallidos` a secas,
+    //    que en ese punto ya es el contador nuevo.
+    //
+    // 2. Si el bloqueo anterior ya venció, este fallo abre una TANDA NUEVA
+    //    (contador = 1). Antes el contador sólo se reseteaba con un login
+    //    exitoso, así que quedaba clavado en el máximo: al expirar los 15
+    //    minutos, un solo error volvía a bloquear otros 15, indefinidamente.
+    //    Como no hay recuperación de contraseña, un usuario que olvidaba su
+    //    clave podía quedar afuera del sistema de hecho.
     const sql = `
       UPDATE usuarios
       SET
-        intentos_fallidos = intentos_fallidos + 1,
-        bloqueado_hasta   = CASE
-          WHEN (intentos_fallidos + 1) >= ?
-          THEN DATE_ADD(NOW(), INTERVAL ? MINUTE)
-          ELSE bloqueado_hasta
-        END
+        intentos_fallidos = IF(
+          bloqueado_hasta IS NOT NULL AND bloqueado_hasta <= NOW(),
+          1,
+          intentos_fallidos + 1
+        ),
+        bloqueado_hasta = IF(
+          intentos_fallidos >= ?,
+          DATE_ADD(NOW(), INTERVAL ? MINUTE),
+          IF(intentos_fallidos = 1, NULL, bloqueado_hasta)
+        )
       WHERE id = ?
     `;
 
