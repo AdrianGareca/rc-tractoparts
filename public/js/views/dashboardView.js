@@ -27,6 +27,8 @@ import AuthSession           from '../services/authSession.js';
 import api, { showToast }   from '../services/apiClient.js';
 import { mountQuotationForm } from './quotationForm.js';
 
+import { getThemeMode, cycleTheme, themeButtonLabel } from '../services/theme.js';
+
 // ── Dashboard sub-modules ─────────────────────────────────────────────────────
 import { ROLE_BADGE } from './dashboard/helpers.js';
 import { refreshNotifBadge, requestNotifPermission, startNotifPolling } from './dashboard/modules/notificationsView.js';
@@ -97,6 +99,7 @@ class DashboardController {
 
     // Wire logout button
     this._wireLogout();
+    this._wireThemeToggle();
 
     // Wire sidebar mobile toggle
     document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
@@ -282,6 +285,24 @@ class DashboardController {
         }
       });
     });
+  }
+
+  // Botón de tema de la barra superior: rota automático → claro → oscuro.
+  // theme-boot.js ya aplicó el tema guardado antes del primer pintado; acá sólo
+  // se sincroniza el icono y se cablea el click.
+  _wireThemeToggle() {
+    const btn = document.getElementById('btn-theme');
+    if (!btn) return;
+
+    const sync = (mode) => {
+      const { icon, label } = themeButtonLabel(mode);
+      btn.textContent = icon;
+      btn.title       = label;
+      btn.setAttribute('aria-label', label);
+    };
+
+    sync(getThemeMode());
+    btn.addEventListener('click', () => sync(cycleTheme()));
   }
 
   _wireLogout() {

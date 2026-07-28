@@ -20,6 +20,12 @@
   <link rel="stylesheet" href="/css/quotation-form.css?v=3" />
   <link rel="stylesheet" href="/css/proforma.css?v=3" />
   <link rel="stylesheet" href="/css/responsive.css?v=3" />
+
+  <!-- Tema guardado, aplicado ANTES del primer pintado para que no haya un
+       flash del tema equivocado. Va después de los <link> (que ya están
+       descargando en paralelo) y SIN defer ni type="module", a propósito:
+       los módulos se difieren y llegarían tarde. -->
+  <script src="/js/theme-boot.js?v=3"></script>
 </head>
 <body class="auth-page">
 
