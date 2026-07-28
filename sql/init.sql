@@ -426,7 +426,18 @@ CREATE TABLE cotizacion_detalles (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =============================================================================
--- 9. AUDITORIA
+-- 9. AUDITORIA  ⚠️  SIN USO — la auditoría real vive en bitacora_auditoria (§10)
+-- -----------------------------------------------------------------------------
+-- Esta tabla no recibe escrituras ni lecturas de la aplicación. El código que la
+-- alimentaba (src/models/AuditModel.js + src/middlewares/auditMiddleware.js) no
+-- lo importaba ningún controller y se eliminó.
+--
+-- Los 12 controllers auditan con logEvent() (src/utils/auditLog.js), que escribe
+-- en bitacora_auditoria, y esa es la tabla que lee la pantalla de Auditoría.
+--
+-- Se conserva la definición para no romper bases ya desplegadas que puedan tener
+-- filas históricas. NO escribir acá: lo que se guarde no lo muestra ninguna
+-- pantalla, o sea sería auditoría que se pierde en silencio.
 -- =============================================================================
 
 CREATE TABLE auditoria (
