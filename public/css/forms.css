@@ -122,10 +122,10 @@ textarea.form-control { resize: vertical; min-height: 90px; }
 }
 
 .form-alert.show { display: block; }
-.form-alert.alert-error   { background: rgba(239,68,68,.15);  border: 1px solid rgba(239,68,68,.4);  color: #fca5a5; }
-.form-alert.alert-warning { background: rgba(245,158,11,.15); border: 1px solid rgba(245,158,11,.4); color: #fcd34d; }
-.form-alert.alert-success { background: rgba(16,185,129,.15); border: 1px solid rgba(16,185,129,.4); color: #6ee7b7; }
-.form-alert.alert-info    { background: rgba(59,130,246,.15); border: 1px solid rgba(59,130,246,.4); color: #93c5fd; }
+.form-alert.alert-error   { background: var(--alert-bg-red);  border: 1px solid var(--alert-br-red);  color: var(--clr-red-soft); }
+.form-alert.alert-warning { background: var(--alert-bg-amber); border: 1px solid var(--alert-br-amber); color: var(--clr-amber-soft); }
+.form-alert.alert-success { background: var(--alert-bg-green); border: 1px solid var(--alert-br-green); color: var(--clr-green-soft); }
+.form-alert.alert-info    { background: var(--alert-bg-blue); border: 1px solid var(--alert-br-blue); color: var(--clr-blue-soft); }
 
 /* ===== 22. INFO ICON / TOOLTIP ===== */
 /* Extend form-label to flex only when it contains an info icon */
@@ -142,7 +142,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: rgba(59,130,246,.2);
+  background: var(--badge-bg-blue);
   color: var(--clr-blue);
   font-size: .7rem;
   font-weight: 700;
@@ -162,7 +162,7 @@ textarea.form-control { resize: vertical; min-height: 90px; }
   left: 50%;
   transform: translateX(-50%);
   width: 280px;
-  background: #1e293b;
+  background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: .6rem .75rem;

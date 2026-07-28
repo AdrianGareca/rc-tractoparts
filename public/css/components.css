@@ -18,50 +18,50 @@
   white-space: nowrap;
 }
 
-.badge-borrador         { background: rgba(107,114,128,.2);  color: #9ca3af; }
-.badge-pendiente        { background: rgba(245,158,11,.2);   color: #fcd34d; }
-.badge-en-revision      { background: rgba(249,115,22,.2);   color: #fdba74; }
-.badge-aprobada         { background: rgba(16,185,129,.2);   color: #6ee7b7; }
-.badge-enviada          { background: rgba(59,130,246,.2);   color: #93c5fd; }
-.badge-confirmada       { background: rgba(139,92,246,.2);   color: #c4b5fd; }
-.badge-aceptada         { background: rgba(139,92,246,.2);   color: #c4b5fd; }
-.badge-rechazada        { background: rgba(239,68,68,.2);    color: #fca5a5; }
-.badge-archivada        { background: rgba(100,116,139,.2);  color: #94a3b8; }
+.badge-borrador         { background: var(--badge-bg-gray);  color: var(--clr-gray-soft); }
+.badge-pendiente        { background: var(--badge-bg-amber);   color: var(--clr-amber-soft); }
+.badge-en-revision      { background: var(--badge-bg-orange);   color: var(--clr-orange-soft); }
+.badge-aprobada         { background: var(--badge-bg-green);   color: var(--clr-green-soft); }
+.badge-enviada          { background: var(--badge-bg-blue);   color: var(--clr-blue-soft); }
+.badge-confirmada       { background: var(--badge-bg-violet);   color: var(--clr-violet-soft); }
+.badge-aceptada         { background: var(--badge-bg-violet);   color: var(--clr-violet-soft); }
+.badge-rechazada        { background: var(--badge-bg-red);    color: var(--clr-red-soft); }
+.badge-archivada        { background: var(--badge-bg-slate);  color: var(--text-secondary); }
 
-.badge-role-jefe        { background: rgba(16,185,129,.2);   color: var(--clr-green); }
-.badge-role-ejecutivo   { background: rgba(59,130,246,.2);   color: var(--clr-blue);  }
-.badge-role-admin       { background: rgba(245,158,11,.2);   color: var(--clr-amber); }
-.badge-role-sysadmin    { background: rgba(139,92,246,.2);   color: #c4b5fd; }
-.badge-role-proyectos   { background: rgba(20,184,166,.2);   color: #5eead4; }
-.badge-active           { background: rgba(16,185,129,.2);   color: var(--clr-green); }
-.badge-inactive         { background: rgba(239,68,68,.2);    color: var(--clr-red);   }
+.badge-role-jefe        { background: var(--badge-bg-green);   color: var(--clr-green); }
+.badge-role-ejecutivo   { background: var(--badge-bg-blue);   color: var(--clr-blue);  }
+.badge-role-admin       { background: var(--badge-bg-amber);   color: var(--clr-amber); }
+.badge-role-sysadmin    { background: var(--badge-bg-violet);   color: var(--clr-violet-soft); }
+.badge-role-proyectos   { background: var(--badge-bg-teal);   color: var(--clr-teal-soft); }
+.badge-active           { background: var(--badge-bg-green);   color: var(--clr-green); }
+.badge-inactive         { background: var(--badge-bg-red);    color: var(--clr-red);   }
 
 /* Licitación lifecycle state badges */
-.badge-lic-preparacion  { background: rgba(107,114,128,.2);  color: #cbd5e1; }
-.badge-lic-cotizando    { background: rgba(245,158,11,.2);   color: #fcd34d; }
-.badge-lic-evaluacion   { background: rgba(99,102,241,.2);   color: #a5b4fc; }
-.badge-lic-presentada   { background: rgba(59,130,246,.2);   color: #93c5fd; }
-.badge-lic-adjudicada   { background: rgba(16,185,129,.2);   color: #6ee7b7; }
-.badge-lic-noadjudicada { background: rgba(239,68,68,.2);    color: #fca5a5; }
-.badge-lic-archivada    { background: rgba(100,116,139,.2);  color: #94a3b8; }
+.badge-lic-preparacion  { background: var(--badge-bg-gray);  color: var(--clr-slate-soft); }
+.badge-lic-cotizando    { background: var(--badge-bg-amber);   color: var(--clr-amber-soft); }
+.badge-lic-evaluacion   { background: var(--badge-bg-indigo);   color: var(--clr-indigo-soft); }
+.badge-lic-presentada   { background: var(--badge-bg-blue);   color: var(--clr-blue-soft); }
+.badge-lic-adjudicada   { background: var(--badge-bg-green);   color: var(--clr-green-soft); }
+.badge-lic-noadjudicada { background: var(--badge-bg-red);    color: var(--clr-red-soft); }
+.badge-lic-archivada    { background: var(--badge-bg-slate);  color: var(--text-secondary); }
 
 /* Audit log — acción category badges (semantic color by action family) */
-.badge-audit-auth       { background: rgba(139,92,246,.2);   color: #c4b5fd; }  /* LOGIN/LOGOUT — violet */
-.badge-audit-auth-fail  { background: rgba(239,68,68,.2);    color: #fca5a5; }  /* LOGIN_FAILED — red */
-.badge-audit-create     { background: rgba(59,130,246,.2);   color: #93c5fd; }  /* CREAR_* — blue */
-.badge-audit-edit       { background: rgba(245,158,11,.2);   color: #fcd34d; }  /* EDITAR_*, CAMBIAR_ESTADO — amber */
-.badge-audit-approve    { background: rgba(16,185,129,.2);   color: #6ee7b7; }  /* APROBAR — green */
-.badge-audit-reject     { background: rgba(239,68,68,.2);    color: #fca5a5; }  /* RECHAZAR, DESACTIVAR_USUARIO — red */
-.badge-audit-file       { background: rgba(20,184,166,.2);   color: #5eead4; }  /* SUBIR_PDF/DESCARGAR_PDF — teal */
+.badge-audit-auth       { background: var(--badge-bg-violet);   color: var(--clr-violet-soft); }  /* LOGIN/LOGOUT — violet */
+.badge-audit-auth-fail  { background: var(--badge-bg-red);    color: var(--clr-red-soft); }  /* LOGIN_FAILED — red */
+.badge-audit-create     { background: var(--badge-bg-blue);   color: var(--clr-blue-soft); }  /* CREAR_* — blue */
+.badge-audit-edit       { background: var(--badge-bg-amber);   color: var(--clr-amber-soft); }  /* EDITAR_*, CAMBIAR_ESTADO — amber */
+.badge-audit-approve    { background: var(--badge-bg-green);   color: var(--clr-green-soft); }  /* APROBAR — green */
+.badge-audit-reject     { background: var(--badge-bg-red);    color: var(--clr-red-soft); }  /* RECHAZAR, DESACTIVAR_USUARIO — red */
+.badge-audit-file       { background: var(--badge-bg-teal);   color: var(--clr-teal-soft); }  /* SUBIR_PDF/DESCARGAR_PDF — teal */
 
 /* Audit log — resultado badges */
-.badge-resultado-exito  { background: rgba(16,185,129,.2);   color: var(--clr-green); }
-.badge-resultado-fallo  { background: rgba(239,68,68,.2);    color: var(--clr-red);   }
+.badge-resultado-exito  { background: var(--badge-bg-green);   color: var(--clr-green); }
+.badge-resultado-fallo  { background: var(--badge-bg-red);    color: var(--clr-red);   }
 
 /* ===== 26. EN ESPERA BADGE ===== */
 .badge-en-espera {
-  background: rgba(99,102,241,.2);
-  color: #a5b4fc;
+  background: var(--badge-bg-indigo);
+  color: var(--clr-indigo-soft);
 }
 
 /* ===== 13. CARDS ===== */
@@ -293,8 +293,8 @@
   position: absolute;
   top: 2px;
   right: 2px;
-  background: #EF4444;
-  color: #fff;
+  background: var(--clr-red);
+  color: var(--clr-white);
   border-radius: 50%;
   font-size: .65rem;
   min-width: 16px;
@@ -305,4 +305,24 @@
   font-weight: 700;
   line-height: 1;
   padding: 0 3px;
+}
+
+/* ===== SELECTOR DE TEMA (barra superior) =====
+   El botón rota automático → claro → oscuro; el icono lo escribe theme.js. */
+
+.theme-toggle {
+  font-size: 1rem;
+  line-height: 1;
+  padding: .35rem .55rem;
+}
+
+/* Transición al cambiar de tema. Se aplica sólo a las propiedades de color:
+   incluir `all` haría que cada layout shift de la app se anime también.
+   No se toca el texto para que la lectura no "flashee" durante el cambio. */
+@media (prefers-reduced-motion: no-preference) {
+  body,
+  .card, .sidebar, .topbar, .modal-dialog, .data-table,
+  .form-control, .btn {
+    transition: background-color .25s ease, border-color .25s ease, color .25s ease;
+  }
 }

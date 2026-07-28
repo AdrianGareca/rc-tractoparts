@@ -81,7 +81,7 @@
 .line-items-table .item-input:focus {
   outline: none;
   border-color: var(--clr-green);
-  box-shadow: 0 0 0 2px rgba(16,185,129,.15);
+  box-shadow: 0 0 0 2px var(--alert-bg-green);
 }
 
 .item-subtotal {

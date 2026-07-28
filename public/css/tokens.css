@@ -5,8 +5,26 @@
    Parte 1 de 12 de la hoja de estilos. El orden de carga IMPORTA:
    se enlazan en este mismo orden desde index.html y dashboard.html.
    =========================================================================== */
-/* ===== 1. DESIGN TOKENS (CSS CUSTOM PROPERTIES) ===== */
+/* ===== 1. DESIGN TOKENS (CSS CUSTOM PROPERTIES) =====
+
+   TEMA CLARO / OSCURO
+   -------------------
+   Solo los tokens de SUPERFICIE cambian con el tema (fondos, bordes, textos y
+   las sombras, que necesitan menos opacidad sobre fondo claro). Los colores de
+   marca y de estado son los MISMOS en ambos: un badge "Rechazada" tiene que
+   leerse rojo siempre, y cambiarle el tono por tema haría que dos personas
+   mirando la misma pantalla describan colores distintos.
+
+   El tema se resuelve en tres niveles, de menor a mayor prioridad:
+     1. :root                       → oscuro, el valor por defecto histórico
+     2. @media (prefers-color-scheme: light) → sigue la preferencia del sistema
+     3. [data-theme="…"] en <html>  → la elección explícita del usuario, que
+                                      gana sobre el sistema y se guarda en
+                                      localStorage (ver services/theme.js)
+   =========================================================================== */
 :root {
+  color-scheme: dark;
+
   /* Backgrounds */
   --bg-deep:    #0F172A;   /* slate-900 — page base */
   --bg-surface: #1E293B;   /* slate-800 — cards, sidebar, topbar */
@@ -32,11 +50,93 @@
   --clr-red:    #EF4444;   /* red-500     — Rechazada / danger */
   --clr-gray:   #6B7280;   /* gray-500    — Archivada / draft */
 
+  /* Extra hues used by badges (teal = Proyectos / files, indigo = evaluación) */
+  --clr-teal:   #14B8A6;   /* teal-500   */
+  --clr-indigo: #6366F1;   /* indigo-500 */
+  --clr-slate:  #64748B;   /* slate-500  */
+
+  /* Neutrals — explicit tokens so nothing hardcodes #fff / #000 */
+  --clr-white: #FFFFFF;
+  --clr-black: #000000;
+
+  /* ── Color variants ────────────────────────────────────────────────────────
+     SOFT   — the light tint used as TEXT on top of a tinted badge background.
+     STRONG — the darker step used for :hover on solid buttons.
+     Naming mirrors the Tailwind ramp the palette was picked from (500 → 300/600)
+     so the relationship stays obvious when adding a new hue. */
+  --clr-green-soft:  #6EE7B7;
+  --clr-amber-soft:  #FCD34D;
+  --clr-orange-soft: #FDBA74;
+  --clr-blue-soft:   #93C5FD;
+  --clr-violet-soft: #C4B5FD;
+  --clr-red-soft:    #FCA5A5;
+  --clr-gray-soft:   #9CA3AF;
+  --clr-teal-soft:   #5EEAD4;
+  --clr-indigo-soft: #A5B4FC;
+  --clr-slate-soft:  #CBD5E1;
+
+  --clr-blue-strong:  #2563EB;
+  --clr-green-strong: #059669;
+  --clr-red-strong:   #DC2626;
+  --clr-blue-deep:    #1D4ED8;  /* gradient end on the sidebar avatar */
+
+  /* ── Badge backgrounds ─────────────────────────────────────────────────────
+     Every status pill is the same recipe: the hue at 20% opacity behind its
+     SOFT variant as text. Declared here so a theme change moves both together
+     instead of leaving readable text on an unreadable background. */
+  --badge-bg-green:  rgba(16,185,129,.2);
+  --badge-bg-amber:  rgba(245,158,11,.2);
+  --badge-bg-orange: rgba(249,115,22,.2);
+  --badge-bg-blue:   rgba(59,130,246,.2);
+  --badge-bg-violet: rgba(139,92,246,.2);
+  --badge-bg-red:    rgba(239,68,68,.2);
+  --badge-bg-gray:   rgba(107,114,128,.2);
+  --badge-bg-teal:   rgba(20,184,166,.2);
+  --badge-bg-indigo: rgba(99,102,241,.2);
+  --badge-bg-slate:  rgba(100,116,139,.2);
+
+  /* Inline alerts use a lighter wash (15%) plus a visible border at 40%. */
+  --alert-bg-red:    rgba(239,68,68,.15);
+  --alert-bg-amber:  rgba(245,158,11,.15);
+  --alert-bg-green:  rgba(16,185,129,.15);
+  --alert-bg-blue:   rgba(59,130,246,.15);
+  --alert-br-red:    rgba(239,68,68,.4);
+  --alert-br-amber:  rgba(245,158,11,.4);
+  --alert-br-green:  rgba(16,185,129,.4);
+  --alert-br-blue:   rgba(59,130,246,.4);
+
   /* Semantic role-colors */
   --clr-primary:       var(--clr-blue);
   --clr-success:       var(--clr-green);
   --clr-warning:       var(--clr-amber);
   --clr-danger:        var(--clr-red);
+
+  /* ── Spacing scale ─────────────────────────────────────────────────────────
+     4 px base. Before this existed the stylesheet used ten different values for
+     the same intent (.6, .65, .75, .82rem…), which is what makes an interface
+     read as "hand-made" rather than designed — nobody spots the difference
+     consciously, but the eye registers that the rhythm is off.
+     Use these for NEW rules; the existing ad-hoc values are being migrated
+     gradually so no single change alters the layout wholesale. */
+  --space-1:  .25rem;   /*  4px */
+  --space-2:  .5rem;    /*  8px */
+  --space-3:  .75rem;   /* 12px */
+  --space-4:  1rem;     /* 16px */
+  --space-5:  1.25rem;  /* 20px */
+  --space-6:  1.5rem;   /* 24px */
+  --space-8:  2rem;     /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+
+  /* ── Type scale ────────────────────────────────────────────────────────────
+     Same rationale as the spacing scale. */
+  --text-xs:   .72rem;
+  --text-sm:   .82rem;
+  --text-base: .9rem;
+  --text-md:   1rem;
+  --text-lg:   1.15rem;
+  --text-xl:   1.4rem;
+  --text-2xl:  1.75rem;
 
   /* Sizing */
   --sidebar-w: 260px;
@@ -58,4 +158,123 @@
   /* Transitions */
   --transition: 150ms ease;
   --transition-smooth: all 0.2s ease;
+}
+
+/* ===========================================================================
+   TEMA CLARO
+   ---------------------------------------------------------------------------
+   Se declara UNA sola vez y se aplica desde dos lados: la preferencia del
+   sistema y el atributo explícito. Los valores viven en --light-* para no
+   repetir la paleta en los dos bloques.
+
+   Qué cambia y por qué:
+   · Superficies — invertidas, pero NO a blanco puro: #F8FAFC cansa menos la
+     vista que #FFF en pantallas grandes y deja lugar a que las tarjetas
+     (blancas) se despeguen del fondo.
+   · Textos — slate oscuro en vez de claro.
+   · Variantes SOFT — en oscuro son tintes CLAROS sobre fondo tintado; sobre
+     fondo claro serían ilegibles, así que pasan al tono OSCURO del mismo hue.
+     Sin esto, un badge "Pendiente" quedaría amarillo pastel sobre amarillo
+     pastel: el problema clásico de agregar modo claro tocando solo el fondo.
+   · Sombras — mucho menos opacas: en claro, una sombra al 50% se ve como una
+     mancha sucia en vez de como elevación.
+   =========================================================================== */
+
+:root {
+  --light-bg-deep:    #F1F5F9;  /* slate-100 — base de la página */
+  --light-bg-surface: #FFFFFF;  /* tarjetas, sidebar, topbar */
+  --light-bg-raised:  #F8FAFC;  /* slate-50 — superficie apenas elevada */
+  --light-bg-hover:   #E2E8F0;  /* slate-200 — hover de filas */
+  --light-bg-input:   #FFFFFF;
+
+  --light-border:      #CBD5E1; /* slate-300 */
+
+  --light-text-primary:   #0F172A; /* slate-900 */
+  --light-text-secondary: #475569; /* slate-600 */
+  --light-text-muted:     #64748B; /* slate-500 */
+
+  /* SOFT invertidas: el tono 700 del mismo hue, legible sobre el tinte al 20% */
+  --light-green-soft:  #047857;
+  --light-amber-soft:  #B45309;
+  --light-orange-soft: #C2410C;
+  --light-blue-soft:   #1D4ED8;
+  --light-violet-soft: #6D28D9;
+  --light-red-soft:    #B91C1C;
+  --light-gray-soft:   #4B5563;
+  --light-teal-soft:   #0F766E;
+  --light-indigo-soft: #4338CA;
+  --light-slate-soft:  #334155;
+
+  --light-shadow-sm:    0 1px 3px rgba(15,23,42,.08);
+  --light-shadow-md:    0 4px 12px rgba(15,23,42,.10);
+  --light-shadow-lg:    0 12px 32px rgba(15,23,42,.14);
+  --light-shadow-hover: 0 8px 22px rgba(15,23,42,.14);
+}
+
+/* Bloque compartido por la preferencia del sistema y la elección explícita. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+
+    --bg-deep:    var(--light-bg-deep);
+    --bg-surface: var(--light-bg-surface);
+    --bg-raised:  var(--light-bg-raised);
+    --bg-hover:   var(--light-bg-hover);
+    --bg-input:   var(--light-bg-input);
+
+    --border: var(--light-border);
+
+    --text-primary:   var(--light-text-primary);
+    --text-secondary: var(--light-text-secondary);
+    --text-muted:     var(--light-text-muted);
+
+    --clr-green-soft:  var(--light-green-soft);
+    --clr-amber-soft:  var(--light-amber-soft);
+    --clr-orange-soft: var(--light-orange-soft);
+    --clr-blue-soft:   var(--light-blue-soft);
+    --clr-violet-soft: var(--light-violet-soft);
+    --clr-red-soft:    var(--light-red-soft);
+    --clr-gray-soft:   var(--light-gray-soft);
+    --clr-teal-soft:   var(--light-teal-soft);
+    --clr-indigo-soft: var(--light-indigo-soft);
+    --clr-slate-soft:  var(--light-slate-soft);
+
+    --shadow-sm:    var(--light-shadow-sm);
+    --shadow-md:    var(--light-shadow-md);
+    --shadow-lg:    var(--light-shadow-lg);
+    --shadow-hover: var(--light-shadow-hover);
+  }
+}
+
+/* Elección explícita del usuario: gana sobre la preferencia del sistema. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-deep:    var(--light-bg-deep);
+  --bg-surface: var(--light-bg-surface);
+  --bg-raised:  var(--light-bg-raised);
+  --bg-hover:   var(--light-bg-hover);
+  --bg-input:   var(--light-bg-input);
+
+  --border: var(--light-border);
+
+  --text-primary:   var(--light-text-primary);
+  --text-secondary: var(--light-text-secondary);
+  --text-muted:     var(--light-text-muted);
+
+  --clr-green-soft:  var(--light-green-soft);
+  --clr-amber-soft:  var(--light-amber-soft);
+  --clr-orange-soft: var(--light-orange-soft);
+  --clr-blue-soft:   var(--light-blue-soft);
+  --clr-violet-soft: var(--light-violet-soft);
+  --clr-red-soft:    var(--light-red-soft);
+  --clr-gray-soft:   var(--light-gray-soft);
+  --clr-teal-soft:   var(--light-teal-soft);
+  --clr-indigo-soft: var(--light-indigo-soft);
+  --clr-slate-soft:  var(--light-slate-soft);
+
+  --shadow-sm:    var(--light-shadow-sm);
+  --shadow-md:    var(--light-shadow-md);
+  --shadow-lg:    var(--light-shadow-lg);
+  --shadow-hover: var(--light-shadow-hover);
 }

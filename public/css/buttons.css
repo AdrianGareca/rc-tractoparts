@@ -29,16 +29,16 @@
 .btn:active:not(:disabled) { transform: translateY(0); box-shadow: var(--shadow-sm); }
 .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
 
-.btn-primary  { background: var(--clr-blue);  color: #fff; border-color: var(--clr-blue);  }
-.btn-primary:hover:not(:disabled)  { background: #2563eb; box-shadow: var(--glow-primary); }
+.btn-primary  { background: var(--clr-blue);  color: var(--clr-white); border-color: var(--clr-blue);  }
+.btn-primary:hover:not(:disabled)  { background: var(--clr-blue-strong); box-shadow: var(--glow-primary); }
 
-.btn-success  { background: var(--clr-green); color: #fff; border-color: var(--clr-green); }
-.btn-success:hover:not(:disabled)  { background: #059669; box-shadow: var(--glow-success); }
+.btn-success  { background: var(--clr-green); color: var(--clr-white); border-color: var(--clr-green); }
+.btn-success:hover:not(:disabled)  { background: var(--clr-green-strong); box-shadow: var(--glow-success); }
 
-.btn-danger   { background: var(--clr-red);   color: #fff; border-color: var(--clr-red);   }
-.btn-danger:hover:not(:disabled)   { background: #dc2626; box-shadow: var(--glow-danger); }
+.btn-danger   { background: var(--clr-red);   color: var(--clr-white); border-color: var(--clr-red);   }
+.btn-danger:hover:not(:disabled)   { background: var(--clr-red-strong); box-shadow: var(--glow-danger); }
 
-.btn-warning  { background: var(--clr-amber); color: #000; border-color: var(--clr-amber); }
+.btn-warning  { background: var(--clr-amber); color: var(--clr-black); border-color: var(--clr-amber); }
 
 .btn-ghost    { background: transparent; color: var(--text-secondary); border-color: var(--border); }
 .btn-ghost:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
@@ -86,7 +86,7 @@
 /* "Hold" state button */
 .btn-hold {
   background: rgba(99,102,241,.15);
-  color: #a5b4fc;
+  color: var(--clr-indigo-soft);
   border-color: rgba(99,102,241,.4);
   font-weight: 600;
 }
