@@ -27,7 +27,7 @@ const express   = require('express');
 const multer    = require('multer');
 const path      = require('path');
 const fs        = require('fs');
-const crypto    = require('crypto');
+const { buildUploadFilename } = require('../utils/uploadFilename');
 const rateLimit = require('express-rate-limit');
 
 const LicitacionController         = require('../controllers/licitacionController');
@@ -64,11 +64,18 @@ const MAX_DOC_FILES = 10;
 
 const licDocStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, licDocsDir),
+  // El nombre se arma con buildUploadFilename y NO interpolando req.params.id:
+  // Express decodifica los params después del match de la ruta, así que un
+  // `..%2f..%2f` llegaba acá como '../../' y multer, que hace
+  // path.join(destino, nombre), terminaba escribiendo fuera del directorio.
+  // Multer corre ANTES del controller, o sea antes de validar el id y de
+  // verificar permisos. Ver src/utils/uploadFilename.js.
   filename: (req, file, cb) => {
-    const licitacionId = req.params.id || 'draft';
-    const ext    = path.extname(file.originalname).toLowerCase();
-    const unique = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-    cb(null, `LICDOC-${licitacionId}-${unique}${ext}`);
+    cb(null, buildUploadFilename({
+      prefix:       'LICDOC',
+      id:           req.params.id,
+      originalname: file.originalname,
+    }));
   },
 });
 

@@ -32,6 +32,7 @@
 const express    = require('express');
 const multer     = require('multer');
 const path       = require('path');
+const { buildUploadFilename } = require('../utils/uploadFilename');
 const fs         = require('fs');
 const rateLimit  = require('express-rate-limit');
 
@@ -86,15 +87,21 @@ const storage = multer.diskStorage({
     // Route Excel uploads to a dedicated audit directory
     cb(null, file.fieldname === 'excel' ? excelDir : uploadDir);
   },
+  // El nombre se arma con buildUploadFilename y NO interpolando req.params.id:
+  // Express decodifica los params después del match de la ruta, así que un
+  // `..%2f..%2f` llegaba acá como '../../' y multer, que hace
+  // path.join(destino, nombre), terminaba escribiendo fuera del directorio.
+  // Multer corre ANTES del controller, o sea antes de validar el id y de
+  // verificar permisos. Ver src/utils/uploadFilename.js.
   filename: (req, file, cb) => {
-    const quotationId = req.params.id || 'draft';
-    // Distinguish PDF vs Excel files in the stored filename
-    if (file.fieldname === 'excel') {
-      cb(null, `EXC-${quotationId}-${Date.now()}.xlsx`);
-    } else {
-      // Default: PDF
-      cb(null, `COT-${quotationId}-${Date.now()}.pdf`);
-    }
+    // La extensión se fija por campo (no se toma del archivo subido): el
+    // fileFilter ya restringe el tipo y así el nombre guardado es predecible.
+    const esExcel = file.fieldname === 'excel';
+    cb(null, buildUploadFilename({
+      prefix:       esExcel ? 'EXC' : 'COT',
+      id:           req.params.id,
+      originalname: esExcel ? 'a.xlsx' : 'a.pdf',
+    }));
   },
 });
 
