@@ -16,12 +16,58 @@
 const jwt = require('jsonwebtoken'); // JWT signing and verification
 const UserModel = require('../models/UserModel'); // Persistent token_version lookup
 
-// In-memory revoked token store — tokens are added here on logout for instant,
-// same-process rejection. This is only a fast path: durable revocation that
-// survives a server restart is enforced via the persistent usuarios.token_version
-// counter checked below. For multi-instance deployments, the token_version check
-// already works cluster-wide because it reads the shared database.
-const revokedTokens = new Set();
+// ---------------------------------------------------------------------------
+// Lista en memoria de tokens revocados (logout) — rechazo instantáneo dentro de
+// este proceso. Es sólo un atajo: la revocación durable, que sobrevive a un
+// reinicio, la da el contador usuarios.token_version que se verifica más abajo,
+// y ése ya funciona en cluster porque lee la base compartida.
+//
+// Es un Map token → milisegundo de expiración, no un Set, para poder purgar.
+// Antes era un Set que no se limpiaba nunca: crecía mientras el proceso viviera
+// y, peor, acumulaba tokens YA VENCIDOS que no servían de nada — jwt.verify los
+// rechaza por expiración antes de que se llegue a consultar esta lista.
+// ---------------------------------------------------------------------------
+const revokedTokens = new Map();
+
+// Al superar este tamaño se purgan los vencidos. Purgar en cada revocación
+// sería O(n) por logout; así el costo se amortiza.
+const PURGE_THRESHOLD = 200;
+
+/** Milisegundo de expiración de un JWT, o null si no se puede leer. */
+function tokenExpiryMs(token) {
+  try {
+    const decoded = jwt.decode(token);
+    return decoded?.exp ? decoded.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Descarta los tokens revocados que ya vencieron.
+ * Los que no tienen `exp` legible se conservan: no se puede saber si vencieron
+ * y descartarlos por las dudas reabriría una sesión que se cerró a propósito.
+ */
+function purgeExpiredTokens(now = Date.now()) {
+  for (const [token, expMs] of revokedTokens) {
+    if (expMs !== null && expMs <= now) revokedTokens.delete(token);
+  }
+}
+
+/** ¿Este token fue revocado por un logout? */
+function isTokenRevoked(token) {
+  return revokedTokens.has(token);
+}
+
+/** Cuántos tokens hay en la lista (para tests y diagnóstico). */
+function revokedTokenCount() {
+  return revokedTokens.size;
+}
+
+/** Vacía la lista. Sólo para los tests. */
+function __clearRevokedTokens() {
+  revokedTokens.clear();
+}
 
 // ---------------------------------------------------------------------------
 // authenticate
@@ -52,7 +98,7 @@ async function authenticate(req, res, next) {
   }
 
   // 3. Check if this token has been explicitly revoked (logout scenario)
-  if (revokedTokens.has(token)) {
+  if (isTokenRevoked(token)) {
     return res.status(401).json({
       success: false,
       message: 'Token has been revoked. Please log in again.',
@@ -136,11 +182,23 @@ async function authenticate(req, res, next) {
 
 // ---------------------------------------------------------------------------
 // revokeToken
-// Add a JWT to the in-memory revoked set.
-// Called by the logout controller after a successful logout request.
+// Agrega un JWT a la lista de revocados. Lo llama el controller de logout.
+// Guarda además su expiración para poder purgarlo después.
 // ---------------------------------------------------------------------------
 function revokeToken(token) {
-  revokedTokens.add(token); // Set.add is O(1)
+  if (!token) return;
+
+  revokedTokens.set(token, tokenExpiryMs(token));
+
+  // Purga amortizada: sólo al superar el umbral, no en cada logout.
+  if (revokedTokens.size > PURGE_THRESHOLD) purgeExpiredTokens();
 }
 
-module.exports = { authenticate, revokeToken };
+module.exports = {
+  authenticate,
+  revokeToken,
+  isTokenRevoked,
+  purgeExpiredTokens,
+  revokedTokenCount,
+  __clearRevokedTokens,
+};
