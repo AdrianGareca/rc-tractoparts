@@ -54,7 +54,10 @@ async function render(q) {
 
 const contarPaginas = (buf) => (buf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
 
-jest.setTimeout(30000);
+// 90 s, no 30. Cada PDF con el logo embebido tarda ~4 s, y varios tests generan
+// más de uno; corriendo dentro de la suite completa (máquina cargada) los 30 s
+// se quedaban cortos y producían un rojo que no señalaba ningún problema real.
+jest.setTimeout(90000);
 
 describe('generateQuotationPdf — documento válido', () => {
   test('escribe un PDF real con la cabecera %PDF-', async () => {

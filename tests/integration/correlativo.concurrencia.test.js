@@ -147,5 +147,15 @@ describe('CC-01: Correlativo uniqueness under concurrent access', () => {
       [testClienteId]
     );
     expect(countRows[0].total).toBe(N);
-  }, 120000);
+    // Timeout de 5 minutos, no de 2. Medido en esta máquina: el test tarda ~85 s
+    // aislado y ~131 s cuando corre dentro de la suite completa (la máquina está
+    // más cargada). Con el timeout anterior de 120 s fallaba de forma
+    // intermitente — un rojo que no indicaba ningún problema del código y que
+    // costaba tiempo diagnosticar cada vez.
+    //
+    // El piso lo pone la generación de PDF: cada una de las N creaciones produce
+    // un documento de ~1,4 MB de forma síncrona (~4 s), así que N=20 son ~80 s
+    // sólo de render. Bajar N reduciría el escenario de concurrencia que este
+    // test existe para cubrir, así que se ajusta el margen y no la cobertura.
+  }, 300000);
 });
