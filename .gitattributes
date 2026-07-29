@@ -1,0 +1,41 @@
+# =============================================================================
+# .gitattributes
+# Normalización de finales de línea.
+#
+# POR QUÉ EXISTE: los scripts de scripts/*.sh corren en el servidor Linux, pero
+# se editan desde Windows. Si alguno queda con finales CRLF, el shebang pasa a
+# ser "#!/usr/bin/env bash\r" y Linux busca un intérprete llamado "bash\r" que
+# no existe. El error que da es
+#
+#     bash: ./scripts/backup-db.sh: /usr/bin/env: bad interpreter: No such file or directory
+#
+# que no menciona los finales de línea por ningún lado y cuesta bastante
+# diagnosticar. Hoy funciona porque core.autocrlf=true normaliza al commitear,
+# pero eso depende de la configuración de cada máquina; esto lo fija en el repo.
+# =============================================================================
+
+# Por defecto: Git decide y normaliza a LF en el repositorio.
+* text=auto
+
+# Estos SIEMPRE con LF, tanto en el repo como al hacer checkout —
+# los interpreta Linux, no Windows.
+*.sh        text eol=lf
+*.sql       text eol=lf
+Dockerfile  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+
+# Código y configuración: LF (es lo que espera Node y lo que usa el servidor).
+*.js        text eol=lf
+*.json      text eol=lf
+*.css       text eol=lf
+*.html      text eol=lf
+*.md        text eol=lf
+
+# Binarios: Git no debe tocarlos nunca.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.pdf       binary
+*.xlsx      binary
+*.docx      binary
