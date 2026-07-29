@@ -16,7 +16,10 @@
 
 set -euo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-/opt/rc-tractoparts}"
+# Se autodetecta desde la ubicacion de ESTE script (…/proyecto/scripts/x.sh),
+# en vez de una ruta fija: el proyecto puede estar en /opt, en /root o donde sea,
+# y una ruta equivocada haria que el cron falle todas las noches en silencio.
+PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 DB_CONTAINER="${DB_CONTAINER:-rc_tractoparts_db}"
 APP_CONTAINER="${APP_CONTAINER:-rc_tractoparts_app}"
 

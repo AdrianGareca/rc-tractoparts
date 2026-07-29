@@ -22,7 +22,10 @@ set -euo pipefail
 
 # ── Configuración ────────────────────────────────────────────────────────────
 # Directorio del proyecto (donde vive docker-compose.yml y el .env).
-PROJECT_DIR="${PROJECT_DIR:-/opt/rc-tractoparts}"
+# Se autodetecta desde la ubicacion de ESTE script (…/proyecto/scripts/x.sh),
+# en vez de una ruta fija: el proyecto puede estar en /opt, en /root o donde sea,
+# y una ruta equivocada haria que el cron falle todas las noches en silencio.
+PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
 # Dónde se guardan los respaldos. Fuera del repo, para que un `git clean` no
 # se los lleve por delante.
@@ -83,6 +86,11 @@ TEMPORAL="${ARCHIVO}.parcial"
 #
 # MYSQL_PWD se pasa por entorno en vez de -p"$PASS": un password en la línea de
 # comandos queda visible en `ps aux` para cualquier usuario del sistema.
+#
+# gzip -6 (no -9) y con `nice`: el droplet tiene UN solo vCPU, así que la
+# compresión compite directamente con la aplicación. El nivel 9 tarda bastante
+# más y comprime apenas un 2-3% mejor sobre texto SQL — no compensa dejar la app
+# lenta mientras corre el respaldo.
 log "Iniciando respaldo de '$DB_NAME'…"
 
 if ! docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" "$DB_CONTAINER" \
@@ -93,7 +101,7 @@ if ! docker exec -e MYSQL_PWD="$DB_ROOT_PASSWORD" "$DB_CONTAINER" \
         --quick \
         --set-gtid-purged=OFF \
         --default-character-set=utf8mb4 \
-        "$DB_NAME" 2>>"$LOG_FILE" | gzip -9 > "$TEMPORAL"; then
+        "$DB_NAME" 2>>"$LOG_FILE" | nice -n 10 gzip -6 > "$TEMPORAL"; then
   rm -f "$TEMPORAL"
   fallar "mysqldump falló — se conserva el respaldo anterior"
 fi
