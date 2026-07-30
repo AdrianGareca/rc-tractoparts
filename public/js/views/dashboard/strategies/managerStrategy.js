@@ -23,6 +23,7 @@ import {
 import { UI }                  from '../modalUI.js';
 import { CommandInvoker, ChangeStatusCommand, ApproveQuotationCommand } from '../commands.js';
 import { DashboardStrategy } from './dashboardStrategy.js';
+import { tableSkeleton } from '../../../shared/skeleton.js';
 
 export class ManagerStrategy extends DashboardStrategy {
   #container;
@@ -88,7 +89,7 @@ export class ManagerStrategy extends DashboardStrategy {
   // ── Tab: Approval queue ────────────────────────────────────────────────────
 
   async _renderApprovals(panel) {
-    panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    panel.innerHTML = tableSkeleton({ columnas: 8, etiqueta: 'Cargando datos' });
     try {
       const data = await api.get('/api/cotizaciones/pendientes-aprobacion');
       const rows = data.data ?? [];
@@ -524,7 +525,7 @@ export class ManagerStrategy extends DashboardStrategy {
   // ── Tab: User Management (CRUD) ───────────────────────────────────────────
 
   async _renderUsers(panel) {
-    panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    panel.innerHTML = tableSkeleton({ columnas: 8, etiqueta: 'Cargando datos' });
     try {
       const data  = await api.get('/api/usuarios');
       const users = data.data ?? [];

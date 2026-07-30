@@ -470,6 +470,15 @@ CREATE TABLE bitacora_auditoria (
   resultado      ENUM('exito','fallo') NOT NULL DEFAULT 'exito',
   creado_en      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
+  -- Listado de la pestaña de auditoría: ORDER BY creado_en DESC, id DESC.
+  -- MySQL recorre este índice hacia atrás y evita ordenar (filesort). `id`
+  -- desempata dos eventos del mismo segundo para que la paginación sea estable.
+  KEY idx_bitacora_creado  (creado_en, id),
+  -- Evento de creación en la línea de tiempo de cotizaciones y licitaciones:
+  -- WHERE entidad = ? AND id_entidad = ? AND accion = ?. Sin esto era un
+  -- escaneo completo de la tabla para encontrar UNA fila, cada vez que alguien
+  -- abría un detalle.
+  KEY idx_bitacora_entidad (entidad, id_entidad, accion),
   CONSTRAINT fk_bitacora_usuario
     FOREIGN KEY (id_usuario) REFERENCES usuarios (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

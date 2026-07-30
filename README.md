@@ -221,6 +221,53 @@ stateDiagram-v2
 
 Mobile-first responsive layout transitions and the memory-efficient asynchronous PDF streaming download (chunked stream responses that avoid RAM saturation).
 
+#### 3.4.1 The weight of the logos inside every proforma
+
+PDFKit embeds PNGs **at their original pixel dimensions** — it does not downscale them to the size they are drawn at. The partner-brand strip draws each logo 30 pt tall (≈125 px at 300 DPI), but the files shipped at 4K screen resolution:
+
+| Asset | Before | After |
+|---|---|---|
+| `john_deere.png` | 3840×2160 — 897.5 KB | 320×180 — 22.0 KB |
+| `jcb.png` | 4096×4096 — 132.0 KB | 320×320 — 4.8 KB |
+| `rc_logo.png` | 900×477 — 247.8 KB | 640×339 — 90.5 KB |
+| **Total embedded** | **1360.8 KB** | **136.2 KB** |
+
+That payload went into **every** proforma, regardless of its content. Measured end to end with real PDFKit:
+
+| | Before | After | |
+|---|---|---|---|
+| PDF size | 1371.1 KB | 143.5 KB | **9.6× smaller** |
+| Generation time | 768 ms | 34 ms | **22× faster** |
+
+The second number matters as much as the first: the PDF **is regenerated on every state transition**, so every approval, send and confirmation was paying three quarters of a second just to re-compress logos.
+
+> **How:** `scripts/optimize-images.js` — a dependency-free PNG codec (Node already ships `zlib` and `crc32`). `sharp` was rejected: ~30 MB of native binary for a task that runs when someone adds a logo, i.e. almost never.
+>
+> `node scripts/optimize-images.js` reports without touching anything; `--write` applies.
+>
+> `tests/unit/imageOptimizer.test.js` proves the codec is exact (lossless round-trip, all five PNG filters, CRCs) and **guards the budget**: if someone drops in a camera-resolution logo, the test fails and says how to fix it.
+
+#### 3.4.2 Audit-log indexes
+
+`bitacora_auditoria` was created with `PRIMARY KEY (id)` and nothing else, so both queries that read it performed a **full table scan**:
+
+| Query | Where it runs | Index |
+|---|---|---|
+| `ORDER BY creado_en DESC, id DESC LIMIT 25` | Audit Logs tab | `idx_bitacora_creado (creado_en, id)` |
+| `WHERE entidad=? AND id_entidad=? AND accion=?` | timeline of **every** quotation and tender | `idx_bitacora_entidad (entidad, id_entidad, accion)` |
+
+The table is append-only and never purged: one row per login, per state change, per PDF. Scan cost grows linearly with usage, so the problem arrives on its own, gradually. Measured on the listing query:
+
+| Rows in table | Plan chosen by MySQL |
+|---|---|
+| 400 | no index — 400 rows read, `Using filesort` |
+| 5,000 | `idx_bitacora_creado` — **25 rows**, `Backward index scan` |
+
+At 400 rows MySQL is right to scan. That is precisely why the index goes in **before** it is needed: `ALTER TABLE` on an already-large table is the expensive part.
+
+> **Migration:** `sql/upgrade_2026_indices_bitacora.sql` (idempotent). `sql/init.sql` already ships them for fresh installs.
+> **Verification:** `tests/integration/indicesBitacora.test.js` runs `EXPLAIN` and asserts on `key` and `type` — it does not time anything, because timing assertions in tests are a recipe for flakiness.
+
 ```mermaid
 sequenceDiagram
     autonumber

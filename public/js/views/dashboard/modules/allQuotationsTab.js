@@ -21,6 +21,7 @@
 
 import api from '../../../services/apiClient.js';
 import { escHtml, badgeHtml, fmtDate, fmtAmount } from '../helpers.js';
+import { tableSkeleton } from '../../../shared/skeleton.js';
 
 // Must mirror sql/init.sql cotizaciones.estado ENUM EXACTLY (legacy 'Aceptada'
 // is intentionally omitted — it was superseded by 'Confirmada'). Any mismatch
@@ -70,7 +71,7 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
         <button class="btn btn-primary btn-sm" id="allq-apply" style="align-self:flex-end;">Aplicar Filtros</button>
         <button class="btn btn-ghost btn-sm"   id="allq-clear" style="align-self:flex-end;">Limpiar</button>
       </div>
-      <div id="allq-results"><div class="page-loading"><div class="spinner"></div></div></div>
+      <div id="allq-results">${tableSkeleton({ columnas: 8, etiqueta: 'Cargando cotizaciones' })}</div>
       <div class="card-footer" id="allq-pagination"></div>
     </div>`;
 
@@ -95,7 +96,7 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
   // ── 3. Fetch + render, reading the current filter state ─────────────────────
   async function load() {
     const results = $('#allq-results');
-    results.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    results.innerHTML = tableSkeleton({ columnas: 8, etiqueta: 'Cargando cotizaciones' });
 
     const params = new URLSearchParams({
       page:       String(state.page),

@@ -13,6 +13,7 @@
 import api, { showToast } from '../../../services/apiClient.js';
 import { escHtml }        from '../helpers.js';
 import { saveBlobAs }     from './timelineView.js';
+import { tableSkeleton } from '../../../shared/skeleton.js';
 
 // ---------------------------------------------------------------------------
 // Date helpers for the reports range filter.
@@ -320,7 +321,7 @@ export async function renderExecutiveMetrics(panel) {
         <button class="btn btn-ghost btn-sm" id="mym-pdf" style="align-self:flex-end;">📄 Generar PDF</button>
       </div>
     </div>
-    <div id="mym-data"><div class="page-loading"><div class="spinner"></div></div></div>
+    <div id="mym-data">${tableSkeleton({ columnas: 5, etiqueta: 'Cargando reporte' })}</div>
   `;
 
   const presetEl = panel.querySelector('#mym-preset');
@@ -357,7 +358,7 @@ async function loadExecutiveMetrics(panel, desde, hasta) {
   const dataEl = panel.querySelector('#mym-data');
   if (!dataEl) return;
 
-  dataEl.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+  dataEl.innerHTML = tableSkeleton({ columnas: 5, etiqueta: 'Cargando reporte' });
   try {
     const qs = desde && hasta
       ? `?fecha_desde=${encodeURIComponent(desde)}&fecha_hasta=${encodeURIComponent(hasta)}`
@@ -434,7 +435,7 @@ export async function renderReportes(panel) {
         <button class="btn btn-ghost btn-sm" id="rep-pdf" style="align-self:flex-end;">📄 Generar PDF</button>
       </div>
     </div>
-    <div id="reportes-data"><div class="page-loading"><div class="spinner"></div></div></div>
+    <div id="reportes-data">${tableSkeleton({ columnas: 5, etiqueta: 'Cargando reporte' })}</div>
   `;
 
   const presetEl = panel.querySelector('#rep-preset');
@@ -518,7 +519,7 @@ async function loadReportesData(panel, desde, hasta, ejecutivoId = '', moneda = 
     return;
   }
 
-  dataEl.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+  dataEl.innerHTML = tableSkeleton({ columnas: 5, etiqueta: 'Cargando reporte' });
   try {
     let qs = `?fecha_desde=${encodeURIComponent(desde)}&fecha_hasta=${encodeURIComponent(hasta)}`;
     if (ejecutivoId) qs += `&id_ejecutivo=${encodeURIComponent(ejecutivoId)}`;

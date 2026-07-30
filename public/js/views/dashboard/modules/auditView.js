@@ -14,6 +14,7 @@
 
 import api                      from '../../../services/apiClient.js';
 import { escHtml, fmtDateTime } from '../helpers.js';
+import { tableSkeleton } from '../../../shared/skeleton.js';
 
 // ---------------------------------------------------------------------------
 // Acción → { icon, label, badgeClass } — human-friendly presentation for each
@@ -226,7 +227,7 @@ export async function mountAuditLogTab(panel) {
         <button class="btn btn-primary btn-sm" id="audit-apply" style="align-self:flex-end;">Aplicar Filtros</button>
         <button class="btn btn-ghost btn-sm"   id="audit-clear" style="align-self:flex-end;">Limpiar</button>
       </div>
-      <div id="audit-results"><div class="page-loading"><div class="spinner"></div></div></div>
+      <div id="audit-results">${tableSkeleton({ columnas: 7, etiqueta: 'Cargando registros de auditoría' })}</div>
       <div class="card-footer" id="audit-pagination"></div>
     </div>`;
 
@@ -260,7 +261,7 @@ export async function mountAuditLogTab(panel) {
   // ── 3. Fetch + render, reading the current filter state ─────────────────────
   async function load() {
     const results = $('#audit-results');
-    results.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    results.innerHTML = tableSkeleton({ columnas: 7, etiqueta: 'Cargando registros de auditoría' });
 
     const params = new URLSearchParams({
       page:  String(state.page),

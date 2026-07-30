@@ -23,6 +23,7 @@ import { allowedTransitions }   from '../../../shared/quotationTransitions.js';
 import { buildProformaHTML }      from '../modules/proformaTemplate.js';
 import { DISCARD_QUOTATION_MSG }  from '../constants.js';
 import { DashboardStrategy }      from './dashboardStrategy.js';
+import { tableSkeleton } from '../../../shared/skeleton.js';
 
 export class ExecutiveStrategy extends DashboardStrategy {
   #container;
@@ -293,7 +294,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     this.#loadAbortCtrl = new AbortController();
     const { signal } = this.#loadAbortCtrl;
 
-    section.innerHTML = '<div class="page-loading"><div class="spinner"></div><span>Cargando…</span></div>';
+    section.innerHTML = tableSkeleton({ columnas: 6, etiqueta: 'Cargando cotizaciones' });
 
     const estado = document.getElementById('filter-estado')?.value ?? '';
     const q      = document.getElementById('filter-q')?.value.trim() ?? '';

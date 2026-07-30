@@ -32,6 +32,13 @@
   --bg-hover:   #2E3F58;   /* hover state for rows / items */
   --bg-input:   #0F172A;   /* input fields */
 
+  /* Esqueletos de carga. `base` es el bloque en reposo; `shine` es el brillo que
+     lo recorre. Van como tokens y no como literales porque el contraste que
+     funciona en oscuro (un blanco muy tenue) es invisible en claro, donde hace
+     falta casi blanco puro sobre el gris. */
+  --skeleton-base:  #2E3F58;
+  --skeleton-shine: rgba(255, 255, 255, .07);
+
   /* Borders */
   --border:      #334155;  /* slate-700 */
   --border-focus:#10B981;  /* emerald — focus ring */
@@ -187,6 +194,9 @@
   --light-bg-hover:   #E2E8F0;  /* slate-200 — hover de filas */
   --light-bg-input:   #FFFFFF;
 
+  --light-skeleton-base:  #E2E8F0;                      /* slate-200 */
+  --light-skeleton-shine: rgba(255, 255, 255, .75);     /* casi blanco: en claro un brillo tenue no se ve */
+
   --light-border:      #CBD5E1; /* slate-300 */
 
   --light-text-primary:   #0F172A; /* slate-900 */
@@ -222,6 +232,9 @@
     --bg-hover:   var(--light-bg-hover);
     --bg-input:   var(--light-bg-input);
 
+    --skeleton-base:  var(--light-skeleton-base);
+    --skeleton-shine: var(--light-skeleton-shine);
+
     --border: var(--light-border);
 
     --text-primary:   var(--light-text-primary);
@@ -255,6 +268,9 @@
   --bg-raised:  var(--light-bg-raised);
   --bg-hover:   var(--light-bg-hover);
   --bg-input:   var(--light-bg-input);
+
+  --skeleton-base:  var(--light-skeleton-base);
+  --skeleton-shine: var(--light-skeleton-shine);
 
   --border: var(--light-border);
 

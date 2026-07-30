@@ -326,3 +326,85 @@
     transition: background-color .25s ease, border-color .25s ease, color .25s ease;
   }
 }
+
+/* ===== 25. ESQUELETOS DE CARGA =====
+   Reemplazan al spinner en los paneles que listan datos. La idea no es
+   entretener durante la espera sino RESERVAR EL ESPACIO: cuando llega la
+   respuesta, la tabla ocupa el lugar que el esqueleto ya tenía y la página no
+   pega el salto que daba al desaparecer un spinner centrado.
+
+   El brillo se hace con una capa translúcida ENCIMA del color base
+   (background-image sobre background-color) en vez de un degradado opaco: así
+   el mismo gradiente sirve en tema claro y oscuro, y sólo cambian los dos
+   tokens. La animación se apaga sola con prefers-reduced-motion — la regla
+   global de base.css la reduce a .01ms, y un esqueleto quieto sigue
+   comunicando perfectamente que algo está cargando. */
+
+.skeleton {
+  padding: var(--space-2) 0;
+}
+
+.skeleton-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.skeleton-row {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+/* La fila de cabecera imita el <thead>: barras más cortas y algo más marcadas. */
+.skeleton-row-head {
+  border-bottom-width: 2px;
+}
+
+.skeleton-row-head .skeleton-bar {
+  width: 45%;
+  opacity: .75;
+}
+
+.skeleton-cell {
+  flex: 1;
+  min-width: 0;
+}
+
+.skeleton-bar {
+  display: block;
+  height: .8rem;
+  width: 70%;
+  border-radius: var(--radius-sm);
+  background-color: var(--skeleton-base);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--skeleton-shine) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-shine 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shine {
+  from { background-position: 150% 0; }
+  to   { background-position: -50% 0; }
+}
+
+/* Variante en tarjetas, para las grillas de indicadores del dashboard. */
+.skeleton-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+}
+
+.skeleton-card {
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}

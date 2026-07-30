@@ -28,6 +28,7 @@ import {
   CommandInvoker, ChangeStatusCommand, SetComentarioAdminCommand, HoldWithCommentCommand,
 } from '../commands.js';
 import { DashboardStrategy } from './dashboardStrategy.js';
+import { tableSkeleton } from '../../../shared/skeleton.js';
 
 export class AdminStrategy extends DashboardStrategy {
   #container;
@@ -92,7 +93,7 @@ export class AdminStrategy extends DashboardStrategy {
   // ── Tab: Review queue (read + hold + comment) ─────────────────────────────
 
   async _renderReviewQueue(panel) {
-    panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    panel.innerHTML = tableSkeleton({ columnas: 7, etiqueta: 'Cargando datos' });
     try {
       const data = await api.get('/api/cotizaciones/pendientes-aprobacion');
       const rows = data.data ?? [];
@@ -231,7 +232,7 @@ export class AdminStrategy extends DashboardStrategy {
   // ── Tab: User Management ─────────────────────────────────────────────────
   // Admin has full CRUD access per the hierarchy spec (same as Jefe).
   async _renderUsers(panel) {
-    panel.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    panel.innerHTML = tableSkeleton({ columnas: 7, etiqueta: 'Cargando datos' });
     try {
       const data  = await api.get('/api/usuarios');
       const users = data.data ?? [];

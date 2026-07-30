@@ -17,6 +17,7 @@
 import api, { showToast } from '../../../services/apiClient.js';
 import { escHtml }         from '../helpers.js';
 import { openClienteModal } from './clientModal.js';
+import { tableSkeleton } from '../../../shared/skeleton.js';
 
 // ---------------------------------------------------------------------------
 // mountClientsTab
@@ -43,7 +44,7 @@ export async function mountClientsTab(panel) {
         </div>
         <button class="btn btn-ghost btn-sm" id="clients-search-btn" style="align-self:flex-end;">Buscar</button>
       </div>
-      <div id="clients-results"><div class="page-loading"><div class="spinner"></div></div></div>
+      <div id="clients-results">${tableSkeleton({ columnas: 6, etiqueta: 'Cargando clientes' })}</div>
       <div class="card-footer" id="clients-pagination"></div>
     </div>`;
 
@@ -52,7 +53,7 @@ export async function mountClientsTab(panel) {
   // ── 2. Fetch + render, reading the current filter/page state ────────────
   async function load() {
     const results = $('#clients-results');
-    results.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    results.innerHTML = tableSkeleton({ columnas: 6, etiqueta: 'Cargando clientes' });
 
     const params = new URLSearchParams({ page: String(state.page), limit: String(state.limit) });
     if (state.q) params.set('q', state.q);

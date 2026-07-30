@@ -229,6 +229,53 @@ stateDiagram-v2
 
 Transiciones de diseño responsivo mobile-first y la descarga asíncrona y eficiente en memoria del PDF (respuestas por streaming en fragmentos que evitan la saturación de RAM).
 
+#### 3.4.1 El peso de los logos dentro de cada proforma
+
+PDFKit embebe los PNG **con sus píxeles originales**: no los reescala al tamaño en que se dibujan. La franja de marcas dibuja cada logo a 30 pt de alto (≈125 px a 300 DPI), pero los archivos venían a resolución de pantalla 4K:
+
+| Asset | Antes | Después |
+|---|---|---|
+| `john_deere.png` | 3840×2160 — 897,5 KB | 320×180 — 22,0 KB |
+| `jcb.png` | 4096×4096 — 132,0 KB | 320×320 — 4,8 KB |
+| `rc_logo.png` | 900×477 — 247,8 KB | 640×339 — 90,5 KB |
+| **Total embebido** | **1360,8 KB** | **136,2 KB** |
+
+Ese peso iba dentro de **cada** proforma, sin importar su contenido. Medido de punta a punta con PDFKit real:
+
+| | Antes | Después | |
+|---|---|---|---|
+| Peso del PDF | 1371,1 KB | 143,5 KB | **9,6× más liviano** |
+| Tiempo de generación | 768 ms | 34 ms | **22× más rápido** |
+
+Lo segundo importa tanto como lo primero: el PDF **se regenera en cada transición de estado**, así que cada aprobación, envío o confirmación pagaba 3/4 de segundo sólo en recomprimir logos.
+
+> **Cómo se hizo:** `scripts/optimize-images.js` — un codec PNG sin dependencias (Node ya trae `zlib` y `crc32`). Se descartó `sharp` porque son ~30 MB de binario nativo para una tarea que se corre cuando alguien agrega un logo, o sea casi nunca.
+>
+> `node scripts/optimize-images.js` informa sin tocar nada; `--write` aplica.
+>
+> `tests/unit/imageOptimizer.test.js` verifica que el codec sea exacto (ida y vuelta sin pérdida, los cinco filtros de PNG, CRCs) y **vigila el presupuesto**: si alguien sube un logo a resolución de cámara, el test falla y dice cómo corregirlo.
+
+#### 3.4.2 Índices de la bitácora de auditoría
+
+`bitacora_auditoria` se creó con `PRIMARY KEY (id)` y nada más, así que las dos consultas que la leen hacían un **escaneo completo de la tabla**:
+
+| Consulta | Dónde se usa | Índice |
+|---|---|---|
+| `ORDER BY creado_en DESC, id DESC LIMIT 25` | pestaña Registros de Auditoría | `idx_bitacora_creado (creado_en, id)` |
+| `WHERE entidad=? AND id_entidad=? AND accion=?` | línea de tiempo de **cada** cotización y licitación | `idx_bitacora_entidad (entidad, id_entidad, accion)` |
+
+La tabla es de sólo-agregar y nunca se purga: escribe una fila en cada login, cada cambio de estado y cada PDF. El costo del escaneo crece en línea recta con el uso, así que el problema aparece solo y de a poco. Medido sobre la consulta del listado:
+
+| Filas en la tabla | Plan elegido por MySQL |
+|---|---|
+| 400 | sin índice — 400 filas leídas, `Using filesort` |
+| 5.000 | `idx_bitacora_creado` — **25 filas**, `Backward index scan` |
+
+Con 400 filas MySQL tiene razón en escanear. Ese es justamente el motivo para poner el índice **antes** de que haga falta: el `ALTER TABLE` sobre una tabla ya grande es la parte cara.
+
+> **Migración:** `sql/upgrade_2026_indices_bitacora.sql` (idempotente). `sql/init.sql` ya los trae para instalaciones nuevas.
+> **Verificación:** `tests/integration/indicesBitacora.test.js` corre `EXPLAIN` y exige `key` y `type` — no cronometra, porque medir tiempos en un test es una receta para intermitencias.
+
 ```mermaid
 sequenceDiagram
     autonumber

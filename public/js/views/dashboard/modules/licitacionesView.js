@@ -30,6 +30,7 @@ import { openLicitacionModal } from './licitacionModal.js';
 // tests/unit/licitacionPermissions.test.js).
 import { ESTADOS } from './licitacion/permissions.js';
 import { openLicitacionDetail } from './licitacion/detailModal.js';
+import { tableSkeleton } from '../../../shared/skeleton.js';
 
 // ---------------------------------------------------------------------------
 // mountLicitacionesTab
@@ -61,7 +62,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
         </div>
         <button class="btn btn-ghost btn-sm" id="lic-search-btn">Filtrar</button>
       </div>
-      <div id="lic-results"><div class="page-loading"><div class="spinner"></div></div></div>
+      <div id="lic-results">${tableSkeleton({ columnas: 7, etiqueta: 'Cargando licitaciones' })}</div>
       <div class="card-footer" id="lic-pagination"></div>
     </div>`;
 
@@ -69,7 +70,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
 
   async function load() {
     const results = $('#lic-results');
-    results.innerHTML = '<div class="page-loading"><div class="spinner"></div></div>';
+    results.innerHTML = tableSkeleton({ columnas: 7, etiqueta: 'Cargando licitaciones' });
 
     const params = new URLSearchParams({ page: String(state.page), limit: String(state.limit) });
     if (state.q)      params.set('q', state.q);
