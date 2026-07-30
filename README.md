@@ -163,16 +163,19 @@ stateDiagram-v2
     end note
     EnviadaAlCliente --> Rechazada : client rejects
     Confirmada --> Archivada : archive
+    Confirmada --> Pendiente : 🔑 MANAGER'S KEY — reopen with a reason
     Rechazada --> Archivada : archive
     Archivada --> [*]
 
     note right of Confirmada
-        BUSINESS RULE — IMMUTABLE
-        • No further edits / status changes allowed
+        CLOSED SALE — frozen by default
+        • The Ejecutivo can neither edit nor move it
         • Transition recorded to cotizacion_historial_estados
         • Automated JSON audit entry written to
           bitacora_auditoria (who / when / payload)
         • Ejecutivo owner gets a persistent notification
+
+        ONLY EXCEPTION — the manager's key (§3.3.1)
     end note
 
     note left of Pendiente
@@ -186,6 +189,33 @@ stateDiagram-v2
     state "Aprobada internamente" as AprobadaInternamente
     state "Enviada al cliente" as EnviadaAlCliente
 ```
+
+#### 3.3.1 The manager's key — reopening a closed sale
+
+**The case.** A sale reaches `Confirmada` and only then does the client ask to correct a detail (a mistyped NIT, a quantity). Until now that was a dead end: from `Confirmada` the only move was to archive.
+
+**The analogy sales brought in.** When a supermarket sale is already closed but something went wrong, you call the manager, who carries a **key** that opens the register. The key exists, it is rarely used, and it leaves a record.
+
+**How it was translated into code.**
+
+| Decision | What was done | Why |
+|---|---|---|
+| Target state | `Confirmada` → **`Pendiente`** | It is the only state where the owning executive can edit again — exactly what is needed |
+| A new "Reopened" state? | **No** | It would complicate the state machine, the reports and the badges to represent something that lasts minutes |
+| Who holds the key | **Jefe** and **SysAdmin** only | Checked against the *base* role, not the effective matrix |
+| Is it delegated? | **No** | An Ejecutivo with `can_approve_quotations` runs the whole commercial lifecycle on the Jefe's matrix, but **cannot** reopen closed sales — same rule as reverting a rejection |
+| Reason | **Mandatory** (HTTP 422 without it) | The key opens the register, but the manager signs the slip |
+| Record | Dedicated `REABRIR_COTIZACION` action in `bitacora_auditoria` + `cotizacion_historial_estados` | Counting "how many sales were reopened this month" must be a filter, not a dig through hundreds of `CAMBIAR_ESTADO` rows |
+| Notice | `correccion` notification to the owning Ejecutivo, carrying the reason | Otherwise the quotation resurfaces as `Pendiente` with no explanation |
+| `fecha_confirmacion` | **Cleared** on reopen; re-stamped on re-confirmation | A draft still carrying "confirmed on 07/12" would let a close-date report count it as a live sale |
+| `Archivada` | Still **terminal for everyone** | The key opens the register; it does not resurrect what was already filed away |
+
+**Closing the sale again takes two steps, not one:** nobody jumps straight from `Pendiente` to `Confirmada` — not even the Jefe. It must pass through `Enviada al cliente`. That is deliberate: if the round trip were one click, `Confirmada` would stop meaning "the client accepted *these* terms", because the terms changed.
+
+> **Endpoint:** `PUT /api/cotizaciones/:id/estado` with `{ "nuevo_estado": "Pendiente", "observacion": "<reason>" }`.
+> No separate route was created: the surrounding flow (optimistic concurrency, history, PDF regeneration, notifications) is identical, and duplicating it would mean maintaining two copies that drift apart.
+>
+> Coverage: `tests/integration/reabrirConfirmada.test.js` and `tests/unit/quotationReopen.test.js`.
 
 ### 3.4 System Performance & UI Flow
 

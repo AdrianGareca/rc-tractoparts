@@ -202,6 +202,14 @@ export class ManagerStrategy extends DashboardStrategy {
             '🏆 ¡Cierre de venta registrado! La cotización ha sido confirmada.');
         });
 
+        body.querySelector('#btn-archivar')?.addEventListener('click', () => {
+          this._confirmArchivar(id);
+        });
+
+        body.querySelector('#btn-reabrir')?.addEventListener('click', () => {
+          this._confirmReabrir(id, q);
+        });
+
         // ── Revert rejection buttons (Jefe / SysAdmin only) ─────────────────────
         body.querySelector('#btn-revertir-pendiente')?.addEventListener('click', () => {
           this._confirmRevertRejection(id, 'Pendiente');
@@ -362,6 +370,12 @@ export class ManagerStrategy extends DashboardStrategy {
             '🏆 ¡Cierre de venta registrado! La cotización ha sido confirmada.');
         });
 
+        body.querySelector('#btn-archivar')?.addEventListener('click', () =>
+          this._confirmArchivar(id));
+
+        body.querySelector('#btn-reabrir')?.addEventListener('click', () =>
+          this._confirmReabrir(id, q));
+
         // Revert rejection buttons
         body.querySelector('#btn-revertir-pendiente')?.addEventListener('click', () => {
           this._confirmRevertRejection(id, 'Pendiente');
@@ -373,6 +387,85 @@ export class ManagerStrategy extends DashboardStrategy {
     } catch (err) {
       showToast(`No se pudo cargar la cotización: ${err.message}`, 'error');
     }
+  }
+
+  // ── Archivar ───────────────────────────────────────────────────────────────
+  // El backend siempre permitió archivar desde cualquier estado no terminal,
+  // pero la proforma nunca dibujó el botón. Se reusa el diálogo genérico: la
+  // nota es opcional porque archivar es la salida normal, no una excepción.
+
+  _confirmArchivar(id) {
+    this._confirmStateChange(
+      id,
+      'Archivada',
+      'Archivar Cotización',
+      'La cotización pasa a Archivada y sale de los listados activos. Es un estado final: no se puede volver atrás desde ahí.',
+      'Nota para el historial (opcional)',
+      false,
+      '📦 Cotización archivada.'
+    );
+  }
+
+  // ── La llave del jefe — reabrir una venta cerrada ──────────────────────────
+  // Caso de uso: la venta ya estaba confirmada y el cliente pidió corregir
+  // datos. La cotización vuelve a 'Pendiente', que es el único estado donde el
+  // ejecutivo dueño puede volver a editarla; después se re-confirma.
+  //
+  // No se reusa _confirmStateChange aunque la mecánica sea la misma: este
+  // diálogo tiene que verse distinto. Es la diferencia entre un paso del flujo
+  // y una excepción que queda registrada con nombre y apellido.
+
+  _confirmReabrir(id, q) {
+    const referencia = q?.numero_correlativo ? `#${q.numero_correlativo}` : `#${id}`;
+
+    UI.openModal('🔑 Llave del Jefe — Reabrir Venta Cerrada', (body) => {
+      body.innerHTML = `
+        <div class="llave-jefe" style="margin-top:0;padding:1rem;border-radius:6px;">
+          <strong style="color:var(--clr-amber-soft);">⚠️ Acción excepcional</strong>
+          <p class="text-sm" style="color:var(--text-secondary);margin:.4rem 0 0;">
+            La cotización <strong>${escHtml(referencia)}</strong> es una
+            <strong>venta cerrada</strong>. Al reabrirla vuelve a
+            <strong>Pendiente</strong> y el ejecutivo podrá editarla otra vez.
+            Corregido el dato, se vuelve a confirmar.
+          </p>
+          <p class="text-sm" style="color:var(--text-secondary);margin:.5rem 0 0;">
+            Queda registrado quién la reabrió, cuándo y por qué — en el historial
+            de la cotización y en la bitácora de auditoría.
+          </p>
+        </div>
+        <div class="form-group" style="margin-top:1rem;">
+          <label class="form-label" for="reab-motivo">Motivo de la reapertura *</label>
+          <textarea class="form-control" id="reab-motivo" rows="3"
+                    placeholder="Ej: El cliente pidió corregir el NIT y la cantidad del ítem 2."></textarea>
+          <span class="field-error" id="reab-err"></span>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+          <button class="btn btn-ghost" id="reab-cancel">Cancelar</button>
+          <button class="btn btn-sm llave-jefe-btn" id="reab-confirm">
+            🔓 Reabrir para corrección
+          </button>
+        </div>`;
+
+      body.querySelector('#reab-cancel')?.addEventListener('click', UI.closeModal);
+      body.querySelector('#reab-confirm')?.addEventListener('click', () => {
+        const motivo = body.querySelector('#reab-motivo')?.value.trim() ?? '';
+        const errEl  = body.querySelector('#reab-err');
+
+        // El servidor también lo exige (422); esto sólo evita el viaje de ida y
+        // vuelta y da el mensaje en el campo, no en un toast.
+        if (!motivo) { errEl.textContent = 'El motivo es obligatorio para reabrir una venta cerrada.'; return; }
+        errEl.textContent = '';
+
+        CommandInvoker.run(
+          new ChangeStatusCommand(id, 'Pendiente', `[REAPERTURA] ${motivo}`),
+          {
+            btn:        body.querySelector('#reab-confirm'),
+            successMsg: '🔓 Venta reabierta. La cotización volvió a Pendiente y el ejecutivo fue notificado.',
+            onSuccess:  () => { UI.closeModal(); this.refresh(); },
+          }
+        );
+      });
+    });
   }
 
   // ── Confirm revert rejection — Jefe / SysAdmin exclusive ────────────────────────

@@ -95,8 +95,14 @@ const ROLE_TRANSITIONS = {
     // Rechazada → can be reverted to Pendiente OR En revision by high-privilege roles
     // (HU-Revertir: allows re-injecting into the approval queue after sudden business changes)
     Rechazada:               ['Pendiente', 'En revision', 'Aprobada internamente', 'Archivada'],
-    Confirmada:              ['Archivada'],
-    Aceptada:                ['Archivada'],                            // LEGACY alias of 'Confirmada'
+    // LLAVE DEL JEFE — 'Pendiente' reabre una venta ya cerrada. Es la excepción
+    // para el caso en que el cliente pide corregir datos después de confirmar.
+    // No se inventó un estado nuevo: 'Pendiente' es el único donde el ejecutivo
+    // dueño puede volver a editar, que es exactamente lo que hace falta.
+    // El controller exige un motivo escrito y lo registra como REABRIR_COTIZACION
+    // — ver REOPEN_SOURCE_STATES más abajo.
+    Confirmada:              ['Archivada', 'Pendiente'],
+    Aceptada:                ['Archivada', 'Pendiente'],               // LEGACY alias of 'Confirmada'
     Archivada:               [],
   },
 
@@ -115,6 +121,52 @@ const ROLE_TRANSITIONS = {
     Archivada:               [],    // Terminal — even SysAdmin cannot un-archive
   },
 };
+
+// ---------------------------------------------------------------------------
+// LA LLAVE DEL JEFE — reapertura de una venta cerrada
+//
+// Analogía del área comercial: cuando en un supermercado ya se cerró la venta
+// pero hubo un error, se llama al jefe, que tiene una llave para abrir la caja.
+// La llave existe, pero se usa poco y deja rastro.
+//
+// Traducido al sistema: una cotización 'Confirmada' (venta cerrada) puede
+// volver a 'Pendiente' — el único estado donde el ejecutivo dueño la puede
+// editar de nuevo. NO se agregó un estado "Reabierta": complicaría la máquina de
+// estados, los reportes y los badges para representar una situación que dura
+// minutos (se corrige el dato y se vuelve a confirmar).
+//
+// Quién tiene la llave: SOLO 'Jefe' y 'SysAdmin' — se verifica contra el rol
+// BASE del usuario, no contra la matriz efectiva. Esto importa porque un
+// Ejecutivo con can_approve_quotations opera con la matriz del Jefe: sin este
+// recorte, agregarle la llave al Jefe se la habría dado también a cada
+// ejecutivo delegado. Reabrir una venta cerrada no se delega, igual que
+// revertir un rechazo.
+//
+// Qué exige: un motivo escrito (el controller responde 422 sin él) que queda
+// en cotizacion_historial_estados y en bitacora_auditoria bajo la acción
+// dedicada REABRIR_COTIZACION — no mezclada con los CAMBIAR_ESTADO comunes,
+// para que buscar "cuántas ventas se reabrieron este mes" sea una consulta y
+// no una excavación.
+//
+// 'Archivada' queda afuera a propósito: sigue siendo terminal para todos. La
+// llave abre la caja; no resucita lo que ya se guardó en el archivo.
+// ---------------------------------------------------------------------------
+const REOPEN_SOURCE_STATES = ['Confirmada', 'Aceptada'];   // 'Aceptada' = alias legado
+const REOPEN_TARGET_STATE  = 'Pendiente';
+const REOPEN_ROLES         = ['Jefe', 'SysAdmin'];
+
+/**
+ * ¿Esta transición es una reapertura de venta cerrada?
+ * Se usa en tres lugares (guard de permisos, exigencia del motivo y elección de
+ * la acción de auditoría), así que vive acá y no duplicada en cada uno.
+ *
+ * @param   {string} estadoActual
+ * @param   {string} nuevoEstado
+ * @returns {boolean}
+ */
+function isReopening(estadoActual, nuevoEstado) {
+  return REOPEN_SOURCE_STATES.includes(estadoActual) && nuevoEstado === REOPEN_TARGET_STATE;
+}
 
 // ---------------------------------------------------------------------------
 // APPROVAL_SOURCE_STATES — the only quotation states from which an approval
@@ -184,6 +236,10 @@ const BASE_JOINS = `
 module.exports = {
   VALID_STATES,
   ROLE_TRANSITIONS,
+  REOPEN_SOURCE_STATES,
+  REOPEN_TARGET_STATE,
+  REOPEN_ROLES,
+  isReopening,
   APPROVAL_SOURCE_STATES,
   REVIEW_REQUIRED_TARGET_STATES,
   STATE_TRANSITIONS,

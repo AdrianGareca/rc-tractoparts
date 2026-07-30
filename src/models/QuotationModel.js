@@ -60,6 +60,13 @@ const QuotationModel = {
   STATE_TRANSITIONS:            constants.STATE_TRANSITIONS,
   ROLE_TRANSITIONS:             constants.ROLE_TRANSITIONS,
   APPROVAL_SOURCE_STATES:       constants.APPROVAL_SOURCE_STATES,
+
+  // ── Llave del jefe (reapertura de una venta cerrada) ─────────────────────
+  REOPEN_SOURCE_STATES:         constants.REOPEN_SOURCE_STATES,
+  REOPEN_TARGET_STATE:          constants.REOPEN_TARGET_STATE,
+  REOPEN_ROLES:                 constants.REOPEN_ROLES,
+  isReopening:                  constants.isReopening,
+
   REVIEW_REQUIRED_TARGET_STATES: constants.REVIEW_REQUIRED_TARGET_STATES,
   SORTABLE_COLUMNS:             constants.SORTABLE_COLUMNS,
 };

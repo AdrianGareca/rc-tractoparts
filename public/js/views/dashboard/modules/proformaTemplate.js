@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { badgeHtml, fmtDate, escHtml } from '../helpers.js';
+import { REOPEN_SOURCE_STATES } from '../../../shared/quotationTransitions.js';
 
 //   @param {Object}  q         — full quotation data (from findById, includes detalles[])
 //   @param {number}  id        — quotation ID (for PDF link)
@@ -77,6 +78,20 @@ export function buildProformaHTML(q, id, viewMode) {
   // closed commercial decision and stays with the Jefe.
   const canRevertir = jefeMode && q.estado === 'Rechazada';
 
+  // Archivar — la capacidad estaba en la matriz del backend desde siempre
+  // (todos los roles pueden archivar desde cualquier estado no terminal) pero
+  // NINGUNA condición de este bloque dibujaba el botón. El efecto visible era
+  // que con la cotización en 'Confirmada' las siete condiciones anteriores daban
+  // false y el panel del Jefe se renderizaba vacío: se abría la proforma y no
+  // había una sola acción disponible.
+  const canArchivar = operative && q.estado !== 'Archivada';
+
+  // La llave del jefe — reabrir una venta ya cerrada.
+  // Sólo Jefe/SysAdmin: el backend rechaza la transición para un ejecutivo
+  // delegado aunque opere con la matriz del Jefe, así que ofrecerle el botón
+  // sería ofrecerle un 403. Mismo criterio que canRevertir.
+  const canReabrir = jefeMode && REOPEN_SOURCE_STATES.includes(q.estado);
+
   const jefeButtons = operative ? `
     <div class="approval-actions">
       <h4 class="approval-actions-title">${jefeMode ? 'Decisión del Jefe' : '🔑 Acciones Operativas — Delegación de Funciones'}</h4>
@@ -100,8 +115,24 @@ export function buildProformaHTML(q, id, viewMode) {
         ${canRechazar ? `<button class="btn btn-danger btn-sm" id="btn-rechazar">
           ❌ Rechazar
         </button>` : ''}
+        ${canArchivar ? `<button class="btn btn-ghost btn-sm" id="btn-archivar">
+          📦 Archivar
+        </button>` : ''}
       </div>
     </div>
+    ${canReabrir ? `
+    <div class="approval-actions llave-jefe">
+      <h4 class="approval-actions-title llave-jefe-title">🔑 Llave del Jefe</h4>
+      <p class="text-sm llave-jefe-text">
+        Esta cotización es una <strong>venta cerrada</strong>. Reabrirla la devuelve a
+        <strong>Pendiente</strong> para que el ejecutivo pueda corregirla, y luego se vuelve
+        a confirmar. Es una acción excepcional: exige un motivo y queda
+        <strong>registrada</strong> con tu nombre en el historial y en la bitácora de auditoría.
+      </p>
+      <button class="btn btn-sm llave-jefe-btn" id="btn-reabrir">
+        🔓 Reabrir para corrección
+      </button>
+    </div>` : ''}
     ${canRevertir ? `
     <div class="approval-actions" style="margin-top:1rem;border-top:2px solid #F59E0B;padding-top:1rem;">
       <h4 class="approval-actions-title" style="color:#B45309;">🔄 Revertir Rechazo</h4>

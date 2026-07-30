@@ -95,3 +95,41 @@
   background: rgba(99,102,241,.25);
   transform: translateY(-1px);
 }
+
+/* =============================================================================
+   La llave del jefe — reapertura de una venta cerrada.
+
+   Va SEPARADO de la grilla de acciones a propósito. Es una excepción, no un
+   paso más del flujo: si fuera un botón cualquiera al lado de "Archivar", con
+   el tiempo se usaría como uno cualquiera. El borde ámbar, el título propio y
+   el texto que avisa que queda registrado son parte de la función, no adorno.
+   ========================================================================== */
+.llave-jefe {
+  margin-top: 1rem;
+  border: 1px solid var(--clr-amber);
+  border-left-width: 4px;
+  background: rgba(245,158,11,.07);
+}
+
+.llave-jefe-title {
+  color: var(--clr-amber-soft);
+  margin-bottom: .5rem;
+}
+
+.llave-jefe-text {
+  color: var(--text-secondary);
+  margin-bottom: .9rem;
+  line-height: 1.5;
+}
+
+.llave-jefe-btn {
+  background: var(--clr-amber);
+  color: #1a1207;              /* contraste sobre ámbar; no es un token de tema */
+  border: 1px solid var(--clr-amber);
+  font-weight: 700;
+}
+
+.llave-jefe-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}

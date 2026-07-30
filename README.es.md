@@ -171,16 +171,19 @@ stateDiagram-v2
     end note
     EnviadaAlCliente --> Rechazada : cliente rechaza
     Confirmada --> Archivada : archivar
+    Confirmada --> Pendiente : 🔑 LLAVE DEL JEFE — reapertura con motivo
     Rechazada --> Archivada : archivar
     Archivada --> [*]
 
     note right of Confirmada
-        REGLA DE NEGOCIO — INMUTABLE
-        • No se permiten más ediciones / cambios de estado
+        VENTA CERRADA — congelada por defecto
+        • El Ejecutivo no puede editarla ni moverla
         • La transición se registra en cotizacion_historial_estados
         • Se escribe una entrada de auditoría JSON automática
           en bitacora_auditoria (quién / cuándo / payload)
         • El Ejecutivo propietario recibe una notificación persistente
+
+        ÚNICA EXCEPCIÓN — la llave del jefe (§3.3.1)
     end note
 
     note left of Pendiente
@@ -194,6 +197,33 @@ stateDiagram-v2
     state "Aprobada internamente" as AprobadaInternamente
     state "Enviada al cliente" as EnviadaAlCliente
 ```
+
+#### 3.3.1 La llave del jefe — reapertura de una venta cerrada
+
+**El caso.** Una venta queda `Confirmada` y después el cliente pide corregir un dato (un NIT mal tipeado, una cantidad). Hasta ahora eso era un callejón sin salida: desde `Confirmada` lo único posible era archivar.
+
+**La analogía que trajo el área comercial.** Cuando en un supermercado ya se cerró la venta pero hubo un error, se llama al jefe, que tiene una **llave** para abrir la caja. La llave existe, se usa poco, y deja constancia.
+
+**Cómo se tradujo al sistema.**
+
+| Decisión | Qué se hizo | Por qué |
+|---|---|---|
+| Estado destino | `Confirmada` → **`Pendiente`** | Es el único estado donde el ejecutivo dueño puede volver a editar — que es exactamente lo que hace falta |
+| ¿Estado nuevo "Reabierta"? | **No** | Complicaría la máquina de estados, los reportes y los badges para representar algo que dura minutos |
+| Quién tiene la llave | **Jefe** y **SysAdmin** solamente | Se verifica contra el rol *base*, no contra la matriz efectiva |
+| ¿Se delega? | **No** | Un Ejecutivo con `can_approve_quotations` opera con la matriz del Jefe para todo el ciclo comercial, pero **no** puede reabrir ventas cerradas — mismo criterio que revertir un rechazo |
+| Motivo | **Obligatorio** (HTTP 422 sin él) | La llave abre la caja, pero el jefe firma el papel |
+| Registro | Acción dedicada `REABRIR_COTIZACION` en `bitacora_auditoria` + `cotizacion_historial_estados` | Contar "cuántas ventas se reabrieron este mes" tiene que ser un filtro, no una excavación entre cientos de `CAMBIAR_ESTADO` |
+| Aviso | Notificación `correccion` al Ejecutivo dueño, con el motivo | Si no, la cotización reaparece como `Pendiente` sin explicación |
+| `fecha_confirmacion` | Se **limpia** al reabrir; se re-estampa al volver a confirmar | Una cotización en borrador que arrastra un "confirmada el 12/07" haría que un reporte por fecha de cierre la contara como venta vigente |
+| `Archivada` | Sigue siendo **terminal para todos** | La llave abre la caja; no resucita lo que ya se guardó en el archivo |
+
+**Volver a cerrar la venta son dos pasos, no uno:** desde `Pendiente` nadie salta directo a `Confirmada` — ni el Jefe. Hay que pasar por `Enviada al cliente`. Es deliberado: si el ida y vuelta fuera de un clic, `Confirmada` dejaría de significar "el cliente aceptó *estos* términos", porque los términos cambiaron.
+
+> **Endpoint:** `PUT /api/cotizaciones/:id/estado` con `{ "nuevo_estado": "Pendiente", "observacion": "<motivo>" }`.
+> No se creó una ruta aparte: el flujo (concurrencia optimista, historial, regeneración de PDF, notificaciones) es el mismo, y duplicarlo habría significado mantener dos copias que se desincronizan.
+>
+> Cobertura: `tests/integration/reabrirConfirmada.test.js` y `tests/unit/quotationReopen.test.js`.
 
 ### 3.4 Rendimiento del Sistema y Flujo de UI
 

@@ -19,6 +19,7 @@ import { mountClientsTab }        from '../modules/clientsView.js';
 import { mountLicitacionesTab }   from '../modules/licitacionesView.js';
 import { UI }                     from '../modalUI.js';
 import { CommandInvoker, ChangeStatusCommand } from '../commands.js';
+import { allowedTransitions }   from '../../../shared/quotationTransitions.js';
 import { buildProformaHTML }      from '../modules/proformaTemplate.js';
 import { DISCARD_QUOTATION_MSG }  from '../constants.js';
 import { DashboardStrategy }      from './dashboardStrategy.js';
@@ -485,6 +486,16 @@ export class ExecutiveStrategy extends DashboardStrategy {
               'Observaciones de cierre (opcional)',
               false,
               '🏆 ¡Cierre de venta registrado! La cotización ha sido confirmada.'));
+
+          // Archivar SÍ entra en la delegación (a diferencia de reabrir una
+          // venta cerrada, que la plantilla ni siquiera dibuja en este modo).
+          body.querySelector('#btn-archivar')?.addEventListener('click', () =>
+            this._confirmDelegatedStateChange(id, 'Archivada',
+              'Archivar Cotización',
+              'La cotización pasa a Archivada y sale de los listados activos. Es un estado final: no se puede volver atrás desde ahí.',
+              'Nota para el historial (opcional)',
+              false,
+              '📦 Cotización archivada.'));
         }
 
         wirePdfButton(body, id, q.numero_correlativo, q.cliente_nombre);
@@ -591,15 +602,39 @@ export class ExecutiveStrategy extends DashboardStrategy {
   }
 
   _changeStatus(id, currentStatus, triggerBtn) {
-    // Mirrors QuotationModel.VALID_STATES exactly. 'Borrador' is a display-only
-    // badge, NOT a valid ENUM/transition target — sending it returns 422.
-    const VALID_STATES = [
-      'Pendiente','En revision','En espera',
-      'Aprobada internamente','Enviada al cliente',
-      'Confirmada','Rechazada','Archivada',
-    ];
+    // El selector ofrecía los 8 estados sin filtrar. Elegir uno que el rol no
+    // podía hacer devolvía un 403 del servidor con un mensaje técnico: el
+    // usuario recibía un error por una opción que la propia pantalla le había
+    // ofrecido. Ahora sólo se listan las transiciones que el backend va a
+    // aceptar — la lista sale del módulo compartido, que un test mantiene
+    // sincronizado con la máquina de estados del servidor.
+    //
+    // Esto NO reemplaza la autorización: el servidor revalida siempre.
+    const opciones = allowedTransitions(
+      AuthSession.getRole(),
+      currentStatus,
+      AuthSession.canApproveQuotations()
+    );
 
     UI.openModal('Cambiar Estado', (body) => {
+      // Sin transiciones posibles, un <select> vacío no explica nada. Se dice
+      // por qué y se ofrece cerrar, en vez de dejar un formulario inerte.
+      if (opciones.length === 0) {
+        body.innerHTML = `
+          <p style="color:var(--text-secondary);margin-bottom:1rem;">
+            Estado actual: ${badgeHtml(currentStatus)}
+          </p>
+          <p class="text-sm" style="color:var(--text-secondary);">
+            Desde este estado no hay cambios disponibles para tu rol.
+            Si hace falta moverla, pedíselo al Jefe.
+          </p>
+          <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
+            <button class="btn btn-ghost" id="cancel-status">Cerrar</button>
+          </div>`;
+        body.querySelector('#cancel-status')?.addEventListener('click', UI.closeModal);
+        return;
+      }
+
       body.innerHTML = `
         <p style="color:var(--text-secondary);margin-bottom:1rem;">
           Estado actual: ${badgeHtml(currentStatus)}
@@ -607,7 +642,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
         <div class="form-group">
           <label class="form-label" for="new-status">Nuevo Estado</label>
           <select class="form-control" id="new-status">
-            ${VALID_STATES.map(s => `<option value="${s}" ${s === currentStatus ? 'disabled' : ''}>${s}</option>`).join('')}
+            ${opciones.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">

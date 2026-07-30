@@ -9,7 +9,13 @@
 'use strict';
 
 const { pool } = require('../../config/db');
-const { ROLE_TRANSITIONS, APPROVAL_SOURCE_STATES } = require('./constants');
+const {
+  ROLE_TRANSITIONS,
+  APPROVAL_SOURCE_STATES,
+  REOPEN_TARGET_STATE,
+  REOPEN_ROLES,
+  isReopening,
+} = require('./constants');
 
 // ---------------------------------------------------------------------------
 // validateTransitionByRole (Section 3.7.4 — Permission Matrix)
@@ -48,6 +54,26 @@ function validateTransitionByRole(estadoActual, nuevoEstado, rol, canApproveQuot
   }
 
   const allowedFromState = roleMatrix[estadoActual] || [];
+
+  // ── La llave del jefe — recorte sobre la matriz efectiva ──────────────────
+  // Reabrir una venta cerrada ('Confirmada' → 'Pendiente') es potestad del Jefe
+  // y del SysAdmin, y se decide por el rol BASE del usuario.
+  //
+  // El detalle que hace falta este bloque: `effectiveRol` convierte a un
+  // Ejecutivo delegado en 'Jefe' para todo el ciclo comercial. Sin este recorte,
+  // sumarle la llave a la matriz del Jefe se la habría dado en silencio a cada
+  // ejecutivo con can_approve_quotations — que no es lo que pidió el negocio.
+  // Es lo mismo que ya se decidió para revertir un rechazo, sólo que acá se
+  // aplica en el servidor y no únicamente en la pantalla.
+  if (isReopening(estadoActual, nuevoEstado) && !REOPEN_ROLES.includes(rol)) {
+    return {
+      valid:  false,
+      reason: `Reabrir una cotización en estado '${estadoActual}' está reservado a los roles ` +
+              `${REOPEN_ROLES.join(' y ')}. El rol '${rol}' no puede hacerlo` +
+              `${canApproveQuotations ? ', ni siquiera con la delegación de aprobación activa' : ''}.`,
+      allowedTransitions: allowedFromState.filter((s) => s !== REOPEN_TARGET_STATE),
+    };
+  }
 
   // ── Dynamic Function Delegation (Delegación de Funciones) ──────────────────
   // A transition to 'Aprobada internamente' is authorized when the caller is a
@@ -197,6 +223,16 @@ async function updateStatus(id, nuevoEstado, estadoActual, rol, comentarioAdmin 
   // → 'Archivada'), so this is written exactly once and never overwritten.
   if (nuevoEstado === 'Confirmada' || nuevoEstado === 'Aceptada') {
     setClauses.push('fecha_confirmacion = NOW()');
+  }
+
+  // Reapertura (llave del jefe): la venta deja de estar cerrada, así que la
+  // fecha de cierre se limpia. Si quedara puesta, la cotización volvería a ser
+  // un borrador 'Pendiente' pero seguiría cargando un "confirmada el 12/07" que
+  // el PDF y cualquier reporte por fecha de cierre podrían leer como una venta
+  // vigente. Cuando se vuelva a confirmar, el bloque de arriba la re-estampa
+  // con la fecha real del nuevo cierre.
+  if (isReopening(estadoActual, nuevoEstado)) {
+    setClauses.push('fecha_confirmacion = NULL');
   }
 
   // Approval traceability: when the target is 'Aprobada internamente' and the

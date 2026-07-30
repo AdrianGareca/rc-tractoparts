@@ -110,6 +110,26 @@ const QuotationStateController = {
         });
       }
 
+      // ── La llave del jefe — motivo obligatorio ─────────────────────────────
+      // Se evalúa DESPUÉS del guard de rol: a quien no tiene la llave se le
+      // responde 403 (no puede), no 422 (le falta un campo). Pedirle el motivo
+      // a alguien que igual va a ser rechazado sería mentirle sobre por qué
+      // falló.
+      //
+      // La analogía manda acá: la llave abre la caja, pero el jefe firma el
+      // papel. Sin motivo escrito, dentro de tres meses nadie va a poder
+      // explicar por qué una venta cerrada volvió a borrador.
+      const esReapertura = QuotationModel.isReopening(estadoActual, nuevo_estado);
+      const motivo       = observacion != null ? String(observacion).trim() : '';
+
+      if (esReapertura && !motivo) {
+        return res.status(422).json({
+          success: false,
+          message: 'Reabrir una venta ya confirmada exige un motivo. Indicá en "observacion" ' +
+                   'por qué se reabre (queda registrado en el historial y en la bitácora).',
+        });
+      }
+
       // ── Pre-submission checklist for ANY move into the approval pipeline ───
       // The quotation must be complete (≥1 line item, monto_total, fecha_validez)
       // before it can enter review OR be approved/sent/confirmed. Enforced on
@@ -168,16 +188,20 @@ const QuotationStateController = {
           ip_origen:       clientIp,
         });
 
+        // Una reapertura se registra con su propia acción: buscar "qué ventas se
+        // reabrieron" tiene que ser un filtro, no una excavación entre cientos
+        // de CAMBIAR_ESTADO rutinarios.
         await logEvent({
           id_usuario:     req.user.id,
           nombre_usuario: req.user.nombre_usuario,
-          accion:         AuditActions.CAMBIAR_ESTADO,
+          accion:         esReapertura ? AuditActions.REABRIR_COTIZACION : AuditActions.CAMBIAR_ESTADO,
           entidad:        'cotizaciones',
           id_entidad:     id,
           detalle: {
             estado_anterior: estadoActual,
             nuevo_estado,
             observacion:     observacion || null,
+            ...(esReapertura ? { motivo_reapertura: motivo } : {}),
           },
           ip_origen:  clientIp,
           resultado:  'exito',
@@ -231,6 +255,26 @@ const QuotationStateController = {
           });
         } catch (notifErr) {
           console.warn('[QuotationStateController.updateStatus] Notification insert failed (non-fatal):', notifErr.message);
+        }
+      }
+
+      // ── Aviso al ejecutivo dueño cuando le reabren una venta cerrada ───────
+      // Sin esto la cotización reaparecería en su lista como 'Pendiente' sin
+      // ninguna explicación: él la dio por cerrada. El motivo que escribió el
+      // jefe viaja en el mensaje, porque es justamente lo que el ejecutivo
+      // necesita para saber qué corregir. Se omite la autonotificación.
+      if (esReapertura && quotation.id_ejecutivo !== req.user.id) {
+        try {
+          await QuotationModel.insertNotificacion({
+            id_usuario:    quotation.id_ejecutivo,
+            id_cotizacion: id,
+            tipo:          'correccion',
+            mensaje: `La cotización #${quotation.numero_correlativo} fue REABIERTA por ` +
+                     `${req.user.nombre_usuario} y volvió a estado Pendiente para que la corrijas. ` +
+                     `Motivo: ${motivo}`,
+          });
+        } catch (notifErr) {
+          console.warn('[QuotationStateController.updateStatus] Reopen notification failed (non-fatal):', notifErr.message);
         }
       }
 

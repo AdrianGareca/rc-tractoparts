@@ -82,6 +82,12 @@ const AuditActions = {
   CAMBIAR_ESTADO:    'CAMBIAR_ESTADO',
   APROBAR:           'APROBAR',
   RECHAZAR:          'RECHAZAR',
+  // Reapertura de una venta ya cerrada ("llave del jefe"). Tiene código propio
+  // y no se mezcla con CAMBIAR_ESTADO justamente porque es la acción
+  // excepcional que alguien va a querer auditar: cuántas veces se reabrió una
+  // venta, quién y con qué motivo, sin filtrar entre cientos de transiciones
+  // rutinarias.
+  REABRIR_COTIZACION: 'REABRIR_COTIZACION',
   SUBIR_PDF:         'SUBIR_PDF',
   DESCARGAR_PDF:     'DESCARGAR_PDF',
   CREAR_USUARIO:     'CREAR_USUARIO',
