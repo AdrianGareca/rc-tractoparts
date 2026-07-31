@@ -24,11 +24,11 @@ import { buildProformaHTML }      from '../modules/proformaTemplate.js';
 import { DISCARD_QUOTATION_MSG }  from '../constants.js';
 import { DashboardStrategy }      from './dashboardStrategy.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
+import { mountPagination, ETIQUETAS_FECHA } from '../../../shared/pagination.js';
 
 export class ExecutiveStrategy extends DashboardStrategy {
   #container;
   #user;
-  #page    = 1;
   #sortBy  = 'creado_en';
   #sortOrd = 'DESC';
   // Dashboard partitioning: 'mias' = quotations owned by the logged-in user,
@@ -36,6 +36,12 @@ export class ExecutiveStrategy extends DashboardStrategy {
   // switching tabs re-partitions IN MEMORY without a new DB query.
   #scope          = 'mias';
   #allRows        = [];
+  // Paginacion del servidor, INDEPENDIENTE por solapa: cambiar de solapa no
+  // debe llevarte a la pagina 7 de una lista que recien empezas a mirar.
+  #pagPorScope    = { mias: { page: 1, limit: 20 }, equipo: { page: 1, limit: 20 } };
+  #pagInfo        = null;   // lo que devolvio la API para la solapa activa
+  #otrosTotal     = 0;      // total de la OTRA solapa, para su badge
+  #destroyPag     = null;
   #loadAbortCtrl  = null;
   // Monotonic refresh token: each refresh() bumps it, and the summary/proformas/
   // metrics loaders capture it and bail before writing if a newer refresh has
@@ -67,7 +73,8 @@ export class ExecutiveStrategy extends DashboardStrategy {
         </div>
 
         <!-- Scope segmented control: personal workspace vs. team activity.
-             Switching is purely client-side (re-partitions the cached array). -->
+             Cada solapa se pagina por separado contra el servidor
+             (id_ejecutivo / excluir_ejecutivo). -->
         <div class="tab-bar" id="exec-scope-tabs" style="margin-bottom:1rem;">
           <button class="tab-btn active" data-scope="mias" type="button">
             Mis Cotizaciones <span class="badge" data-scope-count="mias">0</span>
@@ -97,9 +104,9 @@ export class ExecutiveStrategy extends DashboardStrategy {
           <button class="btn btn-ghost btn-sm" id="btn-filter-apply" style="align-self:flex-end;">Filtrar</button>
         </div>
 
-        <div id="quotations-section"></div>
+        <div class="card-toolbar" id="pagination-footer"></div>
 
-        <div class="card-footer" id="pagination-footer"></div>
+        <div id="quotations-section"></div>
       </div>
 
       <!-- Licitaciones (only for delegated executives — mounted after render) -->
@@ -125,13 +132,19 @@ export class ExecutiveStrategy extends DashboardStrategy {
       UI.openModal('Gestión de Clientes', (body) => { mountClientsTab(body); }, { wide: true });
     });
 
-    document.getElementById('btn-filter-apply')?.addEventListener('click', () => {
-      this.#page = 1;
+    // Al filtrar se vuelve a la pagina 1 de LAS DOS solapas: el conjunto de
+    // resultados cambia para ambas, y quedarse en la pagina 5 de una lista que
+    // acaba de encogerse deja al usuario mirando el vacio.
+    const filtrar = () => {
+      this.#pagPorScope.mias.page   = 1;
+      this.#pagPorScope.equipo.page = 1;
       this._loadQuotations();
-    });
+    };
 
+    document.getElementById('btn-filter-apply')?.addEventListener('click', filtrar);
+    document.getElementById('filter-estado')?.addEventListener('change', filtrar);
     document.getElementById('filter-q')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { this.#page = 1; this._loadQuotations(); }
+      if (e.key === 'Enter') filtrar();
     });
 
     // Scope tabs — pure in-memory re-partition, NO server round-trip.
@@ -141,7 +154,9 @@ export class ExecutiveStrategy extends DashboardStrategy {
         this.#scope = btn.dataset.scope;
         this.#container.querySelectorAll('#exec-scope-tabs .tab-btn')
           .forEach((b) => b.classList.toggle('active', b === btn));
-        this._renderQuotationsTable();
+        // Antes esto repartia un array cacheado en memoria. Ahora el filtrado
+        // por solapa lo hace el servidor, asi que hay que volver a consultar.
+        this._loadQuotations();
       });
     });
 
@@ -299,18 +314,47 @@ export class ExecutiveStrategy extends DashboardStrategy {
     const estado = document.getElementById('filter-estado')?.value ?? '';
     const q      = document.getElementById('filter-q')?.value.trim() ?? '';
 
-    // limit=200 mirrors the API's hard cap (QuotationModel.findAll) so a single
-    // fetch covers the full working set; both partitions are derived client-side.
-    const params = new URLSearchParams({
-      page: 1, limit: 200,
+    // ANTES: una sola consulta con limit=200 y un comentario que decia
+    // «espeja el tope de la API». El tope real es 100 (MAX_LIMIT en
+    // quotationFilters.js), asi que el servidor recortaba EN SILENCIO: a partir
+    // de la cotizacion 101 el ejecutivo no veia nada, y el contador «N en total»
+    // mostraba 100 pasara lo que pasara. Con 105 cotizaciones ya faltaban.
+    //
+    // AHORA: el servidor separa las dos solapas (id_ejecutivo / excluir_ejecutivo)
+    // y devuelve una pagina de cada una. No hay techo.
+    const yo    = Number(this.#user.id);
+    const pag   = this.#pagPorScope[this.#scope];
+    const comun = {
       sort_by: this.#sortBy, sort_order: this.#sortOrd,
       ...(estado && { estado }),
       ...(q && { q }),
+    };
+
+    const activa = new URLSearchParams({
+      ...comun,
+      page:  String(pag.page),
+      limit: String(pag.limit),
+      ...(this.#scope === 'equipo' ? { excluir_ejecutivo: yo } : { id_ejecutivo: yo }),
+    });
+
+    // La OTRA solapa se pide con limit=1: no interesan sus filas, solo su
+    // total para el badge. Es una consulta de conteo con indice, practicamente
+    // gratis, y evita que el badge mienta.
+    const otra = new URLSearchParams({
+      ...comun,
+      page: '1', limit: '1',
+      ...(this.#scope === 'equipo' ? { id_ejecutivo: yo } : { excluir_ejecutivo: yo }),
     });
 
     try {
-      const data = await api.get(`/api/cotizaciones?${params}`, { signal });
-      this.#allRows = data.data ?? [];
+      const [dataActiva, dataOtra] = await Promise.all([
+        api.get(`/api/cotizaciones?${activa}`, { signal }),
+        api.get(`/api/cotizaciones?${otra}`,   { signal }),
+      ]);
+
+      this.#allRows    = dataActiva.data ?? [];
+      this.#pagInfo    = dataActiva.pagination ?? null;
+      this.#otrosTotal = dataOtra.pagination?.totalRecords ?? 0;
       this._renderQuotationsTable();
     } catch (err) {
       if (err.name === 'AbortError') return;
@@ -323,20 +367,19 @@ export class ExecutiveStrategy extends DashboardStrategy {
     const section = document.getElementById('quotations-section');
     if (!section) return;
 
-    const myId   = Number(this.#user.id);
-    const mine   = this.#allRows.filter((r) => Number(r.id_ejecutivo) === myId);
-    const team   = this.#allRows.filter((r) => Number(r.id_ejecutivo) !== myId);
+    // Las filas YA vienen filtradas por el servidor segun la solapa activa: no
+    // se parte nada en memoria. Los badges usan los totales reales de cada
+    // solapa (totalRecords), no la cantidad de filas de la pagina que se ve.
+    const isTeam = this.#scope === 'equipo';
+    const rows   = this.#allRows;
 
-    // Keep the tab badges in sync with the cached dataset.
+    const totalActiva = this.#pagInfo?.totalRecords ?? rows.length;
     const setCount = (scope, n) => {
       const el = this.#container.querySelector(`[data-scope-count="${scope}"]`);
       if (el) el.textContent = n;
     };
-    setCount('mias', mine.length);
-    setCount('equipo', team.length);
-
-    const isTeam = this.#scope === 'equipo';
-    const rows   = isTeam ? team : mine;
+    setCount(this.#scope,                        totalActiva);
+    setCount(isTeam ? 'mias' : 'equipo',         this.#otrosTotal);
     // 'Estado' row action is hidden for standard/delegated Ejecutivos — their
     // status changes flow through the "Ver" modal (proper UX). Management roles
     // inside this strategy (e.g. Administracion) retain the quick action.
@@ -353,6 +396,8 @@ export class ExecutiveStrategy extends DashboardStrategy {
             ? 'No hay cotizaciones de otros miembros del equipo con los filtros aplicados.'
             : 'Aún no has registrado cotizaciones con los filtros aplicados.'}</p>
         </div>`;
+      this.#destroyPag?.();
+      this.#destroyPag = null;
       if (footer) footer.innerHTML = '';
       return;
     }
@@ -399,12 +444,19 @@ export class ExecutiveStrategy extends DashboardStrategy {
         this._changeStatus(btn.dataset.id, btn.dataset.estado, btn));
     });
 
-    if (footer) {
-      footer.innerHTML = `
-        <span class="pagination-info">
-          Mostrando ${rows.length} ${isTeam ? 'del equipo' : 'propia(s)'} · ${this.#allRows.length} en total
-        </span>`;
-    }
+    // El control compartido, el mismo de los demas listados. Antes aca solo
+    // habia un texto «Mostrando N ... M en total», sin forma de pasar de pagina
+    // porque no habia paginas: se traia todo de una (y se recortaba solo).
+    this.#destroyPag?.();
+    this.#destroyPag = mountPagination(footer, this.#pagInfo ?? {
+      page: 1, limit: this.#pagPorScope[this.#scope].limit, totalRecords: rows.length, totalPages: 1,
+    }, {
+      etiquetas: ETIQUETAS_FECHA,
+      onChange: ({ page, limit }) => {
+        this.#pagPorScope[this.#scope] = { page, limit };
+        this._loadQuotations();
+      },
+    });
   }
 
   async _viewQuotation(id) {

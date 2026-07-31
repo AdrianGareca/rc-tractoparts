@@ -58,6 +58,15 @@ function buildWhereClause(filters = {}) {
     values.push(parseInt(filters.id_ejecutivo, 10));
   }
 
+  // Negación de la anterior: todo MENOS las de este ejecutivo. La usa la solapa
+  // «Cotizaciones del Equipo». Con las dos, el servidor puede paginar cada
+  // solapa por separado en vez de mandar todo junto y partirlo en el navegador
+  // (que dejaba de funcionar al superar el tope de la API).
+  if (filters.excluir_ejecutivo) {
+    conditions.push('c.id_ejecutivo <> ?');
+    values.push(parseInt(filters.excluir_ejecutivo, 10));
+  }
+
   // Cotizaciones vinculadas a una licitación concreta (para el detalle de la
   // licitación y el filtro "por licitación" del listado de cotizaciones).
   if (filters.id_licitacion) {

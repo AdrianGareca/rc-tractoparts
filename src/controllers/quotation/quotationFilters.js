@@ -61,7 +61,13 @@ function parseQuotationFilters(query = {}) {
   }
 
   // ── Claves foráneas ───────────────────────────────────────────────────────
-  for (const field of ['id_cliente', 'id_ejecutivo', 'id_licitacion']) {
+  // `excluir_ejecutivo` es la NEGACIÓN de id_ejecutivo, y existe para la solapa
+  // «Cotizaciones del Equipo» del tablero del ejecutivo. Antes esa división se
+  // hacía en el navegador trayendo todo de una y partiendo el array, lo que
+  // dejaba de funcionar apenas el total superaba el tope de la API (MAX_LIMIT):
+  // el servidor recortaba en silencio y las cotizaciones de más eran invisibles.
+  // Separando en el servidor, cada solapa se pagina de verdad.
+  for (const field of ['id_cliente', 'id_ejecutivo', 'id_licitacion', 'excluir_ejecutivo']) {
     if (!query[field]) continue;
     const parsed = positiveInt(query[field], field);
     if (parsed.error) return parsed;

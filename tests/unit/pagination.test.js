@@ -283,6 +283,60 @@ describe('los cuatro paneles usan el control compartido', () => {
 
   const PANELES = ['allQuotationsTab.js', 'auditView.js', 'clientsView.js', 'licitacionesView.js'];
 
+  // El tablero del Ejecutivo no vive en modules/ sino en strategies/, y tenia
+  // su propia paginacion: un texto «Mostrando N ... M en total» sin forma de
+  // pasar de pagina, porque traia todo de una sola vez.
+  const ESTRATEGIAS = path.resolve(__dirname, '../../public/js/views/dashboard/strategies');
+  const ejecutivo = () => fs.readFileSync(path.join(ESTRATEGIAS, 'executiveStrategy.js'), 'utf8');
+
+  describe('el tablero del Ejecutivo', () => {
+    test('usa el control compartido y lo importa de verdad', () => {
+      const src = ejecutivo();
+      expect(src).toMatch(/\bmountPagination\s*\(/);
+      expect(src).toMatch(IMPORT_REAL);
+    });
+
+    test('lo pone ARRIBA de la tabla', () => {
+      const src = ejecutivo();
+      const pos  = src.search(/id="pagination-footer"/);
+      const tabla = src.search(/id="quotations-section"/);
+      expect(pos).toBeLessThan(tabla);
+      expect(src).toMatch(/class="card-toolbar" id="pagination-footer"/);
+    });
+
+    // EL BUG DE FONDO. Pedia limit=200 con un comentario que decia «espeja el
+    // tope de la API»; el tope real es 100 (MAX_LIMIT en quotationFilters.js),
+    // asi que el servidor recortaba en silencio y a partir de la cotizacion 101
+    // el ejecutivo no veia nada. Con 105 en produccion ya faltaban.
+    test('ya no pide un limite mayor al que el servidor acepta', () => {
+      const { MAX_LIMIT } = require('../../src/controllers/quotation/quotationFilters');
+      const src = ejecutivo();
+
+      const pedidos = [...src.matchAll(/limit:\s*['"]?(\d+)/g)].map((m) => Number(m[1]));
+      for (const n of pedidos) {
+        expect(n).toBeLessThanOrEqual(MAX_LIMIT);
+      }
+    });
+
+    test('separa las solapas en el SERVIDOR, no partiendo un array en memoria', () => {
+      const src = ejecutivo();
+      expect(src).toContain('excluir_ejecutivo');
+      expect(src).toContain('id_ejecutivo');
+      // El filtrado en memoria que dejaba de funcionar pasado el tope.
+      expect(src).not.toMatch(/filter\(\(r\) => Number\(r\.id_ejecutivo\)/);
+    });
+
+    test('cada solapa recuerda su propia pagina', () => {
+      // Cambiar de solapa no debe dejarte en la pagina 7 de una lista que
+      // recien empezas a mirar.
+      expect(ejecutivo()).toMatch(/#pagPorScope/);
+    });
+
+    test('desmonta el control cuando no hay resultados', () => {
+      expect(ejecutivo()).toMatch(/#destroyPag\?\.\(\)/);
+    });
+  });
+
   // OJO con la forma de esta aserción. La primera versión era
   // `expect(src).toContain('shared/pagination.js')`, y pasaba en verde con los
   // cuatro paneles ROTOS: el comentario que documenta el módulo contiene esa
