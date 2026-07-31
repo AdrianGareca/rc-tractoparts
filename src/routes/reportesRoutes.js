@@ -119,4 +119,73 @@ router.get('/advanced', ...advancedAuth, ReportesController.getAdvancedReports);
  */
 router.get('/pdf', ...advancedAuth, ReportesController.getReportePdf);
 
+/**
+ * @swagger
+ * /api/reportes/cliente-item:
+ *   get:
+ *     summary: Consumo por cliente y codigo de item (cualquier rol autenticado)
+ *     description: |
+ *       Tabla plana: una fila por (cliente, codigo de item, unidad) con la
+ *       cantidad total. Es el unico reporte que baja al nivel de LINEA — el
+ *       resto agrega sobre la cabecera de la cotizacion.
+ *
+ *       El codigo se resuelve como `productos.codigo` y, si no hay, el
+ *       `codigo_parte` escrito a mano en la linea: el mismo repuesto entra por
+ *       un camino o por el otro segun como lo cargo cada ejecutivo, y sin
+ *       unificarlos aparece partido en dos filas.
+ *
+ *       Las lineas SIN codigo se agrupan por descripcion y vienen marcadas con
+ *       `sin_codigo: 1`.
+ *
+ *       Por defecto cuenta TODAS las cotizaciones, incluidas las rechazadas, asi
+ *       que el numero es "lo que el cliente pidio cotizar". Usar `estado=Confirmada`
+ *       para "lo que efectivamente compro".
+ *
+ *       NO devuelve montos: un cliente puede tener cotizaciones en USD y en Bs.,
+ *       y sumarlas daria un numero sin significado.
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: fecha_desde
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: fecha_hasta
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: estado
+ *         schema: { type: string }
+ *         description: Acota a un estado del ciclo de vida. Omitido = todos.
+ *       - in: query
+ *         name: q
+ *         schema: { type: string }
+ *         description: Busca en razon social, codigo de item o descripcion.
+ *       - in: query
+ *         name: id_cliente
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: sort_by
+ *         schema: { type: string, enum: [cantidad, cliente, codigo, items] }
+ *       - in: query
+ *         name: sort_order
+ *         schema: { type: string, enum: [ASC, DESC] }
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 25, maximum: 200 }
+ *     responses:
+ *       200:
+ *         description: Reporte generado.
+ *       401:
+ *         description: Token ausente o invalido.
+ *       422:
+ *         description: Fecha, estado u orden invalidos.
+ *       500:
+ *         description: Error interno al ejecutar la agregacion.
+ */
+router.get('/cliente-item', authenticate, ReportesController.getClienteItem);
+
 module.exports = router;

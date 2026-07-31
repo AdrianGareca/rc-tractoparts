@@ -15,6 +15,7 @@
 'use strict';
 
 const QuotationModel       = require('../models/QuotationModel');
+const clienteItemReport    = require('../models/quotation/clienteItemReport');
 const reportePdfService    = require('../services/reportePdfService');
 const { logEvent, AuditActions } = require('../utils/auditLog');
 
@@ -272,6 +273,89 @@ const ReportesController = {
       return res.status(500).json({
         success: false,
         message: 'Error al generar el reporte en PDF. Intente nuevamente.',
+      });
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // getClienteItem — GET /api/reportes/cliente-item  (cualquier usuario autenticado)
+  //
+  // Que consume cada cliente, por codigo de item. Es el primer reporte que baja
+  // al nivel de LINEA: el resto agrega sobre la cabecera de la cotizacion.
+  //
+  // Tabla plana, una fila por (cliente, codigo, unidad), pensada para ordenar
+  // por cualquier columna y exportar a Excel.
+  //
+  // Por defecto cuenta TODAS las cotizaciones — incluidas las rechazadas — asi
+  // que el numero es "lo que el cliente pidio cotizar", no "lo que compro". El
+  // filtro `estado` permite estrechar a Confirmada cuando se quiere lo segundo.
+  //
+  // Query: fecha_desde, fecha_hasta, estado, q, id_cliente, page, limit,
+  //        sort_by (cantidad|cliente|codigo|items), sort_order
+  // ---------------------------------------------------------------------------
+  async getClienteItem(req, res) {
+    const rango = resolveDateRange(req.query, false);
+    if (rango.error) {
+      return res.status(422).json({ success: false, message: rango.error });
+    }
+
+    const { estado } = req.query;
+    if (estado && !QuotationModel.VALID_STATES.includes(estado)) {
+      return res.status(422).json({
+        success: false,
+        message: `estado invalido '${estado}'. Validos: [${QuotationModel.VALID_STATES.join(', ')}]`,
+      });
+    }
+
+    // El orden entra concatenado en el ORDER BY, asi que se valida contra la
+    // whitelist ANTES de llegar al modelo y se responde 422 en vez de ignorarlo
+    // en silencio: un orden que no se aplica hace leer mal la tabla entera.
+    const sortBy = req.query.sort_by;
+    if (sortBy && !Object.keys(clienteItemReport.SORTABLE).includes(sortBy)) {
+      return res.status(422).json({
+        success: false,
+        message: `sort_by invalido '${sortBy}'. Validos: [${Object.keys(clienteItemReport.SORTABLE).join(', ')}]`,
+      });
+    }
+
+    const filtros = {
+      fecha_desde: rango.desde,
+      fecha_hasta: rango.hasta,
+      estado:      estado || null,
+      q:           req.query.q || null,
+      id_cliente:  req.query.id_cliente || null,
+    };
+
+    const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(clienteItemReport.MAX_LIMIT,
+      Math.max(1, parseInt(req.query.limit, 10) || clienteItemReport.DEFAULT_LIMIT));
+
+    try {
+      // Datos y conteo en paralelo: la agrupacion es la misma y la segunda
+      // consulta no depende de la primera.
+      const [rows, totalRecords] = await Promise.all([
+        clienteItemReport.find(filtros, { page, limit },
+          { by: sortBy, order: req.query.sort_order }),
+        clienteItemReport.count(filtros),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        data: rows,
+        pagination: {
+          page,
+          limit,
+          totalRecords,
+          totalPages: Math.ceil(totalRecords / limit) || 1,
+          hasNext: page * limit < totalRecords,
+          hasPrev: page > 1,
+        },
+      });
+    } catch (error) {
+      console.error('[ReportesController.getClienteItem] Error:', error.message);
+      return res.status(500).json({
+        success: false,
+        message: 'No se pudo generar el reporte de items por cliente.',
       });
     }
   },

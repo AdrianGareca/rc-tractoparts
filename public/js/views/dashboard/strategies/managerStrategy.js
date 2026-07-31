@@ -24,6 +24,7 @@ import { UI }                  from '../modalUI.js';
 import { CommandInvoker, ChangeStatusCommand, ApproveQuotationCommand } from '../commands.js';
 import { DashboardStrategy } from './dashboardStrategy.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
+import { mountClienteItemReport } from '../modules/clienteItemReport.js';
 
 export class ManagerStrategy extends DashboardStrategy {
   #container;
@@ -43,6 +44,7 @@ export class ManagerStrategy extends DashboardStrategy {
         <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
         <button class="tab-btn" data-tab="clientes">Gestión de Clientes</button>
         <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
+        <button class="tab-btn" data-tab="consumo">📦 Consumo por Cliente</button>
         <button class="tab-btn" data-tab="reportes">📊 Reportes</button>
       </div>
       <div id="manager-panel"></div>
@@ -75,6 +77,7 @@ export class ManagerStrategy extends DashboardStrategy {
       case 'users':      await this._renderUsers(panel);           break;
       case 'clientes':   await mountClientsTab(panel);             break;
       case 'audit':      await this._renderAuditLogs(panel);       break;
+      case 'consumo':    await mountClienteItemReport(panel);          break;
       case 'reportes':   await this._renderReportes(panel);        break;
     }
   }

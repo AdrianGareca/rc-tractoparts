@@ -25,6 +25,7 @@ import { DISCARD_QUOTATION_MSG }  from '../constants.js';
 import { DashboardStrategy }      from './dashboardStrategy.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
 import { mountPagination, ETIQUETAS_FECHA } from '../../../shared/pagination.js';
+import { mountClienteItemReport } from '../modules/clienteItemReport.js';
 
 export class ExecutiveStrategy extends DashboardStrategy {
   #container;
@@ -68,6 +69,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
           <h3>Cotizaciones</h3>
           <div style="display:flex;gap:.5rem;">
             <button class="btn btn-ghost btn-sm" id="btn-manage-clients">🏢 Clientes</button>
+            <button class="btn btn-ghost btn-sm" id="btn-consumo">📦 Consumo por Cliente</button>
             <button class="btn btn-primary btn-sm" id="btn-new-quotation">+ Nueva Cotización</button>
           </div>
         </div>
@@ -130,6 +132,15 @@ export class ExecutiveStrategy extends DashboardStrategy {
 
     document.getElementById('btn-manage-clients')?.addEventListener('click', () => {
       UI.openModal('Gestión de Clientes', (body) => { mountClientsTab(body); }, { wide: true });
+    });
+
+    // Mismo patron que "Clientes": el reporte es una tabla ancha que no entra
+    // comoda en el tablero, y abrirla en un modal evita alargar una pagina que
+    // ya trae estadisticas, proformas del dia y el listado.
+    document.getElementById('btn-consumo')?.addEventListener('click', () => {
+      UI.openModal('📦 Consumo por Cliente', (body) => {
+        mountClienteItemReport(body).then((destroy) => UI.registerCleanup(destroy));
+      }, { wide: true });
     });
 
     // Al filtrar se vuelve a la pagina 1 de LAS DOS solapas: el conjunto de
