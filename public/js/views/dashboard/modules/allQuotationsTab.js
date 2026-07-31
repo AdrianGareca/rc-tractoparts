@@ -22,6 +22,7 @@
 import api from '../../../services/apiClient.js';
 import { escHtml, badgeHtml, fmtDate, fmtAmount } from '../helpers.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
+import { mountPagination, ETIQUETAS_FECHA } from '../../../shared/pagination.js';
 
 // Must mirror sql/init.sql cotizaciones.estado ENUM EXACTLY (legacy 'Aceptada'
 // is intentionally omitted — it was superseded by 'Confirmada'). Any mismatch
@@ -71,11 +72,25 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
         <button class="btn btn-primary btn-sm" id="allq-apply" style="align-self:flex-end;">Aplicar Filtros</button>
         <button class="btn btn-ghost btn-sm"   id="allq-clear" style="align-self:flex-end;">Limpiar</button>
       </div>
+      <div class="card-toolbar" id="allq-pagination"></div>
       <div id="allq-results">${tableSkeleton({ columnas: 8, etiqueta: 'Cargando cotizaciones' })}</div>
-      <div class="card-footer" id="allq-pagination"></div>
     </div>`;
 
   const $ = (sel) => panel.querySelector(sel);
+
+  // Handle del control de paginación montado, para desmontarlo antes de
+  // volver a dibujarlo (ver renderPagination).
+  let destroyPagination = null;
+
+  // Vaciar el pie sin desmontar antes dejaba vivos los listeners de document del
+  // menú desplegable: el HTML desaparecía pero los handlers seguían ahí, y cada
+  // búsqueda que no devolvía nada apilaba un par más.
+  const clearPagination = () => {
+    destroyPagination?.();
+    destroyPagination = null;
+    const pie = $('#allq-pagination');
+    if (pie) pie.innerHTML = '';
+  };
 
   // ── 2. Populate the Ejecutivo dropdown from /api/usuarios ────────────────────
   // Non-fatal: if it fails, the dropdown just stays with "Todos".
@@ -127,7 +142,7 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
             <h4>Sin resultados</h4>
             <p>No hay cotizaciones que coincidan con los filtros aplicados.</p>
           </div>`;
-        $('#allq-pagination').innerHTML = '';
+        clearPagination();
         return;
       }
 
@@ -165,22 +180,27 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
           onViewDetail(btn.getAttribute(detailAttr), btn.dataset.correlativo));
       });
 
-      renderPagination(data.pagination?.totalPages ?? 1);
+      renderPagination(data.pagination);
     } catch (err) {
       results.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.message)}</p></div>`;
-      $('#allq-pagination').innerHTML = '';
+      clearPagination();
     }
   }
 
-  function renderPagination(totalPages) {
-    const foot = $('#allq-pagination');
-    if (totalPages <= 1) { foot.innerHTML = ''; return; }
-    foot.innerHTML = `
-      <button class="btn btn-ghost btn-sm" id="allq-prev" ${state.page <= 1 ? 'disabled' : ''}>‹ Anterior</button>
-      <span class="text-sm" style="margin:0 .75rem;">Página ${state.page} de ${totalPages}</span>
-      <button class="btn btn-ghost btn-sm" id="allq-next" ${state.page >= totalPages ? 'disabled' : ''}>Siguiente ›</button>`;
-    $('#allq-prev')?.addEventListener('click', () => { if (state.page > 1)          { state.page--; load(); } });
-    $('#allq-next')?.addEventListener('click', () => { if (state.page < totalPages) { state.page++; load(); } });
+  // El control lo dibuja el módulo compartido (public/js/shared/pagination.js):
+  // los cuatro paneles tenían esta función copiada, idéntica salvo el prefijo.
+  // destroyPagination quita los listeners de document del menú anterior antes
+  // de montar el nuevo; sin eso cada recarga apilaría un par más.
+  function renderPagination(paginacion) {
+    destroyPagination?.();
+    destroyPagination = mountPagination($('#allq-pagination'), paginacion, {
+      etiquetas: ETIQUETAS_FECHA,
+      onChange: ({ page, limit }) => {
+        state.page  = page;
+        state.limit = limit;
+        load();
+      },
+    });
   }
 
   // ── 4. Wire filters ─────────────────────────────────────────────────────────

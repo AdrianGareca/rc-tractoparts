@@ -264,6 +264,145 @@
 
 .pagination-info { color: var(--text-muted); font-size: .8rem; }
 
+/* Barra de herramientas ARRIBA de la tabla. Es card-footer dado vuelta: el
+   borde va abajo en vez de arriba, porque separa del contenido que sigue.
+
+   La paginacion vive aca y no al pie: con 50 filas en pantalla, cambiar de
+   pagina u ordenar obligaba a recorrer toda la tabla hacia abajo, hacer el
+   clic, y volver a subir para leer el resultado. Arriba queda a la vista junto
+   con los filtros, que es donde uno ya esta mirando cuando decide moverse por
+   la lista. Es la misma razon por la que Gmail lo tiene arriba. */
+.card-toolbar {
+  padding: .75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,.02);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .5rem;
+}
+
+/* Vacia (sin resultados) la barra no debe dejar una franja fantasma. */
+.card-toolbar:empty { display: none; }
+
+/* ── Control estilo Gmail: «1–50 de 6.058» con salto al principio y al final ──
+   El rango va al centro y las flechas a la derecha, como en cualquier bandeja
+   de correo: es una disposición que la gente ya tiene aprendida, y copiarla
+   ahorra tener que explicarla. */
+.pagination {
+  justify-content: flex-end;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  flex-wrap: wrap;
+}
+
+.pagination-size {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  margin-right: auto;   /* empuja el resto del control hacia la derecha */
+}
+
+.pagination-size-label {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.pagination-size-select {
+  width: auto;
+  min-width: 4.5rem;
+  padding: .25rem 1.5rem .25rem .5rem;
+  font-size: var(--text-sm);
+}
+
+.pagination-range { position: relative; }
+
+.pagination-range-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: .35rem .6rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--transition), border-color var(--transition);
+}
+
+.pagination-range-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.pagination-range-btn:disabled {
+  cursor: default;
+  color: var(--text-muted);
+}
+
+/* El caret desaparece cuando no hay a dónde saltar: un menú desplegable que se
+   abre vacío es peor que no ofrecerlo. */
+.pagination-range-btn:disabled .pagination-caret { visibility: hidden; }
+
+.pagination-caret { font-size: .7em; opacity: .7; }
+
+.pagination-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 11rem;
+  padding: var(--space-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.pagination-menu[hidden] { display: none; }
+
+.pagination-menu button {
+  display: block;
+  width: 100%;
+  padding: .5rem .75rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pagination-menu button:hover:not(:disabled) { background: var(--bg-hover); }
+
+/* Deshabilitado, no escondido: que la opción siga a la vista le dice al usuario
+   que ya está en ese extremo de la lista. Si desapareciera, el menú cambiaría
+   de tamaño entre páginas y costaría entender por qué. */
+.pagination-menu button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.pagination-arrows { display: flex; gap: var(--space-1); }
+
+.pagination-arrows .btn {
+  min-width: 2rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+@media (max-width: 600px) {
+  .pagination { justify-content: center; }
+  .pagination-size { margin-right: 0; }
+}
+
 /* ===== 25. FILTER BAR ===== */
 .filter-bar {
   display: flex;

@@ -18,6 +18,7 @@ import api, { showToast } from '../../../services/apiClient.js';
 import { escHtml }         from '../helpers.js';
 import { openClienteModal } from './clientModal.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
+import { mountPagination, ETIQUETAS_ALFABETICAS } from '../../../shared/pagination.js';
 
 // ---------------------------------------------------------------------------
 // mountClientsTab
@@ -44,11 +45,25 @@ export async function mountClientsTab(panel) {
         </div>
         <button class="btn btn-ghost btn-sm" id="clients-search-btn" style="align-self:flex-end;">Buscar</button>
       </div>
+      <div class="card-toolbar" id="clients-pagination"></div>
       <div id="clients-results">${tableSkeleton({ columnas: 6, etiqueta: 'Cargando clientes' })}</div>
-      <div class="card-footer" id="clients-pagination"></div>
     </div>`;
 
   const $ = (sel) => panel.querySelector(sel);
+
+  // Handle del control de paginación montado, para desmontarlo antes de
+  // volver a dibujarlo (ver renderPagination).
+  let destroyPagination = null;
+
+  // Vaciar el pie sin desmontar antes dejaba vivos los listeners de document del
+  // menu desplegable: el HTML desaparecia pero los handlers seguian ahi, y cada
+  // busqueda que no devolvia nada apilaba un par mas.
+  const clearPagination = () => {
+    destroyPagination?.();
+    destroyPagination = null;
+    const pie = $('#clients-pagination');
+    if (pie) pie.innerHTML = '';
+  };
 
   // ── 2. Fetch + render, reading the current filter/page state ────────────
   async function load() {
@@ -70,7 +85,7 @@ export async function mountClientsTab(panel) {
             <h4>Sin resultados</h4>
             <p>No hay clientes que coincidan con la búsqueda.</p>
           </div>`;
-        $('#clients-pagination').innerHTML = '';
+        clearPagination();
         return;
       }
 
@@ -168,22 +183,27 @@ export async function mountClientsTab(panel) {
         });
       });
 
-      renderPagination(data.pagination?.totalPages ?? 1);
+      renderPagination(data.pagination);
     } catch (err) {
       results.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.data?.message || err.message)}</p></div>`;
-      $('#clients-pagination').innerHTML = '';
+      clearPagination();
     }
   }
 
-  function renderPagination(totalPages) {
-    const foot = $('#clients-pagination');
-    if (totalPages <= 1) { foot.innerHTML = ''; return; }
-    foot.innerHTML = `
-      <button class="btn btn-ghost btn-sm" id="clients-prev" ${state.page <= 1 ? 'disabled' : ''}>‹ Anterior</button>
-      <span class="text-sm" style="margin:0 .75rem;">Página ${state.page} de ${totalPages}</span>
-      <button class="btn btn-ghost btn-sm" id="clients-next" ${state.page >= totalPages ? 'disabled' : ''}>Siguiente ›</button>`;
-    $('#clients-prev')?.addEventListener('click', () => { if (state.page > 1)          { state.page--; load(); } });
-    $('#clients-next')?.addEventListener('click', () => { if (state.page < totalPages) { state.page++; load(); } });
+  // El control lo dibuja el módulo compartido (public/js/shared/pagination.js):
+  // los cuatro paneles tenían esta función copiada, idéntica salvo el prefijo.
+  // destroyPagination quita los listeners de document del menú anterior antes
+  // de montar el nuevo; sin eso cada recarga apilaría un par más.
+  function renderPagination(paginacion) {
+    destroyPagination?.();
+    destroyPagination = mountPagination($('#clients-pagination'), paginacion, {
+      etiquetas: ETIQUETAS_ALFABETICAS,
+      onChange: ({ page, limit }) => {
+        state.page  = page;
+        state.limit = limit;
+        load();
+      },
+    });
   }
 
   // ── 3. Wire the static controls ──────────────────────────────────────────

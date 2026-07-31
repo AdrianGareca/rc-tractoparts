@@ -290,6 +290,28 @@ sequenceDiagram
     Note over FE,API: The correlativo is sanitized before use —<br/>blocks path / header injection.<br/>Never window.open(blobUrl): that produced<br/>random UUID filenames (see §15)
 ```
 
+
+#### 3.4.3 Gmail-style pagination
+
+All four listings (quotations, audit log, clients, tenders) carried the SAME copy-pasted `renderPagination`, identical but for the id prefix. It showed `Pagina 3 de 122` with Previous and Next: reaching page 122 took 119 clicks, so in practice the older records were unreachable.
+
+There is now a single shared control (`public/js/shared/pagination.js`):
+
+| | Before | Now |
+|---|---|---|
+| Indicator | `Page 3 of 122` | `101-150 of 6,058` |
+| Jump to end | 119 clicks | 1 click |
+| Rows per page | fixed at 20 | 20 / 50 / 100 |
+| With a single page | disappeared | still shown |
+
+The dropdown uses Gmail's wording (**Mas nuevas** / **Mas antiguas**) on date-sorted listings, but clients -- sorted by company name -- says **Primeras (A-Z)** / **Ultimas (Z-A)**: calling an alphabetical order "older" would be a lie.
+
+The 100 cap is not arbitrary: it is `MAX_LIMIT` in `src/controllers/quotation/quotationFilters.js`, and asking for more gets silently trimmed by the server.
+
+It sits **above** the table, not below it. With 50 rows on screen, changing page meant scrolling the whole table down, clicking, and scrolling back up to read the result. Above, it stays next to the filters -- where you are already looking when you decide to move through the list. Same reason Gmail puts it there.
+
+> Coverage: `tests/unit/pagination.test.js` -- the range arithmetic (nobody reports the off-by-one on an incomplete last page), the edges, and that `destroy()` removes its `document` listeners.
+
 ### 3.5 Request Pipeline & Strict Layering
 
 Every API request crosses the same gauntlet before any business logic runs. Layering is strict — **only models execute SQL** — so security concerns live in exactly one place each.

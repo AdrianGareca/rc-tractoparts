@@ -108,6 +108,87 @@ describe('imports del frontend', () => {
     }
   });
 
+  // ── Usado pero no importado ────────────────────────────────────────────────
+  // Los tests de arriba comprueban que lo IMPORTADO exista. Falta el reverso:
+  // que lo USADO esté importado. Esa mitad faltaba y dejó pasar un caso real —
+  // cuatro paneles llamaban a mountPagination() sin importarlo, y el navegador
+  // tiraba «mountPagination is not defined» al abrir cualquier listado.
+  //
+  // Se acota a los símbolos de public/js/shared/: son los que se comparten
+  // entre archivos y, por lo tanto, los que se pueden olvidar al copiar código
+  // de un panel a otro.
+  describe('símbolos compartidos usados sin importar', () => {
+    const SHARED = path.join(ROOT, 'shared');
+
+    /** Nombres exportados por cada módulo de shared/. */
+    const compartidos = new Set(
+      fs.readdirSync(SHARED)
+        .filter((f) => f.endsWith('.js'))
+        .flatMap((f) => [...exportedNames(fs.readFileSync(path.join(SHARED, f), 'utf8'))])
+    );
+
+    /** Código sin comentarios ni literales: evita falsos positivos. */
+    function soloCodigo(src) {
+      return src
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')      // comentarios de bloque
+        .replace(/^\s*\/\/.*$/gm, ' ')          // comentarios de línea
+        // Re-exports (`export { escapeHtml as escText } from '…'`): son cañería
+        // de módulos, no uso del símbolo. El nombre nunca entra al ámbito local,
+        // así que exigir que esté importado sería un falso positivo.
+        .replace(/export\s*\{[^}]*\}\s*from\s*['"][^'"]+['"]\s*;?/g, ' ')
+        .replace(/`(?:\\.|[^`\\])*`/g, '``')    // template literals
+        .replace(/'(?:\\.|[^'\\])*'/g, "''")    // comillas simples
+        .replace(/"(?:\\.|[^"\\])*"/g, '""');   // comillas dobles
+    }
+
+    /** Nombres que el archivo importa, venga de donde venga. */
+    function importados(src) {
+      const nombres = new Set();
+      for (const { clause } of parseImports(src)) {
+        namedImports(clause).forEach((n) => nombres.add(n));
+        const porDefecto = /^([A-Za-z0-9_$]+)\s*(,|$)/.exec(clause);
+        if (porDefecto) nombres.add(porDefecto[1]);
+      }
+      return nombres;
+    }
+
+    /** Nombres declarados en el propio archivo. */
+    function declarados(src) {
+      const nombres = new Set();
+      for (const m of src.matchAll(/(?:function|class)\s+([A-Za-z0-9_$]+)/g)) nombres.add(m[1]);
+      for (const m of src.matchAll(/(?:const|let|var)\s+([A-Za-z0-9_$]+)/g)) nombres.add(m[1]);
+      return nombres;
+    }
+
+    test('hay símbolos compartidos que vigilar', () => {
+      expect(compartidos.size).toBeGreaterThan(5);
+    });
+
+    test.each(archivos.map((f) => [rel(f), f]))('%s', (_nombre, file) => {
+      // Los propios módulos de shared/ se exportan a sí mismos.
+      if (path.dirname(file) === SHARED) return;
+
+      const src     = fs.readFileSync(file, 'utf8');
+      const codigo  = soloCodigo(src);
+      const traidos = importados(src);
+      const propios = declarados(src);
+
+      const faltantes = [];
+      for (const nombre of compartidos) {
+        if (traidos.has(nombre) || propios.has(nombre)) continue;
+        // Se usa como identificador de código (no como parte de otra palabra).
+        if (new RegExp(`\\b${nombre}\\b`).test(codigo)) faltantes.push(nombre);
+      }
+
+      if (faltantes.length > 0) {
+        throw new Error(
+          `${rel(file)} usa [${faltantes.join(', ')}] pero no lo importa ni lo declara. ` +
+          `En el navegador esto es un ReferenceError apenas se ejecute esa línea.`
+        );
+      }
+    });
+  });
+
   test('ningún import omite la extensión .js (los ES modules nativos la exigen)', () => {
     const fallas = [];
     for (const file of archivos) {

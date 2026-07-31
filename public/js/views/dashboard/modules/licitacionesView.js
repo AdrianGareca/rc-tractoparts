@@ -31,6 +31,7 @@ import { openLicitacionModal } from './licitacionModal.js';
 import { ESTADOS } from './licitacion/permissions.js';
 import { openLicitacionDetail } from './licitacion/detailModal.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
+import { mountPagination, ETIQUETAS_FECHA } from '../../../shared/pagination.js';
 
 // ---------------------------------------------------------------------------
 // mountLicitacionesTab
@@ -62,11 +63,25 @@ export async function mountLicitacionesTab(panel, opts = {}) {
         </div>
         <button class="btn btn-ghost btn-sm" id="lic-search-btn">Filtrar</button>
       </div>
+      <div class="card-toolbar" id="lic-pagination"></div>
       <div id="lic-results">${tableSkeleton({ columnas: 7, etiqueta: 'Cargando licitaciones' })}</div>
-      <div class="card-footer" id="lic-pagination"></div>
     </div>`;
 
   const $ = (sel) => panel.querySelector(sel);
+
+  // Handle del control de paginación montado, para desmontarlo antes de
+  // volver a dibujarlo (ver renderPagination).
+  let destroyPagination = null;
+
+  // Vaciar el pie sin desmontar antes dejaba vivos los listeners de document del
+  // menu desplegable: el HTML desaparecia pero los handlers seguian ahi, y cada
+  // busqueda que no devolvia nada apilaba un par mas.
+  const clearPagination = () => {
+    destroyPagination?.();
+    destroyPagination = null;
+    const pie = $('#lic-pagination');
+    if (pie) pie.innerHTML = '';
+  };
 
   async function load() {
     const results = $('#lic-results');
@@ -88,7 +103,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
             <h4>Sin licitaciones</h4>
             <p>No hay licitaciones que coincidan con el filtro.</p>
           </div>`;
-        $('#lic-pagination').innerHTML = '';
+        clearPagination();
         return;
       }
 
@@ -121,22 +136,34 @@ export async function mountLicitacionesTab(panel, opts = {}) {
         btn.addEventListener('click', () => openDetail(btn.dataset.licView));
       });
 
-      renderPagination(body.totalPages ?? 1);
+      renderPagination(body);
     } catch (err) {
       results.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.data?.message || err.message)}</p></div>`;
-      $('#lic-pagination').innerHTML = '';
+      clearPagination();
     }
   }
 
-  function renderPagination(totalPages) {
-    const foot = $('#lic-pagination');
-    if (totalPages <= 1) { foot.innerHTML = ''; return; }
-    foot.innerHTML = `
-      <button class="btn btn-ghost btn-sm" id="lic-prev" ${state.page <= 1 ? 'disabled' : ''}>‹ Anterior</button>
-      <span class="text-sm" style="margin:0 .75rem;">Página ${state.page} de ${totalPages}</span>
-      <button class="btn btn-ghost btn-sm" id="lic-next" ${state.page >= totalPages ? 'disabled' : ''}>Siguiente ›</button>`;
-    $('#lic-prev')?.addEventListener('click', () => { if (state.page > 1)          { state.page--; load(); } });
-    $('#lic-next')?.addEventListener('click', () => { if (state.page < totalPages) { state.page++; load(); } });
+  // El control lo dibuja el módulo compartido (public/js/shared/pagination.js).
+  // A diferencia del resto de los listados, la API de licitaciones devuelve la
+  // paginación PLANA (total, page, limit, totalPages) en vez de anidada bajo
+  // `pagination`, así que se normaliza acá.
+  // destroyPagination quita los listeners de document del menú anterior antes de
+  // montar el nuevo; sin eso cada recarga apilaría un par más.
+  function renderPagination(body) {
+    destroyPagination?.();
+    destroyPagination = mountPagination($('#lic-pagination'), {
+      page:         body?.page       ?? state.page,
+      limit:        body?.limit      ?? state.limit,
+      totalRecords: body?.total      ?? 0,
+      totalPages:   body?.totalPages ?? 1,
+    }, {
+      etiquetas: ETIQUETAS_FECHA,
+      onChange: ({ page, limit }) => {
+        state.page  = page;
+        state.limit = limit;
+        load();
+      },
+    });
   }
 
   // ── Detail sub-modal ───────────────────────────────────────────────────────

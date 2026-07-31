@@ -298,6 +298,28 @@ sequenceDiagram
     Note over FE,API: El correlativo se sanitiza antes de usarse —<br/>bloquea inyección de rutas / cabeceras.<br/>Nunca window.open(blobUrl): eso producía<br/>nombres UUID aleatorios (ver §15)
 ```
 
+
+#### 3.4.3 Paginacion estilo Gmail
+
+Los cuatro listados (cotizaciones, auditoria, clientes, licitaciones) tenian la MISMA funcion `renderPagination` copiada, identica salvo el prefijo de los id. Mostraba `Pagina 3 de 122` con Anterior y Siguiente: llegar a la pagina 122 eran 119 clics, asi que en la practica los registros viejos eran inalcanzables.
+
+Ahora hay un solo control compartido (`public/js/shared/pagination.js`):
+
+| | Antes | Ahora |
+|---|---|---|
+| Indicador | `Pagina 3 de 122` | `101-150 de 6.058` |
+| Ir al final | 119 clics | 1 clic |
+| Filas por pagina | fija en 20 | 20 / 50 / 100 |
+| Con una sola pagina | desaparecia | se muestra igual |
+
+El menu desplegable usa las etiquetas de Gmail (**Mas nuevas** / **Mas antiguas**) en los listados ordenados por fecha, pero en clientes -ordenado por razon social- dice **Primeras (A-Z)** / **Ultimas (Z-A)**: hablar de "antiguas" en un orden alfabetico seria mentira.
+
+El tope de 100 no es arbitrario: es `MAX_LIMIT` en `src/controllers/quotation/quotationFilters.js`, y pedir mas el servidor lo recorta sin avisar.
+
+Va **arriba** de la tabla, no al pie. Con 50 filas en pantalla, cambiar de pagina obligaba a recorrer toda la tabla hacia abajo, hacer el clic y volver a subir para leer el resultado. Arriba queda junto a los filtros, que es donde uno ya esta mirando cuando decide moverse por la lista -- la misma razon por la que Gmail lo tiene ahi.
+
+> Cobertura: `tests/unit/pagination.test.js` -- la aritmetica del rango (el off-by-one de la ultima pagina incompleta no lo reporta nadie), los bordes, y que `destroy()` saque los listeners de `document`.
+
 ### 3.5 Pipeline de Peticiones y Layering Estricto
 
 Toda petición a la API cruza el mismo recorrido antes de que corra cualquier lógica de negocio. El layering es estricto — **solo los modelos ejecutan SQL** — de modo que cada preocupación de seguridad vive en exactamente un lugar.
