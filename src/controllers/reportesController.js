@@ -307,14 +307,28 @@ const ReportesController = {
       });
     }
 
+    // Dos vistas sobre los mismos datos:
+    //   detalle — quien le cotizo que a quien (ejecutivo x cliente x codigo)
+    //   item    — cuanto se pide de cada repuesto sumando TODOS los clientes,
+    //             que es lo que hace falta para decidir traer un lote a stock.
+    const agrupar = req.query.agrupar || 'detalle';
+    if (!clienteItemReport.MODOS.includes(agrupar)) {
+      return res.status(422).json({
+        success: false,
+        message: `agrupar invalido '${agrupar}'. Validos: [${clienteItemReport.MODOS.join(', ')}]`,
+      });
+    }
+
     // El orden entra concatenado en el ORDER BY, asi que se valida contra la
     // whitelist ANTES de llegar al modelo y se responde 422 en vez de ignorarlo
     // en silencio: un orden que no se aplica hace leer mal la tabla entera.
-    const sortBy = req.query.sort_by;
-    if (sortBy && !Object.keys(clienteItemReport.SORTABLE).includes(sortBy)) {
+    // Cada vista admite columnas distintas: en 'item' no hay cliente que ordenar.
+    const sortBy   = req.query.sort_by;
+    const validos  = Object.keys(clienteItemReport.SORTABLE[agrupar]);
+    if (sortBy && !validos.includes(sortBy)) {
       return res.status(422).json({
         success: false,
-        message: `sort_by invalido '${sortBy}'. Validos: [${Object.keys(clienteItemReport.SORTABLE).join(', ')}]`,
+        message: `sort_by invalido '${sortBy}' para agrupar=${agrupar}. Validos: [${validos.join(', ')}]`,
       });
     }
 
@@ -324,6 +338,8 @@ const ReportesController = {
       estado:      estado || null,
       q:           req.query.q || null,
       id_cliente:  req.query.id_cliente || null,
+      // Un ejecutivo mirando "lo mio", o el Jefe filtrando por vendedor.
+      id_ejecutivo: req.query.id_ejecutivo || null,
     };
 
     const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -335,12 +351,13 @@ const ReportesController = {
       // consulta no depende de la primera.
       const [rows, totalRecords] = await Promise.all([
         clienteItemReport.find(filtros, { page, limit },
-          { by: sortBy, order: req.query.sort_order }),
-        clienteItemReport.count(filtros),
+          { by: sortBy, order: req.query.sort_order }, agrupar),
+        clienteItemReport.count(filtros, agrupar),
       ]);
 
       return res.status(200).json({
         success: true,
+        agrupar,
         data: rows,
         pagination: {
           page,

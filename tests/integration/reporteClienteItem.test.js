@@ -39,23 +39,25 @@ const { pool } = require('../../src/config/db');
 
 jest.setTimeout(30000);
 
-let token, idEjec, idClienteA, idClienteB, idProducto;
+let token, idEjec, idEjec2, idClienteA, idClienteB, idProducto, idMarca;
 const cotizaciones = [];
 
 const U_EJEC   = 'test_ejec_repci';
+const U_EJEC2  = 'test_ejec2_repci';
+const MARCA_NOMBRE = 'Test Marca REPCI';
 const PASSWORD = 'TestRepCI2026!';
 const CLI_A    = 'Test Agropecuaria REPCI';
 const CLI_B    = 'Test Transportes REPCI';
 const COD_CAT  = 'REPCI-CAT-1';    // codigo del catalogo (productos.codigo)
 
 // ---------------------------------------------------------------------------
-async function crearCotizacion(idCliente, estado, lineas) {
+async function crearCotizacion(idCliente, estado, lineas, ejecutivo = null) {
   const correlativo = `RCI-${Date.now() % 100000}-${cotizaciones.length}`;
   const [res] = await pool.execute(
     `INSERT INTO cotizaciones
        (numero_correlativo, id_cliente, id_ejecutivo, descripcion, fecha_emision, estado, monto_total, moneda)
      VALUES (?, ?, ?, 'Cotizacion REPCI', CURDATE(), ?, 100.00, 'USD')`,
-    [correlativo.slice(0, 20), idCliente, idEjec, estado]
+    [correlativo.slice(0, 20), idCliente, ejecutivo ?? idEjec, estado]
   );
   const id = res.insertId;
   cotizaciones.push(id);
@@ -63,10 +65,10 @@ async function crearCotizacion(idCliente, estado, lineas) {
   for (const l of lineas) {
     await pool.execute(
       `INSERT INTO cotizacion_detalles
-         (id_cotizacion, id_producto, descripcion_item, cantidad, precio_unitario, subtotal, codigo_parte, unidad)
-       VALUES (?, ?, ?, ?, 10.00, ?, ?, ?)`,
+         (id_cotizacion, id_producto, descripcion_item, cantidad, precio_unitario, subtotal, codigo_parte, unidad, marca_id)
+       VALUES (?, ?, ?, ?, 10.00, ?, ?, ?, ?)`,
       [id, l.id_producto ?? null, l.descripcion, l.cantidad, l.cantidad * 10,
-       l.codigo_parte ?? null, l.unidad ?? 'UND']
+       l.codigo_parte ?? null, l.unidad ?? 'UND', l.marca_id ?? null]
     );
   }
   return id;
@@ -75,8 +77,9 @@ async function crearCotizacion(idCliente, estado, lineas) {
 beforeAll(async () => {
   await pool.execute(
     `DELETE FROM cotizaciones WHERE id_ejecutivo IN
-       (SELECT id FROM usuarios WHERE nombre_usuario = ?)`, [U_EJEC]);
-  await pool.execute('DELETE FROM usuarios WHERE nombre_usuario = ?', [U_EJEC]);
+       (SELECT id FROM usuarios WHERE nombre_usuario IN (?, ?))`, [U_EJEC, U_EJEC2]);
+  await pool.execute('DELETE FROM usuarios WHERE nombre_usuario IN (?, ?)', [U_EJEC, U_EJEC2]);
+  await pool.execute('DELETE FROM marcas WHERE nombre = ?', [MARCA_NOMBRE]);
   await pool.execute('DELETE FROM clientes WHERE razon_social IN (?, ?)', [CLI_A, CLI_B]);
   await pool.execute('DELETE FROM productos WHERE codigo = ?', [COD_CAT]);
 
@@ -85,6 +88,14 @@ beforeAll(async () => {
     `INSERT INTO usuarios (nombre_completo, nombre_usuario, password_hash, id_rol, activo)
      VALUES (?, ?, ?, 1, 1)`, ['Test Ejecutivo REPCI', U_EJEC, hash]);
   idEjec = u.insertId;
+
+  const [u2] = await pool.execute(
+    `INSERT INTO usuarios (nombre_completo, nombre_usuario, password_hash, id_rol, activo)
+     VALUES (?, ?, ?, 1, 1)`, ['Test Ejecutivo2 REPCI', U_EJEC2, hash]);
+  idEjec2 = u2.insertId;
+
+  const [mk] = await pool.execute('INSERT INTO marcas (nombre) VALUES (?)', [MARCA_NOMBRE]);
+  idMarca = mk.insertId;
 
   const [a] = await pool.execute('INSERT INTO clientes (razon_social, activo) VALUES (?, 1)', [CLI_A]);
   const [b] = await pool.execute('INSERT INTO clientes (razon_social, activo) VALUES (?, 1)', [CLI_B]);
@@ -101,7 +112,7 @@ beforeAll(async () => {
   await crearCotizacion(idClienteA, 'Confirmada', [
     { id_producto: idProducto, descripcion: 'Filtro de aceite', cantidad: 3 },
     { id_producto: idProducto, descripcion: 'Filtro de aceite', cantidad: 2 },
-    { codigo_parte: 'RI-100', descripcion: 'Rodillo inferior', cantidad: 4 },
+    { codigo_parte: 'RI-100', descripcion: 'Rodillo inferior', cantidad: 4, marca_id: idMarca },
   ]);
 
   // Cliente A, cotizacion 2: el MISMO repuesto pero cargado a mano, con el
@@ -117,6 +128,12 @@ beforeAll(async () => {
     { descripcion: 'Manguera a medida', cantidad: 6 },
   ]);
 
+  // Mismo cliente y mismo codigo, pero cargado por OTRO ejecutivo: en la vista
+  // de detalle tiene que salir en su propia fila; en la vista por item, sumado.
+  await crearCotizacion(idClienteB, 'Confirmada', [
+    { id_producto: idProducto, descripcion: 'Filtro de aceite', cantidad: 5 },
+  ], idEjec2);
+
   const login = await request(app).post('/api/auth/login')
     .send({ nombre_usuario: U_EJEC, password: PASSWORD });
   expect(login.status).toBe(200);
@@ -129,7 +146,8 @@ afterAll(async () => {
     await pool.execute(`DELETE FROM cotizacion_detalles WHERE id_cotizacion IN (${m})`, cotizaciones);
     await pool.execute(`DELETE FROM cotizaciones WHERE id IN (${m})`, cotizaciones);
   }
-  await pool.execute('DELETE FROM usuarios WHERE id = ?', [idEjec]);
+  await pool.execute('DELETE FROM usuarios WHERE id IN (?, ?)', [idEjec, idEjec2]);
+  if (idMarca) await pool.execute('DELETE FROM marcas WHERE id = ?', [idMarca]);
   await pool.execute('DELETE FROM clientes WHERE id IN (?, ?)', [idClienteA, idClienteB]);
   await pool.execute('DELETE FROM productos WHERE id = ?', [idProducto]);
   await pool.end();
@@ -299,5 +317,167 @@ describe('RCI — acceso', () => {
   test('RCI-18: un Ejecutivo puede verlo (el reporte es para todos)', async () => {
     const res = await pedir('limit=5');
     expect(res.status).toBe(200);
+  });
+});
+
+// =============================================================================
+// SEGUNDA TANDA — lo que reporto ventas despues de usarlo:
+//   1. «parece que no agarra todos los items de una cotizacion»
+//   2. «mezclo las cotizaciones de todos los vendedores, se ve muy raro»
+//   3. faltan las marcas
+//
+// Y sobre todo, PARA QUE SIRVE: la empresa cotiza todo lo que le mandan, y
+// muchas piezas chicas no valen la pena de importar de a una. El reporte tiene
+// que dejar ver que repuesto se pide seguido y entre CUANTOS clientes distintos,
+// para decidir traer un lote y stockearlo. Esa pregunta se contesta SUMANDO
+// entre clientes — al reves de separar por ejecutivo, que tambien hace falta
+// pero para otra cosa.
+// =============================================================================
+
+describe('RCI2 — no se pierde ninguna linea', () => {
+
+  // La denuncia era «no agarra todos los items». Esta es la prueba de
+  // conservacion: lo que entra tiene que salir. Si el GROUP BY o algun JOIN
+  // descartara lineas, las dos sumas no coincidirian.
+  test('RCI2-01: la suma del reporte es igual a la suma de las lineas cargadas', async () => {
+    const res = await pedir(`id_cliente=${idClienteA}&limit=200`);
+    expect(res.status).toBe(200);
+
+    const delReporte = res.body.data
+      .reduce((acc, f) => acc + Number(f.cantidad_total), 0);
+
+    const [filas] = await pool.execute(
+      `SELECT COALESCE(SUM(d.cantidad), 0) AS total
+         FROM cotizacion_detalles d
+         INNER JOIN cotizaciones c ON c.id = d.id_cotizacion
+        WHERE c.id_cliente = ?`, [idClienteA]);
+
+    expect(delReporte).toBe(Number(filas[0].total));
+  });
+
+  test('RCI2-02: aparecen TODOS los codigos distintos del cliente', async () => {
+    const res = await pedir(`id_cliente=${idClienteA}&limit=200`);
+
+    // Cliente A tiene dos repuestos distintos: el del catalogo y RI-100.
+    const codigos = new Set(res.body.data.map((f) => f.codigo));
+    expect(codigos.has(COD_CAT)).toBe(true);
+    expect(codigos.has('RI-100')).toBe(true);
+  });
+});
+
+// =============================================================================
+describe('RCI2 — separado por ejecutivo', () => {
+
+  test('RCI2-03: cada fila dice que ejecutivo la cargo', async () => {
+    const res = await pedir('limit=200');
+    const fila = res.body.data.find((f) => f.cliente_nombre === CLI_A);
+
+    expect(fila.id_ejecutivo).toBe(idEjec);
+    expect(fila.ejecutivo_nombre).toContain('REPCI');
+  });
+
+  test('RCI2-04: se puede filtrar por ejecutivo', async () => {
+    const res = await pedir(`id_ejecutivo=${idEjec}&limit=200`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.every((f) => f.id_ejecutivo === idEjec)).toBe(true);
+  });
+
+  test('RCI2-05: dos ejecutivos sobre el mismo cliente y codigo no se mezclan', async () => {
+    const res = await pedir(`id_cliente=${idClienteB}&limit=200`);
+    const delOtro = res.body.data.filter((f) => f.id_ejecutivo === idEjec2);
+    const delNuestro = res.body.data.filter((f) => f.id_ejecutivo === idEjec);
+
+    // El segundo ejecutivo cargo 5 del mismo codigo sobre el mismo cliente:
+    // tiene que salir en su propia fila, no sumado a la del primero.
+    expect(delOtro.find((f) => f.codigo === COD_CAT)).toBeDefined();
+    expect(Number(delOtro.find((f) => f.codigo === COD_CAT).cantidad_total)).toBe(5);
+    expect(Number(delNuestro.find((f) => f.codigo === COD_CAT).cantidad_total)).toBe(7);
+  });
+});
+
+// =============================================================================
+describe('RCI2 — marcas', () => {
+
+  test('RCI2-06: cada fila trae la marca del repuesto', async () => {
+    const res = await pedir(`id_cliente=${idClienteA}&limit=200`);
+    const fila = res.body.data.find((f) => f.codigo === 'RI-100');
+
+    expect(fila.marca_nombre).toBe(MARCA_NOMBRE);
+  });
+
+  test('RCI2-07: una linea sin marca no desaparece', async () => {
+    const res = await pedir(`id_cliente=${idClienteA}&limit=200`);
+    const fila = res.body.data.find((f) => f.codigo === COD_CAT);
+
+    expect(fila).toBeDefined();
+    expect(fila.marca_nombre).toBeNull();
+  });
+});
+
+// =============================================================================
+// LA VISTA QUE CONTESTA LA PREGUNTA DEL NEGOCIO.
+// «¿Conviene traer un lote de este repuesto?» se responde mirando cuanto se
+// pide EN TOTAL y entre cuantos clientes DISTINTOS. Un repuesto que piden 5
+// clientes distintos es mejor candidato a stock que uno que pidio 5 veces el
+// mismo cliente, aunque la cantidad sea igual.
+// =============================================================================
+describe('RCI2 — vista por item, para decidir el stock', () => {
+
+  test('RCI2-08: agrupa el mismo codigo entre todos los clientes', async () => {
+    const res = await pedir('agrupar=item&limit=200');
+    expect(res.status).toBe(200);
+
+    const fila = res.body.data.find((f) => f.codigo === COD_CAT);
+    // 15 del cliente A + 7 del cliente B + 5 del segundo ejecutivo = 27
+    expect(Number(fila.cantidad_total)).toBe(27);
+  });
+
+  test('RCI2-09: dice entre cuantos clientes distintos se reparte', async () => {
+    const res = await pedir('agrupar=item&limit=200');
+    const fila = res.body.data.find((f) => f.codigo === COD_CAT);
+
+    expect(Number(fila.clientes)).toBe(2);
+  });
+
+  test('RCI2-10: en esta vista no hay una fila por cliente', async () => {
+    const res = await pedir('agrupar=item&limit=200');
+    const conEseCodigo = res.body.data.filter((f) => f.codigo === COD_CAT);
+
+    expect(conEseCodigo).toHaveLength(1);
+  });
+
+  test('RCI2-11: ordena por cantidad para que lo que mas se pide quede arriba', async () => {
+    const res = await pedir('agrupar=item&limit=200');
+    const cantidades = res.body.data.map((f) => Number(f.cantidad_total));
+
+    for (let i = 1; i < cantidades.length; i++) {
+      expect(cantidades[i - 1]).toBeGreaterThanOrEqual(cantidades[i]);
+    }
+  });
+
+  test('RCI2-12: se puede ordenar por cantidad de clientes distintos', async () => {
+    const res = await pedir('agrupar=item&sort_by=clientes&sort_order=DESC&limit=200');
+    expect(res.status).toBe(200);
+
+    const clientes = res.body.data.map((f) => Number(f.clientes));
+    for (let i = 1; i < clientes.length; i++) {
+      expect(clientes[i - 1]).toBeGreaterThanOrEqual(clientes[i]);
+    }
+  });
+
+  test('RCI2-13: la paginacion cuenta items, no combinaciones cliente-item', async () => {
+    const [detalle, porItem] = await Promise.all([
+      pedir('limit=1'),
+      pedir('agrupar=item&limit=1'),
+    ]);
+
+    // Agrupar por item no puede dar MAS filas que agrupar por cliente+item.
+    expect(porItem.body.pagination.totalRecords)
+      .toBeLessThanOrEqual(detalle.body.pagination.totalRecords);
+  });
+
+  test('RCI2-14: un agrupar invalido se rechaza', async () => {
+    const res = await pedir('agrupar=loquesea');
+    expect(res.status).toBe(422);
   });
 });

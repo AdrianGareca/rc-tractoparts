@@ -46,12 +46,36 @@ const { pool } = require('../../config/db');
 // Columnas por las que se puede ordenar. Whitelist estricta: el valor entra
 // concatenado en el ORDER BY (no se puede parametrizar), asi que cualquier
 // cosa fuera de esta lista es inyeccion.
+// Hay DOS vistas sobre los mismos datos, y cada una admite ordenes distintos:
+//
+//   'detalle' — una fila por (ejecutivo, cliente, codigo, marca, unidad).
+//               Contesta «que le cotizo cada vendedor a cada cliente».
+//
+//   'item'    — una fila por (codigo, marca, unidad), sumando entre TODOS los
+//               clientes y vendedores. Contesta la pregunta de compras:
+//               «¿este repuesto se pide lo suficiente como para traer un lote?».
+//               Ahi «cuantos clientes distintos lo pidieron» importa tanto como
+//               la cantidad: 20 unidades entre 5 clientes es mejor candidato a
+//               stock que 20 que pidio uno solo y quizas no repita.
 const SORTABLE = {
-  cantidad: 'cantidad_total',
-  cliente:  'cliente_nombre',
-  codigo:   'codigo',
-  items:    'cotizaciones',
+  detalle: {
+    cantidad:  'cantidad_total',
+    cliente:   'cliente_nombre',
+    ejecutivo: 'ejecutivo_nombre',
+    codigo:    'codigo',
+    marca:     'marca_nombre',
+    items:     'cotizaciones',
+  },
+  item: {
+    cantidad: 'cantidad_total',
+    codigo:   'codigo',
+    marca:    'marca_nombre',
+    items:    'cotizaciones',
+    clientes: 'clientes',
+  },
 };
+
+const MODOS = ['detalle', 'item'];
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT     = 200;
@@ -121,6 +145,11 @@ const LINEAS_SQL = (clause) => `
     cl.id            AS id_cliente,
     cl.razon_social  AS cliente_nombre,
     cl.nit           AS cliente_nit,
+    u.id             AS id_ejecutivo,
+    u.nombre_completo AS ejecutivo_nombre,
+    -- La marca importa para comprar: un filtro John Deere y uno CAT no son el
+    -- mismo repuesto aunque la descripcion se parezca.
+    mk.nombre        AS marca_nombre,
     ${CODIGO_SQL}    AS codigo,
     COALESCE(${CODIGO_SQL}, CONCAT('SINCOD::', d.descripcion_item)) AS clave,
     d.descripcion_item,
@@ -131,13 +160,23 @@ const LINEAS_SQL = (clause) => `
   FROM cotizacion_detalles d
   INNER JOIN cotizaciones c  ON c.id  = d.id_cotizacion
   INNER JOIN clientes      cl ON cl.id = c.id_cliente
+  INNER JOIN usuarios      u  ON u.id  = c.id_ejecutivo
   LEFT  JOIN productos     p  ON p.id  = d.id_producto
+  LEFT  JOIN marcas        mk ON mk.id = d.marca_id
   ${clause}
 `;
 
 // El GROUP BY se repite en la consulta de datos y en la de conteo: si se
 // separaran, el total podria dejar de coincidir con las filas.
-const GROUP_BY = 'l.id_cliente, l.cliente_nombre, l.cliente_nit, l.codigo, l.clave, l.unidad';
+//
+// `marca_nombre` entra en los dos: si el mismo codigo se cargo con dos marcas
+// distintas salen dos filas, que es correcto y ademas hace visible el dato
+// sucio en vez de esconderlo detras de una suma.
+const GROUP_BY = {
+  detalle: 'l.id_ejecutivo, l.ejecutivo_nombre, l.id_cliente, l.cliente_nombre, ' +
+           'l.cliente_nit, l.codigo, l.clave, l.marca_nombre, l.unidad',
+  item:    'l.codigo, l.clave, l.marca_nombre, l.unidad',
+};
 
 // ---------------------------------------------------------------------------
 // find — una fila por (cliente, codigo, unidad).
@@ -147,25 +186,48 @@ const GROUP_BY = 'l.id_cliente, l.cliente_nombre, l.cliente_nit, l.codigo, l.cla
 // @param {Object} orden       { by, order }
 // @returns {Promise<Array<Object>>}
 // ---------------------------------------------------------------------------
-async function find(filtros = {}, paginacion = {}, orden = {}) {
+// find — una fila por grupo, segun el modo.
+//
+// @param {Object} filtros     fecha_desde, fecha_hasta, estado, q, id_cliente, id_ejecutivo
+// @param {Object} paginacion  { page, limit }
+// @param {Object} orden       { by, order }
+// @param {string} modo        'detalle' | 'item'
+// @returns {Promise<Array<Object>>}
+// ---------------------------------------------------------------------------
+async function find(filtros = {}, paginacion = {}, orden = {}, modo = 'detalle') {
+  const m      = MODOS.includes(modo) ? modo : 'detalle';
   const page   = Math.max(1, parseInt(paginacion.page, 10) || 1);
   const limit  = Math.min(MAX_LIMIT, Math.max(1, parseInt(paginacion.limit, 10) || DEFAULT_LIMIT));
   const offset = (page - 1) * limit;
 
-  const columna = SORTABLE[orden.by] || SORTABLE.cantidad;
+  const columna = SORTABLE[m][orden.by] || SORTABLE[m].cantidad;
   const sentido = String(orden.order).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
   const { clause, params } = _where(filtros);
+
+  // Columnas propias de cada vista. En 'item' no hay un cliente ni un ejecutivo
+  // que nombrar (se sumo entre todos), pero si interesa CUANTOS distintos
+  // hubo — para compras, un repuesto repartido entre varios clientes es mejor
+  // candidato a stock que el mismo volumen concentrado en uno solo.
+  const columnasPropias = m === 'item'
+    ? `
+      COUNT(DISTINCT l.id_cliente)   AS clientes,
+      COUNT(DISTINCT l.id_ejecutivo) AS ejecutivos,`
+    : `
+      l.id_cliente,
+      l.cliente_nombre,
+      l.cliente_nit,
+      l.id_ejecutivo,
+      l.ejecutivo_nombre,`;
 
   // LIMIT/OFFSET van como literales ya validados: mysql2 v3 los tipa como
   // DOUBLE si se pasan como parametros y MySQL rechaza la sentencia (mismo
   // motivo documentado en QuotationModel.findAll y AuditLogModel.findAll).
   const sql = `
     SELECT
-      l.id_cliente,
-      l.cliente_nombre,
-      l.cliente_nit,
+      ${columnasPropias}
       l.codigo,
+      l.marca_nombre,
       -- Descripcion representativa: la mas frecuente exigiria otra agregacion,
       -- asi que se toma la mas larga, que en la practica es la mas completa.
       SUBSTRING_INDEX(
@@ -181,8 +243,8 @@ async function find(filtros = {}, paginacion = {}, orden = {}) {
       -- codigo, y no hay que confundirlas con un repuesto catalogado.
       CASE WHEN l.codigo IS NULL THEN 1 ELSE 0 END AS sin_codigo
     FROM (${LINEAS_SQL(clause)}) AS l
-    GROUP BY ${GROUP_BY}
-    ORDER BY ${columna} ${sentido}, l.cliente_nombre ASC
+    GROUP BY ${GROUP_BY[m]}
+    ORDER BY ${columna} ${sentido}, l.codigo ASC
     LIMIT ${limit} OFFSET ${offset}
   `;
 
@@ -195,14 +257,15 @@ async function find(filtros = {}, paginacion = {}, orden = {}) {
 // Se cuenta sobre la MISMA agrupacion, envuelta en una subconsulta: un
 // COUNT(*) plano contaria lineas de detalle, no filas del reporte.
 // ---------------------------------------------------------------------------
-async function count(filtros = {}) {
+async function count(filtros = {}, modo = 'detalle') {
+  const m = MODOS.includes(modo) ? modo : 'detalle';
   const { clause, params } = _where(filtros);
 
   const sql = `
     SELECT COUNT(*) AS total FROM (
       SELECT 1
         FROM (${LINEAS_SQL(clause)}) AS l
-       GROUP BY ${GROUP_BY}
+       GROUP BY ${GROUP_BY[m]}
     ) AS agrupado
   `;
 
@@ -210,4 +273,4 @@ async function count(filtros = {}) {
   return rows[0].total;
 }
 
-module.exports = { find, count, SORTABLE, DEFAULT_LIMIT, MAX_LIMIT };
+module.exports = { find, count, SORTABLE, MODOS, DEFAULT_LIMIT, MAX_LIMIT };
