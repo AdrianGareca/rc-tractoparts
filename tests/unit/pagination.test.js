@@ -345,25 +345,39 @@ describe('los cuatro paneles usan el control compartido', () => {
   // Por eso ahora se exige una SENTENCIA import de verdad.
   const IMPORT_REAL = /^import\s*\{[^}]*\bmountPagination\b[^}]*\}\s*from\s*['"][^'"]*shared\/pagination\.js['"]/m;
 
-  test.each(PANELES)('%s importa mountPagination de verdad', (archivo) => {
+  // Los paneles ya NO montan la paginación a mano: delegan en
+  // shared/listSection.js, que encapsula el ciclo cargando/vacío/error/paginar.
+  // Lo que se protege es que ninguno vuelva a escribir la suya.
+  const IMPORT_SECCION = /^import\s*\{[^}]*\bcreateListSection\b[^}]*\}\s*from\s*['"][^'"]*shared\/listSection\.js['"]/m;
+
+  test.each(PANELES)('%s delega la paginación en listSection', (archivo) => {
     const src = fs.readFileSync(path.join(RAIZ, archivo), 'utf8');
 
-    expect(src).toMatch(/\bmountPagination\s*\(/);   // lo usa
-    expect(src).toMatch(IMPORT_REAL);                // y lo importa
+    expect(src).toMatch(/\bcreateListSection\s*\(/);   // lo usa
+    expect(src).toMatch(IMPORT_SECCION);               // y lo importa de verdad
   });
 
-  test.each(PANELES)('%s importa las etiquetas que usa', (archivo) => {
+  test.each(PANELES)('%s importa las etiquetas que le pasa a la sección', (archivo) => {
     const src = fs.readFileSync(path.join(RAIZ, archivo), 'utf8');
 
-    // Qué constante de etiquetas usa este panel…
     const usadas = [...src.matchAll(/etiquetas:\s*(ETIQUETAS_\w+)/g)].map((m) => m[1]);
     expect(usadas.length).toBeGreaterThan(0);
 
-    // …y que esté entre las llaves del import.
-    const linea = IMPORT_REAL.exec(src)?.[0] ?? '';
     for (const nombre of new Set(usadas)) {
-      expect(linea).toContain(nombre);
+      // De una sentencia import real, no de un comentario.
+      expect(src).toMatch(new RegExp(`^import\\s*\\{[^}]*\\b${nombre}\\b`, 'm'));
     }
+  });
+
+  test('listSection es quien monta el control compartido', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, '../../public/js/shared/listSection.js'), 'utf8');
+
+    // Vive AL LADO de pagination.js, así que su import es './pagination.js' y
+    // no la ruta larga que usan los paneles: la misma regex no sirve para los dos.
+    expect(src).toMatch(/\bmountPagination\s*\(/);
+    expect(src).toMatch(
+      /^import\s*\{[^}]*\bmountPagination\b[^}]*\}\s*from\s*['"]\.\/pagination\.js['"]/m);
   });
 
   test.each(PANELES)('%s no dejó la paginación copiada a mano', (archivo) => {

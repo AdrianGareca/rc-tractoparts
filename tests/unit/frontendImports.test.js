@@ -76,6 +76,30 @@ describe('imports del frontend', () => {
     expect(archivos.length).toBeGreaterThan(10);
   });
 
+  // ── Que el archivo PARSEE ──────────────────────────────────────────────────
+  // Sin build step nadie compila nada: un paréntesis sin cerrar no rompe ningún
+  // test, rompe la pantalla en blanco del navegador. Pasó de verdad al extraer
+  // shared/listSection.js — un reemplazo automático cerró un `content(` en el
+  // backtick equivocado (los template literals anidados tienen backticks
+  // adentro) y dejó dos paneles con un SyntaxError. Los tests seguían en verde
+  // porque solo leían los archivos como texto.
+  //
+  // @babel/parser ya está instalado (viene con babel-jest) y entiende ESM, así
+  // que el chequeo sale gratis y no hace falta lanzar un proceso por archivo.
+  test.each(archivos.map((f) => [rel(f), f]))('%s — parsea como ES module', (_nombre, file) => {
+    const { parse } = require('@babel/parser');
+    const src = fs.readFileSync(file, 'utf8');
+
+    try {
+      parse(src, { sourceType: 'module', errorRecovery: false });
+    } catch (err) {
+      throw new Error(
+        `${rel(file)} tiene un error de sintaxis en la línea ${err.loc?.line}: ${err.message}\n` +
+        'En el navegador esto deja la pantalla en blanco sin más pista que la consola.'
+      );
+    }
+  });
+
   test.each(archivos.map((f) => [rel(f), f]))('%s — sus imports resuelven', (_nombre, file) => {
     const src = fs.readFileSync(file, 'utf8');
     const dir = path.dirname(file);

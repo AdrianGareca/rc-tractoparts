@@ -22,7 +22,8 @@
 import api from '../../../services/apiClient.js';
 import { escHtml, badgeHtml, fmtDate, fmtAmount } from '../helpers.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
-import { mountPagination, ETIQUETAS_FECHA } from '../../../shared/pagination.js';
+import { ETIQUETAS_FECHA } from '../../../shared/pagination.js';
+import { createListSection } from '../../../shared/listSection.js';
 
 // Must mirror sql/init.sql cotizaciones.estado ENUM EXACTLY (legacy 'Aceptada'
 // is intentionally omitted — it was superseded by 'Confirmada'). Any mismatch
@@ -78,19 +79,17 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
 
   const $ = (sel) => panel.querySelector(sel);
 
-  // Handle del control de paginación montado, para desmontarlo antes de
-  // volver a dibujarlo (ver renderPagination).
-  let destroyPagination = null;
-
-  // Vaciar el pie sin desmontar antes dejaba vivos los listeners de document del
-  // menú desplegable: el HTML desaparecía pero los handlers seguían ahí, y cada
-  // búsqueda que no devolvía nada apilaba un par más.
-  const clearPagination = () => {
-    destroyPagination?.();
-    destroyPagination = null;
-    const pie = $('#allq-pagination');
-    if (pie) pie.innerHTML = '';
-  };
+  // El ciclo cargando/vacio/error/paginar es identico en los cuatro paneles
+  // y vive en shared/listSection.js. Lo propio de cada uno (columnas,
+  // filtros, acciones) se queda aca, que es donde se lee mejor.
+  const seccion = createListSection({
+    resultsEl:    $('#allq-results'),
+    paginationEl: $('#allq-pagination'),
+    columnas:     8,
+    etiqueta:     'Cargando cotizaciones',
+    etiquetas:    ETIQUETAS_FECHA,
+    onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },
+  });
 
   // ── 2. Populate the Ejecutivo dropdown from /api/usuarios ────────────────────
   // Non-fatal: if it fails, the dropdown just stays with "Todos".
@@ -110,8 +109,7 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
 
   // ── 3. Fetch + render, reading the current filter state ─────────────────────
   async function load() {
-    const results = $('#allq-results');
-    results.innerHTML = tableSkeleton({ columnas: 8, etiqueta: 'Cargando cotizaciones' });
+    seccion.loading();
 
     const params = new URLSearchParams({
       page:       String(state.page),
@@ -136,17 +134,16 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
       $('#allq-total').textContent = `${data.pagination?.totalRecords ?? rows.length} total`;
 
       if (rows.length === 0) {
-        results.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">📋</div>
-            <h4>Sin resultados</h4>
-            <p>No hay cotizaciones que coincidan con los filtros aplicados.</p>
-          </div>`;
-        clearPagination();
+        seccion.empty({
+          icono:  '📋',
+          titulo: 'Sin resultados',
+          texto:  'No hay cotizaciones que coincidan con los filtros aplicados.',
+        });
+        seccion.clearPagination();
         return;
       }
 
-      results.innerHTML = `
+      seccion.content(`
         <div class="table-wrapper">
           <table class="data-table">
             <thead>
@@ -173,17 +170,17 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
                 </tr>`).join('')}
             </tbody>
           </table>
-        </div>`;
+        </div>`);
 
-      results.querySelectorAll(`[${detailAttr}]`).forEach((btn) => {
+      seccion.el.querySelectorAll(`[${detailAttr}]`).forEach((btn) => {
         btn.addEventListener('click', () =>
           onViewDetail(btn.getAttribute(detailAttr), btn.dataset.correlativo));
       });
 
-      renderPagination(data.pagination);
+      seccion.paginate(data.pagination);
     } catch (err) {
-      results.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.message)}</p></div>`;
-      clearPagination();
+      seccion.content(`<div class="empty-state"><p>Error: ${escHtml(err.message)}</p></div>`);
+      seccion.clearPagination();
     }
   }
 
@@ -191,17 +188,6 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
   // los cuatro paneles tenían esta función copiada, idéntica salvo el prefijo.
   // destroyPagination quita los listeners de document del menú anterior antes
   // de montar el nuevo; sin eso cada recarga apilaría un par más.
-  function renderPagination(paginacion) {
-    destroyPagination?.();
-    destroyPagination = mountPagination($('#allq-pagination'), paginacion, {
-      etiquetas: ETIQUETAS_FECHA,
-      onChange: ({ page, limit }) => {
-        state.page  = page;
-        state.limit = limit;
-        load();
-      },
-    });
-  }
 
   // ── 4. Wire filters ─────────────────────────────────────────────────────────
   // Dropdowns fire on 'change'; text + dates apply via button or Enter.

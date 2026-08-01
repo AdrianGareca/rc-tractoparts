@@ -612,37 +612,13 @@ export class ExecutiveStrategy extends DashboardStrategy {
   // PUT /:id/estado endpoint. The backend authorizes each transition only
   // because the executive carries the can_approve_quotations flag (re-read
   // fresh from the DB server-side on every call).
+  // Mismo dialogo que usa el Jefe (modules/stateChangeDialog.js). Compartir el
+  // dialogo NO comparte privilegios: las dos rutas van por PUT /:id/estado y el
+  // backend revalida el permiso en cada llamada.
   _confirmDelegatedStateChange(id, newState, title, description, obsLabel, obsRequired, successMsg) {
-    UI.openModal(title, (body) => {
-      body.innerHTML = `
-        <p class="text-sm" style="color:var(--text-secondary);margin-bottom:1rem;">
-          ${description}
-        </p>
-        <div class="form-group">
-          <label class="form-label" for="dsc-obs">${obsLabel}</label>
-          <textarea class="form-control" id="dsc-obs" rows="3"></textarea>
-          <span class="field-error" id="dsc-err"></span>
-        </div>
-        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
-          <button class="btn btn-ghost" id="dsc-cancel">Cancelar</button>
-          <button class="btn btn-primary" id="dsc-confirm">${title}</button>
-        </div>`;
-
-      body.querySelector('#dsc-cancel')?.addEventListener('click', UI.closeModal);
-      body.querySelector('#dsc-confirm')?.addEventListener('click', () => {
-        const obs   = body.querySelector('#dsc-obs')?.value.trim() ?? '';
-        const errEl = body.querySelector('#dsc-err');
-        if (obsRequired && !obs) {
-          errEl.textContent = 'Este campo es requerido.';
-          return;
-        }
-        const btn = body.querySelector('#dsc-confirm');
-        CommandInvoker.run(new ChangeStatusCommand(id, newState, obs), {
-          btn,
-          successMsg,
-          onSuccess: () => { UI.closeModal(); this.refresh(); },
-        });
-      });
+    confirmStateChange({
+      id, newState, title, description, obsLabel, obsRequired, successMsg,
+      onSuccess: () => this.refresh(),
     });
   }
 

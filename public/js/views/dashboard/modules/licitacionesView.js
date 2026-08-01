@@ -31,7 +31,8 @@ import { openLicitacionModal } from './licitacionModal.js';
 import { ESTADOS } from './licitacion/permissions.js';
 import { openLicitacionDetail } from './licitacion/detailModal.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
-import { mountPagination, ETIQUETAS_FECHA } from '../../../shared/pagination.js';
+import { ETIQUETAS_FECHA } from '../../../shared/pagination.js';
+import { createListSection } from '../../../shared/listSection.js';
 
 // ---------------------------------------------------------------------------
 // mountLicitacionesTab
@@ -69,23 +70,20 @@ export async function mountLicitacionesTab(panel, opts = {}) {
 
   const $ = (sel) => panel.querySelector(sel);
 
-  // Handle del control de paginación montado, para desmontarlo antes de
-  // volver a dibujarlo (ver renderPagination).
-  let destroyPagination = null;
-
-  // Vaciar el pie sin desmontar antes dejaba vivos los listeners de document del
-  // menu desplegable: el HTML desaparecia pero los handlers seguian ahi, y cada
-  // busqueda que no devolvia nada apilaba un par mas.
-  const clearPagination = () => {
-    destroyPagination?.();
-    destroyPagination = null;
-    const pie = $('#lic-pagination');
-    if (pie) pie.innerHTML = '';
-  };
+  // El ciclo cargando/vacio/error/paginar es identico en los cuatro paneles
+  // y vive en shared/listSection.js. Lo propio de cada uno (columnas,
+  // filtros, acciones) se queda aca, que es donde se lee mejor.
+  const seccion = createListSection({
+    resultsEl:    $('#lic-results'),
+    paginationEl: $('#lic-pagination'),
+    columnas:     7,
+    etiqueta:     'Cargando licitaciones',
+    etiquetas:    ETIQUETAS_FECHA,
+    onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },
+  });
 
   async function load() {
-    const results = $('#lic-results');
-    results.innerHTML = tableSkeleton({ columnas: 7, etiqueta: 'Cargando licitaciones' });
+    seccion.loading();
 
     const params = new URLSearchParams({ page: String(state.page), limit: String(state.limit) });
     if (state.q)      params.set('q', state.q);
@@ -97,17 +95,16 @@ export async function mountLicitacionesTab(panel, opts = {}) {
       $('#lic-total').textContent = `${body.total ?? rows.length} licitación(es)`;
 
       if (rows.length === 0) {
-        results.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">📑</div>
-            <h4>Sin licitaciones</h4>
-            <p>No hay licitaciones que coincidan con el filtro.</p>
-          </div>`;
-        clearPagination();
+        seccion.empty({
+          icono:  '📑',
+          titulo: 'Sin licitaciones',
+          texto:  'No hay licitaciones que coincidan con el filtro.',
+        });
+        seccion.clearPagination();
         return;
       }
 
-      results.innerHTML = `
+      seccion.content(`
         <div class="table-wrapper">
           <table class="data-table">
             <thead>
@@ -130,16 +127,16 @@ export async function mountLicitacionesTab(panel, opts = {}) {
                 </tr>`).join('')}
             </tbody>
           </table>
-        </div>`;
+        </div>`);
 
-      results.querySelectorAll('[data-lic-view]').forEach((btn) => {
+      seccion.el.querySelectorAll('[data-lic-view]').forEach((btn) => {
         btn.addEventListener('click', () => openDetail(btn.dataset.licView));
       });
 
-      renderPagination(body);
+      seccion.paginate({ page: body?.page ?? state.page, limit: body?.limit ?? state.limit,
+                         totalRecords: body?.total ?? 0, totalPages: body?.totalPages ?? 1 });
     } catch (err) {
-      results.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.data?.message || err.message)}</p></div>`;
-      clearPagination();
+      seccion.error(err);
     }
   }
 
@@ -149,22 +146,6 @@ export async function mountLicitacionesTab(panel, opts = {}) {
   // `pagination`, así que se normaliza acá.
   // destroyPagination quita los listeners de document del menú anterior antes de
   // montar el nuevo; sin eso cada recarga apilaría un par más.
-  function renderPagination(body) {
-    destroyPagination?.();
-    destroyPagination = mountPagination($('#lic-pagination'), {
-      page:         body?.page       ?? state.page,
-      limit:        body?.limit      ?? state.limit,
-      totalRecords: body?.total      ?? 0,
-      totalPages:   body?.totalPages ?? 1,
-    }, {
-      etiquetas: ETIQUETAS_FECHA,
-      onChange: ({ page, limit }) => {
-        state.page  = page;
-        state.limit = limit;
-        load();
-      },
-    });
-  }
 
   // ── Detail sub-modal ───────────────────────────────────────────────────────
   // Vive en licitacion/detailModal.js. Le pasamos `load` para que el listado

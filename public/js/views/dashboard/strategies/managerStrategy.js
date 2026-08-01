@@ -229,38 +229,14 @@ export class ManagerStrategy extends DashboardStrategy {
 
   // ── Generic state-transition confirmation dialog (Solicitar Cambios / En Espera) ──
 
+  // El dialogo vive en modules/stateChangeDialog.js: estaba escrito identico
+  // aca y en executiveStrategy, y lo unico que cambiaba era el prefijo de los
+  // id. Este metodo queda como envoltorio para no tocar los diez llamados que
+  // ya existen, y para inyectar el refresco propio de esta strategy.
   _confirmStateChange(id, newState, title, description, obsLabel, obsRequired, successMsg) {
-    UI.openModal(title, (body) => {
-      body.innerHTML = `
-        <p class="text-sm" style="color:var(--text-secondary);margin-bottom:1rem;">
-          ${description}
-        </p>
-        <div class="form-group">
-          <label class="form-label" for="sc-obs">${obsLabel}</label>
-          <textarea class="form-control" id="sc-obs" rows="3"
-                    placeholder="${obsRequired ? 'Requerido' : 'Opcional'}"></textarea>
-          <span class="field-error" id="sc-err"></span>
-        </div>
-        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
-          <button class="btn btn-ghost" id="sc-cancel">Cancelar</button>
-          <button class="btn btn-primary" id="sc-confirm">${title}</button>
-        </div>`;
-
-      body.querySelector('#sc-cancel')?.addEventListener('click', UI.closeModal);
-      body.querySelector('#sc-confirm')?.addEventListener('click', () => {
-        const obs    = body.querySelector('#sc-obs')?.value.trim() ?? '';
-        const errEl  = body.querySelector('#sc-err');
-        if (obsRequired && !obs) {
-          errEl.textContent = 'Este campo es requerido.';
-          return;
-        }
-        const btn = body.querySelector('#sc-confirm');
-        CommandInvoker.run(new ChangeStatusCommand(id, newState, obs), {
-          btn,
-          successMsg,
-          onSuccess: () => { UI.closeModal(); this.refresh(); },
-        });
-      });
+    confirmStateChange({
+      id, newState, title, description, obsLabel, obsRequired, successMsg,
+      onSuccess: () => this.refresh(),
     });
   }
 

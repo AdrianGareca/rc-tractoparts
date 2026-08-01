@@ -18,7 +18,8 @@ import api, { showToast } from '../../../services/apiClient.js';
 import { escHtml }         from '../helpers.js';
 import { openClienteModal } from './clientModal.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
-import { mountPagination, ETIQUETAS_ALFABETICAS } from '../../../shared/pagination.js';
+import { ETIQUETAS_ALFABETICAS } from '../../../shared/pagination.js';
+import { createListSection } from '../../../shared/listSection.js';
 
 // ---------------------------------------------------------------------------
 // mountClientsTab
@@ -51,24 +52,21 @@ export async function mountClientsTab(panel) {
 
   const $ = (sel) => panel.querySelector(sel);
 
-  // Handle del control de paginación montado, para desmontarlo antes de
-  // volver a dibujarlo (ver renderPagination).
-  let destroyPagination = null;
-
-  // Vaciar el pie sin desmontar antes dejaba vivos los listeners de document del
-  // menu desplegable: el HTML desaparecia pero los handlers seguian ahi, y cada
-  // busqueda que no devolvia nada apilaba un par mas.
-  const clearPagination = () => {
-    destroyPagination?.();
-    destroyPagination = null;
-    const pie = $('#clients-pagination');
-    if (pie) pie.innerHTML = '';
-  };
+  // El ciclo cargando/vacio/error/paginar es identico en los cuatro paneles
+  // y vive en shared/listSection.js. Lo propio de cada uno (columnas,
+  // filtros, acciones) se queda aca, que es donde se lee mejor.
+  const seccion = createListSection({
+    resultsEl:    $('#clients-results'),
+    paginationEl: $('#clients-pagination'),
+    columnas:     6,
+    etiqueta:     'Cargando clientes',
+    etiquetas:    ETIQUETAS_ALFABETICAS,
+    onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },
+  });
 
   // ── 2. Fetch + render, reading the current filter/page state ────────────
   async function load() {
-    const results = $('#clients-results');
-    results.innerHTML = tableSkeleton({ columnas: 6, etiqueta: 'Cargando clientes' });
+    seccion.loading();
 
     const params = new URLSearchParams({ page: String(state.page), limit: String(state.limit) });
     if (state.q) params.set('q', state.q);
@@ -79,17 +77,16 @@ export async function mountClientsTab(panel) {
       $('#clients-total').textContent = `${data.pagination?.totalRecords ?? rows.length} cliente(s)`;
 
       if (rows.length === 0) {
-        results.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">🏢</div>
-            <h4>Sin resultados</h4>
-            <p>No hay clientes que coincidan con la búsqueda.</p>
-          </div>`;
-        clearPagination();
+        seccion.empty({
+          icono:  '🏢',
+          titulo: 'Sin resultados',
+          texto:  'No hay clientes que coincidan con la búsqueda.',
+        });
+        seccion.clearPagination();
         return;
       }
 
-      results.innerHTML = `
+      seccion.content(`
         <div class="table-wrapper">
           <table class="data-table">
             <thead>
@@ -122,10 +119,10 @@ export async function mountClientsTab(panel) {
                 </tr>`).join('')}
             </tbody>
           </table>
-        </div>`;
+        </div>`);
 
       // "Editar" — reuses the shared Nuevo/Editar Cliente sub-modal.
-      results.querySelectorAll('[data-client-edit]').forEach((btn) => {
+      seccion.el.querySelectorAll('[data-client-edit]').forEach((btn) => {
         btn.addEventListener('click', () => {
           const client = rows.find((c) => String(c.id) === btn.dataset.clientEdit);
           if (!client) return;
@@ -134,7 +131,7 @@ export async function mountClientsTab(panel) {
       });
 
       // "Desactivar" — soft delete (DELETE /api/clientes/:id), confirmed first.
-      results.querySelectorAll('[data-client-deact]').forEach((btn) => {
+      seccion.el.querySelectorAll('[data-client-deact]').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const client = rows.find((c) => String(c.id) === btn.dataset.clientDeact);
           if (!client) return;
@@ -161,7 +158,7 @@ export async function mountClientsTab(panel) {
       // "Activar" — reactivation goes through the general update endpoint
       // (mirrors UserController.updateUser: reactivation is just a field on
       // the general update, not a dedicated endpoint).
-      results.querySelectorAll('[data-client-act]').forEach((btn) => {
+      seccion.el.querySelectorAll('[data-client-act]').forEach((btn) => {
         btn.addEventListener('click', async () => {
           const client = rows.find((c) => String(c.id) === btn.dataset.clientAct);
           if (!client) return;
@@ -183,10 +180,9 @@ export async function mountClientsTab(panel) {
         });
       });
 
-      renderPagination(data.pagination);
+      seccion.paginate(data.pagination);
     } catch (err) {
-      results.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.data?.message || err.message)}</p></div>`;
-      clearPagination();
+      seccion.error(err);
     }
   }
 
@@ -194,17 +190,6 @@ export async function mountClientsTab(panel) {
   // los cuatro paneles tenían esta función copiada, idéntica salvo el prefijo.
   // destroyPagination quita los listeners de document del menú anterior antes
   // de montar el nuevo; sin eso cada recarga apilaría un par más.
-  function renderPagination(paginacion) {
-    destroyPagination?.();
-    destroyPagination = mountPagination($('#clients-pagination'), paginacion, {
-      etiquetas: ETIQUETAS_ALFABETICAS,
-      onChange: ({ page, limit }) => {
-        state.page  = page;
-        state.limit = limit;
-        load();
-      },
-    });
-  }
 
   // ── 3. Wire the static controls ──────────────────────────────────────────
   $('#clients-new').addEventListener('click', () => {

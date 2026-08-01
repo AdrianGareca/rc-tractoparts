@@ -15,7 +15,8 @@
 import api                      from '../../../services/apiClient.js';
 import { escHtml, fmtDateTime } from '../helpers.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
-import { mountPagination, ETIQUETAS_FECHA } from '../../../shared/pagination.js';
+import { ETIQUETAS_FECHA } from '../../../shared/pagination.js';
+import { createListSection } from '../../../shared/listSection.js';
 
 // ---------------------------------------------------------------------------
 // Acción → { icon, label, badgeClass } — human-friendly presentation for each
@@ -234,19 +235,17 @@ export async function mountAuditLogTab(panel) {
 
   const $ = (sel) => panel.querySelector(sel);
 
-  // Handle del control de paginación montado, para desmontarlo antes de
-  // volver a dibujarlo (ver renderPagination).
-  let destroyPagination = null;
-
-  // Vaciar el pie sin desmontar antes dejaba vivos los listeners de document del
-  // menu desplegable: el HTML desaparecia pero los handlers seguian ahi, y cada
-  // busqueda que no devolvia nada apilaba un par mas.
-  const clearPagination = () => {
-    destroyPagination?.();
-    destroyPagination = null;
-    const pie = $('#audit-pagination');
-    if (pie) pie.innerHTML = '';
-  };
+  // El ciclo cargando/vacio/error/paginar es identico en los cuatro paneles
+  // y vive en shared/listSection.js. Lo propio de cada uno (columnas,
+  // filtros, acciones) se queda aca, que es donde se lee mejor.
+  const seccion = createListSection({
+    resultsEl:    $('#audit-results'),
+    paginationEl: $('#audit-pagination'),
+    columnas:     7,
+    etiqueta:     'Cargando registros de auditoría',
+    etiquetas:    ETIQUETAS_FECHA,
+    onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },
+  });
 
   // ── 2. Populate Acción / Tabla dropdowns from GET /api/auditoria/opciones ────
   // Non-fatal: if it fails, the dropdowns just stay at "Todas" — filtering by
@@ -275,8 +274,7 @@ export async function mountAuditLogTab(panel) {
 
   // ── 3. Fetch + render, reading the current filter state ─────────────────────
   async function load() {
-    const results = $('#audit-results');
-    results.innerHTML = tableSkeleton({ columnas: 7, etiqueta: 'Cargando registros de auditoría' });
+    seccion.loading();
 
     const params = new URLSearchParams({
       page:  String(state.page),
@@ -301,17 +299,16 @@ export async function mountAuditLogTab(panel) {
       $('#audit-total').textContent = `${data.pagination?.totalRecords ?? rows.length} evento(s)`;
 
       if (rows.length === 0) {
-        results.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">🔍</div>
-            <h4>Sin resultados</h4>
-            <p>No hay eventos de auditoría que coincidan con los filtros aplicados.</p>
-          </div>`;
-        clearPagination();
+        seccion.empty({
+          icono:  '🔍',
+          titulo: 'Sin resultados',
+          texto:  'No hay eventos de auditoría que coincidan con los filtros aplicados.',
+        });
+        seccion.clearPagination();
         return;
       }
 
-      results.innerHTML = `
+      seccion.content(`
         <div class="table-wrapper">
           <table class="data-table">
             <thead>
@@ -345,9 +342,9 @@ export async function mountAuditLogTab(panel) {
               }).join('')}
             </tbody>
           </table>
-        </div>`;
+        </div>`);
 
-      results.querySelectorAll('[data-audit-detail]').forEach((btn) => {
+      seccion.el.querySelectorAll('[data-audit-detail]').forEach((btn) => {
         btn.addEventListener('click', () => {
           const row = $(`#audit-detail-${btn.dataset.auditDetail}`);
           if (!row) return;
@@ -357,10 +354,9 @@ export async function mountAuditLogTab(panel) {
         });
       });
 
-      renderPagination(data.pagination);
+      seccion.paginate(data.pagination);
     } catch (err) {
-      results.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.data?.message || err.message)}</p></div>`;
-      clearPagination();
+      seccion.error(err);
     }
   }
 
@@ -368,17 +364,6 @@ export async function mountAuditLogTab(panel) {
   // los cuatro paneles tenían esta función copiada, idéntica salvo el prefijo.
   // destroyPagination quita los listeners de document del menú anterior antes
   // de montar el nuevo; sin eso cada recarga apilaría un par más.
-  function renderPagination(paginacion) {
-    destroyPagination?.();
-    destroyPagination = mountPagination($('#audit-pagination'), paginacion, {
-      etiquetas: ETIQUETAS_FECHA,
-      onChange: ({ page, limit }) => {
-        state.page  = page;
-        state.limit = limit;
-        load();
-      },
-    });
-  }
 
   // ── 4. Wire filters ─────────────────────────────────────────────────────────
   // Dropdowns fire on 'change'; text + dates apply via button or Enter.
