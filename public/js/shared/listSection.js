@@ -53,9 +53,19 @@ export function createListSection({
      */
     el: resultsEl,
 
-    /** Esqueleto con la forma de la tabla, mientras llega la respuesta. */
-    loading() {
-      if (resultsEl) resultsEl.innerHTML = tableSkeleton({ columnas, etiqueta });
+    /**
+     * Esqueleto con la forma de la tabla, mientras llega la respuesta.
+     *
+     * `columnasAhora` existe para los paneles que cambian de vista sin
+     * volver a montarse — el reporte de consumo alterna entre una tabla de 7
+     * columnas y otra de 8. Sin el override, el esqueleto tendría el ancho de
+     * la vista anterior y la página saltaría al llegar los datos, que es
+     * justamente lo que el esqueleto viene a evitar.
+     */
+    loading(columnasAhora) {
+      if (resultsEl) {
+        resultsEl.innerHTML = tableSkeleton({ columnas: columnasAhora ?? columnas, etiqueta });
+      }
     },
 
     /** La tabla ya armada por el panel. */

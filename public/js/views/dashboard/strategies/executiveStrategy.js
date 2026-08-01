@@ -23,9 +23,9 @@ import { allowedTransitions }   from '../../../shared/quotationTransitions.js';
 import { buildProformaHTML }      from '../modules/proformaTemplate.js';
 import { DISCARD_QUOTATION_MSG }  from '../constants.js';
 import { DashboardStrategy }      from './dashboardStrategy.js';
-import { tableSkeleton } from '../../../shared/skeleton.js';
-import { mountPagination, ETIQUETAS_FECHA } from '../../../shared/pagination.js';
+import { ETIQUETAS_FECHA } from '../../../shared/pagination.js';
 import { mountClienteItemReport } from '../modules/clienteItemReport.js';
+import { createListSection } from '../../../shared/listSection.js';
 
 export class ExecutiveStrategy extends DashboardStrategy {
   #container;
@@ -42,7 +42,10 @@ export class ExecutiveStrategy extends DashboardStrategy {
   #pagPorScope    = { mias: { page: 1, limit: 20 }, equipo: { page: 1, limit: 20 } };
   #pagInfo        = null;   // lo que devolvio la API para la solapa activa
   #otrosTotal     = 0;      // total de la OTRA solapa, para su badge
-  #destroyPag     = null;
+  // La seccion de listado compartida (shared/listSection.js): el mismo ciclo
+  // cargando/vacio/error/paginar que usan los cuatro paneles. Se crea despues
+  // del innerHTML de render(), cuando los contenedores ya existen.
+  #seccion        = null;
   #loadAbortCtrl  = null;
   // Monotonic refresh token: each refresh() bumps it, and the summary/proformas/
   // metrics loaders capture it and bail before writing if a newer refresh has
@@ -114,6 +117,18 @@ export class ExecutiveStrategy extends DashboardStrategy {
       <!-- Licitaciones (only for delegated executives — mounted after render) -->
       <div id="exec-licitaciones-section" style="margin-top:1.25rem;"></div>
     `;
+
+    this.#seccion = createListSection({
+      resultsEl:    document.getElementById('quotations-section'),
+      paginationEl: document.getElementById('pagination-footer'),
+      columnas:     6,
+      etiqueta:     'Cargando cotizaciones',
+      etiquetas:    ETIQUETAS_FECHA,
+      onPageChange: ({ page, limit }) => {
+        this.#pagPorScope[this.#scope] = { page, limit };
+        this._loadQuotations();
+      },
+    });
 
     document.getElementById('btn-new-quotation')?.addEventListener('click', () => {
       UI.openModal('Nueva Cotización', (body) => {
@@ -320,7 +335,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     this.#loadAbortCtrl = new AbortController();
     const { signal } = this.#loadAbortCtrl;
 
-    section.innerHTML = tableSkeleton({ columnas: 6, etiqueta: 'Cargando cotizaciones' });
+    this.#seccion?.loading();
 
     const estado = document.getElementById('filter-estado')?.value ?? '';
     const q      = document.getElementById('filter-q')?.value.trim() ?? '';
@@ -369,7 +384,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
       this._renderQuotationsTable();
     } catch (err) {
       if (err.name === 'AbortError') return;
-      section.innerHTML = `<div class="empty-state"><p>Error cargando cotizaciones: ${escHtml(err.message)}</p></div>`;
+      this.#seccion?.error(err);
     }
   }
 
@@ -396,20 +411,15 @@ export class ExecutiveStrategy extends DashboardStrategy {
     // inside this strategy (e.g. Administracion) retain the quick action.
     const showStatusBtn = this.#user.rol !== 'Ejecutivo';
 
-    const footer = document.getElementById('pagination-footer');
 
     if (rows.length === 0) {
-      section.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-state-icon">📋</div>
-          <h4>${isTeam ? 'Sin cotizaciones del equipo' : 'Sin cotizaciones propias'}</h4>
-          <p>${isTeam
+      this.#seccion?.empty({
+        icono:  '📋',
+        titulo: isTeam ? 'Sin cotizaciones del equipo' : 'Sin cotizaciones propias',
+        texto:  isTeam
             ? 'No hay cotizaciones de otros miembros del equipo con los filtros aplicados.'
-            : 'Aún no has registrado cotizaciones con los filtros aplicados.'}</p>
-        </div>`;
-      this.#destroyPag?.();
-      this.#destroyPag = null;
-      if (footer) footer.innerHTML = '';
+            : 'Aún no has registrado cotizaciones con los filtros aplicados.',
+      });
       return;
     }
 
@@ -458,15 +468,9 @@ export class ExecutiveStrategy extends DashboardStrategy {
     // El control compartido, el mismo de los demas listados. Antes aca solo
     // habia un texto «Mostrando N ... M en total», sin forma de pasar de pagina
     // porque no habia paginas: se traia todo de una (y se recortaba solo).
-    this.#destroyPag?.();
-    this.#destroyPag = mountPagination(footer, this.#pagInfo ?? {
-      page: 1, limit: this.#pagPorScope[this.#scope].limit, totalRecords: rows.length, totalPages: 1,
-    }, {
-      etiquetas: ETIQUETAS_FECHA,
-      onChange: ({ page, limit }) => {
-        this.#pagPorScope[this.#scope] = { page, limit };
-        this._loadQuotations();
-      },
+    this.#seccion?.paginate(this.#pagInfo ?? {
+      page: 1, limit: this.#pagPorScope[this.#scope].limit,
+      totalRecords: rows.length, totalPages: 1,
     });
   }
 

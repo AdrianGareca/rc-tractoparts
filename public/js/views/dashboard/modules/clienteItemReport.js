@@ -32,7 +32,8 @@
 import api from '../../../services/apiClient.js';
 import { escHtml, fmtDate } from '../helpers.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
-import { mountPagination } from '../../../shared/pagination.js';
+import { createListSection } from '../../../shared/listSection.js';
+import { downloadCsv } from '../../../shared/csvExport.js';
 
 const ESTADOS = [
   'Pendiente', 'En revision', 'En espera', 'Aprobada internamente',
@@ -146,7 +147,6 @@ export async function mountClienteItemReport(panel, opts = {}) {
     sortBy: 'fecha', sortOrder: 'DESC',
   };
 
-  let destroyPag = null;
   let ultimasFilas = [];
 
   panel.innerHTML = `
@@ -206,12 +206,17 @@ export async function mountClienteItemReport(panel, opts = {}) {
 
   const $ = (sel) => panel.querySelector(sel);
 
-  const clearPagination = () => {
-    destroyPag?.();
-    destroyPag = null;
-    const pie = $('#ci-pagination');
-    if (pie) pie.innerHTML = '';
-  };
+  // El ciclo cargando/vacio/error/paginar sale de shared/listSection.js — el
+  // mismo que usan los cuatro paneles de listado. Este reporte lo tenia
+  // duplicado por haberse escrito antes de que la seccion existiera.
+  const seccion = createListSection({
+    resultsEl:    $('#ci-results'),
+    paginationEl: $('#ci-pagination'),
+    columnas:     7,
+    etiqueta:     'Cargando consumo',
+    etiquetas:    ETIQUETAS,
+    onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },
+  });
 
   // Poblar el filtro de ejecutivos. No fatal: si falla, queda en «Todos».
   if (!opts.idEjecutivo) {
@@ -249,8 +254,7 @@ export async function mountClienteItemReport(panel, opts = {}) {
 
   async function load() {
     const vista   = VISTAS[state.vista];
-    const results = $('#ci-results');
-    results.innerHTML = tableSkeleton({ columnas: vista.columnas.length, etiqueta: 'Cargando consumo' });
+    seccion.loading(vista.columnas.length);
     actualizarNota();
 
     const params = new URLSearchParams({
@@ -277,26 +281,20 @@ export async function mountClienteItemReport(panel, opts = {}) {
         : `${total} combinación(es) ejecutivo–cliente–ítem`;
 
       if (filas.length === 0) {
-        results.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">📦</div>
-            <h4>Sin datos</h4>
-            <p>Ninguna cotización coincide con los filtros aplicados.</p>
-          </div>`;
-        clearPagination();
+        seccion.empty({ icono: '📦', titulo: 'Sin datos', texto: 'Ninguna cotización coincide con los filtros aplicados.' });
         return;
       }
 
-      results.innerHTML = `
+      seccion.content(`
         <div class="table-wrapper">
           <table class="data-table">
             <thead><tr>${encabezados()}</tr></thead>
             <tbody>${filas.map((f) => `<tr>${vista.fila(f)}</tr>`).join('')}</tbody>
           </table>
-        </div>`;
+        </div>`);
 
       // Ordenar haciendo clic en el encabezado; volver a hacer clic invierte.
-      results.querySelectorAll('[data-sort]').forEach((th) => {
+      seccion.el.querySelectorAll('[data-sort]').forEach((th) => {
         th.addEventListener('click', () => {
           const clave = th.dataset.sort;
           if (state.sortBy === clave) {
@@ -310,45 +308,23 @@ export async function mountClienteItemReport(panel, opts = {}) {
         });
       });
 
-      destroyPag?.();
-      destroyPag = mountPagination($('#ci-pagination'), body.pagination, {
-        etiquetas: ETIQUETAS,
-        onChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },
-      });
+      seccion.paginate(body.pagination);
     } catch (err) {
-      results.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.data?.message || err.message)}</p></div>`;
-      clearPagination();
+      seccion.error(err);
     }
   }
 
-  // ── Exportar a CSV ─────────────────────────────────────────────────────────
-  // Se exporta lo que se está viendo: si alguien filtró y ordenó, el archivo
-  // tiene que coincidir con la pantalla.
+  // Exportar lo que se está VIENDO, no todo el reporte: si alguien filtró y
+  // ordenó, el archivo tiene que coincidir con la pantalla. El BOM, el escape
+  // de fórmulas y los saltos CRLF viven en shared/csvExport.js — son los tres
+  // detalles que se olvidan al reescribirlo de memoria.
   function exportarCsv() {
-    if (ultimasFilas.length === 0) return;
     const def = VISTAS[state.vista].csv;
-
-    // Un valor que empieza con = + - @ lo interpreta Excel como fórmula. La
-    // comilla simple es la mitigación estándar de CSV injection, y acá los
-    // datos son texto que cargan los usuarios.
-    const escapar = (v) => {
-      let s = v == null ? '' : String(v);
-      if (/^[=+\-@]/.test(s)) s = `'${s}`;
-      return `"${s.replace(/"/g, '""')}"`;
-    };
-
-    const lineas = ultimasFilas.map((f) => def.fila(f).map(escapar).join(','));
-    // El BOM hace que Excel abra el archivo como UTF-8; sin él, los acentos y
-    // las ñ salen como caracteres raros.
-    const csv  = '﻿' + [def.cabecera.map(escapar).join(','), ...lineas].join('\r\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `consumo-${state.vista}-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv({
+      nombre:   `consumo-${state.vista}`,
+      cabecera: def.cabecera,
+      filas:    ultimasFilas.map(def.fila),
+    });
   }
 
   // ── Controles ──────────────────────────────────────────────────────────────
@@ -391,5 +367,5 @@ export async function mountClienteItemReport(panel, opts = {}) {
 
   await load();
 
-  return function destroy() { clearPagination(); };
+  return function destroy() { seccion.destroy(); };
 }

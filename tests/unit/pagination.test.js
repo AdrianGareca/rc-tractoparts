@@ -290,10 +290,13 @@ describe('los cuatro paneles usan el control compartido', () => {
   const ejecutivo = () => fs.readFileSync(path.join(ESTRATEGIAS, 'executiveStrategy.js'), 'utf8');
 
   describe('el tablero del Ejecutivo', () => {
-    test('usa el control compartido y lo importa de verdad', () => {
+    test('delega en listSection y lo importa de verdad', () => {
+      // Antes montaba mountPagination() a mano; ahora usa la sección
+      // compartida, igual que los cuatro paneles de listado.
       const src = ejecutivo();
-      expect(src).toMatch(/\bmountPagination\s*\(/);
-      expect(src).toMatch(IMPORT_REAL);
+      expect(src).toMatch(/\bcreateListSection\s*\(/);
+      expect(src).toMatch(
+        /^import\s*\{[^}]*\bcreateListSection\b[^}]*\}\s*from\s*['"][^'"]*shared\/listSection\.js['"]/m);
     });
 
     test('lo pone ARRIBA de la tabla', () => {
@@ -332,8 +335,10 @@ describe('los cuatro paneles usan el control compartido', () => {
       expect(ejecutivo()).toMatch(/#pagPorScope/);
     });
 
-    test('desmonta el control cuando no hay resultados', () => {
-      expect(ejecutivo()).toMatch(/#destroyPag\?\.\(\)/);
+    test('el estado vacío pasa por la sección, que desmonta el control', () => {
+      // seccion.empty() desmonta la paginación además de vaciar el HTML.
+      // Vaciar sin desmontar dejaba vivos los listeners de document del menú.
+      expect(ejecutivo()).toMatch(/#seccion\?\.empty\(/);
     });
   });
 
@@ -367,6 +372,53 @@ describe('los cuatro paneles usan el control compartido', () => {
       // De una sentencia import real, no de un comentario.
       expect(src).toMatch(new RegExp(`^import\\s*\\{[^}]*\\b${nombre}\\b`, 'm'));
     }
+  });
+
+  // ── Nadie reimplementa el ciclo de la sección ──────────────────────────────
+  // Este chequeo nace de un caso real: se extrajo listSection.js de los cuatro
+  // paneles de listado y quedó afuera el reporte de consumo, que se había
+  // escrito antes y tenía SU PROPIA copia del ciclo (clearPagination, esqueleto,
+  // estado vacío, rama de error). O sea: una quinta copia, creada por quien
+  // estaba justamente eliminando las otras cuatro.
+  //
+  // El barrido es por directorio y no por una lista de archivos: una lista hay
+  // que acordarse de actualizarla, y este bug fue precisamente un olvido.
+  describe('ningún panel reimplementa el ciclo de listado', () => {
+    const VISTAS_DIR = path.resolve(__dirname, '../../public/js/views/dashboard');
+
+    const jsBajo = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const full = path.join(dir, e.name);
+      return e.isDirectory() ? jsBajo(full) : (e.name.endsWith('.js') ? [full] : []);
+    });
+
+    const candidatos = jsBajo(VISTAS_DIR);
+
+    test('hay archivos que revisar', () => {
+      expect(candidatos.length).toBeGreaterThan(5);
+    });
+
+    test.each(candidatos.map((f) => [path.relative(VISTAS_DIR, f).replace(/\\/g, '/'), f]))(
+      '%s',
+      (_nombre, file) => {
+        const src = fs.readFileSync(file, 'utf8');
+
+        // Sólo aplica a los archivos que efectivamente paginan.
+        if (!/-pagination"|paginationEl|mountPagination|createListSection/.test(src)) return;
+
+        const propias = [];
+        if (/\b(const|let|function)\s+clearPagination\b/.test(src)) propias.push('clearPagination');
+        if (/\bmountPagination\s*\(/.test(src))                     propias.push('mountPagination()');
+        if (/\blet\s+destroyPag/.test(src))                         propias.push('destroyPag');
+
+        if (propias.length > 0) {
+          throw new Error(
+            `${path.relative(VISTAS_DIR, file)} reimplementa [${propias.join(', ')}] ` +
+            'en vez de usar createListSection() de shared/listSection.js. ' +
+            'Es la copia número N del mismo ciclo cargando/vacío/error/paginar.'
+          );
+        }
+      }
+    );
   });
 
   test('listSection es quien monta el control compartido', () => {
