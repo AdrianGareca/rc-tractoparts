@@ -272,12 +272,50 @@ describe('RCI — filtros', () => {
 // =============================================================================
 describe('RCI — orden y paginacion', () => {
 
-  test('RCI-13: por defecto ordena por cantidad, de mayor a menor', async () => {
+  // POR QUE LA FECHA Y NO LA CANTIDAD.
+  // El orden por cantidad ordena por importancia, pero la gente BUSCA por
+  // cuando: «esto lo cotice la semana pasada». Con el orden por cantidad, lo
+  // recien cotizado cae en cualquier parte de la lista y parece que no esta —
+  // que fue exactamente lo que reporto ventas («no aparecen los items de una
+  // cotizacion»). La cantidad sigue disponible a un clic, pero es secundaria.
+  test('RCI-13: por defecto ordena por fecha, lo mas reciente primero', async () => {
     const res = await pedir('limit=100');
+    const fechas = res.body.data.map((f) => new Date(f.ultima_vez).getTime());
+
+    for (let i = 1; i < fechas.length; i++) {
+      expect(fechas[i - 1]).toBeGreaterThanOrEqual(fechas[i]);
+    }
+  });
+
+  // «La cantidad esta bien pero tendria que ser secundario»: dentro de una
+  // misma fecha, lo mas grande arriba.
+  test('RCI-13b: a igual fecha, desempata por cantidad de mayor a menor', async () => {
+    const res = await pedir('limit=100');
+    const filas = res.body.data;
+
+    for (let i = 1; i < filas.length; i++) {
+      if (filas[i - 1].ultima_vez === filas[i].ultima_vez) {
+        expect(Number(filas[i - 1].cantidad_total))
+          .toBeGreaterThanOrEqual(Number(filas[i].cantidad_total));
+      }
+    }
+  });
+
+  test('RCI-13c: la cantidad sigue disponible como orden explicito', async () => {
+    const res = await pedir('sort_by=cantidad&sort_order=DESC&limit=100');
     const cantidades = res.body.data.map((f) => Number(f.cantidad_total));
 
     for (let i = 1; i < cantidades.length; i++) {
       expect(cantidades[i - 1]).toBeGreaterThanOrEqual(cantidades[i]);
+    }
+  });
+
+  test('RCI-13d: se puede ordenar por fecha ascendente (lo mas viejo primero)', async () => {
+    const res = await pedir('sort_by=fecha&sort_order=ASC&limit=100');
+    const fechas = res.body.data.map((f) => new Date(f.ultima_vez).getTime());
+
+    for (let i = 1; i < fechas.length; i++) {
+      expect(fechas[i - 1]).toBeLessThanOrEqual(fechas[i]);
     }
   });
 
@@ -446,10 +484,15 @@ describe('RCI2 — vista por item, para decidir el stock', () => {
     expect(conEseCodigo).toHaveLength(1);
   });
 
-  test('RCI2-11: ordena por cantidad para que lo que mas se pide quede arriba', async () => {
-    const res = await pedir('agrupar=item&limit=200');
-    const cantidades = res.body.data.map((f) => Number(f.cantidad_total));
+  test('RCI2-11: tambien arranca por fecha, y la cantidad queda a un clic', async () => {
+    const porDefecto = await pedir('agrupar=item&limit=200');
+    const fechas = porDefecto.body.data.map((f) => new Date(f.ultima_vez).getTime());
+    for (let i = 1; i < fechas.length; i++) {
+      expect(fechas[i - 1]).toBeGreaterThanOrEqual(fechas[i]);
+    }
 
+    const porCantidad = await pedir('agrupar=item&sort_by=cantidad&limit=200');
+    const cantidades = porCantidad.body.data.map((f) => Number(f.cantidad_total));
     for (let i = 1; i < cantidades.length; i++) {
       expect(cantidades[i - 1]).toBeGreaterThanOrEqual(cantidades[i]);
     }

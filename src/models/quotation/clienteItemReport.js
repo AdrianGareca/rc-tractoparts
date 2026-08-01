@@ -57,8 +57,16 @@ const { pool } = require('../../config/db');
 //               Ahi «cuantos clientes distintos lo pidieron» importa tanto como
 //               la cantidad: 20 unidades entre 5 clientes es mejor candidato a
 //               stock que 20 que pidio uno solo y quizas no repita.
+//
+// ORDEN POR DEFECTO: LA FECHA, NO LA CANTIDAD.
+// Ordenar por cantidad ordena por importancia, pero la gente BUSCA por cuando
+// («esto lo cotice la semana pasada»). Con el orden por cantidad, lo recien
+// cotizado cae en cualquier lugar de la lista y parece que no esta — que fue
+// literalmente lo que reporto ventas al probarlo. La cantidad queda a un clic
+// de distancia y desempata dentro de una misma fecha.
 const SORTABLE = {
   detalle: {
+    fecha:     'ultima_vez',
     cantidad:  'cantidad_total',
     cliente:   'cliente_nombre',
     ejecutivo: 'ejecutivo_nombre',
@@ -67,6 +75,7 @@ const SORTABLE = {
     items:     'cotizaciones',
   },
   item: {
+    fecha:    'ultima_vez',
     cantidad: 'cantidad_total',
     codigo:   'codigo',
     marca:    'marca_nombre',
@@ -200,7 +209,7 @@ async function find(filtros = {}, paginacion = {}, orden = {}, modo = 'detalle')
   const limit  = Math.min(MAX_LIMIT, Math.max(1, parseInt(paginacion.limit, 10) || DEFAULT_LIMIT));
   const offset = (page - 1) * limit;
 
-  const columna = SORTABLE[m][orden.by] || SORTABLE[m].cantidad;
+  const columna = SORTABLE[m][orden.by] || SORTABLE[m].fecha;
   const sentido = String(orden.order).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
   const { clause, params } = _where(filtros);
@@ -244,7 +253,10 @@ async function find(filtros = {}, paginacion = {}, orden = {}, modo = 'detalle')
       CASE WHEN l.codigo IS NULL THEN 1 ELSE 0 END AS sin_codigo
     FROM (${LINEAS_SQL(clause)}) AS l
     GROUP BY ${GROUP_BY[m]}
-    ORDER BY ${columna} ${sentido}, l.codigo ASC
+    -- «La cantidad esta bien pero tendria que ser secundario»: cuando el orden
+    -- principal es la fecha, muchas filas comparten dia, y ahi manda la
+    -- cantidad. El tercer criterio hace el orden estable entre paginas.
+    ORDER BY ${columna} ${sentido}${columna === 'cantidad_total' ? '' : ', cantidad_total DESC'}, l.codigo ASC
     LIMIT ${limit} OFFSET ${offset}
   `;
 

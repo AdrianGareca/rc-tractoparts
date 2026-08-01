@@ -39,8 +39,9 @@ const ESTADOS = [
   'Enviada al cliente', 'Confirmada', 'Rechazada', 'Archivada',
 ];
 
-// El listado se ordena por cantidad, no por fecha: hablar de «más nuevas /
-// más antiguas» sería mentira.
+// Etiquetas neutras en el menú de paginación: por defecto el listado se ordena
+// por fecha, pero con un clic pasa a ordenarse por cantidad o por clientes, y
+// ahí «más nuevas / más antiguas» pasaría a ser mentira sin que nadie lo note.
 const ETIQUETAS = { inicio: 'Ir al principio', fin: 'Ir al final' };
 
 /** Cantidad sin ceros de relleno: 12.0000 → 12, pero 1.5 sigue siendo 1.5. */
@@ -64,7 +65,7 @@ const celdaMarca = (f) => f.marca_nombre
 const VISTAS = {
   item: {
     etiqueta: '📦 Por ítem',
-    ayuda: 'Cuánto se pide de cada repuesto en total. Ordenalo por «Clientes» para ver qué conviene stockear.',
+    ayuda: 'Cuánto se pide de cada repuesto en total. Ordena por fecha; hacé clic en «Clientes» o «Cantidad» para ver qué conviene stockear.',
     columnas: [
       { clave: 'codigo',   texto: 'Código' },
       { clave: 'marca',    texto: 'Marca' },
@@ -72,7 +73,7 @@ const VISTAS = {
       { clave: 'cantidad', texto: 'Cantidad', derecha: true },
       { clave: 'clientes', texto: 'Clientes', derecha: true },
       { clave: 'items',    texto: 'Cotizaciones', derecha: true },
-      { texto: 'Último pedido' },
+      { clave: 'fecha', texto: 'Último pedido' },
     ],
     fila: (f) => `
       <td>${celdaCodigo(f)}</td>
@@ -103,7 +104,7 @@ const VISTAS = {
       { texto: 'Descripción' },
       { clave: 'cantidad',  texto: 'Cantidad', derecha: true },
       { clave: 'items',     texto: 'Cotiz.', derecha: true },
-      { texto: 'Último pedido' },
+      { clave: 'fecha', texto: 'Último pedido' },
     ],
     fila: (f) => `
       <td class="text-sm">${escHtml(f.ejecutivo_nombre ?? '—')}</td>
@@ -140,7 +141,9 @@ export async function mountClienteItemReport(panel, opts = {}) {
                                    // items de una misma cotizacion quedaban
                                    // repartidos y parecia que faltaban.
     desde: '', hasta: '', estado: '', q: '', ejecutivo: '',
-    sortBy: 'cantidad', sortOrder: 'DESC',
+    // La fecha manda: la gente busca por cuando, no por cuanto. La cantidad
+    // queda a un clic y desempata dentro del mismo dia (ver el modelo).
+    sortBy: 'fecha', sortOrder: 'DESC',
   };
 
   let destroyPag = null;
@@ -367,7 +370,7 @@ export async function mountClienteItemReport(panel, opts = {}) {
         .forEach((b) => b.classList.toggle('active', b === btn));
       // Cada vista admite columnas de orden distintas: volver a «cantidad»
       // evita pedir un sort_by que la otra no acepta (el backend da 422).
-      state.sortBy    = 'cantidad';
+      state.sortBy    = 'fecha';
       state.sortOrder = 'DESC';
       state.page      = 1;
       load();
