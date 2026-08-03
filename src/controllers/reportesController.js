@@ -349,15 +349,20 @@ const ReportesController = {
     try {
       // Datos y conteo en paralelo: la agrupacion es la misma y la segunda
       // consulta no depende de la primera.
-      const [rows, totalRecords] = await Promise.all([
+      const [rows, totalRecords, listaEjecutivos] = await Promise.all([
         clienteItemReport.find(filtros, { page, limit },
           { by: sortBy, order: req.query.sort_order }, agrupar),
         clienteItemReport.count(filtros, agrupar),
+        // Para poblar el filtro. Va con los datos y no por /api/usuarios porque
+        // ese endpoint es solo para roles de gestion: un Ejecutivo recibia 403
+        // y el desplegable le quedaba vacio.
+        clienteItemReport.ejecutivos(filtros),
       ]);
 
       return res.status(200).json({
         success: true,
         agrupar,
+        ejecutivos: listaEjecutivos,
         data: rows,
         pagination: {
           page,

@@ -285,4 +285,36 @@ async function count(filtros = {}, modo = 'detalle') {
   return rows[0].total;
 }
 
-module.exports = { find, count, SORTABLE, MODOS, DEFAULT_LIMIT, MAX_LIMIT };
+
+// ---------------------------------------------------------------------------
+// ejecutivos — quienes aparecen en el reporte, para poblar el filtro.
+//
+// POR QUE NO SE USA /api/usuarios
+// Ese endpoint esta restringido a Jefe/Administracion/SysAdmin, asi que un
+// Ejecutivo abriendo el reporte recibia un 403 y el desplegable le quedaba
+// vacio. Y aunque tuviera permiso, devuelve TODOS los usuarios — SysAdmin,
+// Proyectos, Administracion — que no cotizan y no tienen nada que hacer en un
+// filtro de ventas.
+//
+// Sacar la lista de los propios datos da exactamente los nombres correctos: los
+// que efectivamente tienen cotizaciones en el periodo filtrado. Si alguien no
+// cotizo nada este mes, elegirlo solo mostraria una tabla vacia.
+//
+// El filtro id_ejecutivo se IGNORA a proposito: si no, al elegir a alguien el
+// desplegable se colapsaria a esa sola persona y no habria forma de volver.
+// ---------------------------------------------------------------------------
+async function ejecutivos(filtros = {}) {
+  const { id_ejecutivo, ...resto } = filtros;
+  const { clause, params } = _where(resto);
+
+  const sql = `
+    SELECT DISTINCT l.id_ejecutivo AS id, l.ejecutivo_nombre AS nombre
+      FROM (${LINEAS_SQL(clause)}) AS l
+     ORDER BY l.ejecutivo_nombre ASC
+  `;
+
+  const [rows] = await pool.execute(sql, params);
+  return rows;
+}
+
+module.exports = { find, count, ejecutivos, SORTABLE, MODOS, DEFAULT_LIMIT, MAX_LIMIT };

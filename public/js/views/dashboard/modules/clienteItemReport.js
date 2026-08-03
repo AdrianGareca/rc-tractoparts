@@ -218,21 +218,29 @@ export async function mountClienteItemReport(panel, opts = {}) {
     onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },
   });
 
-  // Poblar el filtro de ejecutivos. No fatal: si falla, queda en «Todos».
-  if (!opts.idEjecutivo) {
-    try {
-      const us = await api.get('/api/usuarios');
-      const sel = $('#ci-ejecutivo');
-      for (const u of (us.data ?? [])) {
-        if (!u.activo) continue;
-        sel.insertAdjacentHTML('beforeend',
-          `<option value="${u.id}">${escHtml(u.nombre_completo)}</option>`);
-      }
-    } catch { /* el filtro simplemente queda vacio */ }
-  }
 
   // La nota explica QUÉ está contando el número que se ve: «48» a secas se lee
   // como «compró 48» cuando puede incluir cotizaciones rechazadas.
+  /**
+   * Rellena el desplegable con los ejecutivos que el reporte devolvio.
+   *
+   * Antes esto salia de /api/usuarios, que esta restringido a roles de gestion:
+   * un Ejecutivo recibia 403, un catch vacio se lo tragaba y el filtro quedaba
+   * con «Todos» y nada mas. Ahora la lista viene con los datos y trae solo a
+   * quienes efectivamente tienen cotizaciones en el periodo.
+   */
+  function poblarEjecutivos(lista) {
+    const sel = $('#ci-ejecutivo');
+    if (!sel) return;
+
+    // Conservar lo elegido: se repuebla en cada carga y sin esto el filtro se
+    // reseteaba solo justo despues de aplicarlo.
+    const elegido = sel.value;
+    sel.innerHTML = '<option value="">Todos</option>' +
+      lista.map((e) => `<option value="${e.id}">${escHtml(e.nombre)}</option>`).join('');
+    if (elegido && sel.querySelector(`option[value="${elegido}"]`)) sel.value = elegido;
+  }
+
   function actualizarNota() {
     const el = $('#ci-nota');
     if (!el) return;
@@ -274,6 +282,8 @@ export async function mountClienteItemReport(panel, opts = {}) {
       const body  = await api.get(`/api/reportes/cliente-item?${params}`);
       const filas = body.data ?? [];
       ultimasFilas = filas;
+
+      poblarEjecutivos(body.ejecutivos ?? []);
 
       const total = body.pagination?.totalRecords ?? filas.length;
       $('#ci-total').textContent = state.vista === 'item'

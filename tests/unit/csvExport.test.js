@@ -71,11 +71,25 @@ describe('buildCsv — el archivo entero', () => {
 
   test('las filas se cortan con CRLF (Excel en Windows lo necesita)', () => {
     expect(csv).toContain('\r\n');
-    expect(csv.split('\r\n')).toHaveLength(3);   // cabecera + 2 filas
+    expect(csv.split('\r\n')).toHaveLength(4);   // sep + cabecera + 2 filas
   });
 
-  test('la cabecera va primero y también entrecomillada', () => {
-    expect(csv.split('\r\n')[0]).toBe('﻿"Codigo","Cantidad"');
+  // EL BUG REPORTADO: «se ve todo mezclado». Excel no usa siempre la coma —
+  // usa el separador de listas del sistema, y en Windows en español es el punto
+  // y coma. Con comas metía la fila entera en una sola celda.
+  test('separa con punto y coma, que es lo que espera Excel en español', () => {
+    expect(csv).toContain('"Codigo";"Cantidad"');
+    expect(csv).not.toContain('"Codigo","Cantidad"');
+  });
+
+  test('la primera línea le declara el separador a Excel', () => {
+    // `sep=;` es una directiva propia de Excel: hace que el archivo abra bien
+    // incluso en una instalación configurada en otro idioma.
+    expect(csv.split('\r\n')[0]).toBe('﻿sep=;');
+  });
+
+  test('la cabecera va después de la directiva, entrecomillada', () => {
+    expect(csv.split('\r\n')[1]).toBe('"Codigo";"Cantidad"');
   });
 
   test('los acentos sobreviven', () => {
@@ -84,7 +98,7 @@ describe('buildCsv — el archivo entero', () => {
     expect(c).toContain('Cotización con ñ y á');
   });
 
-  test('sin filas devuelve solo la cabecera', () => {
-    expect(buildCsv(['A'], []).split('\r\n')).toHaveLength(1);
+  test('sin filas devuelve la directiva y la cabecera', () => {
+    expect(buildCsv(['A'], []).split('\r\n')).toHaveLength(2);
   });
 });

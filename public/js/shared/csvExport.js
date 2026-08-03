@@ -34,16 +34,28 @@ export function csvCell(valor) {
   return `"${s.replace(/"/g, '""')}"`;      // "" es como CSV escapa una comilla
 }
 
+// ── El separador ─────────────────────────────────────────────────────────────
+// Excel NO usa siempre la coma: usa el separador de listas del sistema, que en
+// Windows en español (el de esta empresa) es el PUNTO Y COMA. Con comas, Excel
+// mete la fila entera en una sola celda — que es literalmente lo que se reportó:
+// «se ve todo mezclado».
+//
+// Además del punto y coma se emite la línea `sep=;` al principio. Es una
+// directiva propia de Excel que le dice explícitamente cuál es el separador, y
+// hace que el archivo abra bien incluso en una instalación configurada en otro
+// idioma. Sin ella, un Excel en inglés volvería a mezclar todo.
+const SEPARADOR = ';';
+
 /**
- * Arma el contenido del CSV, con BOM y saltos CRLF.
+ * Arma el contenido del CSV: BOM, directiva de separador, y saltos CRLF.
  *
- * @param {string[]}   cabecera
+ * @param {string[]}     cabecera
  * @param {Array<Array>} filas
  * @returns {string}
  */
 export function buildCsv(cabecera, filas) {
-  const lineas = [cabecera.map(csvCell).join(',')];
-  for (const f of filas) lineas.push(f.map(csvCell).join(','));
+  const lineas = [`sep=${SEPARADOR}`, cabecera.map(csvCell).join(SEPARADOR)];
+  for (const f of filas) lineas.push(f.map(csvCell).join(SEPARADOR));
   return '﻿' + lineas.join('\r\n');
 }
 

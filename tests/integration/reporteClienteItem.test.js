@@ -524,3 +524,62 @@ describe('RCI2 — vista por item, para decidir el stock', () => {
     expect(res.status).toBe(422);
   });
 });
+
+// =============================================================================
+// El filtro de ejecutivos se poblaba desde /api/usuarios, que esta restringido
+// a roles de gestion: un Ejecutivo abriendo el reporte recibia 403, un catch
+// vacio se lo tragaba, y el desplegable le quedaba con «Todos» y nada mas.
+// Ahora la lista viene con los datos del propio reporte.
+// =============================================================================
+describe('RCI3 — la lista de ejecutivos para el filtro', () => {
+
+  test('RCI3-01: viene junto con los datos', async () => {
+    const res = await pedir('limit=5');
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.ejecutivos)).toBe(true);
+  });
+
+  test('RCI3-02: trae a los dos que cargaron cotizaciones', async () => {
+    const res = await pedir('limit=5');
+    const ids = res.body.ejecutivos.map((e) => e.id);
+
+    expect(ids).toContain(idEjec);
+    expect(ids).toContain(idEjec2);
+  });
+
+  test('RCI3-03: cada uno viene con su nombre, no solo el id', async () => {
+    const res = await pedir('limit=5');
+    const mio = res.body.ejecutivos.find((e) => e.id === idEjec);
+
+    expect(mio.nombre).toContain('REPCI');
+  });
+
+  test('RCI3-04: sin repetidos, aunque tengan muchas cotizaciones', async () => {
+    const res = await pedir('limit=5');
+    const ids = res.body.ejecutivos.map((e) => e.id);
+
+    expect(ids.length).toBe(new Set(ids).size);
+  });
+
+  // Si el filtro de ejecutivo se aplicara tambien a esta lista, elegir a
+  // alguien colapsaria el desplegable a esa sola persona y no habria forma de
+  // volver a «Todos» sin recargar.
+  test('RCI3-05: elegir un ejecutivo NO reduce la lista a esa persona', async () => {
+    const res = await pedir(`id_ejecutivo=${idEjec}&limit=5`);
+    const ids = res.body.ejecutivos.map((e) => e.id);
+
+    expect(ids).toContain(idEjec);
+    expect(ids).toContain(idEjec2);
+  });
+
+  // Los demas filtros SI aplican: no tiene sentido ofrecer a alguien que no
+  // cotizo nada en el periodo elegido, porque solo mostraria una tabla vacia.
+  test('RCI3-06: un rango de fechas vacio deja la lista vacia', async () => {
+    const res = await pedir('fecha_desde=2000-01-01&fecha_hasta=2000-12-31');
+    const ids = res.body.ejecutivos.map((e) => e.id);
+
+    expect(ids).not.toContain(idEjec);
+    expect(ids).not.toContain(idEjec2);
+  });
+});
