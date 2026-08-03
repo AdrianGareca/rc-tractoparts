@@ -14,6 +14,7 @@ import api, { showToast } from '../../../services/apiClient.js';
 import { escHtml }        from '../helpers.js';
 import { saveBlobAs }     from './timelineView.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
+import { renderMisMetricas } from './misMetricas.js';
 
 // ---------------------------------------------------------------------------
 // Date helpers for the reports range filter.
@@ -366,9 +367,16 @@ async function loadExecutiveMetrics(panel, desde, hasta) {
     const res  = await api.get('/api/reportes/advanced' + qs);
     const rol  = res.rol ?? 'Ejecutivo';
     const { top_clientes = [], leaderboard = [] } = res.data ?? {};
-    dataEl.innerHTML =
-      _buildTopClientesTable(top_clientes) +
-      _buildLeaderboardTable(leaderboard, rol);
+
+    // Las metricas propias van ARRIBA — conversion, tiempos, desglose por
+    // estado y evolucion — y las dos tablas que ya existian quedan debajo como
+    // complemento. Antes el reporte del ejecutivo era solo esas dos tablas.
+    dataEl.innerHTML = `
+      <div id="mym-indicadores"></div>
+      ${_buildTopClientesTable(top_clientes)}
+      ${_buildLeaderboardTable(leaderboard, rol)}`;
+
+    await renderMisMetricas(dataEl.querySelector('#mym-indicadores'), { desde, hasta });
   } catch (err) {
     dataEl.innerHTML = `<div class="empty-state"><p>Error cargando métricas: ${escHtml(err.message)}</p></div>`;
   }

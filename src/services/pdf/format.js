@@ -16,10 +16,27 @@ const { C, MARGIN, PW } = require('./constants');
 // ---------------------------------------------------------------------------
 function fmtNum(amount) {
   if (amount == null || amount === '' || isNaN(parseFloat(amount))) return '—';
-  return parseFloat(amount).toLocaleString('es-BO', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+
+  // ESCRITO A MANO, SIN Intl — y esto importa más de lo que parece.
+  //
+  // toLocaleString('es-BO') depende de los datos ICU que traiga el binario de
+  // Node. La imagen del servidor es node:20-alpine; si ese build no lleva el
+  // ICU completo, el locale cae a en-US EN SILENCIO y los separadores se dan
+  // vuelta: 1.234,50 pasa a imprimirse como 1,234.50.
+  //
+  // No es un detalle cosmético. Esta función formatea los montos de las
+  // PROFORMAS que se le mandan al cliente: un total que dice "1,234.50" en un
+  // documento boliviano se lee como mil doscientos con cincuenta o como uno
+  // con veintitrés según quién lo mire. Localmente nunca se ve, porque el Node
+  // de escritorio sí trae el ICU completo.
+  //
+  // Formato boliviano: punto para los miles, coma para los decimales.
+  const n = parseFloat(amount);
+  const negativo = n < 0;
+  const [entero, decimales] = Math.abs(n).toFixed(2).split('.');
+  const conMiles = entero.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+  return `${negativo ? '-' : ''}${conMiles},${decimales}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,4 +104,55 @@ function hLine(doc, y, color = C.BORDER_GRAY, lw = 0.5) {
     .restore();
 }
 
-module.exports = { fmtNum, fmtPrice, formatDate, hLine };
+// ---------------------------------------------------------------------------
+// MESES / formatDateTime — fecha y hora escritas a mano, sin Intl.
+//
+// POR QUE NO toLocaleString('es-BO')
+// Intl depende de los datos ICU que traiga el binario de Node. La imagen del
+// servidor es node:20-alpine, y si ese build no lleva el ICU completo, CUALQUIER
+// locale cae de vuelta a ingles sin avisar: el PDF sale con "July 12, 2026" en
+// un documento que por lo demas esta todo en castellano. Localmente no se ve
+// porque el Node de escritorio si trae el ICU completo — el clasico "en mi
+// maquina anda".
+//
+// Escribiendo los meses a mano el resultado es el MISMO en cualquier maquina y
+// en cualquier contenedor. Son doce palabras; la alternativa era atarse a como
+// se compilo el runtime.
+// ---------------------------------------------------------------------------
+const MESES = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+/**
+ * "12 de julio de 2026, 15:45". Siempre en castellano, sin depender de ICU.
+ *
+ * @param {Date|string|number} [v] — por defecto, ahora
+ * @returns {string}
+ */
+function formatDateTime(v = new Date()) {
+  const d = v instanceof Date ? v : new Date(v);
+  if (isNaN(d.getTime())) return String(v);
+
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${d.getDate()} de ${MESES[d.getMonth()]} de ${d.getFullYear()}, ${hh}:${mi}`;
+}
+
+/**
+ * "2026-07" → "julio 2026". Para la tabla de evolucion mes a mes, donde
+ * "2026-07" obliga a traducir mentalmente en cada fila.
+ *
+ * @param {string} ym — 'YYYY-MM'
+ * @returns {string}
+ */
+function formatMes(ym) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(ym || ''));
+  if (!m) return String(ym ?? '—');
+  return `${MESES[Number(m[2]) - 1]} ${m[1]}`;
+}
+
+module.exports = { fmtNum, fmtPrice, formatDate, hLine,
+  formatDateTime,
+  formatMes,
+};

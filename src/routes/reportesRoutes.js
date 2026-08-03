@@ -188,4 +188,48 @@ router.get('/pdf', ...advancedAuth, ReportesController.getReportePdf);
  */
 router.get('/cliente-item', authenticate, ReportesController.getClienteItem);
 
+/**
+ * @swagger
+ * /api/reportes/mis-metricas:
+ *   get:
+ *     summary: Metricas propias del ejecutivo (cualquier rol autenticado)
+ *     description: |
+ *       Conversion, tiempos de cierre, desglose por estado y evolucion mes a mes.
+ *
+ *       La metrica principal es la CONVERSION: de lo que salio al cliente,
+ *       cuanto se cerro. El denominador son los estados 'Enviada al cliente',
+ *       'Confirmada' y 'Rechazada' — lo que sigue en preparacion no cuenta, para
+ *       no castigar a quien tiene trabajo en curso.
+ *
+ *       Los montos van SIEMPRE desglosados por moneda: sumar USD con Bs. daria
+ *       un numero sin significado.
+ *
+ *       Por defecto devuelve las metricas de quien llama. Solo Jefe,
+ *       Administracion y SysAdmin pueden pedir las de otro con id_ejecutivo.
+ *     tags: [Reportes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: fecha_desde
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: fecha_hasta
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: id_ejecutivo
+ *         schema: { type: integer }
+ *         description: Solo para roles de gestion; un Ejecutivo lo recibe ignorado.
+ *     responses:
+ *       200:
+ *         description: Metricas obtenidas.
+ *       401:
+ *         description: Token ausente o invalido.
+ *       422:
+ *         description: Fechas o id_ejecutivo invalidos.
+ *       500:
+ *         description: Error interno al ejecutar las agregaciones.
+ */
+router.get('/mis-metricas', authenticate, ReportesController.getMisMetricas);
+
 module.exports = router;

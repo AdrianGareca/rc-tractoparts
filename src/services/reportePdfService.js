@@ -35,6 +35,10 @@
 const fs          = require('fs');
 const path        = require('path');
 const PDFDocument = require('pdfkit');
+// Fechas escritas a mano, sin Intl: la imagen del servidor es node:20-alpine y
+// si ese build no trae el ICU completo, toLocaleString('es-BO') cae a ingles en
+// silencio — el PDF salia con "July 12, 2026" en un documento en castellano.
+const { fmtNum, formatDate, formatDateTime, formatMes } = require('./pdf/format');
 
 const ASSETS_DIR = path.join(__dirname, '..', 'assets', 'images');
 const LOGO_PATH  = path.join(ASSETS_DIR, 'rc_logo.png');
@@ -56,9 +60,11 @@ const C = {
   BORDER_GRAY: '#CBD5E0',
 };
 
+// Delega en el formateador compartido, que NO usa Intl: sin ICU completo los
+// separadores se dan vuelta y 1.234,50 sale como 1,234.50 (ver pdf/format.js).
 function fmtMoney(v) {
-  const n = parseFloat(v || 0);
-  return n.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const s = fmtNum(v);
+  return s === '—' ? '0,00' : s;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,7 +96,7 @@ function drawHeader(doc, { title, periodo, rol, nombreUsuario }) {
   const rows = [
     ['PERÍODO',       periodo],
     ['GENERADO POR',  `${nombreUsuario || '—'} (${rol})`],
-    ['FECHA',         new Date().toLocaleString('es-BO')],
+    ['FECHA',         formatDateTime()],
   ];
   let ry = y0 + 24;
   rows.forEach(([lbl, val]) => {
@@ -211,6 +217,194 @@ function statBox(doc, x, y, w, label, value, color) {
 }
 
 // ---------------------------------------------------------------------------
+// drawMisMetricas — el reporte propio del ejecutivo (modo individual).
+//
+// LA JERARQUIA NO ES CASUAL: primero la CONVERSION, que es lo que distingue al
+// que cotiza mucho del que vende. En esta empresa se cotiza todo lo que llega,
+// asi que el volumen por si solo no dice nada.
+//
+// El denominador de la conversion son las cotizaciones que YA SALIERON al
+// cliente, no el total: lo que sigue en preparacion no cuenta ni a favor ni en
+// contra (ver src/models/quotation/misMetricas.js).
+//
+// Los montos van SIEMPRE separados por moneda. Sumar USD con Bs. daria un
+// numero sin significado.
+// ---------------------------------------------------------------------------
+function drawMisMetricas(doc, m, leaderboard, y) {
+  // Sin datos no se dibuja una grilla de guiones: se dice que no hay nada.
+  if (!m) {
+    y = sectionTitle(doc, 'Mi Rendimiento', y);
+    doc.font('Helvetica').fontSize(9).fillColor(C.MID_GRAY)
+       .text('Sin actividad registrada en este período.', MARGIN, y);
+    return y + 20;
+  }
+
+  y = sectionTitle(doc, 'Mi Rendimiento', y);
+
+  // ── Fila 1: la conversion y los tiempos ──────────────────────────────────
+  const boxW = (CW - 3 * 8) / 4;
+  const x = (i) => MARGIN + i * (boxW + 8);
+
+  // El color sale del dato, no esta fijo: un verde alegre sobre un 3% seria
+  // peor que no pintar nada.
+  const colorConv = m.conversion == null ? C.MID_GRAY
+    : m.conversion >= 40 ? '#059669'
+    : m.conversion >= 20 ? '#D97706'
+    : '#DC2626';
+
+  statBox(doc, x(0), y, boxW, 'TASA DE CONVERSION',
+    m.conversion == null ? 'S/D' : `${m.conversion}%`, colorConv);
+  statBox(doc, x(1), y, boxW, 'DIAS PROMEDIO AL CIERRE',
+    m.dias_cierre == null ? 'S/D' : String(m.dias_cierre), '#6D28D9');
+  statBox(doc, x(2), y, boxW, 'EN PROCESO', String(m.en_proceso ?? 0), C.ORANGE);
+  statBox(doc, x(3), y, boxW, 'RECHAZADAS', String(m.rechazadas ?? 0), '#DC2626');
+  y += 50;
+
+  // La aclaracion del denominador va impresa: sin ella, quien lea el PDF
+  // meses despues no sabe sobre que base esta calculado ese porcentaje.
+  doc.font('Helvetica').fontSize(7.5).fillColor(C.MID_GRAY)
+     .text(
+       m.conversion == null
+         ? 'Todavía no hay cotizaciones enviadas al cliente en este período.'
+         : `${m.cerradas} cerradas sobre ${m.en_la_cancha} que llegaron al cliente. ` +
+           `Las ${m.en_proceso} en preparación no entran en el cálculo.`,
+       MARGIN, y, { width: CW });
+  y += 18;
+
+  // ── Fila 2: los tickets, separados por moneda ────────────────────────────
+  const medioW = (CW - 8) / 2;
+  statBox(doc, MARGIN, y, medioW, 'TICKET PROMEDIO USD',
+    m.ticket_usd == null ? 'S/D' : `$ ${fmtMoney(m.ticket_usd)}`, '#0F766E');
+  statBox(doc, MARGIN + medioW + 8, y, medioW, 'TICKET PROMEDIO BOB',
+    m.ticket_bob == null ? 'S/D' : `Bs. ${fmtMoney(m.ticket_bob)}`, '#0F766E');
+  y += 54;
+
+  // ── Desglose por estado ──────────────────────────────────────────────────
+  const total = (m.por_estado || []).reduce((a, f) => a + f.cantidad, 0);
+  y = sectionTitle(doc, 'En qué anda cada cotización', y);
+  y = simpleTable(doc, {
+    y,
+    columns: [
+      { key: 'estado',    label: 'ESTADO',     width: CW * 0.30 },
+      { key: 'cantidad',  label: 'CANTIDAD',   width: CW * 0.14, align: 'right' },
+      { key: 'pct',       label: '% DEL TOTAL', width: CW * 0.16, align: 'right',
+        render: (r) => (total > 0 ? `${((r.cantidad / total) * 100).toFixed(1)}%` : '-') },
+      { key: 'monto_usd', label: 'MONTO USD',  width: CW * 0.20, align: 'right',
+        render: (r) => (r.monto_usd > 0 ? `$ ${fmtMoney(r.monto_usd)}` : '-') },
+      { key: 'monto_bob', label: 'MONTO BOB',  width: CW * 0.20, align: 'right',
+        render: (r) => (r.monto_bob > 0 ? `Bs. ${fmtMoney(r.monto_bob)}` : '-') },
+    ],
+    rows: m.por_estado || [],
+    emptyLabel: 'Sin cotizaciones en este período.',
+  });
+
+  // ── Comparado con el periodo anterior ────────────────────────────────────
+  // Un 57 % suelto no dice si vas mejor o peor. La flecha lo dice de un vistazo,
+  // y el numero exacto queda al lado para quien quiera verificarlo.
+  if (m.comparacion && m.comparacion.conversion != null && m.conversion != null) {
+    const delta = Number((m.conversion - m.comparacion.conversion).toFixed(1));
+    // Sin emoji ni flechas Unicode: PDFKit con las fuentes estandar (Helvetica)
+    // usa WinAnsi, no Unicode, asi que una flecha ↑ sale como un glifo roto.
+    // Una palabra dice lo mismo y no depende de la codificacion.
+    const sentido = delta > 0 ? 'SUBIO' : delta < 0 ? 'BAJO' : 'IGUAL';
+    const color   = delta > 0 ? '#059669' : delta < 0 ? '#DC2626' : C.MID_GRAY;
+
+    y = sectionTitle(doc, 'Comparado con el período anterior', y);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(color)
+       .text(
+         `${sentido}  ${delta > 0 ? '+' : ''}${delta} puntos de conversión`,
+         MARGIN, y, { width: CW, lineBreak: false });
+    y += 14;
+    doc.font('Helvetica').fontSize(7.5).fillColor(C.MID_GRAY)
+       .text(
+         `Período anterior (${formatDate(m.comparacion.periodo.desde)} al ${formatDate(m.comparacion.periodo.hasta)}): ` +
+         `${m.comparacion.conversion}% de conversión, ${m.comparacion.cerradas} cerradas sobre ` +
+         `${m.comparacion.emitidas} emitidas.`,
+         MARGIN, y, { width: CW });
+    y += 22;
+  }
+
+  // ── Esperando respuesta del cliente ──────────────────────────────────────
+  // La UNICA seccion accionable del reporte: no dice como te fue, dice a quien
+  // llamar manana. Ordenada por dias esperando, lo mas viejo primero.
+  if ((m.pendientes || []).length > 0) {
+    y = sectionTitle(doc, 'Esperando respuesta del cliente', y);
+    y = simpleTable(doc, {
+      y,
+      columns: [
+        { key: 'correlativo',    label: 'COTIZACION', width: CW * 0.20 },
+        { key: 'cliente',        label: 'CLIENTE',    width: CW * 0.42 },
+        { key: 'monto',          label: 'MONTO',      width: CW * 0.20, align: 'right',
+          render: (r) => (r.moneda === 'USD' ? `$ ${fmtMoney(r.monto)}` : `Bs. ${fmtMoney(r.monto)}`) },
+        { key: 'dias_esperando', label: 'DIAS',       width: CW * 0.18, align: 'right',
+          render: (r) => `${r.dias_esperando} d` },
+      ],
+      rows: m.pendientes,
+    });
+  }
+
+  // ── Las que cerro ────────────────────────────────────────────────────────
+  // La evidencia concreta detras del porcentaje: que vendio, a quien y cuando.
+  if ((m.confirmadas || []).length > 0) {
+    y = sectionTitle(doc, 'Ventas cerradas en el período', y);
+    y = simpleTable(doc, {
+      y,
+      columns: [
+        { key: 'correlativo', label: 'COTIZACION', width: CW * 0.20 },
+        { key: 'cliente',     label: 'CLIENTE',    width: CW * 0.44 },
+        { key: 'fecha',       label: 'CERRADA EL', width: CW * 0.18,
+          render: (r) => (r.fecha ? formatDate(r.fecha) : '-') },
+        { key: 'monto',       label: 'MONTO',      width: CW * 0.18, align: 'right',
+          render: (r) => (r.moneda === 'USD' ? `$ ${fmtMoney(r.monto)}` : `Bs. ${fmtMoney(r.monto)}`) },
+      ],
+      rows: m.confirmadas,
+    });
+  }
+
+  // ── Lo que mas cotiza ────────────────────────────────────────────────────
+  // Que repuestos mueve ESTE ejecutivo. La columna de clientes distintos dice
+  // si es un articulo que pide mucha gente o el capricho de un cliente solo.
+  if ((m.top_items || []).length > 0) {
+    y = sectionTitle(doc, 'Los repuestos que más cotizo', y);
+    y = simpleTable(doc, {
+      y,
+      columns: [
+        { key: 'codigo',      label: 'CODIGO',      width: CW * 0.20 },
+        { key: 'marca',       label: 'MARCA',       width: CW * 0.16,
+          render: (r) => r.marca || '-' },
+        { key: 'descripcion', label: 'DESCRIPCION', width: CW * 0.34 },
+        { key: 'cantidad',    label: 'CANTIDAD',    width: CW * 0.16, align: 'right',
+          render: (r) => `${r.cantidad} ${r.unidad || ''}`.trim() },
+        { key: 'clientes',    label: 'CLIENTES',    width: CW * 0.14, align: 'right' },
+      ],
+      rows: m.top_items,
+    });
+  }
+
+  // ── Evolucion mes a mes ──────────────────────────────────────────────────
+  // Como tabla y no como grafico: PDFKit no dibuja graficos y una barra hecha a
+  // mano con rectangulos se desalinea al cambiar el ancho de pagina. Tres
+  // columnas de numeros se leen igual de bien y no se rompen nunca.
+  if ((m.por_mes || []).length > 0) {
+    y = sectionTitle(doc, 'Mi evolución', y);
+    y = simpleTable(doc, {
+      y,
+      columns: [
+        { key: 'mes',      label: 'MES',       width: CW * 0.34,
+          render: (r) => formatMes(r.mes) },
+        { key: 'emitidas', label: 'EMITIDAS',  width: CW * 0.22, align: 'right' },
+        { key: 'cerradas', label: 'CERRADAS',  width: CW * 0.22, align: 'right' },
+        { key: 'pct',      label: 'CONVERSION', width: CW * 0.22, align: 'right',
+          render: (r) => (r.emitidas > 0 ? `${Math.round((r.cerradas / r.emitidas) * 100)}%` : '-') },
+      ],
+      rows: m.por_mes,
+    });
+  }
+
+  return y;
+}
+
+// ---------------------------------------------------------------------------
 // generateReportePdf — returns a Promise<Buffer>.
 //
 // @param {Object} data
@@ -221,12 +415,14 @@ function statBox(doc, x, y, w, label, value, color) {
 //   progreso        {Object|null} getProgreso() result — company mode only
 //   topClientes     {Array}
 //   leaderboard     {Array}
+//   metricas        {Object|null} misMetricas.obtener() — individual mode only
 //   clientesPorOrigen {Array} — company mode only
 // ---------------------------------------------------------------------------
 async function generateReportePdf(data) {
   const {
     mode, periodo, rol, nombreUsuario,
     progreso, topClientes = [], leaderboard = [], clientesPorOrigen = [],
+    metricas = null,
   } = data;
 
   const docTitle = mode === 'company' ? 'REPORTE GENERAL' : 'REPORTE INDIVIDUAL';
@@ -250,7 +446,7 @@ async function generateReportePdf(data) {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      const footerSubtitle = `Generado: ${new Date().toLocaleString('es-BO', { timeZone: 'America/La_Paz', dateStyle: 'long', timeStyle: 'short' })}`;
+      const footerSubtitle = `Generado: ${formatDateTime()}`;
 
       let y = drawHeader(doc, {
         title: docTitle,
@@ -300,19 +496,10 @@ async function generateReportePdf(data) {
       });
 
       if (mode === 'individual') {
-        y = sectionTitle(doc, 'Mi Rendimiento', y);
-        y = simpleTable(doc, {
-          y,
-          columns: [
-            { key: 'total_creadas',   label: 'CREADAS',    width: CW * 0.2, align: 'right' },
-            { key: 'total_aprobadas', label: 'APROBADAS',  width: CW * 0.2, align: 'right' },
-            { key: 'tasa_aprobacion', label: 'TASA APROB.', width: CW * 0.2, align: 'right', render: (r) => `${r.tasa_aprobacion}%` },
-            { key: 'total_usd',       label: 'TOTAL USD',  width: CW * 0.2, align: 'right', render: (r) => `$ ${fmtMoney(r.total_usd)}` },
-            { key: 'total_bob',       label: 'TOTAL BOB',  width: CW * 0.2, align: 'right', render: (r) => `Bs. ${fmtMoney(r.total_bob)}` },
-          ],
-          rows: leaderboard,
-          emptyLabel: 'Sin actividad registrada en este período.',
-        });
+        // ANTES: una sola tabla de UNA fila con cinco numeros. El ejecutivo
+        // imprimia este PDF para mostrar como venia y no habia casi nada que
+        // mostrar. Ahora lleva lo mismo que la pantalla.
+        y = drawMisMetricas(doc, metricas, leaderboard, y);
       }
 
       if (mode === 'company') {

@@ -16,7 +16,9 @@
 
 const QuotationModel       = require('../models/QuotationModel');
 const clienteItemReport    = require('../models/quotation/clienteItemReport');
+const misMetricas          = require('../models/quotation/misMetricas');
 const reportePdfService    = require('../services/reportePdfService');
+const { formatDate }       = require('../services/pdf/format');
 const { logEvent, AuditActions } = require('../utils/auditLog');
 
 // Roles that may view company-wide aggregate data
@@ -223,12 +225,28 @@ const ReportesController = {
       const advanced = await QuotationModel.getAdvancedReports(ejecutivoId, range.desde, range.hasta);
       const progreso = isManager ? await QuotationModel.getProgreso(range.desde, range.hasta) : null;
 
+      // El PDF individual traia dos tablas, y una era de UNA sola fila. Las
+      // mismas metricas que ahora se ven en pantalla (conversion, dias de
+      // cierre, desglose por estado y evolucion mes a mes) van tambien al PDF:
+      // es el documento que el ejecutivo imprime para mostrar como viene.
+      const metricas = isManager
+        ? null
+        : await misMetricas.obtener({
+            idEjecutivo: req.user.id,
+            desde: range.desde,
+            hasta: range.hasta,
+          });
+
+      // El encabezado del PDF lo lee una persona: 01/07/2026 y no 2026-07-01.
       const periodo = range.desde && range.hasta
-        ? (range.desde === range.hasta ? range.desde : `${range.desde} a ${range.hasta}`)
+        ? (range.desde === range.hasta
+            ? formatDate(range.desde)
+            : `${formatDate(range.desde)} al ${formatDate(range.hasta)}`)
         : 'Histórico (todas las fechas)';
 
       const pdfBuffer = await reportePdfService.generateReportePdf({
         mode:           isManager ? 'company' : 'individual',
+        metricas,
         periodo,
         rol,
         nombreUsuario:  req.user.nombre_usuario,
@@ -379,6 +397,48 @@ const ReportesController = {
         success: false,
         message: 'No se pudo generar el reporte de items por cliente.',
       });
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // getMisMetricas — GET /api/reportes/mis-metricas  (cualquier autenticado)
+  //
+  // El tablero del ejecutivo mostraba dos tablas y una fila de totales. Esto es
+  // el reporte propio de verdad: conversion, tiempos, desglose por estado y
+  // evolucion mes a mes.
+  //
+  // ALCANCE. Por defecto son las metricas de QUIEN LLAMA. Un rol de gestion
+  // puede pedir las de otro con ?id_ejecutivo=N; un Ejecutivo no, aunque mande
+  // el parametro — si pudiera, cualquiera veria el desempeno de sus companeros.
+  //
+  // Query: fecha_desde, fecha_hasta, id_ejecutivo (solo gestion)
+  // ---------------------------------------------------------------------------
+  async getMisMetricas(req, res) {
+    const rango = resolveDateRange(req.query, false);
+    if (rango.error) {
+      return res.status(422).json({ success: false, message: rango.error });
+    }
+
+    let idEjecutivo = req.user.id;
+    if (req.query.id_ejecutivo && MANAGER_ROLES.has(req.user.rol)) {
+      const pedido = parseInt(req.query.id_ejecutivo, 10);
+      if (!Number.isInteger(pedido) || pedido < 1) {
+        return res.status(422).json({ success: false, message: 'id_ejecutivo invalido.' });
+      }
+      idEjecutivo = pedido;
+    }
+
+    try {
+      const data = await misMetricas.obtener({
+        idEjecutivo,
+        desde: rango.desde,
+        hasta: rango.hasta,
+      });
+
+      return res.status(200).json({ success: true, id_ejecutivo: idEjecutivo, data });
+    } catch (error) {
+      console.error('[ReportesController.getMisMetricas] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'No se pudieron obtener las metricas.' });
     }
   },
 };

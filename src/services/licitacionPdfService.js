@@ -20,6 +20,9 @@
 const path = require('path');
 const fs   = require('fs');
 const PDFDocument = require('pdfkit');
+// Mismo motivo que en reportePdfService: Intl depende del ICU del binario y
+// node:20-alpine puede no traerlo completo, haciendo caer todo a ingles.
+const { fmtNum, formatDate, formatDateTime } = require('./pdf/format');
 
 const ASSETS_DIR = path.join(__dirname, '..', 'assets', 'images');
 const LOGO_PATH  = path.join(ASSETS_DIR, 'rc_logo.png');
@@ -56,16 +59,13 @@ const ESTADO_COLOR = {
 // ── formatting helpers ───────────────────────────────────────────────────────
 function fmtMoney(amount, moneda = 'BOB') {
   if (amount == null || isNaN(parseFloat(amount))) return '—';
-  const s = parseFloat(amount).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const s = fmtNum(amount);   // sin Intl: ver el porque en pdf/format.js
   return moneda === 'USD' ? `$ ${s}` : `Bs. ${s}`;
 }
-function fmtDate(v) {
-  if (!v) return '—';
-  const s = String(v);
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) { const [y, m, d] = s.slice(0, 10).split('-'); return `${d}/${m}/${y}`; }
-  const dt = new Date(v);
-  return isNaN(dt.getTime()) ? s : dt.toLocaleDateString('es-BO');
-}
+// Delega en el formateador compartido, que arma DD/MM/YYYY a mano. La rama
+// que quedaba usaba toLocaleDateString('es-BO'), y eso depende del ICU del
+// binario: en node:20-alpine sin ICU completo salía en formato inglés.
+const fmtDate = formatDate;
 
 // ── layout primitives ────────────────────────────────────────────────────────
 function ensureSpace(doc, y, needed) {
@@ -158,7 +158,7 @@ function renderExpediente(doc, lic) {
   doc.roundedRect(PW - MARGIN - pillW, 20, pillW, 16, 8).fill(pillColor);
   doc.fillColor(C.WHITE).font('Helvetica-Bold').fontSize(8).text(estadoTxt, PW - MARGIN - pillW + 8, 24.5);
   doc.fillColor('#C7D2FE').font('Helvetica').fontSize(7)
-    .text(`Generado: ${new Date().toLocaleString('es-BO')}`, PW - MARGIN - 200, 42, { width: 200, align: 'right' });
+    .text(`Generado: ${formatDateTime()}`, PW - MARGIN - 200, 42, { width: 200, align: 'right' });
 
   let y = bandH + 14;
 
