@@ -134,6 +134,21 @@ beforeAll(async () => {
     { id_producto: idProducto, descripcion: 'Filtro de aceite', cantidad: 5 },
   ], idEjec2);
 
+  // ── Las tres formas en que el mismo repuesto termina en filas distintas ──
+  // Es lo que ventas describe como «salen los items 1x1».
+  await crearCotizacion(idClienteA, 'Confirmada', [
+    // 1. El mismo numero de parte tecleado distinto por cada ejecutivo.
+    { codigo_parte: 'ZZ-500',  descripcion: 'Buje de pasador', cantidad: 3 },
+    { codigo_parte: 'zz 500',  descripcion: 'Buje de pasador', cantidad: 2 },
+    { codigo_parte: 'ZZ.500',  descripcion: 'BUJE DE PASADOR', cantidad: 1 },
+    // 2. El mismo codigo, una vez con marca y otra sin: marca partia la fila.
+    { codigo_parte: 'YY-900', descripcion: 'Reten', cantidad: 4, marca_id: idMarca },
+    { codigo_parte: 'YY-900', descripcion: 'Reten', cantidad: 6 },
+    // 3. Lineas SIN codigo, con la descripcion escrita apenas distinta.
+    { descripcion: 'Manguera hidraulica 1/2',   cantidad: 5 },
+    { descripcion: 'MANGUERA  HIDRAULICA 1/2',  cantidad: 3 },
+  ]);
+
   const login = await request(app).post('/api/auth/login')
     .send({ nombre_usuario: U_EJEC, password: PASSWORD });
   expect(login.status).toBe(200);
@@ -581,5 +596,91 @@ describe('RCI3 — la lista de ejecutivos para el filtro', () => {
 
     expect(ids).not.toContain(idEjec);
     expect(ids).not.toContain(idEjec2);
+  });
+});
+
+// =============================================================================
+// RCI4 — «los items salen 1x1»
+//
+// Ventas reporto que el mismo repuesto aparece repartido en varias filas. Son
+// tres causas distintas, y las tres vienen de que la clave de agrupacion tomaba
+// los textos tal cual venian de la base:
+//
+//   1. El numero de parte tecleado distinto: ZZ-500, zz 500, ZZ.500 son el
+//      MISMO repuesto para cualquiera que trabaje en el mostrador, pero tres
+//      cadenas distintas para un GROUP BY.
+//   2. La marca formaba parte de la clave, asi que el mismo codigo cargado una
+//      vez con marca y otra sin marca daba dos filas.
+//   3. Las lineas sin codigo se agrupaban por la descripcion EXACTA, y una
+//      descripcion escrita a mano casi nunca sale igual dos veces.
+// =============================================================================
+describe('RCI4 — el mismo repuesto se combina en una fila', () => {
+
+  test('RCI4-01: el codigo tecleado distinto se unifica', async () => {
+    const res = await pedir('agrupar=item&limit=200');
+    const filas = res.body.data.filter((f) => /^ZZ.?500$/i.test(String(f.codigo).replace(/\s/g, '')));
+
+    expect(filas).toHaveLength(1);
+    expect(Number(filas[0].cantidad_total)).toBe(6);   // 3 + 2 + 1
+  });
+
+  test('RCI4-02: la marca ya no parte la fila', async () => {
+    const res = await pedir('agrupar=item&limit=200');
+    const filas = res.body.data.filter((f) => String(f.codigo).toUpperCase().includes('YY900')
+      || String(f.codigo).toUpperCase().includes('YY-900'));
+
+    expect(filas).toHaveLength(1);
+    expect(Number(filas[0].cantidad_total)).toBe(10);  // 4 + 6
+  });
+
+  // La marca no se pierde: se muestra la que hay, y si hay varias se ven todas.
+  test('RCI4-03: la marca sigue visible aunque no agrupe', async () => {
+    const res = await pedir('agrupar=item&limit=200');
+    const fila = res.body.data.find((f) => String(f.codigo).toUpperCase().replace(/[^A-Z0-9]/g, '') === 'YY900');
+
+    expect(fila.marca_nombre).toContain(MARCA_NOMBRE);
+  });
+
+  test('RCI4-04: las lineas sin codigo se agrupan aunque la descripcion varie', async () => {
+    const res = await pedir('agrupar=item&limit=200');
+    // Filtro por «hidraulica» y no por «manguera» a secas: existe tambien una
+    // «Manguera a medida» de otro fixture, que es un repuesto DISTINTO y tiene
+    // que seguir en su propia fila.
+    const filas = res.body.data.filter((f) => /manguera\s+hidraulica/i.test(String(f.descripcion || '')));
+
+    expect(filas).toHaveLength(1);
+    expect(Number(filas[0].cantidad_total)).toBe(8);   // 5 + 3
+
+    // Y la comprobacion de que NO se paso de rosca: la otra manguera sigue sola.
+    const otra = res.body.data.filter((f) => /manguera a medida/i.test(String(f.descripcion || '')));
+    expect(otra).toHaveLength(1);
+    expect(Number(otra[0].cantidad_total)).toBe(6);
+  });
+
+  // El limite de la normalizacion: dos repuestos GENUINAMENTE distintos no
+  // deben terminar en la misma fila por parecerse.
+  test('RCI4-05: codigos realmente distintos NO se mezclan', async () => {
+    const res = await pedir('agrupar=item&limit=200');
+    const zz = res.body.data.filter((f) => String(f.codigo).toUpperCase().replace(/[^A-Z0-9]/g, '') === 'ZZ500');
+    const yy = res.body.data.filter((f) => String(f.codigo).toUpperCase().replace(/[^A-Z0-9]/g, '') === 'YY900');
+
+    expect(zz).toHaveLength(1);
+    expect(yy).toHaveLength(1);
+    expect(zz[0].codigo).not.toBe(yy[0].codigo);
+  });
+
+  // El total no puede cambiar por agrupar distinto: si cambia, se perdio o se
+  // duplico alguna linea.
+  test('RCI4-06: combinar no altera la suma total', async () => {
+    const res = await pedir(`id_cliente=${idClienteA}&agrupar=item&limit=200`);
+    const delReporte = res.body.data.reduce((a, f) => a + Number(f.cantidad_total), 0);
+
+    const [filas] = await pool.execute(
+      `SELECT COALESCE(SUM(d.cantidad), 0) AS total
+         FROM cotizacion_detalles d
+         INNER JOIN cotizaciones c ON c.id = d.id_cotizacion
+        WHERE c.id_cliente = ?`, [idClienteA]);
+
+    expect(delReporte).toBe(Number(filas[0].total));
   });
 });

@@ -94,6 +94,41 @@ const MAX_LIMIT     = 200;
 const CODIGO_SQL = "COALESCE(NULLIF(p.codigo, ''), NULLIF(d.codigo_parte, ''))";
 
 // ---------------------------------------------------------------------------
+// LA CLAVE DE AGRUPACION, Y POR QUE NO ES EL TEXTO TAL CUAL
+//
+// Ventas reporto que «los items salen 1x1»: el mismo repuesto repartido en
+// varias filas. Agrupar por el texto crudo lo provoca de tres maneras:
+//
+//   1. ZZ-500, zz 500 y ZZ.500 son el MISMO repuesto para cualquiera que
+//      trabaje en el mostrador, y tres cadenas distintas para un GROUP BY.
+//      Cada ejecutivo teclea el numero de parte a su manera.
+//   2. El mismo codigo cargado una vez CON marca y otra SIN marca daba dos
+//      filas, porque la marca formaba parte de la clave.
+//   3. Las lineas sin codigo se agrupaban por la descripcion EXACTA, y una
+//      descripcion escrita a mano casi nunca sale igual dos veces
+//      («Manguera hidraulica 1/2» contra «MANGUERA  HIDRAULICA 1/2»).
+//
+// LA NORMALIZACION, Y SU LIMITE
+// Del codigo se descarta TODO lo que no sea letra o numero: separadores,
+// espacios y puntuacion son ruido de tecleo, no informacion. Lo que queda
+// (ZZ500) es el numero de parte de verdad.
+//
+// Es deliberadamente conservador con lo demas: NO junta por descripcion
+// parecida ni por prefijo. Dos codigos genuinamente distintos siguen en filas
+// distintas — mezclar repuestos que no son el mismo seria mucho peor que
+// mostrarlos separados, porque llevaria a comprar stock equivocado.
+//
+// El codigo que se MUESTRA es el original mas largo del grupo, no la version
+// normalizada: en pantalla tiene que verse el numero de parte como se escribe,
+// no ZZ500.
+// ---------------------------------------------------------------------------
+const CODIGO_NORM_SQL = `UPPER(REGEXP_REPLACE(${CODIGO_SQL}, '[^a-zA-Z0-9]', ''))`;
+
+// Para las lineas sin codigo: la descripcion sirve de clave, pero colapsando
+// espacios repetidos y sin distinguir mayusculas.
+const DESC_NORM_SQL = "UPPER(TRIM(REGEXP_REPLACE(d.descripcion_item, '[[:space:]]+', ' ')))";
+
+// ---------------------------------------------------------------------------
 // _where — construye el WHERE parametrizado.
 // ---------------------------------------------------------------------------
 function _where(filtros = {}) {
@@ -160,7 +195,9 @@ const LINEAS_SQL = (clause) => `
     -- mismo repuesto aunque la descripcion se parezca.
     mk.nombre        AS marca_nombre,
     ${CODIGO_SQL}    AS codigo,
-    COALESCE(${CODIGO_SQL}, CONCAT('SINCOD::', d.descripcion_item)) AS clave,
+    -- La clave usa la version NORMALIZADA; la columna codigo conserva el
+    -- original para mostrarlo tal como se escribe.
+    COALESCE(NULLIF(${CODIGO_NORM_SQL}, ''), CONCAT('SINCOD::', ${DESC_NORM_SQL})) AS clave,
     d.descripcion_item,
     d.unidad,
     d.cantidad,
@@ -181,10 +218,17 @@ const LINEAS_SQL = (clause) => `
 // `marca_nombre` entra en los dos: si el mismo codigo se cargo con dos marcas
 // distintas salen dos filas, que es correcto y ademas hace visible el dato
 // sucio en vez de esconderlo detras de una suma.
+// La marca NO entra en la clave. El mismo codigo cargado una vez con marca y
+// otra sin marca daba dos filas — y en la practica pasa seguido, porque elegir
+// la marca es opcional al cotizar. La marca no se pierde: se agrega con
+// GROUP_CONCAT y se muestran todas las que aparecieron.
+//
+// `codigo` tampoco entra: la clave normalizada ya determina el grupo, y meter
+// el original volveria a partir la fila por la forma de tecleo.
 const GROUP_BY = {
   detalle: 'l.id_ejecutivo, l.ejecutivo_nombre, l.id_cliente, l.cliente_nombre, ' +
-           'l.cliente_nit, l.codigo, l.clave, l.marca_nombre, l.unidad',
-  item:    'l.codigo, l.clave, l.marca_nombre, l.unidad',
+           'l.cliente_nit, l.clave, l.unidad',
+  item:    'l.clave, l.unidad',
 };
 
 // ---------------------------------------------------------------------------
@@ -235,8 +279,17 @@ async function find(filtros = {}, paginacion = {}, orden = {}, modo = 'detalle')
   const sql = `
     SELECT
       ${columnasPropias}
-      l.codigo,
-      l.marca_nombre,
+      -- El codigo que se MUESTRA es el original mas largo del grupo: en
+      -- pantalla tiene que verse el numero de parte como se escribe, no su
+      -- version normalizada sin separadores.
+      SUBSTRING_INDEX(
+        GROUP_CONCAT(DISTINCT l.codigo ORDER BY CHAR_LENGTH(l.codigo) DESC SEPARATOR '||'),
+        '||', 1
+      )                                AS codigo,
+      -- Todas las marcas que aparecieron para este repuesto. Con una sola se ve
+      -- igual que antes; con varias, el dato queda a la vista en vez de
+      -- esconderse detras de una suma.
+      GROUP_CONCAT(DISTINCT l.marca_nombre ORDER BY l.marca_nombre SEPARATOR ', ') AS marca_nombre,
       -- Descripcion representativa: la mas frecuente exigiria otra agregacion,
       -- asi que se toma la mas larga, que en la practica es la mas completa.
       SUBSTRING_INDEX(
@@ -250,13 +303,13 @@ async function find(filtros = {}, paginacion = {}, orden = {}, modo = 'detalle')
       MAX(l.fecha_emision)             AS ultima_vez,
       -- Bandera para la UI: estas filas se agrupan por descripcion, no por
       -- codigo, y no hay que confundirlas con un repuesto catalogado.
-      CASE WHEN l.codigo IS NULL THEN 1 ELSE 0 END AS sin_codigo
+      CASE WHEN MAX(l.codigo) IS NULL THEN 1 ELSE 0 END AS sin_codigo
     FROM (${LINEAS_SQL(clause)}) AS l
     GROUP BY ${GROUP_BY[m]}
     -- «La cantidad esta bien pero tendria que ser secundario»: cuando el orden
     -- principal es la fecha, muchas filas comparten dia, y ahi manda la
     -- cantidad. El tercer criterio hace el orden estable entre paginas.
-    ORDER BY ${columna} ${sentido}${columna === 'cantidad_total' ? '' : ', cantidad_total DESC'}, l.codigo ASC
+    ORDER BY ${columna} ${sentido}${columna === 'cantidad_total' ? '' : ', cantidad_total DESC'}, l.clave ASC
     LIMIT ${limit} OFFSET ${offset}
   `;
 
