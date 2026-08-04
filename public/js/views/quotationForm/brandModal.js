@@ -65,7 +65,7 @@ export function openBrandModal(rowIndex, { container, brands, onFieldChange } = 
           <span class="field-error" id="bm-err"></span>
         </div>
         <div class="form-alert" id="bm-alert" role="alert"></div>
-        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem;">
+        <div class="modal-actions">
           <button type="button" class="btn btn-ghost" id="bm-cancel">Cancelar</button>
           <button type="button" class="btn btn-primary" id="bm-save">
             <span id="bm-label">Guardar Marca</span>

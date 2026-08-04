@@ -43,7 +43,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
 
   panel.innerHTML = `
     <div class="card">
-      <div class="card-header" style="flex-wrap:wrap;gap:.75rem;">
+      <div class="card-header flex-wrap gap-2">
         <h3>📑 Licitaciones</h3>
         <div style="display:flex;gap:.5rem;align-items:center;">
           <span class="text-muted text-sm" id="lic-total"></span>
@@ -53,7 +53,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
       <div class="filter-bar" style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end;">
         <div class="form-group" style="margin:0;">
           <label class="form-label">Buscar</label>
-          <input class="form-control" type="search" id="lic-search" placeholder="Código, nombre o convocante…" style="min-width:220px;" />
+          <input class="form-control fc-wide" type="search" id="lic-search" placeholder="Código, nombre o convocante…" />
         </div>
         <div class="form-group" style="margin:0;">
           <label class="form-label">Estado</label>

@@ -547,3 +547,17 @@
   border-radius: var(--radius-md);
   background: var(--bg-surface);
 }
+
+
+/* ── Pie de acciones de un modal ──────────────────────────────────────────────
+   Cancelar a la izquierda, la accion principal a la derecha. Estaba escrito
+   inline doce veces, con dos margenes distintos (1rem y 1.25rem) por puro
+   descuido de copiar y pegar. Se unifica en el valor de la escala: la
+   diferencia son 4 px que nadie va a extranar, y es exactamente la clase de
+   inconsistencia que la escala de espaciado existe para eliminar. */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}

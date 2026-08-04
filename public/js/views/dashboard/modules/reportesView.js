@@ -135,7 +135,7 @@ function _buildClientesPorOrigenTable(rows) {
         </tr>`).join('');
 
   return `
-    <div class="card" style="margin-bottom:1rem;">
+    <div class="card mb-2">
       <div class="card-header">
         <h3>📍 Clientes por Origen</h3>
         <span class="text-muted text-sm">De dónde vienen los clientes activos — clasificación editable en Gestión de Clientes</span>
@@ -187,7 +187,7 @@ function _buildTopClientesTable(rows) {
         </tr>`).join('');
 
   return `
-    <div class="card" style="margin-bottom:1rem;">
+    <div class="card mb-2">
       <div class="card-header">
         <h3>📊 Top 10 Clientes de Mayor Impacto</h3>
         <span class="text-muted text-sm">Basado en cotizaciones Confirmadas / Enviadas al cliente</span>
@@ -290,7 +290,7 @@ function _buildLeaderboardTable(rows, rol) {
 // ---------------------------------------------------------------------------
 export async function renderExecutiveMetrics(panel) {
   panel.innerHTML = `
-    <div class="card" style="margin-bottom:1rem;">
+    <div class="card mb-2">
       <div class="card-header">
         <h3>📅 Filtrar mi Reporte</h3>
         <span class="text-muted text-sm">Filtra tus propias cotizaciones por un día o un rango de fechas</span>
@@ -298,7 +298,7 @@ export async function renderExecutiveMetrics(panel) {
       <div class="filter-bar" style="padding:1rem;">
         <div class="form-group">
           <label class="form-label">Rango rápido</label>
-          <select class="form-control" id="mym-preset" style="min-width:150px;">
+          <select class="form-control fc-narrow" id="mym-preset">
             <option value="todo" selected>Todo el historial</option>
             <option value="hoy">Hoy</option>
             <option value="ayer">Ayer</option>
@@ -312,14 +312,14 @@ export async function renderExecutiveMetrics(panel) {
         </div>
         <div class="form-group">
           <label class="form-label">Desde</label>
-          <input class="form-control" type="date" id="mym-desde" style="min-width:150px;" />
+          <input class="form-control fc-narrow" type="date" id="mym-desde" />
         </div>
         <div class="form-group">
           <label class="form-label">Hasta</label>
-          <input class="form-control" type="date" id="mym-hasta" style="min-width:150px;" />
+          <input class="form-control fc-narrow" type="date" id="mym-hasta" />
         </div>
-        <button class="btn btn-primary btn-sm" id="mym-apply" style="align-self:flex-end;">Filtrar</button>
-        <button class="btn btn-ghost btn-sm" id="mym-pdf" style="align-self:flex-end;">📄 Generar PDF</button>
+        <button class="btn btn-primary btn-sm filter-action" id="mym-apply">Filtrar</button>
+        <button class="btn btn-ghost btn-sm filter-action" id="mym-pdf">📄 Generar PDF</button>
       </div>
     </div>
     <div id="mym-data">${tableSkeleton({ columnas: 5, etiqueta: 'Cargando reporte' })}</div>
@@ -399,7 +399,7 @@ export async function renderReportes(panel) {
 
   // Render the persistent filter bar + a data container that re-renders on demand.
   panel.innerHTML = `
-    <div class="card" style="margin-bottom:1rem;">
+    <div class="card mb-2">
       <div class="card-header">
         <h3>📅 Período del Reporte</h3>
         <span class="text-muted text-sm">Filtra las métricas por fecha, ejecutivo y moneda</span>
@@ -407,7 +407,7 @@ export async function renderReportes(panel) {
       <div class="filter-bar" style="padding:1rem;">
         <div class="form-group">
           <label class="form-label">Rango rápido</label>
-          <select class="form-control" id="rep-preset" style="min-width:150px;">
+          <select class="form-control fc-narrow" id="rep-preset">
             <option value="hoy">Hoy</option>
             <option value="ayer">Ayer</option>
             <option value="7d">Últimos 7 días</option>
@@ -420,15 +420,15 @@ export async function renderReportes(panel) {
         </div>
         <div class="form-group">
           <label class="form-label">Desde</label>
-          <input class="form-control" type="date" id="rep-desde" value="${defDesde}" style="min-width:150px;" />
+          <input class="form-control fc-narrow" type="date" id="rep-desde" value="${defDesde}" />
         </div>
         <div class="form-group">
           <label class="form-label">Hasta</label>
-          <input class="form-control" type="date" id="rep-hasta" value="${defHasta}" style="min-width:150px;" />
+          <input class="form-control fc-narrow" type="date" id="rep-hasta" value="${defHasta}" />
         </div>
         <div class="form-group">
           <label class="form-label">Ejecutivo</label>
-          <select class="form-control" id="rep-ejecutivo" style="min-width:170px;">
+          <select class="form-control fc-medium" id="rep-ejecutivo">
             <option value="">Todos</option>
           </select>
         </div>
@@ -439,8 +439,8 @@ export async function renderReportes(panel) {
             <option value="USD">Dólares (USD)</option>
           </select>
         </div>
-        <button class="btn btn-primary btn-sm" id="rep-apply" style="align-self:flex-end;">Aplicar</button>
-        <button class="btn btn-ghost btn-sm" id="rep-pdf" style="align-self:flex-end;">📄 Generar PDF</button>
+        <button class="btn btn-primary btn-sm filter-action" id="rep-apply">Aplicar</button>
+        <button class="btn btn-ghost btn-sm filter-action" id="rep-pdf">📄 Generar PDF</button>
       </div>
     </div>
     <div id="reportes-data">${tableSkeleton({ columnas: 5, etiqueta: 'Cargando reporte' })}</div>
@@ -593,7 +593,7 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
 
     return `
       <!-- ── Stats grid ── -->
-      <div class="card" style="margin-bottom:1rem;">
+      <div class="card mb-2">
         <div class="card-header">
           <h3>📊 Dashboard de Rendimiento — ${escHtml(periodo)}${alcance}</h3>
           ${ejecutivoId
@@ -625,7 +625,7 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
       </div>
 
       <!-- ── Per-executive breakdown for the selected range ── -->
-      <div class="card" style="margin-bottom:1rem;">
+      <div class="card mb-2">
         <div class="card-header">
           <h3>Rendimiento por Ejecutivo — ${escHtml(periodo)}</h3>
         </div>

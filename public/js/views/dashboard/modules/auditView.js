@@ -189,20 +189,20 @@ export async function mountAuditLogTab(panel) {
   // ── 1. Paint the static shell (filter bar + results container) ONCE ─────────
   panel.innerHTML = `
     <div class="card">
-      <div class="card-header" style="flex-wrap:wrap;gap:.75rem;">
+      <div class="card-header flex-wrap gap-2">
         <h3>🔍 Registros de Auditoría</h3>
         <span class="text-muted text-sm" id="audit-total"></span>
       </div>
       <div class="filter-bar">
         <div class="form-group">
           <label class="form-label">Acción</label>
-          <select class="form-control" id="audit-accion" style="min-width:170px;">
+          <select class="form-control fc-medium" id="audit-accion">
             <option value="">Todas</option>
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">Tabla</label>
-          <select class="form-control" id="audit-entidad" style="min-width:140px;">
+          <select class="form-control fc-narrow" id="audit-entidad">
             <option value="">Todas</option>
           </select>
         </div>
@@ -224,10 +224,10 @@ export async function mountAuditLogTab(panel) {
         </div>
         <div class="form-group">
           <label class="form-label">Usuario</label>
-          <input class="form-control" type="search" id="audit-usuario" placeholder="Nombre de usuario…" style="min-width:170px;" />
+          <input class="form-control fc-medium" type="search" id="audit-usuario" placeholder="Nombre de usuario…" />
         </div>
-        <button class="btn btn-primary btn-sm" id="audit-apply" style="align-self:flex-end;">Aplicar Filtros</button>
-        <button class="btn btn-ghost btn-sm"   id="audit-clear" style="align-self:flex-end;">Limpiar</button>
+        <button class="btn btn-primary btn-sm filter-action" id="audit-apply">Aplicar Filtros</button>
+        <button class="btn btn-ghost btn-sm filter-action"   id="audit-clear">Limpiar</button>
       </div>
       <div class="card-toolbar" id="audit-pagination"></div>
       <div id="audit-results">${tableSkeleton({ columnas: 7, etiqueta: 'Cargando registros de auditoría' })}</div>

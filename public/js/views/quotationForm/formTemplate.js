@@ -273,7 +273,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
       </div>
 
       <!-- Excel optional attachment -->
-      <div class="form-group" style="margin-top:1rem;">
+      <div class="form-group mt-2">
         <label class="form-label">📊 Planilla Excel de Auditoría (opcional)</label>
         <div class="drop-zone" id="excel-drop-zone" style="border-color:#16a34a;">
           <input type="file" id="excel-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
@@ -288,7 +288,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
       <div class="form-alert" id="qf-alert" role="alert"></div>
 
       <!-- Footer buttons -->
-      <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem;">
+      <div class="modal-actions">
         <button type="button" id="btn-cancel" class="btn btn-ghost">Cancelar</button>
         <button type="submit" id="btn-submit" class="btn btn-primary">
           <span class="btn-label">${isEdit ? 'Guardar Cambios' : 'Crear Cotización'}</span>

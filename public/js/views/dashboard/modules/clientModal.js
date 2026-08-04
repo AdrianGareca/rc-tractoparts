@@ -108,7 +108,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
           <span class="text-muted text-sm">Uso interno para reportes — no aparece en el PDF de la cotización.</span>
         </div>
         <div class="form-alert" id="nc-alert" role="alert"></div>
-        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem;">
+        <div class="modal-actions">
           <button type="button" class="btn btn-ghost" id="subm-cancel">Cancelar</button>
           <button type="button" class="btn btn-primary" id="subm-save">
             <span id="subm-label">${isEdit ? 'Guardar Cambios' : 'Guardar Cliente'}</span>
@@ -251,7 +251,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
         alertEl.innerHTML = `
           ${escHtml(err.data?.message || 'Ese NIT ya está en uso.')}
           Pertenece a <strong>${escHtml(conflicting.razon_social)}</strong>.
-          <button type="button" class="btn btn-ghost btn-sm" id="nc-use-existing" style="margin-top:.5rem;">
+          <button type="button" class="btn btn-ghost btn-sm mt-1" id="nc-use-existing">
             Usar este cliente
           </button>
         `;

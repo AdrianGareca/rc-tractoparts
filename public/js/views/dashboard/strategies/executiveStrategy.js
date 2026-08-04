@@ -80,7 +80,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
         <!-- Scope segmented control: personal workspace vs. team activity.
              Cada solapa se pagina por separado contra el servidor
              (id_ejecutivo / excluir_ejecutivo). -->
-        <div class="tab-bar" id="exec-scope-tabs" style="margin-bottom:1rem;">
+        <div class="tab-bar mb-2" id="exec-scope-tabs">
           <button class="tab-btn active" data-scope="mias" type="button">
             Mis Cotizaciones <span class="badge" data-scope-count="mias">0</span>
           </button>
@@ -93,7 +93,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
         <div class="filter-bar">
           <div class="form-group">
             <label class="form-label">Estado</label>
-            <select class="form-control" id="filter-estado" style="min-width:140px;">
+            <select class="form-control fc-narrow" id="filter-estado">
               <option value="">Todos</option>
               <option>Pendiente</option>
               <option>En revision</option><option>En espera</option>
@@ -106,7 +106,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
             <label class="form-label">Buscar</label>
             <input class="form-control" type="search" id="filter-q" placeholder="Correlativo, cliente…" style="min-width:180px;" />
           </div>
-          <button class="btn btn-ghost btn-sm" id="btn-filter-apply" style="align-self:flex-end;">Filtrar</button>
+          <button class="btn btn-ghost btn-sm filter-action" id="btn-filter-apply">Filtrar</button>
         </div>
 
         <div class="card-toolbar" id="pagination-footer"></div>
@@ -592,7 +592,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
           <label class="form-label" for="del-obs">Observación (opcional)</label>
           <textarea class="form-control" id="del-obs" rows="2"></textarea>
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+        <div class="modal-actions">
           <button class="btn btn-ghost" id="del-cancel">Cancelar</button>
           <button class="btn btn-success" id="del-confirm">✅ Sí, Aprobar</button>
         </div>`;
@@ -693,7 +693,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
           <label class="form-label" for="status-obs">Observación (opcional)</label>
           <textarea class="form-control" id="status-obs" rows="2"></textarea>
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+        <div class="modal-actions">
           <button class="btn btn-ghost" id="cancel-status">Cancelar</button>
           <button class="btn btn-primary" id="confirm-status">Actualizar</button>
         </div>

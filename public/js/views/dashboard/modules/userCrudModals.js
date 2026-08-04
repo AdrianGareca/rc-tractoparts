@@ -62,7 +62,7 @@ export function showCreateUserModal(onDone) {
         </label>
       </div>` : ''}
       <div class="form-alert" id="nu-alert"></div>
-      <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+      <div class="modal-actions">
         <button class="btn btn-ghost" id="nu-cancel">Cancelar</button>
         <button class="btn btn-primary" id="nu-confirm">Crear Usuario</button>
       </div>`;
@@ -136,7 +136,7 @@ export function showEditUserModal(id, nombre, idRol, canApprove, onDone) {
         <label class="form-label" for="eu-password">Nueva Contraseña (dejar vacío para no cambiar)</label>
         <input class="form-control" type="password" id="eu-password" />
       </div>
-      <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+      <div class="modal-actions">
         <button class="btn btn-ghost" id="eu-cancel">Cancelar</button>
         <button class="btn btn-primary" id="eu-confirm">Guardar Cambios</button>
       </div>`;

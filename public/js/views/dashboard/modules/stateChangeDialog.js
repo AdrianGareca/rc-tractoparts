@@ -53,7 +53,7 @@ export function confirmStateChange({
                   placeholder="${obsRequired ? 'Requerido' : 'Opcional'}"></textarea>
         <span class="field-error" id="scd-err"></span>
       </div>
-      <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+      <div class="modal-actions">
         <button class="btn btn-ghost" id="scd-cancel">Cancelar</button>
         <button class="btn btn-primary" id="scd-confirm">${title}</button>
       </div>`;

@@ -290,7 +290,7 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
           : ''}
       </div>`;
   } else {
-    budgetHtml = `<div class="text-muted text-sm" style="margin-top:.5rem;">Sin presupuesto referencial definido.</div>`;
+    budgetHtml = `<div class="text-muted text-sm mt-1">Sin presupuesto referencial definido.</div>`;
   }
 
   // Linked cotizaciones table. El vínculo NO se crea desde acá: lo arma el
@@ -399,12 +399,12 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
     ? `<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem;">
          ${trans.map((t) => `<button class="btn btn-sm ${t === 'No adjudicada' || t === 'Archivada' ? 'btn-ghost' : 'btn-primary'}" data-lic-transition="${escHtml(t)}">→ ${escHtml(t)}</button>`).join('')}
        </div>
-       <div class="form-group" style="margin-top:.5rem;">
+       <div class="form-group mt-1">
          <label class="form-label text-sm" for="licd-observacion">Observación (obligatoria para "No adjudicada")</label>
          <textarea class="form-control" id="licd-observacion" rows="2" maxlength="2000" placeholder="Nota de la transición…"></textarea>
        </div>
        <div class="form-error" id="licd-trans-err" style="color:var(--clr-red);min-height:1.2em;"></div>`
-    : '<p class="text-muted text-sm" style="margin-top:.5rem;">No tienes transiciones disponibles para esta licitación en su estado actual.</p>';
+    : '<p class="text-muted text-sm mt-1">No tienes transiciones disponibles para esta licitación en su estado actual.</p>';
 
   return `
     <div class="sub-modal" style="max-width:720px;">

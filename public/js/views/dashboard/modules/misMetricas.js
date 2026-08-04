@@ -96,7 +96,7 @@ function tablaPorMes(filas) {
   const tope = Math.max(...filas.map((f) => f.emitidas), 1);
 
   return `
-    <div class="card" style="margin-top:1rem;">
+    <div class="card mt-2">
       <div class="card-header">
         <h3>📈 Mi evolución</h3>
         <span class="text-muted text-sm">Emitidas contra cerradas, mes a mes</span>
@@ -146,7 +146,7 @@ export async function renderMisMetricas(el, { desde, hasta, idEjecutivo } = {}) 
     const colorConv = colorConversion(m.conversion);
 
     el.innerHTML = `
-      <div class="stats-grid" style="margin-bottom:1rem;">
+      <div class="stats-grid mb-2">
         ${tarjeta({
           titulo:  'Tasa de conversión',
           valor:   m.conversion == null ? '—' : `${m.conversion}%`,

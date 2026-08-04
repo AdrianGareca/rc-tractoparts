@@ -52,6 +52,32 @@ img { max-width: 100%; display: block; }
 .items-center { align-items: center; }
 .justify-between { justify-content: space-between; }
 
+/* ── Utilidades agregadas al sacar los estilos inline del JavaScript ──────────
+   Habia 274 atributos style="" repartidos por los archivos .js. El problema no
+   era la prolijidad: un estilo inline GANA sobre cualquier regla del CSS, asi
+   que mientras estuvieran ahi no se podia cambiar el aspecto de la aplicacion
+   desde la hoja de estilos — habia que ir archivo por archivo del JavaScript.
+
+   Estas clases salen de contar cuales se repetian mas. Los valores son los
+   mismos que tenian inline, para que el cambio sea invisible. */
+.mb-1     { margin-bottom: .5rem; }
+.mb-2     { margin-bottom: 1rem; }
+.mt-3     { margin-top: 1.5rem; }
+.gap-2    { gap: .75rem; }
+.flex-wrap { flex-wrap: wrap; }
+.justify-end { justify-content: flex-end; }
+
+/* El boton que se alinea con el pie de los campos en una barra de filtros.
+   Los <label> empujan los <input> hacia abajo; sin esto el boton queda flotando
+   a la altura de las etiquetas. */
+.filter-action { align-self: flex-end; }
+
+/* Anchos minimos de los <select> y <input> de las barras de filtro. Estaban
+   como min-width sueltos con cinco valores distintos; se redujeron a tres. */
+.fc-narrow { min-width: 140px; }
+.fc-medium { min-width: 165px; }
+.fc-wide   { min-width: 210px; }
+
 /* ===== ACCESIBILIDAD: MOVIMIENTO REDUCIDO =====
    Quien configuró su sistema para reducir el movimiento (mareo, vértigo,
    trastornos vestibulares) recibe la interfaz sin animaciones. No se apagan del

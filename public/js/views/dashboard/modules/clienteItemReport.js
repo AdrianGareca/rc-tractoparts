@@ -151,7 +151,7 @@ export async function mountClienteItemReport(panel, opts = {}) {
 
   panel.innerHTML = `
     <div class="card">
-      <div class="card-header" style="flex-wrap:wrap;gap:.75rem;">
+      <div class="card-header flex-wrap gap-2">
         <h3>📦 Consumo por Ítem</h3>
         <div style="display:flex;gap:.5rem;align-items:center;">
           <span class="text-muted text-sm" id="ci-total"></span>
@@ -176,7 +176,7 @@ export async function mountClienteItemReport(panel, opts = {}) {
         </div>
         <div class="form-group">
           <label class="form-label">Estado</label>
-          <select class="form-control" id="ci-estado" style="min-width:165px;">
+          <select class="form-control fc-medium" id="ci-estado">
             <option value="">Todos (lo cotizado)</option>
             ${ESTADOS.map((e) => `<option value="${e}">${e}</option>`).join('')}
           </select>
@@ -184,17 +184,17 @@ export async function mountClienteItemReport(panel, opts = {}) {
         ${opts.idEjecutivo ? '' : `
         <div class="form-group">
           <label class="form-label">Ejecutivo</label>
-          <select class="form-control" id="ci-ejecutivo" style="min-width:170px;">
+          <select class="form-control fc-medium" id="ci-ejecutivo">
             <option value="">Todos</option>
           </select>
         </div>`}
         <div class="form-group">
           <label class="form-label">Buscar</label>
-          <input class="form-control" type="search" id="ci-q"
-                 placeholder="Cliente, código, marca o descripción…" style="min-width:210px;" />
+          <input class="form-control fc-wide" type="search" id="ci-q"
+                 placeholder="Cliente, código, marca o descripción…" />
         </div>
-        <button class="btn btn-primary btn-sm" id="ci-apply" style="align-self:flex-end;">Aplicar</button>
-        <button class="btn btn-ghost btn-sm" id="ci-clear" style="align-self:flex-end;">Limpiar</button>
+        <button class="btn btn-primary btn-sm filter-action" id="ci-apply">Aplicar</button>
+        <button class="btn btn-ghost btn-sm filter-action" id="ci-clear">Limpiar</button>
       </div>
 
       <p class="text-sm" id="ci-nota"

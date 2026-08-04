@@ -40,21 +40,21 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
   // ── 1. Paint the static shell (filter bar + results container) ONCE ─────────
   panel.innerHTML = `
     <div class="card">
-      <div class="card-header" style="flex-wrap:wrap;gap:.75rem;">
+      <div class="card-header flex-wrap gap-2">
         <h3>Todas las Cotizaciones</h3>
         <span class="text-muted text-sm" id="allq-total"></span>
       </div>
       <div class="filter-bar" style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;padding:0 1rem 1rem;">
         <div class="form-group">
           <label class="form-label">Estado</label>
-          <select class="form-control" id="allq-estado" style="min-width:150px;">
+          <select class="form-control fc-narrow" id="allq-estado">
             <option value="">Todos</option>
             ${ALL_QUOTATION_STATES.map((s) => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group">
           <label class="form-label">Ejecutivo</label>
-          <select class="form-control" id="allq-ejecutivo" style="min-width:170px;">
+          <select class="form-control fc-medium" id="allq-ejecutivo">
             <option value="">Todos</option>
           </select>
         </div>
@@ -70,8 +70,8 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
           <label class="form-label">Buscar</label>
           <input class="form-control" type="search" id="allq-q" placeholder="Correlativo, cliente, NIT…" style="min-width:190px;" />
         </div>
-        <button class="btn btn-primary btn-sm" id="allq-apply" style="align-self:flex-end;">Aplicar Filtros</button>
-        <button class="btn btn-ghost btn-sm"   id="allq-clear" style="align-self:flex-end;">Limpiar</button>
+        <button class="btn btn-primary btn-sm filter-action" id="allq-apply">Aplicar Filtros</button>
+        <button class="btn btn-ghost btn-sm filter-action"   id="allq-clear">Limpiar</button>
       </div>
       <div class="card-toolbar" id="allq-pagination"></div>
       <div id="allq-results">${tableSkeleton({ columnas: 8, etiqueta: 'Cargando cotizaciones' })}</div>

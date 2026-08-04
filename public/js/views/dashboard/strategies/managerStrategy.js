@@ -273,7 +273,7 @@ export class ManagerStrategy extends DashboardStrategy {
                     placeholder="${aprobado ? 'Ej: Precios verificados con proveedor.' : 'Requerido para rechazar'}"></textarea>
           <span class="field-error" id="err-obs"></span>
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+        <div class="modal-actions">
           <button class="btn btn-ghost"  id="cancel-approve">Cancelar</button>
           <button class="btn ${aprobado ? 'btn-success' : 'btn-danger'}" id="confirm-approve">
             ${aprobado ? '✅ Sí, Aprobar' : '❌ Sí, Rechazar'}
@@ -413,13 +413,13 @@ export class ManagerStrategy extends DashboardStrategy {
             de la cotización y en la bitácora de auditoría.
           </p>
         </div>
-        <div class="form-group" style="margin-top:1rem;">
+        <div class="form-group mt-2">
           <label class="form-label" for="reab-motivo">Motivo de la reapertura *</label>
           <textarea class="form-control" id="reab-motivo" rows="3"
                     placeholder="Ej: El cliente pidió corregir el NIT y la cantidad del ítem 2."></textarea>
           <span class="field-error" id="reab-err"></span>
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+        <div class="modal-actions">
           <button class="btn btn-ghost" id="reab-cancel">Cancelar</button>
           <button class="btn btn-sm llave-jefe-btn" id="reab-confirm">
             🔓 Reabrir para corrección
@@ -471,7 +471,7 @@ export class ManagerStrategy extends DashboardStrategy {
                     placeholder="Ej: Nueva información del proveedor cambia las condiciones comerciales."></textarea>
           <span class="field-error" id="rev-err"></span>
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;">
+        <div class="modal-actions">
           <button class="btn btn-ghost" id="rev-cancel">Cancelar</button>
           <button class="btn btn-sm" id="rev-confirm"
                   style="background:#F59E0B;color:#000;border:none;font-weight:600;">

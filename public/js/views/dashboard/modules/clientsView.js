@@ -31,7 +31,7 @@ export async function mountClientsTab(panel) {
   // ── 1. Paint the static shell ONCE ───────────────────────────────────────
   panel.innerHTML = `
     <div class="card">
-      <div class="card-header" style="flex-wrap:wrap;gap:.75rem;">
+      <div class="card-header flex-wrap gap-2">
         <h3>🏢 Gestión de Clientes</h3>
         <div style="display:flex;gap:.5rem;align-items:center;">
           <span class="text-muted text-sm" id="clients-total"></span>
@@ -41,10 +41,10 @@ export async function mountClientsTab(panel) {
       <div class="filter-bar">
         <div class="form-group">
           <label class="form-label">Buscar</label>
-          <input class="form-control" type="search" id="clients-search"
-                 placeholder="Razón social o NIT…" style="min-width:220px;" />
+          <input class="form-control fc-wide" type="search" id="clients-search"
+                 placeholder="Razón social o NIT…" />
         </div>
-        <button class="btn btn-ghost btn-sm" id="clients-search-btn" style="align-self:flex-end;">Buscar</button>
+        <button class="btn btn-ghost btn-sm filter-action" id="clients-search-btn">Buscar</button>
       </div>
       <div class="card-toolbar" id="clients-pagination"></div>
       <div id="clients-results">${tableSkeleton({ columnas: 6, etiqueta: 'Cargando clientes' })}</div>
@@ -230,7 +230,7 @@ function confirmDialog({ title, message, confirmLabel, confirmClass = 'btn-dange
         </div>
         <div class="sub-modal-body">
           <p>${message}</p>
-          <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem;">
+          <div class="modal-actions">
             <button type="button" class="btn btn-ghost" id="cd-cancel">Cancelar</button>
             <button type="button" class="btn ${confirmClass}" id="cd-confirm">${escHtml(confirmLabel)}</button>
           </div>

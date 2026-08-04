@@ -237,13 +237,13 @@ export function buildProformaHTML(q, id, viewMode) {
       </div>
 
       <!-- Description -->
-      <div class="form-group" style="margin-bottom:1rem;">
+      <div class="form-group mb-2">
         <span class="form-label">Descripción</span>
         <p class="proforma-description">${escHtml(q.descripcion)}</p>
       </div>
 
       <!-- Solicitor data (DATOS DEL SOLICITANTE — mirrors the PDF grid) -->
-      <div class="form-group" style="margin-bottom:1rem;">
+      <div class="form-group mb-2">
         <span class="form-label" style="color:#1D4ED8;">👤 Datos del Solicitante</span>
         <div class="proforma-meta-bar" style="margin-top:.4rem;">
           <div class="proforma-meta-item">
@@ -270,7 +270,7 @@ export function buildProformaHTML(q, id, viewMode) {
       </div>
 
       <!-- Equipment data (DATOS DEL EQUIPO — mirrors the PDF grid) -->
-      <div class="form-group" style="margin-bottom:1rem;">
+      <div class="form-group mb-2">
         <span class="form-label" style="color:#1D4ED8;">🚜 Datos del Equipo</span>
         <div class="proforma-meta-bar" style="margin-top:.4rem;">
           <div class="proforma-meta-item">
@@ -297,7 +297,7 @@ export function buildProformaHTML(q, id, viewMode) {
       </div>
 
       <!-- Line items table -->
-      <div class="table-wrapper proforma-items-wrapper" style="margin-bottom:1rem;">
+      <div class="table-wrapper proforma-items-wrapper mb-2">
         <table class="data-table proforma-items-table">
           <thead>
             <tr>
@@ -331,13 +331,13 @@ export function buildProformaHTML(q, id, viewMode) {
       </div>
 
       ${q.obs_aprobacion ? `
-      <div class="form-group" style="margin-top:1rem;">
+      <div class="form-group mt-2">
         <span class="form-label">Observaciones de Aprobación</span>
         <p class="proforma-description">${escHtml(q.obs_aprobacion)}</p>
       </div>` : ''}
 
       ${q.observaciones ? `
-      <div class="form-group" style="margin-top:.5rem;">
+      <div class="form-group mt-1">
         <span class="form-label">Observaciones Generales</span>
         <p class="proforma-description">${escHtml(q.observaciones)}</p>
       </div>` : ''}
