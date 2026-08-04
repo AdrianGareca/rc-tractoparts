@@ -71,8 +71,8 @@ export class ExecutiveStrategy extends DashboardStrategy {
         <div class="card-header">
           <h3>Cotizaciones</h3>
           <div style="display:flex;gap:.5rem;">
-            <button class="btn btn-ghost btn-sm" id="btn-manage-clients">🏢 Clientes</button>
-            <button class="btn btn-ghost btn-sm" id="btn-consumo">📦 Consumo por Cliente</button>
+            <button class="btn btn-ghost btn-sm" id="btn-manage-clients">Clientes</button>
+            <button class="btn btn-ghost btn-sm" id="btn-consumo">Consumo por Cliente</button>
             <button class="btn btn-primary btn-sm" id="btn-new-quotation">+ Nueva Cotización</button>
           </div>
         </div>
@@ -266,7 +266,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
         section.innerHTML = `
           <div class="card" style="border-left:4px solid #3B82F6;margin-bottom:1rem;">
             <div class="card-header" style="padding-bottom:.5rem;">
-              <h4 style="margin:0;color:#3B82F6;">📅 Proformas del Día — ${escHtml(today)}</h4>
+              <h4 style="margin:0;color:#3B82F6;">Proformas del Día — ${escHtml(today)}</h4>
             </div>
             <p class="text-muted" style="padding:.5rem 1rem 1rem;">Sin proformas emitidas hoy.</p>
           </div>`;
@@ -276,7 +276,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
       section.innerHTML = `
         <div class="card" style="border-left:4px solid #3B82F6;margin-bottom:1rem;">
           <div class="card-header" style="padding-bottom:.5rem;">
-            <h4 style="margin:0;color:#3B82F6;">📅 Proformas del Día — ${escHtml(today)}</h4>
+            <h4 style="margin:0;color:#3B82F6;">Proformas del Día — ${escHtml(today)}</h4>
             <span class="badge" style="background:#3B82F6;color:#fff;">${rows.length} emitida${rows.length > 1 ? 's' : ''}</span>
           </div>
           <div class="table-wrapper" style="margin:0;">
@@ -501,7 +501,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
         if (editable) {
           body.insertAdjacentHTML('afterbegin', `
             <div style="display:flex;justify-content:flex-end;margin-bottom:1rem;">
-              <button class="btn btn-primary btn-sm" id="btn-editar-cotizacion">✏️ Editar Cotización</button>
+              <button class="btn btn-primary btn-sm" id="btn-editar-cotizacion">Editar Cotización</button>
             </div>`);
           body.querySelector('#btn-editar-cotizacion')?.addEventListener('click', () =>
             this._editQuotation(q));
@@ -583,7 +583,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     UI.openModal('Aprobar Internamente', (body) => {
       body.innerHTML = `
         <div class="confirm-dialog">
-          <h4>✅ ¿Confirmar aprobación interna?</h4>
+          <h4>¿Confirmar aprobación interna?</h4>
           <p class="text-sm" style="color:var(--text-secondary);">
             Estás usando tu autorización delegada para aprobar esta cotización.
           </p>
@@ -594,7 +594,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" id="del-cancel">Cancelar</button>
-          <button class="btn btn-success" id="del-confirm">✅ Sí, Aprobar</button>
+          <button class="btn btn-success" id="del-confirm">Sí, Aprobar</button>
         </div>`;
 
       body.querySelector('#del-cancel')?.addEventListener('click', UI.closeModal);

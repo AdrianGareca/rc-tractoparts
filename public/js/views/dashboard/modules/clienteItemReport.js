@@ -152,10 +152,10 @@ export async function mountClienteItemReport(panel, opts = {}) {
   panel.innerHTML = `
     <div class="card">
       <div class="card-header flex-wrap gap-2">
-        <h3>📦 Consumo por Ítem</h3>
+        <h3>Consumo por Ítem</h3>
         <div style="display:flex;gap:.5rem;align-items:center;">
           <span class="text-muted text-sm" id="ci-total"></span>
-          <button class="btn btn-ghost btn-sm" id="ci-csv">⬇ Exportar CSV</button>
+          <button class="btn btn-ghost btn-sm" id="ci-csv">Exportar CSV</button>
         </div>
       </div>
 

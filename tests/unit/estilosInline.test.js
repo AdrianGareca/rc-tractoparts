@@ -127,3 +127,82 @@ describe('las clases nuevas existen en el CSS', () => {
     expect(CSS).toMatch(new RegExp(`\\.${clase}\\s*[,{]`));
   });
 });
+
+// ---------------------------------------------------------------------------
+// EL TRINQUETE DE LOS EMOJI
+//
+// Habia 129 emoji en la interfaz. Es el tic visual mas reconocible del software
+// generado: ningun sistema de gestion que use una empresa le pone un emoji al
+// titulo de una seccion o a un boton.
+//
+// Se sacaron primero los de encabezados (reemplazados por el filete naranja que
+// el PDF ya dibuja) y los de botones (sin reemplazo: un boton bien rotulado no
+// necesita ninguno). Quedan los de estados vacios y mensajes, que se migran
+// despues.
+//
+// Mismo criterio que arriba: pueden bajar, nunca subir.
+// ---------------------------------------------------------------------------
+describe('los emoji de la interfaz sólo pueden disminuir', () => {
+  const TOPE = 77;
+
+  // Los que efectivamente aparecen en la interfaz. Se listan de forma explícita
+  // en vez de usar un rango Unicode: los rangos también atrapan símbolos
+  // tipográficos legítimos (flechas, guiones largos) y darían falsos positivos.
+  const EMOJI = [
+    '📦', '📅', '📊', '🔑', '📋', '📑', '🏢', '🔓', '💾', '⏸', '✅', '❌',
+    '↩', '🔄', '🏆', '🟢', '📄', '⬇', '🔎', '💬', '👤', '🚜', '📈', '⚠️',
+    '✏️', '🗑', '➕', '🔍', '📌', '🕐',
+  ];
+
+  const contar = () => archivos.reduce((total, f) => {
+    const src = fs.readFileSync(f, 'utf8');
+    return total + EMOJI.reduce((n, e) => n + src.split(e).length - 1, 0);
+  }, 0);
+
+  test(`no hay más de ${TOPE} emoji en public/js`, () => {
+    const actual = contar();
+
+    if (actual > TOPE) {
+      throw new Error(
+        `Hay ${actual} emoji y el tope es ${TOPE}. Un emoji en un título o en un ` +
+        'botón es el rasgo más reconocible del software generado, y le compite la ' +
+        'atención a la palabra que sí importa. Para una sección, el filete naranja ' +
+        'de .card-header lo reemplaza solo; un botón bien rotulado no necesita nada.'
+      );
+    }
+    expect(actual).toBeLessThanOrEqual(TOPE);
+  });
+
+  test('si bajaron, hay que bajar el tope', () => {
+    const actual = contar();
+    if (actual < TOPE) {
+      throw new Error(`Ahora hay ${actual} emoji (el tope decía ${TOPE}). Bajá TOPE a ${actual}.`);
+    }
+    expect(actual).toBe(TOPE);
+  });
+
+  // Ningún emoji lleva metacaracteres de expresión regular, así que se
+  // concatenan directo — escaparlos sólo agregaría ruido y una fuente de error.
+  const ALTERNATIVA = EMOJI.join('|');
+
+  // Los dos lugares ya migrados no deben recaer.
+  test('ningún encabezado vuelve a empezar con un emoji', () => {
+    const patron = new RegExp(`<h[1-6][^>]*>\\s*(?:${ALTERNATIVA})`);
+
+    const culpables = archivos
+      .filter((f) => patron.test(fs.readFileSync(f, 'utf8')))
+      .map((f) => rel(f));
+
+    expect(culpables).toEqual([]);
+  });
+
+  test('ningún botón vuelve a empezar con un emoji', () => {
+    const patron = new RegExp(`<button\\b[^>]*>\\s*(?:${ALTERNATIVA})`);
+
+    const culpables = archivos
+      .filter((f) => patron.test(fs.readFileSync(f, 'utf8')))
+      .map((f) => rel(f));
+
+    expect(culpables).toEqual([]);
+  });
+});

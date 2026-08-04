@@ -45,7 +45,7 @@ export function buildDropdownHtml(clients, query) {
               <span class="cdi-name">${escText(c.razon_social)}</span>
               ${c.nit ? `<span class="cdi-nit">NIT: ${escText(c.nit)}</span>` : ''}
               <button type="button" class="cdi-edit" data-edit-id="${c.id}"
-                      title="Editar cliente" aria-label="Editar cliente">✏️</button>
+                      title="Editar cliente" aria-label="Editar cliente"></button>
             </div>
           `).join('');
 }

@@ -27,8 +27,8 @@ export class ProyectosStrategy extends DashboardStrategy {
 
     container.innerHTML = `
       <div class="tab-bar" id="proyectos-tabs">
-        <button class="tab-btn active" data-tab="licitaciones">📑 Licitaciones</button>
-        <button class="tab-btn" data-tab="clientes">🏢 Gestión de Clientes</button>
+        <button class="tab-btn active" data-tab="licitaciones">Licitaciones</button>
+        <button class="tab-btn" data-tab="clientes">Gestión de Clientes</button>
       </div>
       <div id="proyectos-panel"></div>
     `;

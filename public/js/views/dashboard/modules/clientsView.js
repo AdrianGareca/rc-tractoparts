@@ -32,7 +32,7 @@ export async function mountClientsTab(panel) {
   panel.innerHTML = `
     <div class="card">
       <div class="card-header flex-wrap gap-2">
-        <h3>🏢 Gestión de Clientes</h3>
+        <h3>Gestión de Clientes</h3>
         <div style="display:flex;gap:.5rem;align-items:center;">
           <span class="text-muted text-sm" id="clients-total"></span>
           <button class="btn btn-primary btn-sm" id="clients-new">+ Nuevo Cliente</button>

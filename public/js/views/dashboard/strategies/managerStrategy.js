@@ -40,12 +40,12 @@ export class ManagerStrategy extends DashboardStrategy {
       <div class="tab-bar" id="manager-tabs">
         <button class="tab-btn active" data-tab="approvals">Cola de Aprobación</button>
         <button class="tab-btn" data-tab="quotations">Todas las Cotizaciones</button>
-        <button class="tab-btn" data-tab="licitaciones">📑 Licitaciones</button>
+        <button class="tab-btn" data-tab="licitaciones">Licitaciones</button>
         <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
         <button class="tab-btn" data-tab="clientes">Gestión de Clientes</button>
         <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
-        <button class="tab-btn" data-tab="consumo">📦 Consumo por Cliente</button>
-        <button class="tab-btn" data-tab="reportes">📊 Reportes</button>
+        <button class="tab-btn" data-tab="consumo">Consumo por Cliente</button>
+        <button class="tab-btn" data-tab="reportes">Reportes</button>
       </div>
       <div id="manager-panel"></div>
     `;
@@ -135,7 +135,7 @@ export class ManagerStrategy extends DashboardStrategy {
                     <td>
                       <button class="btn btn-primary btn-sm" data-review="${r.id}"
                               style="white-space:nowrap;">
-                        📋 Revisar y Decidir
+                        Revisar y Decidir
                       </button>
                     </td>
                   </tr>
@@ -422,7 +422,7 @@ export class ManagerStrategy extends DashboardStrategy {
         <div class="modal-actions">
           <button class="btn btn-ghost" id="reab-cancel">Cancelar</button>
           <button class="btn btn-sm llave-jefe-btn" id="reab-confirm">
-            🔓 Reabrir para corrección
+            Reabrir para corrección
           </button>
         </div>`;
 
@@ -475,7 +475,7 @@ export class ManagerStrategy extends DashboardStrategy {
           <button class="btn btn-ghost" id="rev-cancel">Cancelar</button>
           <button class="btn btn-sm" id="rev-confirm"
                   style="background:#F59E0B;color:#000;border:none;font-weight:600;">
-            🔄 Confirmar Revertir Rechazo
+            Confirmar Revertir Rechazo
           </button>
         </div>`;
 

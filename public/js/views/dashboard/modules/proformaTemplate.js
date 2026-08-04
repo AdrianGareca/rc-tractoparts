@@ -97,32 +97,32 @@ export function buildProformaHTML(q, id, viewMode) {
       <h4 class="approval-actions-title">${jefeMode ? 'Decisión del Jefe' : '🔑 Acciones Operativas — Delegación de Funciones'}</h4>
       <div class="approval-actions-grid">
         ${canRetract ? `<button class="btn btn-warning btn-sm" id="btn-solicitar-cambios">
-          ↩ Solicitar Cambios
+          Solicitar Cambios
         </button>` : ''}
         ${canHold ? `<button class="btn btn-hold btn-sm" id="btn-en-espera">
-          ⏸ Poner en Espera
+          Poner en Espera
         </button>` : ''}
         ${canApprove ? `<button class="btn btn-success" id="btn-aprobar">
-          ✅ Aprobar Cotización
+          Aprobar Cotización
         </button>` : ''}
         ${canEnviarCliente ? `<button class="btn btn-success" id="btn-enviar-cliente"
           style="background:#16a34a;border-color:#15803d;grid-column:1/-1;">
-          🟢 Aprobar y Enviar al Cliente
+          Aprobar y Enviar al Cliente
         </button>` : ''}
         ${canAceptar ? `<button class="btn btn-primary" id="btn-aceptar" style="grid-column:1/-1;">
-          🏆 Confirmar Cotización — Cierre de Venta
+          Confirmar Cotización — Cierre de Venta
         </button>` : ''}
         ${canRechazar ? `<button class="btn btn-danger btn-sm" id="btn-rechazar">
-          ❌ Rechazar
+          Rechazar
         </button>` : ''}
         ${canArchivar ? `<button class="btn btn-ghost btn-sm" id="btn-archivar">
-          📦 Archivar
+          Archivar
         </button>` : ''}
       </div>
     </div>
     ${canReabrir ? `
     <div class="approval-actions llave-jefe">
-      <h4 class="approval-actions-title llave-jefe-title">🔑 Llave del Jefe</h4>
+      <h4 class="approval-actions-title llave-jefe-title">Llave del Jefe</h4>
       <p class="text-sm llave-jefe-text">
         Esta cotización es una <strong>venta cerrada</strong>. Reabrirla la devuelve a
         <strong>Pendiente</strong> para que el ejecutivo pueda corregirla, y luego se vuelve
@@ -130,12 +130,12 @@ export function buildProformaHTML(q, id, viewMode) {
         <strong>registrada</strong> con tu nombre en el historial y en la bitácora de auditoría.
       </p>
       <button class="btn btn-sm llave-jefe-btn" id="btn-reabrir">
-        🔓 Reabrir para corrección
+        Reabrir para corrección
       </button>
     </div>` : ''}
     ${canRevertir ? `
     <div class="approval-actions" style="margin-top:1rem;border-top:2px solid #F59E0B;padding-top:1rem;">
-      <h4 class="approval-actions-title" style="color:#B45309;">🔄 Revertir Rechazo</h4>
+      <h4 class="approval-actions-title" style="color:#B45309;">Revertir Rechazo</h4>
       <p class="text-sm" style="color:var(--text-secondary);margin-bottom:.75rem;">
         Como autoridad comercial superior, puede revaluar esta cotización y reintroducirla
         en el flujo de aprobación. Las observaciones de rechazo previas serán preservadas
@@ -144,11 +144,11 @@ export function buildProformaHTML(q, id, viewMode) {
       <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
         <button class="btn btn-warning btn-sm" id="btn-revertir-pendiente"
                 style="background:#F59E0B;color:#000;border:none;">
-          🔄 Revertir a Pendiente
+          Revertir a Pendiente
         </button>
         <button class="btn btn-warning btn-sm" id="btn-revertir-revision"
                 style="background:#F97316;color:#fff;border:none;">
-          🔄 Revertir a En Revisión
+          Revertir a En Revisión
         </button>
       </div>
     </div>` : ''}
@@ -167,15 +167,15 @@ export function buildProformaHTML(q, id, viewMode) {
       </div>
       <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
         <button class="btn btn-ghost btn-sm" id="btn-save-comment">
-          💾 Guardar Comentario
+          Guardar Comentario
         </button>
         <button class="btn btn-hold btn-sm" id="btn-admin-en-espera">
-          ⏸ Poner en Espera con Comentario
+          Poner en Espera con Comentario
         </button>
         ${
           ['En revision', 'En espera', 'Aprobada internamente'].includes(q.estado)
             ? `<button class="btn btn-warning btn-sm" id="btn-admin-solicitar-cambios">
-          ↩ Solicitar Cambios
+          Solicitar Cambios
         </button>`
             : ''
         }
@@ -349,7 +349,7 @@ export function buildProformaHTML(q, id, viewMode) {
       <div class="proforma-pdf-bar">
         ${q.pdf_ruta ? `
         <button class="btn btn-outline btn-sm" id="btn-ver-pdf" type="button">
-          📄 Ver PDF Adjunto
+          Ver PDF Adjunto
         </button>` : `
         <span class="text-muted text-sm">Sin documento PDF adjunto.</span>`}
         ${q.excel_ruta ? `
@@ -360,7 +360,7 @@ export function buildProformaHTML(q, id, viewMode) {
           style="display:inline-flex;align-items:center;gap:.35rem;
                  background:#16a34a;color:#fff;border:1px solid #15803d;"
         >
-          📊 Descargar Excel
+          Descargar Excel
         </button>` : ''}
       </div>
 

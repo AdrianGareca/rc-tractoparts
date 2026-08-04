@@ -164,7 +164,7 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
                   <td>
                     <button class="btn btn-ghost btn-sm" ${detailAttr}="${r.id}"
                             data-correlativo="${escHtml(r.numero_correlativo)}">
-                      🔍 Ver Detalle
+                      Ver Detalle
                     </button>
                   </td>
                 </tr>`).join('')}

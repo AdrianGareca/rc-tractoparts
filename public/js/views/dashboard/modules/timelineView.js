@@ -245,8 +245,7 @@ export function buildTimelineHtml(history) {
 
   return `
     <div style="margin-top:1.5rem;border-top:1px solid var(--border);padding-top:1rem;">
-      <h4 style="margin-bottom:.75rem;font-size:.95rem;color:var(--text-secondary);">
-        🕐 Historial de Seguimiento
+      <h4 style="margin-bottom:.75rem;font-size:.95rem;color:var(--text-secondary);">Historial de Seguimiento
       </h4>
       <ol style="list-style:none;padding:0;margin:0;position:relative;">
         ${items}
@@ -271,7 +270,7 @@ export function buildQuotationDetailButtons(quotation) {
       class="btn btn-primary btn-sm"
       style="display:inline-flex;align-items:center;gap:.35rem;"
     >
-      📄 Ver PDF Adjunto
+      Ver PDF Adjunto
     </button>`;
 
   const excelBtn = quotation.excel_ruta
@@ -282,7 +281,7 @@ export function buildQuotationDetailButtons(quotation) {
         style="display:inline-flex;align-items:center;gap:.35rem;
                background:#16a34a;color:#fff;border:1px solid #15803d;"
       >
-        📊 Descargar Excel
+        Descargar Excel
       </button>`
     : '';
 

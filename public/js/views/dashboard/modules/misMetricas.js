@@ -98,7 +98,7 @@ function tablaPorMes(filas) {
   return `
     <div class="card mt-2">
       <div class="card-header">
-        <h3>📈 Mi evolución</h3>
+        <h3>Mi evolución</h3>
         <span class="text-muted text-sm">Emitidas contra cerradas, mes a mes</span>
       </div>
       <div style="padding:1rem 1.25rem;display:flex;flex-direction:column;gap:.6rem;">
@@ -190,7 +190,7 @@ export async function renderMisMetricas(el, { desde, hasta, idEjecutivo } = {}) 
 
       <div class="card">
         <div class="card-header">
-          <h3>📋 En qué anda cada cotización</h3>
+          <h3>En qué anda cada cotización</h3>
           <span class="text-muted text-sm">Los montos van separados por moneda: sumarlas no significaría nada</span>
         </div>
         ${tablaPorEstado(m.por_estado ?? [])}

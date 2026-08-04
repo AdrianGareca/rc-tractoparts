@@ -88,9 +88,35 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* ── El titulo de una tarjeta ────────────────────────────────────────────────
+   El filete naranja reemplaza al emoji que encabezaba cada seccion (habia 129
+   en la interfaz, y un emoji en el titulo es el tic visual mas reconocible del
+   software generado).
+
+   No es un adorno elegido al azar: es LA MISMA linea que el PDF ya dibuja
+   antes de cada seccion — ver sectionTitle() en reportePdfService.js, que hace
+   doc.rect(MARGIN, y, 3.5, 12).fill(C.ORANGE). Traerla a la pantalla es lo que
+   hace que la aplicacion y el documento que recibe el cliente se lean como la
+   misma empresa.
+
+   Va con ::before sobre el selector que ya existia, asi que ninguna pantalla
+   tuvo que agregar una clase: alcanzo con borrar el emoji del texto. */
 .card-header h3, .card-header h4 {
   font-size: .95rem;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  min-width: 0;              /* deja que el texto se recorte antes de desbordar */
+}
+
+.card-header h3::before, .card-header h4::before {
+  content: '';
+  flex: none;
+  width: 3px;
+  height: 1em;
+  border-radius: 1px;
+  background: var(--clr-orange);
 }
 
 .card-body { padding: 1.25rem; }

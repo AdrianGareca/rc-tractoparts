@@ -44,7 +44,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
   panel.innerHTML = `
     <div class="card">
       <div class="card-header flex-wrap gap-2">
-        <h3>📑 Licitaciones</h3>
+        <h3>Licitaciones</h3>
         <div style="display:flex;gap:.5rem;align-items:center;">
           <span class="text-muted text-sm" id="lic-total"></span>
           ${canCreate ? '<button class="btn btn-primary btn-sm" id="lic-new">+ Nueva Licitación</button>' : ''}

@@ -190,7 +190,7 @@ export async function mountAuditLogTab(panel) {
   panel.innerHTML = `
     <div class="card">
       <div class="card-header flex-wrap gap-2">
-        <h3>🔍 Registros de Auditoría</h3>
+        <h3>Registros de Auditoría</h3>
         <span class="text-muted text-sm" id="audit-total"></span>
       </div>
       <div class="filter-bar">
@@ -330,7 +330,7 @@ export async function mountAuditLogTab(panel) {
                   <td>${resultadoBadgeHtml(r.resultado)}</td>
                   <td class="text-muted text-xs" style="font-family:monospace;">${escHtml(r.ip_origen ?? '—')}</td>
                   <td>${detalleHtml
-                    ? `<button class="btn btn-ghost btn-sm" data-audit-detail="${r.id}">🔎 Detalle</button>`
+                    ? `<button class="btn btn-ghost btn-sm" data-audit-detail="${r.id}">Detalle</button>`
                     : ''}</td>
                 </tr>
                 ${detalleHtml ? `

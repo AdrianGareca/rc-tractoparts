@@ -317,7 +317,7 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
              <td>${escHtml(c.estado)}</td>
              <td>${fmtMoney(c.monto_total, c.moneda)}</td>
              <td>${escHtml(c.ejecutivo_nombre ?? '—')}</td>
-             <td><button class="btn btn-ghost btn-sm" data-cot-pdf="${c.id}" data-cot-name="${escHtml(c.numero_correlativo)}">📄 Ver</button></td>
+             <td><button class="btn btn-ghost btn-sm" data-cot-pdf="${c.id}" data-cot-name="${escHtml(c.numero_correlativo)}">Ver</button></td>
            </tr>`).join('')}
          </tbody></table></div>`;
 
@@ -354,7 +354,7 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
                <td>${fmtMoney(g.monto, g.moneda)}</td>
                <td>${escHtml(g.nombre_usuario ?? '—')}</td>
                <td>${fmtDateTime(g.creado_en)}</td>
-               ${canGastos ? `<td><button class="btn btn-ghost btn-sm" data-gasto-delete="${g.id}" data-gasto-concepto="${escHtml(g.concepto)}">🗑️</button></td>` : ''}
+               ${canGastos ? `<td><button class="btn btn-ghost btn-sm" data-gasto-delete="${g.id}" data-gasto-concepto="${escHtml(g.concepto)}"></button></td>` : ''}
              </tr>`).join('')}
            </tbody></table></div>`;
 
@@ -390,8 +390,8 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(d.nombre_original)}">${escHtml(d.nombre_original)}</span>
              <span class="text-muted text-sm">${fmtFileSize(d.tamano_bytes)}</span>
              <span class="text-muted text-sm">${escHtml(d.nombre_usuario ?? '—')} · ${fmtDateTime(d.creado_en)}</span>
-             <button class="btn btn-ghost btn-sm" data-doc-download="${d.id}" data-doc-name="${escHtml(d.nombre_original)}">⬇️</button>
-             ${canManageDocs ? `<button class="btn btn-ghost btn-sm" data-doc-delete="${d.id}" data-doc-name="${escHtml(d.nombre_original)}">🗑️</button>` : ''}
+             <button class="btn btn-ghost btn-sm" data-doc-download="${d.id}" data-doc-name="${escHtml(d.nombre_original)}"></button>
+             ${canManageDocs ? `<button class="btn btn-ghost btn-sm" data-doc-delete="${d.id}" data-doc-name="${escHtml(d.nombre_original)}"></button>` : ''}
            </li>`).join('')}
        </ul>`;
 
@@ -415,11 +415,11 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
       <div class="sub-modal-body">
         <div style="display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between;">
           <div>${licitacionBadgeHtml(lic.estado)}
-            ${canEdit ? '<button class="btn btn-ghost btn-sm" id="licd-edit" style="margin-left:.5rem;">✏️ Editar</button>' : ''}
+            ${canEdit ? '<button class="btn btn-ghost btn-sm" id="licd-edit" style="margin-left:.5rem;">Editar</button>' : ''}
             ${canManageDocs ? '<button class="btn btn-ghost btn-sm" id="licd-attach" style="margin-left:.5rem;">📎 Adjuntar</button>' : ''}
-            <button class="btn btn-ghost btn-sm" id="licd-pdf" style="margin-left:.5rem;">📄 Expediente PDF</button>
+            <button class="btn btn-ghost btn-sm" id="licd-pdf" style="margin-left:.5rem;">Expediente PDF</button>
             ${onCreateCotizacion && ['Cotizando', 'En evaluacion'].includes(lic.estado)
-              ? '<button class="btn btn-primary btn-sm" id="licd-crear-cot" style="margin-left:.5rem;">➕ Crear cotización vinculada</button>' : ''}
+              ? '<button class="btn btn-primary btn-sm" id="licd-crear-cot" style="margin-left:.5rem;">Crear cotización vinculada</button>' : ''}
           </div>
           <div class="text-sm text-muted">Responsable: ${escHtml(lic.responsable_nombre ?? '—')}</div>
         </div>

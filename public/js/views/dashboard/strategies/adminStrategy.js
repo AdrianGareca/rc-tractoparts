@@ -45,12 +45,12 @@ export class AdminStrategy extends DashboardStrategy {
       <div class="tab-bar" id="admin-tabs">
         <button class="tab-btn active" data-tab="review">Cola de Revisión</button>
         <button class="tab-btn" data-tab="quotations">Todas las Cotizaciones</button>
-        <button class="tab-btn" data-tab="licitaciones">📑 Licitaciones</button>
+        <button class="tab-btn" data-tab="licitaciones">Licitaciones</button>
         <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
         <button class="tab-btn" data-tab="clientes">Gestión de Clientes</button>
         <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
-        <button class="tab-btn" data-tab="consumo">📦 Consumo por Cliente</button>
-        <button class="tab-btn" data-tab="reportes">📊 Reportes</button>
+        <button class="tab-btn" data-tab="consumo">Consumo por Cliente</button>
+        <button class="tab-btn" data-tab="reportes">Reportes</button>
       </div>
       <div id="admin-panel"></div>
     `;
@@ -138,7 +138,7 @@ export class AdminStrategy extends DashboardStrategy {
                     <td>
                       <button class="btn btn-primary btn-sm" data-review="${r.id}"
                               style="white-space:nowrap;">
-                        📋 Revisar
+                        Revisar
                       </button>
                     </td>
                   </tr>

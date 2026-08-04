@@ -159,7 +159,7 @@ export async function refreshNotifBadge(UI) {
             // envíos y licitaciones). Se muestra siempre que haya alguna marcable.
             const markReadBtn = marcables > 0
               ? `<button id="btn-marcar-leidas" class="btn btn-ghost btn-sm" style="margin-top:.75rem;">
-                   ✅ Marcar como leídas
+                   Marcar como leídas
                  </button>`
               : '';
 

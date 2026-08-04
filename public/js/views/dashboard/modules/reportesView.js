@@ -189,7 +189,7 @@ function _buildTopClientesTable(rows) {
   return `
     <div class="card mb-2">
       <div class="card-header">
-        <h3>📊 Top 10 Clientes de Mayor Impacto</h3>
+        <h3>Top 10 Clientes de Mayor Impacto</h3>
         <span class="text-muted text-sm">Basado en cotizaciones Confirmadas / Enviadas al cliente</span>
       </div>
       <div class="table-wrapper">
@@ -292,7 +292,7 @@ export async function renderExecutiveMetrics(panel) {
   panel.innerHTML = `
     <div class="card mb-2">
       <div class="card-header">
-        <h3>📅 Filtrar mi Reporte</h3>
+        <h3>Filtrar mi Reporte</h3>
         <span class="text-muted text-sm">Filtra tus propias cotizaciones por un día o un rango de fechas</span>
       </div>
       <div class="filter-bar" style="padding:1rem;">
@@ -319,7 +319,7 @@ export async function renderExecutiveMetrics(panel) {
           <input class="form-control fc-narrow" type="date" id="mym-hasta" />
         </div>
         <button class="btn btn-primary btn-sm filter-action" id="mym-apply">Filtrar</button>
-        <button class="btn btn-ghost btn-sm filter-action" id="mym-pdf">📄 Generar PDF</button>
+        <button class="btn btn-ghost btn-sm filter-action" id="mym-pdf">Generar PDF</button>
       </div>
     </div>
     <div id="mym-data">${tableSkeleton({ columnas: 5, etiqueta: 'Cargando reporte' })}</div>
@@ -401,7 +401,7 @@ export async function renderReportes(panel) {
   panel.innerHTML = `
     <div class="card mb-2">
       <div class="card-header">
-        <h3>📅 Período del Reporte</h3>
+        <h3>Período del Reporte</h3>
         <span class="text-muted text-sm">Filtra las métricas por fecha, ejecutivo y moneda</span>
       </div>
       <div class="filter-bar" style="padding:1rem;">
@@ -440,7 +440,7 @@ export async function renderReportes(panel) {
           </select>
         </div>
         <button class="btn btn-primary btn-sm filter-action" id="rep-apply">Aplicar</button>
-        <button class="btn btn-ghost btn-sm filter-action" id="rep-pdf">📄 Generar PDF</button>
+        <button class="btn btn-ghost btn-sm filter-action" id="rep-pdf">Generar PDF</button>
       </div>
     </div>
     <div id="reportes-data">${tableSkeleton({ columnas: 5, etiqueta: 'Cargando reporte' })}</div>
@@ -595,7 +595,7 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
       <!-- ── Stats grid ── -->
       <div class="card mb-2">
         <div class="card-header">
-          <h3>📊 Dashboard de Rendimiento — ${escHtml(periodo)}${alcance}</h3>
+          <h3>Dashboard de Rendimiento — ${escHtml(periodo)}${alcance}</h3>
           ${ejecutivoId
             ? `<span class="text-muted text-sm">Métricas de un solo ejecutivo — no son los totales de la empresa</span>`
             : ''}
