@@ -38,6 +38,7 @@ import { ExecutiveStrategy } from './dashboard/strategies/executiveStrategy.js';
 import { ManagerStrategy }   from './dashboard/strategies/managerStrategy.js';
 import { AdminStrategy }     from './dashboard/strategies/adminStrategy.js';
 import { ProyectosStrategy } from './dashboard/strategies/proyectosStrategy.js';
+import { navIcon } from '../shared/icons.js';
 
 // =============================================================================
 // DASHBOARD CONTROLLER
@@ -155,70 +156,70 @@ class DashboardController {
       links = `
         <span class="sidebar-section-label">Panel Principal</span>
         <button class="sidebar-link active" data-section="approvals">
-          <span class="link-icon">⏳</span> Cola de Aprobación
+          ${navIcon('aprobacion')} Cola de Aprobación
         </button>
         <button class="sidebar-link" data-section="quotations">
-          <span class="link-icon">📋</span> Todas las Cotizaciones
+          ${navIcon('cotizaciones')} Todas las Cotizaciones
         </button>
         <span class="sidebar-section-label">Administración</span>
         <button class="sidebar-link" data-section="users">
-          <span class="link-icon">👥</span> Gestión de Usuarios
+          ${navIcon('usuarios')} Gestión de Usuarios
         </button>
         <button class="sidebar-link" data-section="audit">
-          <span class="link-icon">🔍</span> Registros de Auditoría
+          ${navIcon('auditoria')} Registros de Auditoría
         </button>
         <button class="sidebar-link" id="sidebar-api-docs">
-          <span class="link-icon">📘</span> Documentación API
+          ${navIcon('docs')} Documentación API
         </button>
         <span class="sidebar-section-label">Cuenta</span>
         <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
-          <span class="link-icon">🚪</span> Cerrar Sesión
+          ${navIcon('salir')} Cerrar Sesión
         </button>`;
     } else if (role === 'Administracion') {
       links = `
         <span class="sidebar-section-label">Panel Principal</span>
         <button class="sidebar-link active" data-section="review">
-          <span class="link-icon">📝</span> Cola de Revisión
+          ${navIcon('revision')} Cola de Revisión
         </button>
         <button class="sidebar-link" data-section="quotations">
-          <span class="link-icon">📋</span> Todas las Cotizaciones
+          ${navIcon('cotizaciones')} Todas las Cotizaciones
         </button>
         <span class="sidebar-section-label">Administración</span>
         <button class="sidebar-link" data-section="users">
-          <span class="link-icon">👥</span> Gestión de Usuarios
+          ${navIcon('usuarios')} Gestión de Usuarios
         </button>
         <button class="sidebar-link" data-section="audit">
-          <span class="link-icon">🔍</span> Registros de Auditoría
+          ${navIcon('auditoria')} Registros de Auditoría
         </button>
         <span class="sidebar-section-label">Cuenta</span>
         <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
-          <span class="link-icon">🚪</span> Cerrar Sesión
+          ${navIcon('salir')} Cerrar Sesión
         </button>`;
     } else if (role === 'Proyectos') {
       links = `
         <span class="sidebar-section-label">Área de Proyectos</span>
         <button class="sidebar-link active" data-section="licitaciones">
-          <span class="link-icon">📑</span> Licitaciones
+          ${navIcon('licitaciones')} Licitaciones
         </button>
         <button class="sidebar-link" data-section="clientes">
-          <span class="link-icon">🏢</span> Gestión de Clientes
+          ${navIcon('clientes')} Gestión de Clientes
         </button>
         <span class="sidebar-section-label">Cuenta</span>
         <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
-          <span class="link-icon">🚪</span> Cerrar Sesión
+          ${navIcon('salir')} Cerrar Sesión
         </button>`;
     } else {
       links = `
         <span class="sidebar-section-label">Mi Trabajo</span>
         <button class="sidebar-link active" data-section="quotations">
-          <span class="link-icon">📋</span> Mis Cotizaciones
+          ${navIcon('cotizaciones')} Mis Cotizaciones
         </button>
         <button class="sidebar-link btn-new-cot" data-section="new">
-          <span class="link-icon">➕</span> Nueva Cotización
+          ${navIcon('nueva')} Nueva Cotización
         </button>
         <span class="sidebar-section-label">Cuenta</span>
         <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
-          <span class="link-icon">🚪</span> Cerrar Sesión
+          ${navIcon('salir')} Cerrar Sesión
         </button>`;
     }
 

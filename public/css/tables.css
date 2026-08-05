@@ -20,7 +20,7 @@
 
 .data-table thead th {
   background: var(--bg-raised);
-  padding: .65rem 1rem;
+  padding: .5rem 1rem;
   text-align: left;
   font-size: .73rem;
   font-weight: 700;
@@ -40,9 +40,24 @@
 .data-table tbody tr:hover { background: var(--bg-hover); }
 
 .data-table tbody td {
-  padding: .7rem 1rem;
+  padding: .5rem 1rem;
   color: var(--text-primary);
   vertical-align: middle;
+}
+
+/* ── Cifras que se comparan entre filas ──────────────────────────────────────
+   `tabular-nums` fuerza que todos los digitos ocupen lo mismo, asi que las
+   unidades quedan bajo las unidades y las decenas bajo las decenas. Sin esto,
+   en una fuente proporcional el 1 es mas angosto que el 8 y las columnas de
+   numeros salen dentadas: comparar 1.248 con 96 de un vistazo se vuelve
+   imposible y hay que leerlos uno por uno.
+
+   Se aplica a .text-right porque en estas tablas la alineacion a la derecha ya
+   significa "esto es una cantidad o un monto". */
+.data-table td.text-right,
+.data-table th.text-right {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 
 .table-actions {
@@ -70,3 +85,23 @@
   color: var(--text-secondary);
   width: 2.5rem;
 }
+
+
+/* ── Densidad ────────────────────────────────────────────────────────────────
+   El relleno de las celdas bajo de .7rem a .5rem. Parece poco y son cuatro
+   filas mas por pantalla en un listado de veinte: la diferencia entre ver una
+   pagina entera de cotizaciones sin scrollear y no verla.
+
+   La app es una herramienta de trabajo, no una pagina para leer de corrido.
+   El aire generoso ayuda a un texto largo; en una tabla que se recorre decenas
+   de veces por dia, obliga a scrollear de mas. */
+
+/* La primera columna suele ser el identificador (correlativo, codigo): que
+   aguante el ancho evita que se parta en dos lineas y descuadre la fila. */
+.data-table tbody td:first-child { white-space: nowrap; }
+
+/* Franjas alternadas MUY sutiles. Con filas apretadas el ojo se pierde de
+   renglon; el tinte guia sin competir con el hover, que es el que indica
+   donde esta el cursor. */
+.data-table tbody tr:nth-child(even) { background: rgba(127, 141, 166, .045); }
+.data-table tbody tr:nth-child(even):hover { background: var(--bg-hover); }

@@ -133,7 +133,27 @@
   font-weight: 600;
 }
 
-.sidebar-link .link-icon { font-size: 1rem; flex-shrink: 0; }
+/* El icono de un enlace de la barra. Antes era un emoji dentro de un <span>,
+   asi que se dimensionaba con font-size; ahora es un SVG y se dimensiona con
+   width/height.
+
+   `currentColor` en el trazo hace que herede el color del enlace, y por eso
+   basta con teñir el enlace activo para que el icono lo acompañe. Un icono con
+   color propio obligaria a mantener dos versiones o a aceptar que en el estado
+   activo se vea apagado. */
+.sidebar-link .link-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  opacity: .85;
+}
+
+/* En el enlace activo el icono toma el naranja de la identidad: es el mismo
+   acento que marca las secciones en el PDF y en las tarjetas. */
+.sidebar-link.active .link-icon {
+  color: var(--clr-orange);
+  opacity: 1;
+}
 
 .sidebar-link-logout {
   color: var(--clr-red) !important;

@@ -143,7 +143,7 @@ describe('las clases nuevas existen en el CSS', () => {
 // Mismo criterio que arriba: pueden bajar, nunca subir.
 // ---------------------------------------------------------------------------
 describe('los emoji de la interfaz sólo pueden disminuir', () => {
-  const TOPE = 77;
+  const TOPE = 70;
 
   // Los que efectivamente aparecen en la interfaz. Se listan de forma explícita
   // en vez de usar un rango Unicode: los rangos también atrapan símbolos
