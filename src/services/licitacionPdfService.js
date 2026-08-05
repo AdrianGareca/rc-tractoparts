@@ -2,9 +2,17 @@
 // src/services/licitacionPdfService.js
 // PDF generator for the licitación "expediente" (case file).
 //
-// Self-contained (separate from the ornate quotation proforma in pdfService.js)
-// but mirrors its corporate look: navy header band, white-on-navy section
-// titles, tinted boxes, colored status pill, and navy-headed tables.
+// Comparte el lenguaje visual de la proforma (pdfService.js), porque los tres
+// documentos que salen de este sistema —proforma, expediente y reporte— tienen
+// que leerse como papeles de la misma empresa:
+//   • logo a la izquierda, caja de datos a la derecha, divisor marino
+//   • franja de marcas (mismo dibujante, no una copia)
+//   • titulo enmarcado entre dos reglas marinas
+//   • titulos de seccion en marino sobre blanco, con filete NARANJA debajo
+//   • tablas con encabezado marino y filas alternadas
+//
+// Antes tenia una banda marina a todo lo ancho con el logo sobre un chip
+// blanco: se veia como la portada de un informe, no como papel membretado.
 //
 // Generated ON DEMAND and streamed directly to the response (never persisted),
 // so it always reflects the licitación's current cotizaciones/gastos/estado.
@@ -23,6 +31,9 @@ const PDFDocument = require('pdfkit');
 // Mismo motivo que en reportePdfService: Intl depende del ICU del binario y
 // node:20-alpine puede no traerlo completo, haciendo caer todo a ingles.
 const { fmtNum, formatDate, formatDateTime } = require('./pdf/format');
+// Mismo dibujante de la franja de marcas que usa la proforma: si manana cambia
+// una marca, cambia en los tres documentos a la vez.
+const { drawBrandStrip } = require('./pdf/drawers/brandStrip');
 
 const ASSETS_DIR = path.join(__dirname, '..', 'assets', 'images');
 const LOGO_PATH  = path.join(ASSETS_DIR, 'rc_logo.png');
@@ -73,13 +84,17 @@ function ensureSpace(doc, y, needed) {
   return y;
 }
 
-// Section title: navy left stripe + bold navy text + hairline underline.
+// Titulo de seccion, con el mismo tratamiento que la proforma: texto marino
+// sobre blanco y un filete NARANJA debajo. Antes la linea era gris de borde, y
+// esa diferencia bastaba para que el expediente se leyera como otro documento.
+// El detalle esta en drawThreeColumnGrid (pdf/drawers/infoGrid.js), que lo
+// describe como "physical proforma aesthetic".
 function sectionTitle(doc, y, text) {
   y = ensureSpace(doc, y, 26);
-  doc.rect(MARGIN, y, 3.5, 12).fill(C.ORANGE);
-  doc.fillColor(C.NAVY).font('Helvetica-Bold').fontSize(10.5).text(text.toUpperCase(), MARGIN + 9, y);
-  const yy = y + 16;
-  doc.moveTo(MARGIN, yy).lineTo(PW - MARGIN, yy).lineWidth(0.6).strokeColor(C.BORDER).stroke();
+  doc.fillColor(C.NAVY).font('Helvetica-Bold').fontSize(9)
+    .text(text.toUpperCase(), MARGIN, y, { characterSpacing: 0.6 });
+  const yy = y + 14;
+  doc.moveTo(MARGIN, yy).lineTo(PW - MARGIN, yy).lineWidth(0.9).strokeColor(C.ORANGE).stroke();
   return yy + 8;
 }
 
@@ -137,30 +152,69 @@ function table(doc, y, columns, rows, emptyText) {
 function renderExpediente(doc, lic) {
   const moneda = lic.moneda || 'BOB';
 
-  // ── Header band ──────────────────────────────────────────────────────────
-  const bandH = 62;
-  doc.rect(0, 0, PW, bandH).fill(C.NAVY);
-  // logo on a white rounded chip so it reads on navy
+  // ── Cabecera, con la estructura de la proforma ───────────────────────────
+  // ANTES: una banda marina que ocupaba todo el ancho, con el logo sobre un
+  // chip blanco encima. Se veia como la portada de un informe, no como el papel
+  // membretado que usa la empresa.
+  //
+  // AHORA: logo a la izquierda sobre blanco, caja de datos a la derecha y un
+  // divisor marino debajo — exactamente lo que hace drawHeader en la proforma.
+  const LOGO_W = 130, LOGO_H = 58;
+  const BOX_W  = 215, BOX_H = 58;
+  const BOX_X  = PW - MARGIN - BOX_W;
+  const y0     = MARGIN;
+
   if (fs.existsSync(LOGO_PATH)) {
-    try {
-      doc.roundedRect(MARGIN, 12, 58, 38, 5).fill(C.WHITE);
-      doc.image(LOGO_PATH, MARGIN + 5, 15, { fit: [48, 32] });
-    } catch { /* ignore */ }
+    try { doc.image(LOGO_PATH, MARGIN, y0, { fit: [LOGO_W, LOGO_H], align: 'left', valign: 'center' }); }
+    catch { /* el fallback de texto de abajo cubre el caso */ }
   }
-  doc.fillColor(C.WHITE).font('Helvetica-Bold').fontSize(15)
-    .text('EXPEDIENTE DE LICITACIÓN', MARGIN + 72, 14, { width: CW - 72 });
-  doc.font('Helvetica').fontSize(10).fillColor('#C7D2FE')
-    .text(`${lic.codigo}`, MARGIN + 72, 33);
-  // estado pill (top-right)
+
+  doc.rect(BOX_X, y0, BOX_W, BOX_H).lineWidth(0.8).fillAndStroke(C.WHITE, C.DARK);
+  doc.rect(BOX_X, y0, BOX_W, 17).fill(C.NAVY);
+  doc.font('Helvetica-Bold').fontSize(7).fillColor(C.WHITE)
+    .text('EXPEDIENTE DE LICITACIÓN', BOX_X + 4, y0 + 5,
+      { width: BOX_W - 8, align: 'center', lineBreak: false });
+
+  const cab = [
+    ['CÓDIGO',   lic.codigo || '—'],
+    ['ESTADO',   String(lic.estado || '—')],
+    ['GENERADO', formatDateTime()],
+  ];
+  let cy = y0 + 23;
+  cab.forEach(([lbl, val]) => {
+    doc.font('Helvetica-Bold').fontSize(6).fillColor(C.MID)
+      .text(lbl, BOX_X + 6, cy, { width: 52, lineBreak: false });
+    doc.font('Helvetica').fontSize(6.5).fillColor(C.DARK)
+      .text(String(val), BOX_X + 60, cy, { width: BOX_W - 66, lineBreak: false });
+    cy += 12;
+  });
+
+  const divisorY = y0 + LOGO_H + 10;
+  doc.strokeColor(C.NAVY).lineWidth(1.2)
+    .moveTo(MARGIN, divisorY).lineTo(PW - MARGIN, divisorY).stroke();
+
+  let y = divisorY + 14;
+
+  // La franja de marcas y el titulo enmarcado: lo que vuelve reconocible al
+  // documento como de RC Tractoparts. Mismo dibujante que la proforma.
+  y = drawBrandStrip(doc, y);
+
+  doc.moveTo(MARGIN, y).lineTo(PW - MARGIN, y).lineWidth(0.8).strokeColor(C.NAVY).stroke();
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(C.NAVY)
+    .text('EXPEDIENTE DE LICITACIÓN', MARGIN, y + 5,
+      { width: CW, align: 'center', lineBreak: false });
+  doc.moveTo(MARGIN, y + 21).lineTo(PW - MARGIN, y + 21).lineWidth(0.8).strokeColor(C.NAVY).stroke();
+  y += 32;
+
+  // El estado va como pildora dentro del cuerpo, no en la cabecera: ahi compite
+  // con el codigo y con la fecha, y es un dato que se lee UNA vez.
   const pillColor = ESTADO_COLOR[lic.estado] || C.MID;
   const estadoTxt = String(lic.estado || '—').toUpperCase();
-  const pillW = doc.font('Helvetica-Bold').fontSize(8).widthOfString(estadoTxt) + 16;
-  doc.roundedRect(PW - MARGIN - pillW, 20, pillW, 16, 8).fill(pillColor);
-  doc.fillColor(C.WHITE).font('Helvetica-Bold').fontSize(8).text(estadoTxt, PW - MARGIN - pillW + 8, 24.5);
-  doc.fillColor('#C7D2FE').font('Helvetica').fontSize(7)
-    .text(`Generado: ${formatDateTime()}`, PW - MARGIN - 200, 42, { width: 200, align: 'right' });
-
-  let y = bandH + 14;
+  const pillW = doc.font('Helvetica-Bold').fontSize(8).widthOfString(estadoTxt) + 18;
+  doc.roundedRect(MARGIN, y, pillW, 17, 8.5).fill(pillColor);
+  doc.fillColor(C.WHITE).font('Helvetica-Bold').fontSize(8)
+    .text(estadoTxt, MARGIN + 9, y + 5, { lineBreak: false });
+  y += 26;
 
   // ── 1. Datos de la licitación ────────────────────────────────────────────
   y = sectionTitle(doc, y, 'Datos de la licitación');
