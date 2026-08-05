@@ -24,6 +24,8 @@
 const fs   = require('fs');
 const path = require('path');
 
+const { ALTERNATIVA, contarEnFuente } = require('../helpers/emojiInterfaz');
+
 const RAIZ = path.resolve(__dirname, '../../public/js');
 
 function listarJs(dir) {
@@ -75,7 +77,7 @@ describe('un elemento nunca lleva dos atributos class', () => {
 // `--stat-accent` que cada tarjeta inyecta con su propio color.
 // ---------------------------------------------------------------------------
 describe('los estilos inline sólo pueden disminuir', () => {
-  const TOPE = 211;
+  const TOPE = 177;
 
   const contar = () => archivos.reduce((total, f) => {
     const src = fs.readFileSync(f, 'utf8');
@@ -123,6 +125,12 @@ describe('las clases nuevas existen en el CSS', () => {
   test.each([
     'modal-actions', 'filter-action', 'fc-narrow', 'fc-medium', 'fc-wide',
     'mb-1', 'mb-2', 'mt-1', 'mt-2', 'mt-3', 'gap-2', 'flex-wrap', 'justify-end',
+    // Colores de texto y espaciados sueltos — el grupo más repetido.
+    'text-secondary', 'text-green', 'text-amber', 'text-orange', 'text-red',
+    'text-blue', 'text-violet', 'text-center', 'm-0', 'ml-1',
+    // Componentes que estaban escritos como estilo inline duplicado.
+    'btn-excel', 'btn-add-inline', 'btn-add-inline-sm', 'btn-fila-entera',
+    'drop-zone-excel', 'empty-icon', 'file-icon',
   ])('.%s está definida', (clase) => {
     expect(CSS).toMatch(new RegExp(`\\.${clase}\\s*[,{]`));
   });
@@ -143,21 +151,14 @@ describe('las clases nuevas existen en el CSS', () => {
 // Mismo criterio que arriba: pueden bajar, nunca subir.
 // ---------------------------------------------------------------------------
 describe('los emoji de la interfaz sólo pueden disminuir', () => {
-  const TOPE = 70;
+  // Cero. La migración terminó: no queda ningún emoji en la interfaz, y lo que
+  // sigue nombrándolos son los comentarios que explican por qué se fueron —que
+  // no se cuentan, ver contarEnFuente().
+  const TOPE = 0;
 
-  // Los que efectivamente aparecen en la interfaz. Se listan de forma explícita
-  // en vez de usar un rango Unicode: los rangos también atrapan símbolos
-  // tipográficos legítimos (flechas, guiones largos) y darían falsos positivos.
-  const EMOJI = [
-    '📦', '📅', '📊', '🔑', '📋', '📑', '🏢', '🔓', '💾', '⏸', '✅', '❌',
-    '↩', '🔄', '🏆', '🟢', '📄', '⬇', '🔎', '💬', '👤', '🚜', '📈', '⚠️',
-    '✏️', '🗑', '➕', '🔍', '📌', '🕐',
-  ];
-
-  const contar = () => archivos.reduce((total, f) => {
-    const src = fs.readFileSync(f, 'utf8');
-    return total + EMOJI.reduce((n, e) => n + src.split(e).length - 1, 0);
-  }, 0);
+  const contar = () => archivos.reduce(
+    (total, f) => total + contarEnFuente(fs.readFileSync(f, 'utf8')), 0
+  );
 
   test(`no hay más de ${TOPE} emoji en public/js`, () => {
     const actual = contar();
@@ -180,10 +181,6 @@ describe('los emoji de la interfaz sólo pueden disminuir', () => {
     }
     expect(actual).toBe(TOPE);
   });
-
-  // Ningún emoji lleva metacaracteres de expresión regular, así que se
-  // concatenan directo — escaparlos sólo agregaría ruido y una fuente de error.
-  const ALTERNATIVA = EMOJI.join('|');
 
   // Los dos lugares ya migrados no deben recaer.
   test('ningún encabezado vuelve a empezar con un emoji', () => {
@@ -230,7 +227,7 @@ describe('los emoji de la interfaz sólo pueden disminuir', () => {
 // token propio o si el boton merece su clase.
 // ---------------------------------------------------------------------------
 describe('los colores escritos a mano sólo pueden disminuir', () => {
-  const TOPE = 29;
+  const TOPE = 20;
 
   // Se arma con RegExp desde una CADENA y no como literal. La primera versión
   // usaba /#[0-9A-Fa-f]{6}/ y devolvía cero coincidencias: al escribir el
@@ -266,9 +263,18 @@ describe('los colores escritos a mano sólo pueden disminuir', () => {
     expect(actual).toBe(TOPE);
   });
 
-  // Los seis que ya se migraron no deben volver: son los que tienen token
-  // exacto, así que no hay excusa para escribirlos a mano.
-  test.each(['#3B82F6', '#10B981', '#F59E0B', '#F97316', '#8B5CF6', '#EF4444'])(
+  // Los que ya se migraron no deben volver: todos tienen token exacto o una
+  // clase propia, así que no hay excusa para escribirlos a mano.
+  //
+  // #16a34a y #15803d entraron después. Eran el verde del botón «Descargar
+  // Excel» y el del «+» redondo, copiados a mano en cuatro archivos — y en un
+  // quinto caso pintados ENCIMA de un botón que ya tenía class="btn-success",
+  // que define ese mismo verde desde el token. El estilo inline le ganaba a la
+  // clase que el propio elemento se estaba aplicando.
+  test.each([
+    '#3B82F6', '#10B981', '#F59E0B', '#F97316', '#8B5CF6', '#EF4444',
+    '#16a34a', '#15803d',
+  ])(
     '%s ya no aparece: tiene token propio',
     (hex) => {
       const culpables = archivos.filter((f) => {

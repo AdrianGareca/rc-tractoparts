@@ -125,7 +125,7 @@ function _buildClientesPorOrigenTable(rows) {
           <td class="text-right">${Number(o.total_clientes ?? 0)}</td>
           <td class="text-right fw-600">
             ${Number(o.total_usd ?? 0) > 0
-              ? `<span style="color:var(--clr-green);">USD ${Number(o.total_usd).toFixed(2)}</span>`
+              ? `<span class="text-green">USD ${Number(o.total_usd).toFixed(2)}</span>`
               : ''}
             ${Number(o.total_bob ?? 0) > 0
               ? `<span style="color:var(--clr-violet);margin-left:.25rem;">BOB ${Number(o.total_bob).toFixed(2)}</span>`
@@ -185,7 +185,7 @@ function _buildTopClientesTable(rows, propio = false) {
           <td class="text-right">${Number(c.proformas_emitidas ?? 0)}</td>
           <td class="text-right fw-600">
             ${Number(c.total_usd ?? 0) > 0
-              ? `<span style="color:var(--clr-green);">USD ${Number(c.total_usd).toFixed(2)}</span>`
+              ? `<span class="text-green">USD ${Number(c.total_usd).toFixed(2)}</span>`
               : ''}
             ${Number(c.total_bob ?? 0) > 0
               ? `<span style="color:var(--clr-violet);margin-left:.25rem;">BOB ${Number(c.total_bob).toFixed(2)}</span>`
@@ -232,8 +232,8 @@ function _buildTopClientesTable(rows, propio = false) {
 function _buildLeaderboardTable(rows, rol) {
   const isEjecutivo = rol === 'Ejecutivo';
   const title       = isEjecutivo
-    ? '📈 Mi Rendimiento Personal'
-    : '👥 Rendimiento del Equipo de Ventas';
+    ? 'Mi Rendimiento Personal'
+    : 'Rendimiento del Equipo de Ventas';
   const subtitle    = isEjecutivo
     ? 'Historial acumulado de tu actividad comercial'
     : 'Leaderboard histórico de ejecutivos — ordenado por volumen generado';
@@ -250,11 +250,11 @@ function _buildLeaderboardTable(rows, rol) {
           <tr>
             <td class="fw-600">${escHtml(e.ejecutivo)}</td>
             <td class="text-right">${Number(e.total_creadas ?? 0)}</td>
-            <td class="text-right" style="color:var(--clr-green);">${Number(e.total_aprobadas ?? 0)}</td>
+            <td class="text-right text-green">${Number(e.total_aprobadas ?? 0)}</td>
             <td class="text-right fw-600" style="color:${color};">${tasa.toFixed(1)}%</td>
             <td class="text-right fw-600">
               ${Number(e.total_usd ?? 0) > 0
-                ? `<span style="color:var(--clr-blue);">USD ${Number(e.total_usd).toFixed(2)}</span>`
+                ? `<span class="text-blue">USD ${Number(e.total_usd).toFixed(2)}</span>`
                 : ''}
               ${Number(e.total_bob ?? 0) > 0
                 ? `<span style="color:var(--clr-violet);margin-left:.25rem;">BOB ${Number(e.total_bob).toFixed(2)}</span>`
@@ -660,10 +660,10 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
                     <tr>
                       <td class="fw-600">${escHtml(e.ejecutivo)}</td>
                       <td class="text-right">${e.total}</td>
-                      <td class="text-right" style="color:var(--clr-green);">${e.aceptadas}</td>
-                      <td class="text-right" style="color:var(--clr-red);">${e.rechazadas}</td>
-                      <td class="text-right" style="color:var(--clr-amber);">${e.pendientes}</td>
-                      <td class="text-right" style="color:var(--clr-orange);">${e.en_revision}</td>
+                      <td class="text-right text-green">${e.aceptadas}</td>
+                      <td class="text-right text-red">${e.rechazadas}</td>
+                      <td class="text-right text-amber">${e.pendientes}</td>
+                      <td class="text-right text-orange">${e.en_revision}</td>
                       <td class="text-right fw-600">${monLabel} ${Number(
                         (isUSD ? e.volumen_usd : e.volumen_bob) ?? 0
                       ).toFixed(2)}</td>

@@ -28,6 +28,7 @@ import {
   CommandInvoker, ChangeStatusCommand, SetComentarioAdminCommand, HoldWithCommentCommand,
 } from '../commands.js';
 import { DashboardStrategy } from './dashboardStrategy.js';
+import { emptyState }        from '../../../shared/listSection.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
 import { mountClienteItemReport } from '../modules/clienteItemReport.js';
 
@@ -102,12 +103,11 @@ export class AdminStrategy extends DashboardStrategy {
       const rows = data.data ?? [];
 
       if (rows.length === 0) {
-        panel.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">✅</div>
-            <h4>Cola vacía</h4>
-            <p>No hay cotizaciones pendientes de revisión.</p>
-          </div>`;
+        panel.innerHTML = emptyState({
+          icono:  'alDia',
+          titulo: 'Cola vacía',
+          texto:  'No hay cotizaciones pendientes de revisión.',
+        });
         return;
       }
 

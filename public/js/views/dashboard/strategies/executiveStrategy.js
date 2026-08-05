@@ -135,7 +135,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
         const destroy = mountQuotationForm(body, {
           onSuccess: (q) => {
             UI.closeModal();
-            showToast(`Cotización ${q?.numero_correlativo ?? ''} creada exitosamente.`, 'success');
+            showToast(`Cotización ${q?.numero_correlativo ?? ''} creada.`, 'success');
             this.refresh();
           },
           onCancel: () => UI.closeModal(),
@@ -153,7 +153,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     // comoda en el tablero, y abrirla en un modal evita alargar una pagina que
     // ya trae estadisticas, proformas del dia y el listado.
     document.getElementById('btn-consumo')?.addEventListener('click', () => {
-      UI.openModal('📦 Consumo por Cliente', (body) => {
+      UI.openModal('Consumo por cliente', (body) => {
         mountClienteItemReport(body).then((destroy) => UI.registerCleanup(destroy));
       }, { wide: true });
     });
@@ -279,7 +279,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
             <h4 style="margin:0;color:var(--clr-blue);">Proformas del Día — ${escHtml(today)}</h4>
             <span class="badge" style="background:var(--clr-blue);color:#fff;">${rows.length} emitida${rows.length > 1 ? 's' : ''}</span>
           </div>
-          <div class="table-wrapper" style="margin:0;">
+          <div class="table-wrapper m-0">
             <table class="data-table" style="font-size:.85rem;">
               <thead>
                 <tr><th>Correlativo</th><th>Cliente</th><th>Monto</th><th>Estado</th></tr>
@@ -414,7 +414,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
 
     if (rows.length === 0) {
       this.#seccion?.empty({
-        icono:  '📋',
+        icono:  'cotizaciones',
         titulo: isTeam ? 'Sin cotizaciones del equipo' : 'Sin cotizaciones propias',
         texto:  isTeam
             ? 'No hay cotizaciones de otros miembros del equipo con los filtros aplicados.'
@@ -537,7 +537,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
               'La cotización pasará directamente al estado "Enviada al cliente". Esta acción queda registrada en el historial.',
               'Nota para el historial (opcional)',
               false,
-              '🟢 Cotización enviada al cliente exitosamente.'));
+              'Cotización enviada al cliente.'));
 
           body.querySelector('#btn-rechazar')?.addEventListener('click', () =>
             this._confirmDelegatedStateChange(id, 'Rechazada',
@@ -553,7 +553,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
               'El cliente ha confirmado los términos. Esta acción registra el cierre de venta y congela cualquier modificación adicional.',
               'Observaciones de cierre (opcional)',
               false,
-              '🏆 ¡Cierre de venta registrado! La cotización ha sido confirmada.'));
+              'Venta cerrada. La cotización quedó confirmada.'));
 
           // Archivar SÍ entra en la delegación (a diferencia de reabrir una
           // venta cerrada, que la plantilla ni siquiera dibuja en este modo).
@@ -563,7 +563,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
               'La cotización pasa a Archivada y sale de los listados activos. Es un estado final: no se puede volver atrás desde ahí.',
               'Nota para el historial (opcional)',
               false,
-              '📦 Cotización archivada.'));
+              'Cotización archivada.'));
         }
 
         wirePdfButton(body, id, q.numero_correlativo, q.cliente_nombre);
@@ -584,7 +584,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
       body.innerHTML = `
         <div class="confirm-dialog">
           <h4>¿Confirmar aprobación interna?</h4>
-          <p class="text-sm" style="color:var(--text-secondary);">
+          <p class="text-sm text-secondary">
             Estás usando tu autorización delegada para aprobar esta cotización.
           </p>
         </div>
@@ -668,7 +668,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
           <p style="color:var(--text-secondary);margin-bottom:1rem;">
             Estado actual: ${badgeHtml(currentStatus)}
           </p>
-          <p class="text-sm" style="color:var(--text-secondary);">
+          <p class="text-sm text-secondary">
             Desde este estado no hay cambios disponibles para tu rol.
             Si hace falta moverla, pedíselo al Jefe.
           </p>

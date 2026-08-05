@@ -9,13 +9,13 @@
 //
 // POR ESO HAY DOS VISTAS, Y LA PRINCIPAL ES «POR ÍTEM»
 //
-//   📦 Por ítem (la que decide la compra)
+//   Por ítem (la que decide la compra)
 //      Una fila por repuesto, sumando TODOS los clientes y vendedores.
 //      La columna que más importa no es la cantidad sino CUÁNTOS CLIENTES
 //      distintos lo pidieron: 20 unidades repartidas entre 5 clientes es mucho
 //      mejor candidato a stock que 20 que pidió uno solo y capaz no repite.
 //
-//   👤 Detalle por ejecutivo
+//   Detalle por ejecutivo
 //      Una fila por (ejecutivo, cliente, código). Contesta otra pregunta:
 //      «¿qué le cotizó cada vendedor a cada cliente?». Sin esta separación las
 //      cotizaciones de todos los vendedores se veían mezcladas y no se entendía
@@ -65,7 +65,7 @@ const celdaMarca = (f) => f.marca_nombre
 // lado hace evidente en qué se diferencian.
 const VISTAS = {
   item: {
-    etiqueta: '📦 Por ítem',
+    etiqueta: 'Por ítem',
     ayuda: 'Cuánto se pide de cada repuesto en total. Ordena por fecha; hacé clic en «Clientes» o «Cantidad» para ver qué conviene stockear.',
     columnas: [
       { clave: 'codigo',   texto: 'Código' },
@@ -95,7 +95,7 @@ const VISTAS = {
   },
 
   detalle: {
-    etiqueta: '👤 Detalle por ejecutivo',
+    etiqueta: 'Detalle por ejecutivo',
     ayuda: 'Qué le cotizó cada vendedor a cada cliente. Una fila por ejecutivo, cliente y código.',
     columnas: [
       { clave: 'ejecutivo', texto: 'Ejecutivo' },
@@ -159,7 +159,7 @@ export async function mountClienteItemReport(panel, opts = {}) {
         </div>
       </div>
 
-      <div class="tab-bar" id="ci-vistas" style="margin:0;">
+      <div class="tab-bar m-0" id="ci-vistas">
         ${Object.entries(VISTAS).map(([clave, v], i) => `
           <button class="tab-btn${i === 0 ? ' active' : ''}" data-vista="${clave}" type="button">${v.etiqueta}</button>
         `).join('')}
@@ -291,7 +291,7 @@ export async function mountClienteItemReport(panel, opts = {}) {
         : `${total} combinación(es) ejecutivo–cliente–ítem`;
 
       if (filas.length === 0) {
-        seccion.empty({ icono: '📦', titulo: 'Sin datos', texto: 'Ninguna cotización coincide con los filtros aplicados.' });
+        seccion.empty({ icono: 'items', titulo: 'Sin datos', texto: 'Ninguna cotización coincide con los filtros aplicados.' });
         return;
       }
 

@@ -25,6 +25,7 @@ import { CommandInvoker, ChangeStatusCommand, ApproveQuotationCommand } from '..
 import { DashboardStrategy } from './dashboardStrategy.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
 import { mountClienteItemReport } from '../modules/clienteItemReport.js';
+import { emptyState }        from '../../../shared/listSection.js';
 
 export class ManagerStrategy extends DashboardStrategy {
   #container;
@@ -98,12 +99,11 @@ export class ManagerStrategy extends DashboardStrategy {
       const rows = data.data ?? [];
 
       if (rows.length === 0) {
-        panel.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">✅</div>
-            <h4>Cola vacía</h4>
-            <p>No hay cotizaciones pendientes de aprobación.</p>
-          </div>`;
+        panel.innerHTML = emptyState({
+          icono:  'alDia',
+          titulo: 'Cola vacía',
+          texto:  'No hay cotizaciones pendientes de aprobación.',
+        });
         return;
       }
 
@@ -203,7 +203,7 @@ export class ManagerStrategy extends DashboardStrategy {
             'El cliente ha confirmado los términos. Esta acción registra el cierre de venta y congela cualquier modificación adicional.',
             'Observaciones de cierre (opcional)',
             false,
-            '🏆 ¡Cierre de venta registrado! La cotización ha sido confirmada.');
+            'Venta cerrada. La cotización quedó confirmada.');
         });
 
         body.querySelector('#btn-archivar')?.addEventListener('click', () => {
@@ -252,7 +252,7 @@ export class ManagerStrategy extends DashboardStrategy {
       'La cotización pasará directamente al estado "Enviada al cliente", omitiendo la aprobación interna intermedia. Esta acción queda registrada en el historial de estados.',
       'Nota para el historial (opcional)',
       false,
-      '🟢 Cotización aprobada y enviada al cliente exitosamente.'
+      'Cotización aprobada y enviada al cliente.'
     );
   }
 
@@ -263,9 +263,9 @@ export class ManagerStrategy extends DashboardStrategy {
     UI.openModal(title, (body) => {
       body.innerHTML = `
         <div class="confirm-dialog">
-          <h4>${aprobado ? '✅ ¿Confirmar aprobación?' : '❌ ¿Confirmar rechazo?'}</h4>
+          <h4>${aprobado ? '¿Confirmar aprobación?' : '¿Confirmar rechazo?'}</h4>
           <p>Cotización: <strong>#${id}</strong></p>
-          ${aprobado ? `<p class="text-sm" style="color:var(--text-secondary);">Se generará el número oficial de correlativo y se bloqueará la edición.</p>` : ''}
+          ${aprobado ? `<p class="text-sm text-secondary">Se generará el número oficial de correlativo y se bloqueará la edición.</p>` : ''}
         </div>
         <div class="form-group">
           <label class="form-label" for="obs-approval">${label}</label>
@@ -276,7 +276,7 @@ export class ManagerStrategy extends DashboardStrategy {
         <div class="modal-actions">
           <button class="btn btn-ghost"  id="cancel-approve">Cancelar</button>
           <button class="btn ${aprobado ? 'btn-success' : 'btn-danger'}" id="confirm-approve">
-            ${aprobado ? '✅ Sí, Aprobar' : '❌ Sí, Rechazar'}
+            ${aprobado ? 'Sí, aprobar' : 'Sí, rechazar'}
           </button>
         </div>`;
 
@@ -347,7 +347,7 @@ export class ManagerStrategy extends DashboardStrategy {
             'El cliente ha confirmado los términos. Esta acción registra el cierre de venta y congela cualquier modificación adicional.',
             'Observaciones de cierre (opcional)',
             false,
-            '🏆 ¡Cierre de venta registrado! La cotización ha sido confirmada.');
+            'Venta cerrada. La cotización quedó confirmada.');
         });
 
         body.querySelector('#btn-archivar')?.addEventListener('click', () =>
@@ -382,7 +382,7 @@ export class ManagerStrategy extends DashboardStrategy {
       'La cotización pasa a Archivada y sale de los listados activos. Es un estado final: no se puede volver atrás desde ahí.',
       'Nota para el historial (opcional)',
       false,
-      '📦 Cotización archivada.'
+      'Cotización archivada.'
     );
   }
 
@@ -398,10 +398,10 @@ export class ManagerStrategy extends DashboardStrategy {
   _confirmReabrir(id, q) {
     const referencia = q?.numero_correlativo ? `#${q.numero_correlativo}` : `#${id}`;
 
-    UI.openModal('🔑 Llave del Jefe — Reabrir Venta Cerrada', (body) => {
+    UI.openModal('Reabrir venta cerrada', (body) => {
       body.innerHTML = `
         <div class="llave-jefe" style="margin-top:0;padding:1rem;border-radius:6px;">
-          <strong style="color:var(--clr-amber-soft);">⚠️ Acción excepcional</strong>
+          <strong style="color:var(--clr-amber-soft);">Acción excepcional</strong>
           <p class="text-sm" style="color:var(--text-secondary);margin:.4rem 0 0;">
             La cotización <strong>${escHtml(referencia)}</strong> es una
             <strong>venta cerrada</strong>. Al reabrirla vuelve a
@@ -440,7 +440,7 @@ export class ManagerStrategy extends DashboardStrategy {
           new ChangeStatusCommand(id, 'Pendiente', `[REAPERTURA] ${motivo}`),
           {
             btn:        body.querySelector('#reab-confirm'),
-            successMsg: '🔓 Venta reabierta. La cotización volvió a Pendiente y el ejecutivo fue notificado.',
+            successMsg: 'Venta reabierta. La cotización volvió a Pendiente y el ejecutivo fue notificado.',
             onSuccess:  () => { UI.closeModal(); this.refresh(); },
           }
         );
@@ -455,10 +455,10 @@ export class ManagerStrategy extends DashboardStrategy {
       ? 'Revertir a Pendiente (Borrador para Correcciones)'
       : 'Revertir a En Revisión (Flujo de Aprobación)';
 
-    UI.openModal('🔄 Revertir Rechazo / Revaluar Cotización', (body) => {
+    UI.openModal('Revertir rechazo / revaluar cotización', (body) => {
       body.innerHTML = `
         <div style="background:#FEF9C3;border:1px solid var(--clr-amber);border-radius:6px;padding:.75rem 1rem;margin-bottom:1rem;">
-          <strong style="color:#B45309;">⚠️ Acción de Alta Autoridad</strong>
+          <strong style="color:#B45309;">Acción de alta autoridad</strong>
           <p class="text-sm" style="color:#78350F;margin:.25rem 0 0;">
             Esta acción revierte el estado de <strong>Rechazada</strong> a
             <strong>${escHtml(targetState)}</strong> y reinyecta la cotización en el flujo de trabajo.
@@ -493,7 +493,7 @@ export class ManagerStrategy extends DashboardStrategy {
           new ChangeStatusCommand(id, targetState, rollbackNote),
           {
             btn,
-            successMsg: `🔄 Cotización revertida a "${targetState}" exitosamente. Reinyectada en el flujo.`,
+            successMsg: `Cotización revertida a "${targetState}". Vuelve al flujo del ejecutivo.`,
             onSuccess:  () => { UI.closeModal(); this.refresh(); },
           }
         );

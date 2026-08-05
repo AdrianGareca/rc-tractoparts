@@ -122,7 +122,7 @@ export const CommandInvoker = {
 
     try {
       const result = await command.execute();
-      showToast(successMsg || 'Acción completada con éxito.', 'success');
+      showToast(successMsg || 'Acción completada.', 'success');
       if (onSuccess) onSuccess(result);
     } catch (err) {
       const msg = err.data?.message || err.message || 'Error al ejecutar la acción.';

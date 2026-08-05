@@ -67,6 +67,22 @@ img { max-width: 100%; display: block; }
 .flex-wrap { flex-wrap: wrap; }
 .justify-end { justify-content: flex-end; }
 
+/* Colores de texto. Eran el grupo mas repetido de estilos inline: un
+   style="color:var(--clr-green);" suelto, veintitantas veces. Ya usaban el
+   token, asi que el color no cambia — lo que cambia es que ahora una regla del
+   CSS puede alcanzarlos. */
+.text-secondary { color: var(--text-secondary); }
+.text-green     { color: var(--clr-green);  }
+.text-amber     { color: var(--clr-amber);  }
+.text-orange    { color: var(--clr-orange); }
+.text-red       { color: var(--clr-red);    }
+.text-blue      { color: var(--clr-blue);   }
+.text-violet    { color: var(--clr-violet); }
+
+.text-center { text-align: center; }
+.m-0  { margin: 0; }
+.ml-1 { margin-left: .5rem; }
+
 /* El boton que se alinea con el pie de los campos en una barra de filtros.
    Los <label> empujan los <input> hacia abajo; sin esto el boton queda flotando
    a la altura de las etiquetas. */

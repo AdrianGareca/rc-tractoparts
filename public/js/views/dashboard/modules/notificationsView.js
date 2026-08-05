@@ -52,26 +52,32 @@ function _pushDesktopNotif(title, body, icon = '/assets/images/rc_logo.png') {
 }
 
 // ---------------------------------------------------------------------------
-// _tipoStyle — returns { icon, borderColor, labelColor } for each tipo
+// _tipoStyle — returns { borderColor, labelColor } for each tipo
+//
+// Cada tipo traía además un emoji que se anteponía al texto de la observación.
+// Sobraba por partida doble: la notificación ya lleva ese mismo color en el
+// borde izquierdo, y ya está agrupada bajo el título de su tipo. El dibujo era
+// la tercera vez que se decía lo mismo, y encima quedaba pegado al comentario
+// que escribió una persona — que es lo único que hay para leer ahí.
 // ---------------------------------------------------------------------------
 function _tipoStyle(tipo) {
-  if (tipo === 'aprobacion')    return { icon: '✅', borderColor: 'var(--clr-green)', labelColor: '#065F46' };
-  if (tipo === 'envio_cliente') return { icon: '📤', borderColor: 'var(--clr-blue)', labelColor: '#1D4ED8' };
-  if (tipo === 'licitacion')    return { icon: '📑', borderColor: 'var(--clr-teal)', labelColor: '#0F766E' };
-  return                               { icon: '⚠️', borderColor: 'var(--clr-orange)', labelColor: '#9A3412' }; // correccion
+  if (tipo === 'aprobacion')    return { borderColor: 'var(--clr-green)',  labelColor: '#065F46' };
+  if (tipo === 'envio_cliente') return { borderColor: 'var(--clr-blue)',   labelColor: '#1D4ED8' };
+  if (tipo === 'licitacion')    return { borderColor: 'var(--clr-teal)',   labelColor: '#0F766E' };
+  return                               { borderColor: 'var(--clr-orange)', labelColor: '#9A3412' }; // correccion
 }
 
 // ---------------------------------------------------------------------------
 // _buildNotifItem — renders a single notification <li> element
 // ---------------------------------------------------------------------------
 function _buildNotifItem(n) {
-  const { icon, borderColor, labelColor } = _tipoStyle(n.tipo);
+  const { borderColor, labelColor } = _tipoStyle(n.tipo);
   const fecha = n.fecha_solicitud
     ? new Date(n.fecha_solicitud).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })
     : '—';
 
   const mensaje = n.observacion
-    ? `<br><em class="text-sm" style="color:${labelColor};">${icon} ${escHtml(n.observacion)}</em>`
+    ? `<br><em class="text-sm" style="color:${labelColor};">${escHtml(n.observacion)}</em>`
     : '';
 
   return `
@@ -79,7 +85,7 @@ function _buildNotifItem(n) {
                border-radius:6px;margin-bottom:.5rem;background:var(--bg-secondary);">
       <strong>${escHtml(n.numero_correlativo)}</strong>
       — ${escHtml(n.cliente_nombre ?? '—')}<br>
-      <span class="text-sm" style="color:var(--text-secondary);">
+      <span class="text-sm text-secondary">
         ${n.solicitado_por ? `Gestionado por: ${escHtml(n.solicitado_por)}` : ''}
         · ${fecha}
       </span>
@@ -144,16 +150,16 @@ export async function refreshNotifBadge(UI) {
           // All table-backed notifications the "marcar leídas" button clears.
           const marcables = aprobaciones.length + licitaciones.length;
 
-          UI.openModal('🔔 Notificaciones', (body) => {
+          UI.openModal('Notificaciones', (body) => {
             const sectionHtml = (titleColor, title, items) => items.length > 0 ? `
               <p class="text-sm fw-600" style="color:${titleColor};margin:.75rem 0 .35rem;">${title}</p>
               <ul style="list-style:none;padding:0;margin:0 0 .75rem;">
                 ${items.map(_buildNotifItem).join('')}
               </ul>` : '';
 
-            const aprobSection = sectionHtml('#065F46', '✅ Aprobaciones y envíos recientes', aprobaciones);
-            const licSection   = sectionHtml('#0F766E', '📑 Licitaciones', licitaciones);
-            const corrSection  = sectionHtml('#9A3412', '⚠️ Proformas que requieren correcciones', correcciones);
+            const aprobSection = sectionHtml('#065F46', 'Aprobaciones y envíos recientes', aprobaciones);
+            const licSection   = sectionHtml('#0F766E', 'Licitaciones', licitaciones);
+            const corrSection  = sectionHtml('#9A3412', 'Proformas que requieren correcciones', correcciones);
 
             // "Mark as read" clears every table-backed notification (aprobaciones,
             // envíos y licitaciones). Se muestra siempre que haya alguna marcable.

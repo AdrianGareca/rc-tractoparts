@@ -51,11 +51,11 @@ export async function mountLicitacionesTab(panel, opts = {}) {
         </div>
       </div>
       <div class="filter-bar" style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end;">
-        <div class="form-group" style="margin:0;">
+        <div class="form-group m-0">
           <label class="form-label">Buscar</label>
           <input class="form-control fc-wide" type="search" id="lic-search" placeholder="Código, nombre o convocante…" />
         </div>
-        <div class="form-group" style="margin:0;">
+        <div class="form-group m-0">
           <label class="form-label">Estado</label>
           <select class="form-control" id="lic-estado">
             <option value="">Todos</option>
@@ -96,7 +96,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
 
       if (rows.length === 0) {
         seccion.empty({
-          icono:  '📑',
+          icono:  'licitaciones',
           titulo: 'Sin licitaciones',
           texto:  'No hay licitaciones que coincidan con el filtro.',
         });
@@ -120,7 +120,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
                   <td>${escHtml(l.nombre)}</td>
                   <td>${escHtml(l.cliente_nombre ?? '—')}</td>
                   <td>${licitacionBadgeHtml(l.estado)}</td>
-                  <td style="text-align:center;">${l.total_cotizaciones ?? 0}</td>
+                  <td class="text-center">${l.total_cotizaciones ?? 0}</td>
                   <td>${fmtDate(l.fecha_limite)}</td>
                   <td>${escHtml(l.responsable_nombre ?? '—')}</td>
                   <td><button class="btn btn-ghost btn-sm" data-lic-view="${l.id}">Ver</button></td>

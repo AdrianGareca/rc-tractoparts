@@ -65,9 +65,8 @@ export function buildRowHtml(index, itemData = null, brands = []) {
         <option value="">— Sin marca —</option>
         ${brandOptions}
       </select>
-      <button type="button" class="btn-add-brand" data-idx="${index}"
-              title="Registrar nueva marca"
-              style="flex-shrink:0;width:22px;height:22px;padding:0;border-radius:50%;background:#16a34a;color:#fff;border:none;cursor:pointer;font-size:1rem;line-height:1;">
+      <button type="button" class="btn-add-brand btn-add-inline btn-add-inline-sm" data-idx="${index}"
+              title="Registrar nueva marca">
         +
       </button>
     </div>

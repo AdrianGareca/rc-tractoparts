@@ -108,17 +108,11 @@ export function fmtAmount(n, currency = 'USD') {
   return `${currency} ${Number(n).toFixed(2)}`;
 }
 
-// File extension → emoji icon. Shared by licitacionModal.js (upload picker)
-// and licitacionesView.js (attached-documents list) so both stay in sync.
-const DOC_ICONS = {
-  pdf: '📄', doc: '📝', docx: '📝', xls: '📊', xlsx: '📊',
-  jpg: '🖼️', jpeg: '🖼️', png: '🖼️',
-};
-
-export function docIcon(nombre) {
-  const ext = (nombre.split('.').pop() || '').toLowerCase();
-  return DOC_ICONS[ext] || '📎';
-}
+// El dibujo por tipo de archivo vive en shared/icons.js, junto al resto del
+// lenguaje visual: era un mapa de emoji acá y quedaba fuera de la paleta.
+// Se reexporta con el nombre que ya usaban licitacionModal.js (selector de
+// subida) y detailModal.js (lista de adjuntos), para no tocar sus importaciones.
+export { fileIcon as docIcon } from '../../shared/icons.js';
 
 export function fmtFileSize(bytes) {
   if (bytes == null) return '—';

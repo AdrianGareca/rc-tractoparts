@@ -23,6 +23,31 @@
 import { tableSkeleton } from './skeleton.js';
 import { mountPagination } from './pagination.js';
 import { escapeHtml } from './escapeHtml.js';
+import { stateIcon } from './icons.js';
+
+/**
+ * El marcado de un panel sin nada que mostrar.
+ *
+ * Se exporta suelto además de estar en `empty()` porque hay dos colas —la de
+ * revisión del Administrador y la de aprobación del Jefe— que no usan
+ * `createListSection`: dibujan su panel entero de una vez y no tienen
+ * paginación. Antes copiaban este marcado a mano, y las copias ya se habían
+ * quedado sin `escapeHtml`.
+ *
+ * @param {Object}  o
+ * @param {string} [o.icono]  — clave de EMPTY_ICONS (ver shared/icons.js)
+ * @param {string} [o.titulo] — qué falta, en pocas palabras
+ * @param {string} [o.texto]  — por qué falta, o qué hacer al respecto
+ * @returns {string} HTML
+ */
+export function emptyState({ icono = 'cotizaciones', titulo = 'Sin resultados', texto = '' } = {}) {
+  return `
+    <div class="empty-state">
+      <div class="empty-state-icon">${stateIcon(icono)}</div>
+      <h4>${escapeHtml(titulo)}</h4>
+      ${texto ? `<p>${escapeHtml(texto)}</p>` : ''}
+    </div>`;
+}
 
 /**
  * @param {Object}      opts
@@ -78,15 +103,8 @@ export function createListSection({
      * «sin licitaciones» no dicen lo mismo, y un mensaje genérico obliga al
      * usuario a deducir qué buscaba.
      */
-    empty({ icono = '📋', titulo = 'Sin resultados', texto = '' } = {}) {
-      if (resultsEl) {
-        resultsEl.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">${icono}</div>
-            <h4>${escapeHtml(titulo)}</h4>
-            <p>${escapeHtml(texto)}</p>
-          </div>`;
-      }
+    empty(opts) {
+      if (resultsEl) resultsEl.innerHTML = emptyState(opts);
       clearPagination();
     },
 

@@ -282,11 +282,11 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
     budgetHtml = `
       <div style="margin-top:.5rem;padding:.6rem .8rem;border-radius:8px;
            background:${dentro ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)'};">
-        <strong>${dentro ? '✅ Dentro de presupuesto' : '⚠️ Fuera de presupuesto'}</strong><br>
+        <strong>${dentro ? 'Dentro de presupuesto' : 'Fuera de presupuesto'}</strong><br>
         <span class="text-sm">Comprometido (cotizaciones aprobadas/confirmadas):
           ${fmtMoney(comprometido, lic.moneda)} de ${fmtMoney(presupuesto, lic.moneda)}</span>
         ${lic.tiene_cotizaciones_otra_moneda
-          ? `<br><span class="text-sm" style="color:var(--clr-amber);">⚠️ Hay cotizaciones vinculadas en otra moneda que no se incluyen en esta comparación (el presupuesto está en ${escHtml(lic.moneda || 'BOB')}).</span>`
+          ? `<br><span class="text-sm text-amber">Hay cotizaciones vinculadas en otra moneda que no se incluyen en esta comparación (el presupuesto está en ${escHtml(lic.moneda || 'BOB')}).</span>`
           : ''}
       </div>`;
   } else {
@@ -304,7 +304,7 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
       '(el que tiene el poder de aprobar cotizaciones) la vea en su panel de Licitaciones y pueda crear la cotización vinculada.';
   } else if (cots.length === 0 && ['Cotizando', 'En evaluacion'].includes(lic.estado)) {
     noCotsHint = 'El ejecutivo comercial delegado la crea desde su propio panel de Licitaciones ' +
-      '("➕ Crear cotización vinculada"), o cualquier ejecutivo puede vincularla eligiendo esta licitación ' +
+      '("Crear cotización vinculada"), o cualquier ejecutivo puede vincularla eligiendo esta licitación ' +
       'en el campo "Licitación asociada" al crear o editar una cotización normal.';
   }
   const cotsHtml = cots.length === 0
@@ -335,11 +335,11 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
     resultadoHtml = `
       <div style="margin-top:.5rem;padding:.6rem .8rem;border-radius:8px;
            background:${ganancia ? 'rgba(16,185,129,.14)' : 'rgba(239,68,68,.14)'};">
-        <strong style="font-size:1.02rem;">${ganancia ? '📈 Ganancia' : '📉 Pérdida'}: ${fmtMoney(Math.abs(resultado), lic.moneda)}</strong><br>
+        <strong style="font-size:1.02rem;">${ganancia ? 'Ganancia' : 'Pérdida'}: ${fmtMoney(Math.abs(resultado), lic.moneda)}</strong><br>
         <span class="text-sm">Ingreso (cotizado aprobado/confirmado): ${fmtMoney(ingreso, lic.moneda)}
           &nbsp;−&nbsp; Gastos: ${fmtMoney(gastosT, lic.moneda)}</span>
         ${lic.tiene_gastos_otra_moneda
-          ? `<br><span class="text-sm" style="color:var(--clr-amber);">⚠️ Hay gastos registrados en otra moneda que no se incluyen en este cálculo (el resultado está en ${escHtml(lic.moneda || 'BOB')}).</span>`
+          ? `<br><span class="text-sm text-amber">Hay gastos registrados en otra moneda que no se incluyen en este cálculo (el resultado está en ${escHtml(lic.moneda || 'BOB')}).</span>`
           : ''}
       </div>`;
 
@@ -382,7 +382,7 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
   // solo el responsable (o Jefe/SysAdmin) puede eliminarlos. La subida se hace
   // desde "Nueva/Editar Licitación" (licitacionModal.js), no desde aquí.
   const docsListHtml = documentos.length === 0
-    ? `<p class="text-muted text-sm">Aún no hay documentos adjuntos.${canManageDocs ? ' Usá "📎 Adjuntar" para subir el primero.' : ''}</p>`
+    ? `<p class="text-muted text-sm">Aún no hay documentos adjuntos.${canManageDocs ? ' Usá "Adjuntar" para subir el primero.' : ''}</p>`
     : `<ul style="list-style:none;padding:0;margin:0;">
          ${documentos.map((d) => `
            <li style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px solid var(--border);">
@@ -415,11 +415,11 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
       <div class="sub-modal-body">
         <div style="display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between;">
           <div>${licitacionBadgeHtml(lic.estado)}
-            ${canEdit ? '<button class="btn btn-ghost btn-sm" id="licd-edit" style="margin-left:.5rem;">Editar</button>' : ''}
-            ${canManageDocs ? '<button class="btn btn-ghost btn-sm" id="licd-attach" style="margin-left:.5rem;">📎 Adjuntar</button>' : ''}
-            <button class="btn btn-ghost btn-sm" id="licd-pdf" style="margin-left:.5rem;">Expediente PDF</button>
+            ${canEdit ? '<button class="btn btn-ghost btn-sm ml-1" id="licd-edit">Editar</button>' : ''}
+            ${canManageDocs ? '<button class="btn btn-ghost btn-sm ml-1" id="licd-attach">Adjuntar</button>' : ''}
+            <button class="btn btn-ghost btn-sm ml-1" id="licd-pdf">Expediente PDF</button>
             ${onCreateCotizacion && ['Cotizando', 'En evaluacion'].includes(lic.estado)
-              ? '<button class="btn btn-primary btn-sm" id="licd-crear-cot" style="margin-left:.5rem;">Crear cotización vinculada</button>' : ''}
+              ? '<button class="btn btn-primary btn-sm ml-1" id="licd-crear-cot">Crear cotización vinculada</button>' : ''}
           </div>
           <div class="text-sm text-muted">Responsable: ${escHtml(lic.responsable_nombre ?? '—')}</div>
         </div>

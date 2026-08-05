@@ -19,30 +19,38 @@ import { ETIQUETAS_FECHA } from '../../../shared/pagination.js';
 import { createListSection } from '../../../shared/listSection.js';
 
 // ---------------------------------------------------------------------------
-// Acción → { icon, label, badgeClass } — human-friendly presentation for each
+// Acción → { label, badgeClass } — human-friendly presentation for each
 // AuditActions code (src/utils/auditLog.js). Kept in sync manually with the
 // backend allowlist; getFilterOptions() is the source of truth for WHICH
 // codes exist, this map only controls how a known code is displayed. Any
 // future code not listed here still renders gracefully (falls back to the
 // raw code + a neutral badge) instead of breaking.
+//
+// CADA ENTRADA TENÍA TAMBIÉN UN `icon` CON UN EMOJI, Y SE SACÓ
+// La insignia ya lleva color propio por tipo de acción (alta en verde, rechazo
+// en rojo, autenticación en azul) y el rótulo en palabras. El emoji repetía por
+// tercera vez lo mismo, ensanchaba la insignia en una tabla que ya es densa, y
+// en el <select> de filtros metía un dibujo dentro de una lista desplegable.
+// Tres códigos distintos compartían el mismo 🖊️, así que como señal tampoco
+// distinguía nada.
 // ---------------------------------------------------------------------------
 const ACCION_META = {
-  LOGIN:               { icon: '🔓', label: 'Inicio de Sesión',      badge: 'badge-audit-auth' },
-  LOGOUT:              { icon: '🔒', label: 'Cierre de Sesión',      badge: 'badge-audit-auth' },
-  LOGIN_FAILED:        { icon: '⚠️', label: 'Intento de Login Fallido', badge: 'badge-audit-auth-fail' },
-  CREAR_COTIZACION:    { icon: '📄', label: 'Cotización Creada',     badge: 'badge-audit-create' },
-  EDITAR_COTIZACION:   { icon: '✏️', label: 'Cotización Editada',    badge: 'badge-audit-edit' },
-  CAMBIAR_ESTADO:      { icon: '🔄', label: 'Cambio de Estado',      badge: 'badge-audit-edit' },
-  APROBAR:             { icon: '✅', label: 'Aprobación',            badge: 'badge-audit-approve' },
-  RECHAZAR:            { icon: '❌', label: 'Rechazo',                badge: 'badge-audit-reject' },
-  SUBIR_PDF:           { icon: '📤', label: 'PDF Subido',            badge: 'badge-audit-file' },
-  DESCARGAR_PDF:       { icon: '📥', label: 'PDF Descargado',        badge: 'badge-audit-file' },
-  CREAR_USUARIO:       { icon: '👤', label: 'Usuario Creado',        badge: 'badge-audit-create' },
-  EDITAR_USUARIO:      { icon: '🖊️', label: 'Usuario Editado',       badge: 'badge-audit-edit' },
-  DESACTIVAR_USUARIO:  { icon: '🚫', label: 'Usuario Desactivado',   badge: 'badge-audit-reject' },
-  CREAR_CLIENTE:       { icon: '🏢', label: 'Cliente Creado',        badge: 'badge-audit-create' },
-  EDITAR_CLIENTE:      { icon: '🖊️', label: 'Cliente Editado',       badge: 'badge-audit-edit' },
-  DESACTIVAR_CLIENTE:  { icon: '🚫', label: 'Cliente Desactivado',   badge: 'badge-audit-reject' },
+  LOGIN:               { label: 'Inicio de Sesión',          badge: 'badge-audit-auth' },
+  LOGOUT:              { label: 'Cierre de Sesión',          badge: 'badge-audit-auth' },
+  LOGIN_FAILED:        { label: 'Intento de Login Fallido',  badge: 'badge-audit-auth-fail' },
+  CREAR_COTIZACION:    { label: 'Cotización Creada',         badge: 'badge-audit-create' },
+  EDITAR_COTIZACION:   { label: 'Cotización Editada',        badge: 'badge-audit-edit' },
+  CAMBIAR_ESTADO:      { label: 'Cambio de Estado',          badge: 'badge-audit-edit' },
+  APROBAR:             { label: 'Aprobación',                badge: 'badge-audit-approve' },
+  RECHAZAR:            { label: 'Rechazo',                   badge: 'badge-audit-reject' },
+  SUBIR_PDF:           { label: 'PDF Subido',                badge: 'badge-audit-file' },
+  DESCARGAR_PDF:       { label: 'PDF Descargado',            badge: 'badge-audit-file' },
+  CREAR_USUARIO:       { label: 'Usuario Creado',            badge: 'badge-audit-create' },
+  EDITAR_USUARIO:      { label: 'Usuario Editado',           badge: 'badge-audit-edit' },
+  DESACTIVAR_USUARIO:  { label: 'Usuario Desactivado',       badge: 'badge-audit-reject' },
+  CREAR_CLIENTE:       { label: 'Cliente Creado',            badge: 'badge-audit-create' },
+  EDITAR_CLIENTE:      { label: 'Cliente Editado',           badge: 'badge-audit-edit' },
+  DESACTIVAR_CLIENTE:  { label: 'Cliente Desactivado',       badge: 'badge-audit-reject' },
 };
 
 const ENTIDAD_LABELS = {
@@ -53,12 +61,12 @@ const ENTIDAD_LABELS = {
 };
 
 function accionMeta(codigo) {
-  return ACCION_META[codigo] || { icon: '📌', label: codigo, badge: 'badge-borrador' };
+  return ACCION_META[codigo] || { label: codigo, badge: 'badge-borrador' };
 }
 
 function accionBadgeHtml(codigo) {
   const meta = accionMeta(codigo);
-  return `<span class="badge ${meta.badge}">${meta.icon} ${escHtml(meta.label)}</span>`;
+  return `<span class="badge ${meta.badge}">${escHtml(meta.label)}</span>`;
 }
 
 function resultadoBadgeHtml(resultado) {
@@ -259,7 +267,7 @@ export async function mountAuditLogTab(panel) {
       const meta = accionMeta(codigo);
       const opt  = document.createElement('option');
       opt.value       = codigo;
-      opt.textContent = `${meta.icon} ${meta.label}`;
+      opt.textContent = meta.label;
       accionSel.appendChild(opt);
     }
 
@@ -300,7 +308,7 @@ export async function mountAuditLogTab(panel) {
 
       if (rows.length === 0) {
         seccion.empty({
-          icono:  '🔍',
+          icono:  'busqueda',
           titulo: 'Sin resultados',
           texto:  'No hay eventos de auditoría que coincidan con los filtros aplicados.',
         });
@@ -350,7 +358,7 @@ export async function mountAuditLogTab(panel) {
           if (!row) return;
           const opening = row.style.display === 'none';
           row.style.display = opening ? '' : 'none';
-          btn.textContent = opening ? '🔼 Ocultar' : '🔎 Detalle';
+          btn.textContent = opening ? 'Ocultar' : 'Detalle';
         });
       });
 

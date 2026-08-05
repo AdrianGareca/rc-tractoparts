@@ -62,6 +62,14 @@
   --clr-indigo: #6366F1;   /* indigo-500 */
   --clr-slate:  #64748B;   /* slate-500  */
 
+  /* Verde de Excel. NO es --clr-green: es más apagado y más frío, el de la
+     marca de la planilla. Existe como token propio porque el botón «Descargar
+     Excel» sí tiene motivo para no seguir la paleta — el color dice qué formato
+     va a bajar antes de que se lea el rótulo. Estaba escrito a mano (#16a34a)
+     en dos archivos; ahora se cambia en un solo lugar. */
+  --clr-excel:        #16A34A;   /* green-600 */
+  --clr-excel-strong: #15803D;   /* green-700 — borde y :hover */
+
   /* Neutrals — explicit tokens so nothing hardcodes #fff / #000 */
   --clr-white: #FFFFFF;
   --clr-black: #000000;

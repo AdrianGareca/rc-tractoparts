@@ -94,7 +94,7 @@ export function buildProformaHTML(q, id, viewMode) {
 
   const jefeButtons = operative ? `
     <div class="approval-actions">
-      <h4 class="approval-actions-title">${jefeMode ? 'Decisión del Jefe' : '🔑 Acciones Operativas — Delegación de Funciones'}</h4>
+      <h4 class="approval-actions-title">${jefeMode ? 'Decisión del Jefe' : 'Acciones Operativas — Delegación de Funciones'}</h4>
       <div class="approval-actions-grid">
         ${canRetract ? `<button class="btn btn-warning btn-sm" id="btn-solicitar-cambios">
           Solicitar Cambios
@@ -105,11 +105,10 @@ export function buildProformaHTML(q, id, viewMode) {
         ${canApprove ? `<button class="btn btn-success" id="btn-aprobar">
           Aprobar Cotización
         </button>` : ''}
-        ${canEnviarCliente ? `<button class="btn btn-success" id="btn-enviar-cliente"
-          style="background:#16a34a;border-color:#15803d;grid-column:1/-1;">
+        ${canEnviarCliente ? `<button class="btn btn-success" id="btn-enviar-cliente">
           Aprobar y Enviar al Cliente
         </button>` : ''}
-        ${canAceptar ? `<button class="btn btn-primary" id="btn-aceptar" style="grid-column:1/-1;">
+        ${canAceptar ? `<button class="btn btn-primary btn-fila-entera" id="btn-aceptar">
           Confirmar Cotización — Cierre de Venta
         </button>` : ''}
         ${canRechazar ? `<button class="btn btn-danger btn-sm" id="btn-rechazar">
@@ -194,12 +193,12 @@ export function buildProformaHTML(q, id, viewMode) {
   // Hidden in adminMode because that mode already provides an editable textarea.
   const adminCommentBlock = !adminMode && q.comentarios_admin
     ? `<div class="form-group" style="margin-top:1rem;padding:1rem;background:var(--bg-secondary,#f8f9fa);border-left:3px solid var(--clr-orange);border-radius:4px;">
-      <span class="form-label" style="color:var(--clr-orange);">💬 Comentario del Administrador</span>
+      <span class="form-label text-orange">Comentario del Administrador</span>
       <p class="proforma-description" style="margin-top:.25rem;">${escHtml(q.comentarios_admin)}</p>
     </div>`
     : jefeMode && !adminMode
       ? `<div class="form-group" style="margin-top:1rem;padding:1rem;background:var(--bg-secondary,#f8f9fa);border-left:3px solid var(--clr-orange);border-radius:4px;">
-      <span class="form-label" style="color:var(--clr-orange);">💬 Comentario del Administrador</span>
+      <span class="form-label text-orange">Comentario del Administrador</span>
       <p class="proforma-description text-muted" style="margin-top:.25rem;font-style:italic;">Sin comentarios del Administrador.</p>
     </div>`
       : '';
@@ -244,7 +243,7 @@ export function buildProformaHTML(q, id, viewMode) {
 
       <!-- Solicitor data (DATOS DEL SOLICITANTE — mirrors the PDF grid) -->
       <div class="form-group mb-2">
-        <span class="form-label" style="color:#1D4ED8;">👤 Datos del Solicitante</span>
+        <span class="form-label" style="color:#1D4ED8;">Datos del Solicitante</span>
         <div class="proforma-meta-bar" style="margin-top:.4rem;">
           <div class="proforma-meta-item">
             <span class="form-label">Nombre</span>
@@ -271,7 +270,7 @@ export function buildProformaHTML(q, id, viewMode) {
 
       <!-- Equipment data (DATOS DEL EQUIPO — mirrors the PDF grid) -->
       <div class="form-group mb-2">
-        <span class="form-label" style="color:#1D4ED8;">🚜 Datos del Equipo</span>
+        <span class="form-label" style="color:#1D4ED8;">Datos del Equipo</span>
         <div class="proforma-meta-bar" style="margin-top:.4rem;">
           <div class="proforma-meta-item">
             <span class="form-label">Marca</span>
@@ -356,9 +355,7 @@ export function buildProformaHTML(q, id, viewMode) {
         <button
           type="button"
           id="btn-ver-excel"
-          class="btn btn-sm"
-          style="display:inline-flex;align-items:center;gap:.35rem;
-                 background:#16a34a;color:#fff;border:1px solid #15803d;"
+          class="btn btn-sm btn-excel"
         >
           Descargar Excel
         </button>` : ''}

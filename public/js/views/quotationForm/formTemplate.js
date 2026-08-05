@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { escText } from './helpers.js';
+import { stateIcon } from '../../shared/icons.js';
 
 export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
   // Shared "(Opcional)" label marker — appended to every non-mandatory field
@@ -274,10 +275,10 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
 
       <!-- Excel optional attachment -->
       <div class="form-group mt-2">
-        <label class="form-label">📊 Planilla Excel de Auditoría (opcional)</label>
-        <div class="drop-zone" id="excel-drop-zone" style="border-color:#16a34a;">
+        <label class="form-label">Planilla Excel de Auditoría (opcional)</label>
+        <div class="drop-zone drop-zone-excel" id="excel-drop-zone">
           <input type="file" id="excel-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
-          <div class="drop-zone-icon">📊</div>
+          <div class="drop-zone-icon">${stateIcon('subir')}</div>
           <p class="drop-zone-text">Arrastra un archivo .xlsx aquí o haz clic para seleccionar</p>
           <p class="drop-zone-hint">Máximo 10 MB · Solo archivos .xlsx</p>
           <p class="drop-zone-file hidden" id="excel-file-name"></p>

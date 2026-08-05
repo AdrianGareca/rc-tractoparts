@@ -47,7 +47,7 @@ export function openLicitacionModal({ mode = 'create', licitacion = null, onSave
   let selectedClientId   = isEdit ? licitacion.id_cliente : null;
   let selectedClientName = isEdit ? (licitacion.cliente_nombre ?? '') : '';
 
-  const title = isAttach ? '📎 Adjuntar Documentos' : (isEdit ? '✏️ Editar Licitación' : '➕ Nueva Licitación');
+  const title = isAttach ? 'Adjuntar documentos' : (isEdit ? 'Editar licitación' : 'Nueva licitación');
   const submitLabel = isAttach ? 'Subir documentos' : (isEdit ? 'Guardar cambios' : 'Crear licitación');
 
   const headerFieldsHtml = `
@@ -119,7 +119,7 @@ export function openLicitacionModal({ mode = 'create', licitacion = null, onSave
             <label class="form-label">Documentos ${showHeaderFields ? '<span class="text-muted">(opcional)</span>' : ''}</label>
             <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
               <input type="file" id="lic-doc-input" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" style="display:none;" />
-              <button type="button" class="btn btn-ghost btn-sm" id="lic-doc-pick">📎 Elegir archivos</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="lic-doc-pick">Elegir archivos</button>
               <span class="text-muted text-sm">PDF, Word, Excel o imágenes · varios a la vez</span>
             </div>
             <div id="lic-doc-filelist" style="margin-top:.35rem;"></div>

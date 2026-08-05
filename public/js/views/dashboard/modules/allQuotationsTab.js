@@ -135,7 +135,7 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
 
       if (rows.length === 0) {
         seccion.empty({
-          icono:  '📋',
+          icono:  'cotizaciones',
           titulo: 'Sin resultados',
           texto:  'No hay cotizaciones que coincidan con los filtros aplicados.',
         });

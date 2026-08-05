@@ -46,9 +46,45 @@
 .btn-icon     { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: .3rem; border-radius: var(--radius-sm); font-size: 1rem; line-height: 1; }
 .btn-icon:hover { color: var(--text-primary); background: var(--bg-hover); }
 
+/* Descargar Excel. Estaba escrito como estilo inline IDÉNTICO en
+   proformaTemplate.js y timelineView.js — el mismo botón, dos copias, con el
+   verde en hexadecimal. Ver --clr-excel en tokens.css para por qué este verde
+   no es el de la paleta. */
+.btn-excel {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  background: var(--clr-excel);
+  color: var(--clr-white);
+  border: 1px solid var(--clr-excel-strong);
+}
+.btn-excel:hover:not(:disabled) { background: var(--clr-excel-strong); }
+
 .btn-full  { width: 100%; }
 .btn-sm    { padding: .3rem .65rem; font-size: .8rem; }
 .btn-lg    { padding: .65rem 1.4rem; font-size: 1rem; }
+
+/* El «+» redondo que abre el alta rápida al lado de un <select> (origen de
+   cliente, marca de un ítem). Vivía como estilo inline de nueve propiedades
+   copiado en dos archivos, con dos tamaños distintos y el verde a mano.
+   Usa --clr-green, el verde de «alta» del resto de la aplicación: el que tenía
+   era otro verde sin más razón que la de haberse escrito aparte. */
+.btn-add-inline {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--clr-green);
+  color: var(--clr-white);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.btn-add-inline:hover:not(:disabled) { background: var(--clr-green-strong); }
+
+/* Dentro de una fila de la tabla de ítems, donde el alto lo manda el renglón. */
+.btn-add-inline-sm { width: 22px; height: 22px; }
 
 .btn-loading .btn-label { opacity: 0; }
 .btn-loading .btn-spinner { display: inline-block !important; }
@@ -82,6 +118,11 @@
   padding: .65rem 1rem;
   font-size: .95rem;
 }
+
+/* Ocupa el ancho completo de la grilla de acciones. Existe porque el botón de
+   confirmar venta lo pedía con style="grid-column:1/-1" a mano: la regla de
+   arriba ya lo hacía para los .btn-success, pero ése es .btn-primary. */
+.approval-actions-grid .btn-fila-entera { grid-column: 1 / -1; }
 
 /* "Hold" state button */
 .btn-hold {

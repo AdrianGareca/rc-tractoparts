@@ -155,7 +155,7 @@ export function wirePdfButton(body, id, correlativo, clienteNombre) {
       showToast(err.data?.message || err.message || 'No se pudo cargar el PDF.', 'error');
     } finally {
       btn.disabled = false;
-      btn.textContent = '📄 Ver PDF Adjunto';
+      btn.textContent = 'Ver PDF adjunto';
     }
   });
 }
@@ -199,7 +199,7 @@ export function wireExcelButton(body, id, correlativo, clienteNombre) {
       showToast(err.data?.message || err.message || 'No se pudo descargar la planilla Excel.', 'error');
     } finally {
       btn.disabled = false;
-      btn.textContent = '📊 Descargar Excel';
+      btn.textContent = 'Descargar Excel';
     }
   });
 }
@@ -226,7 +226,7 @@ export function buildTimelineHtml(history) {
       ? new Date(h.creado_en).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })
       : '—';
     const obs     = h.observacion
-      ? ` <em style="color:var(--text-secondary);">Obs: ${escHtml(h.observacion)}</em>`
+      ? ` <em class="text-secondary">Obs: ${escHtml(h.observacion)}</em>`
       : '';
     return `
       <li style="display:flex;gap:.75rem;margin-bottom:.75rem;align-items:flex-start;">
@@ -234,7 +234,7 @@ export function buildTimelineHtml(history) {
                      margin-top:4px;background:${isFirst ? 'var(--clr-blue)' : 'var(--clr-indigo)'};"></span>
         <div style="font-size:.85rem;line-height:1.4;">
           <strong>${fecha}</strong> — ${label}<br>
-          <span style="color:var(--text-secondary);">
+          <span class="text-secondary">
             Usuario: ${escHtml(h.nombre_usuario ?? '—')}
             ${h.rol_usuario ? ` · Rol: ${escHtml(h.rol_usuario)}` : ''}
           </span>
@@ -277,9 +277,7 @@ export function buildQuotationDetailButtons(quotation) {
     ? `<button
         type="button"
         id="btn-ver-excel"
-        class="btn btn-sm"
-        style="display:inline-flex;align-items:center;gap:.35rem;
-               background:#16a34a;color:#fff;border:1px solid #15803d;"
+        class="btn btn-sm btn-excel"
       >
         Descargar Excel
       </button>`

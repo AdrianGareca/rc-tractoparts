@@ -79,3 +79,113 @@ export const ICONS = {
 export function navIcon(nombre) {
   return ICONS[nombre] ?? '';
 }
+
+// =============================================================================
+// LOS ÍCONOS DEL ESTADO VACÍO
+//
+// Van aparte de los de navegación porque se dibujan a otra escala. El de la
+// barra lateral mide 20px y acompaña a una palabra; éste mide 40px y está solo
+// en el centro del panel. Un trazo de 1.7 que se ve bien chico, ampliado al
+// doble se ve pesado — por eso 1.25.
+//
+// Reemplazan al emoji gigante que había antes. Dos razones concretas, más allá
+// del gusto: el emoji no hereda `currentColor`, así que quedaba a todo color
+// sobre un estado vacío que es gris; y cada sistema operativo lo dibuja
+// distinto, de modo que la pantalla que uno diseña no es la que ve el usuario.
+// =============================================================================
+
+/** Envoltura del estado vacío: mismo lenguaje, trazo más fino por el tamaño. */
+const svgVacio = (paths) =>
+  `<svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+  `stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+
+export const EMPTY_ICONS = {
+  // Hoja con renglones: no hay cotizaciones que mostrar.
+  cotizaciones: svgVacio('<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>'),
+
+  // Lupa: se buscó y no apareció nada. Distinto de «no hay nada cargado».
+  busqueda: svgVacio('<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>'),
+
+  // Edificio: los clientes son empresas.
+  clientes: svgVacio('<path d="M4 20V6l7-3v17M11 20h9V10l-9-3"/><path d="M14 12h3M14 16h3M7 8v.01M7 12v.01M7 16v.01"/>'),
+
+  // Calendario: las licitaciones se ordenan por fecha límite.
+  licitaciones: svgVacio('<path d="M4 6h16v14H4z"/><path d="M4 10h16M9 6V4M15 6V4"/>'),
+
+  // Caja: el reporte de consumo cuenta repuestos, no documentos.
+  items: svgVacio('<path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9"/>'),
+
+  // Visto dentro de un círculo: la cola quedó vacía porque se terminó el
+  // trabajo. Es el único estado vacío que es una buena noticia.
+  alDia: svgVacio('<circle cx="12" cy="12" r="8.5"/><path d="m8.5 12 2.5 2.5 4.5-5"/>'),
+
+  // Flecha entrando a una bandeja: la zona donde se suelta un archivo. Una zona
+  // de arrastre es un estado vacío que además invita a llenarlo, así que la
+  // flecha apunta HACIA ADENTRO — la de descarga apunta al revés y confundía.
+  subir: svgVacio('<path d="M12 15V4"/><path d="m8 7.5 4-3.5 4 3.5"/><path d="M4 14v4.5a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5V14"/>'),
+};
+
+// =============================================================================
+// LOS ÍCONOS DE TIPO DE ARCHIVO
+//
+// Acá el ícono SÍ hace falta: en una lista de adjuntos uno busca «el Excel» o
+// «el PDF» sin leer los nombres, que suelen ser largos y parecidos entre sí.
+// Es el mismo argumento que la barra lateral — la forma llega antes que la
+// palabra cuando se recorre una lista con la vista.
+//
+// Eran emoji (📄 📝 📊 🖼️) y el problema no era que estuvieran: era que cada
+// sistema operativo los dibuja distinto, así que la lista que uno diseña no es
+// la que ve el usuario, y al lado de un nombre de archivo quedaban a todo color
+// sobre una fila gris.
+// =============================================================================
+
+/** Tamaño de renglón: acompaña al nombre del archivo, no lo tapa. */
+const svgArchivo = (paths) =>
+  `<svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+  `stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+
+/** Hoja con la esquina doblada — la base de los tres tipos. */
+const HOJA = '<path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5"/>';
+
+const FILE_ICONS = {
+  // Renglones de texto: un documento que se lee.
+  texto:   svgArchivo(`${HOJA}<path d="M9 13h6M9 17h4"/>`),
+  // Cuadrícula: una planilla.
+  planilla: svgArchivo(`${HOJA}<path d="M8.5 12.5h7M8.5 16.5h7M12 12.5v7"/>`),
+  // Montaña y sol dentro del marco: una imagen.
+  imagen:  svgArchivo('<path d="M4 5h16v14H4z"/><circle cx="9" cy="10" r="1.4"/><path d="m5 17 4.5-4.5L13 16l2.5-2.5L19 17"/>'),
+  // Clip: cualquier otra cosa. No se inventa un dibujo para lo desconocido.
+  otro:    svgArchivo('<path d="M17 8.5 10 15.5a2.5 2.5 0 0 1-3.5-3.5l7.5-7.5a4 4 0 0 1 5.5 5.5l-8 8a5.5 5.5 0 0 1-7.5-7.5l6.5-6.5"/>'),
+};
+
+/** Extensión → tipo de dibujo. Lo que no está acá cae en «otro». */
+const EXT_TIPO = {
+  pdf: 'texto',  doc: 'texto',    docx: 'texto',  txt: 'texto',
+  xls: 'planilla', xlsx: 'planilla', csv: 'planilla',
+  jpg: 'imagen', jpeg: 'imagen',  png: 'imagen',  webp: 'imagen',
+};
+
+/**
+ * SVG del ícono que corresponde al nombre de un archivo, por su extensión.
+ *
+ * @param {string} nombre — nombre del archivo, con extensión
+ * @returns {string} SVG en línea
+ */
+export function fileIcon(nombre) {
+  const ext = String(nombre ?? '').split('.').pop().toLowerCase();
+  return FILE_ICONS[EXT_TIPO[ext] ?? 'otro'];
+}
+
+/**
+ * SVG del ícono de un estado vacío, o cadena vacía si el nombre no existe.
+ *
+ * Vacío y no una excepción: un nombre mal escrito deja el panel sin dibujo,
+ * que se sigue leyendo por su título y su texto. Tirar acá dejaría el panel
+ * colgado mostrando el esqueleto de carga para siempre, que es mucho peor.
+ *
+ * @param {string} nombre — clave de EMPTY_ICONS
+ * @returns {string} SVG en línea
+ */
+export function stateIcon(nombre) {
+  return EMPTY_ICONS[nombre] ?? '';
+}

@@ -89,7 +89,7 @@ export function showCreateUserModal(onDone) {
         new CreateUserCommand(payload),
         {
           btn,
-          successMsg: `Usuario "${usuario}" creado exitosamente.`,
+          successMsg: `Usuario "${usuario}" creado.`,
           onSuccess:  () => { UI.closeModal(); onDone(); },
           onError:    (err) => {
             alertEl.textContent = err.data?.message || err.message;
@@ -154,7 +154,7 @@ export function showEditUserModal(id, nombre, idRol, canApprove, onDone) {
       const btn = body.querySelector('#eu-confirm');
       CommandInvoker.run(new UpdateUserCommand(id, updateData), {
         btn,
-        successMsg: 'Usuario actualizado exitosamente.',
+        successMsg: 'Usuario actualizado.',
         onSuccess:  () => { UI.closeModal(); onDone(); },
       });
     });

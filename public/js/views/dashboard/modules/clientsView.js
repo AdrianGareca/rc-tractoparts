@@ -78,7 +78,7 @@ export async function mountClientsTab(panel) {
 
       if (rows.length === 0) {
         seccion.empty({
-          icono:  '🏢',
+          icono:  'clientes',
           titulo: 'Sin resultados',
           texto:  'No hay clientes que coincidan con la búsqueda.',
         });

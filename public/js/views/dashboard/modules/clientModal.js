@@ -95,7 +95,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
               <option value="">— Sin clasificar —</option>
             </select>
             <button type="button" id="nc-add-origen" title="Agregar nuevo origen"
-                    style="flex-shrink:0;width:28px;height:28px;padding:0;border-radius:50%;background:#16a34a;color:#fff;border:none;cursor:pointer;font-size:1rem;line-height:1;">
+                    class="btn-add-inline">
               +
             </button>
           </div>
@@ -236,8 +236,8 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
       const saved   = resp.data;
       showToast(
         isEdit
-          ? `Cliente "${saved.razon_social}" actualizado exitosamente.`
-          : `Cliente "${saved.razon_social}" registrado exitosamente.`,
+          ? `Cliente "${saved.razon_social}" actualizado.`
+          : `Cliente "${saved.razon_social}" registrado.`,
         'success'
       );
       onSaved(String(saved.id), saved.razon_social);
