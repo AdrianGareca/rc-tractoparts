@@ -264,9 +264,9 @@ export class ExecutiveStrategy extends DashboardStrategy {
 
       if (rows.length === 0) {
         section.innerHTML = `
-          <div class="card" style="border-left:4px solid #3B82F6;margin-bottom:1rem;">
+          <div class="card" style="border-left:4px solid var(--clr-blue);margin-bottom:1rem;">
             <div class="card-header" style="padding-bottom:.5rem;">
-              <h4 style="margin:0;color:#3B82F6;">Proformas del Día — ${escHtml(today)}</h4>
+              <h4 style="margin:0;color:var(--clr-blue);">Proformas del Día — ${escHtml(today)}</h4>
             </div>
             <p class="text-muted" style="padding:.5rem 1rem 1rem;">Sin proformas emitidas hoy.</p>
           </div>`;
@@ -274,10 +274,10 @@ export class ExecutiveStrategy extends DashboardStrategy {
       }
 
       section.innerHTML = `
-        <div class="card" style="border-left:4px solid #3B82F6;margin-bottom:1rem;">
+        <div class="card" style="border-left:4px solid var(--clr-blue);margin-bottom:1rem;">
           <div class="card-header" style="padding-bottom:.5rem;">
-            <h4 style="margin:0;color:#3B82F6;">Proformas del Día — ${escHtml(today)}</h4>
-            <span class="badge" style="background:#3B82F6;color:#fff;">${rows.length} emitida${rows.length > 1 ? 's' : ''}</span>
+            <h4 style="margin:0;color:var(--clr-blue);">Proformas del Día — ${escHtml(today)}</h4>
+            <span class="badge" style="background:var(--clr-blue);color:#fff;">${rows.length} emitida${rows.length > 1 ? 's' : ''}</span>
           </div>
           <div class="table-wrapper" style="margin:0;">
             <table class="data-table" style="font-size:.85rem;">
@@ -310,9 +310,9 @@ export class ExecutiveStrategy extends DashboardStrategy {
 
       const highlighted = ['Pendiente', 'En revision', 'Aprobada internamente', 'Confirmada'];
       statsEl.innerHTML = [
-        { label: 'Total',      value: data.grandTotal ?? 0, color: '#3B82F6' },
+        { label: 'Total',      value: data.grandTotal ?? 0, color: 'var(--clr-blue)' },
         ...highlighted.map(s => ({
-          label: s, value: totals[s] ?? 0, color: STAT_COLOR[s] ?? '#6B7280'
+          label: s, value: totals[s] ?? 0, color: STAT_COLOR[s] ?? 'var(--clr-gray)'
         })),
       ].map(s => `
         <div class="stat-card" style="--stat-accent:${s.color}">

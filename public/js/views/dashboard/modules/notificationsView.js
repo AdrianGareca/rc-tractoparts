@@ -55,10 +55,10 @@ function _pushDesktopNotif(title, body, icon = '/assets/images/rc_logo.png') {
 // _tipoStyle — returns { icon, borderColor, labelColor } for each tipo
 // ---------------------------------------------------------------------------
 function _tipoStyle(tipo) {
-  if (tipo === 'aprobacion')    return { icon: '✅', borderColor: '#10B981', labelColor: '#065F46' };
-  if (tipo === 'envio_cliente') return { icon: '📤', borderColor: '#3B82F6', labelColor: '#1D4ED8' };
-  if (tipo === 'licitacion')    return { icon: '📑', borderColor: '#14B8A6', labelColor: '#0F766E' };
-  return                               { icon: '⚠️', borderColor: '#F97316', labelColor: '#9A3412' }; // correccion
+  if (tipo === 'aprobacion')    return { icon: '✅', borderColor: 'var(--clr-green)', labelColor: '#065F46' };
+  if (tipo === 'envio_cliente') return { icon: '📤', borderColor: 'var(--clr-blue)', labelColor: '#1D4ED8' };
+  if (tipo === 'licitacion')    return { icon: '📑', borderColor: 'var(--clr-teal)', labelColor: '#0F766E' };
+  return                               { icon: '⚠️', borderColor: 'var(--clr-orange)', labelColor: '#9A3412' }; // correccion
 }
 
 // ---------------------------------------------------------------------------

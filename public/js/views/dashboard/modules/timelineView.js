@@ -231,7 +231,7 @@ export function buildTimelineHtml(history) {
     return `
       <li style="display:flex;gap:.75rem;margin-bottom:.75rem;align-items:flex-start;">
         <span style="flex-shrink:0;width:10px;height:10px;border-radius:50%;
-                     margin-top:4px;background:${isFirst ? '#3B82F6' : '#6366F1'};"></span>
+                     margin-top:4px;background:${isFirst ? 'var(--clr-blue)' : 'var(--clr-indigo)'};"></span>
         <div style="font-size:.85rem;line-height:1.4;">
           <strong>${fecha}</strong> — ${label}<br>
           <span style="color:var(--text-secondary);">

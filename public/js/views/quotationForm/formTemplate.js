@@ -20,7 +20,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
     ? `<div class="correlativo-preview" style="display:inline-flex;align-items:center;gap:.5rem;
            padding:.25rem .75rem;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;
            font-size:.85rem;color:#1D4ED8;font-weight:600;margin-bottom:.75rem;">
-         <span style="color:#6B7280;font-weight:400;">Próximo Nº:</span>
+         <span style="color:var(--clr-gray);font-weight:400;">Próximo Nº:</span>
          <span>${escText(nextCorrelativo)}</span>
        </div>`
     : '';

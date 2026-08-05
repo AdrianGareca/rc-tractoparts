@@ -134,7 +134,7 @@ export function buildProformaHTML(q, id, viewMode) {
       </button>
     </div>` : ''}
     ${canRevertir ? `
-    <div class="approval-actions" style="margin-top:1rem;border-top:2px solid #F59E0B;padding-top:1rem;">
+    <div class="approval-actions" style="margin-top:1rem;border-top:2px solid var(--clr-amber);padding-top:1rem;">
       <h4 class="approval-actions-title" style="color:#B45309;">Revertir Rechazo</h4>
       <p class="text-sm" style="color:var(--text-secondary);margin-bottom:.75rem;">
         Como autoridad comercial superior, puede revaluar esta cotización y reintroducirla
@@ -143,11 +143,11 @@ export function buildProformaHTML(q, id, viewMode) {
       </p>
       <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
         <button class="btn btn-warning btn-sm" id="btn-revertir-pendiente"
-                style="background:#F59E0B;color:#000;border:none;">
+                style="background:var(--clr-amber);color:#000;border:none;">
           Revertir a Pendiente
         </button>
         <button class="btn btn-warning btn-sm" id="btn-revertir-revision"
-                style="background:#F97316;color:#fff;border:none;">
+                style="background:var(--clr-orange);color:#fff;border:none;">
           Revertir a En Revisión
         </button>
       </div>
@@ -193,13 +193,13 @@ export function buildProformaHTML(q, id, viewMode) {
   // empty-state placeholder is also rendered so the section is never invisible.
   // Hidden in adminMode because that mode already provides an editable textarea.
   const adminCommentBlock = !adminMode && q.comentarios_admin
-    ? `<div class="form-group" style="margin-top:1rem;padding:1rem;background:var(--bg-secondary,#f8f9fa);border-left:3px solid #F97316;border-radius:4px;">
-      <span class="form-label" style="color:#F97316;">💬 Comentario del Administrador</span>
+    ? `<div class="form-group" style="margin-top:1rem;padding:1rem;background:var(--bg-secondary,#f8f9fa);border-left:3px solid var(--clr-orange);border-radius:4px;">
+      <span class="form-label" style="color:var(--clr-orange);">💬 Comentario del Administrador</span>
       <p class="proforma-description" style="margin-top:.25rem;">${escHtml(q.comentarios_admin)}</p>
     </div>`
     : jefeMode && !adminMode
-      ? `<div class="form-group" style="margin-top:1rem;padding:1rem;background:var(--bg-secondary,#f8f9fa);border-left:3px solid #F97316;border-radius:4px;">
-      <span class="form-label" style="color:#F97316;">💬 Comentario del Administrador</span>
+      ? `<div class="form-group" style="margin-top:1rem;padding:1rem;background:var(--bg-secondary,#f8f9fa);border-left:3px solid var(--clr-orange);border-radius:4px;">
+      <span class="form-label" style="color:var(--clr-orange);">💬 Comentario del Administrador</span>
       <p class="proforma-description text-muted" style="margin-top:.25rem;font-style:italic;">Sin comentarios del Administrador.</p>
     </div>`
       : '';

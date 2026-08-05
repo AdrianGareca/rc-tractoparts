@@ -457,7 +457,7 @@ export class ManagerStrategy extends DashboardStrategy {
 
     UI.openModal('🔄 Revertir Rechazo / Revaluar Cotización', (body) => {
       body.innerHTML = `
-        <div style="background:#FEF9C3;border:1px solid #F59E0B;border-radius:6px;padding:.75rem 1rem;margin-bottom:1rem;">
+        <div style="background:#FEF9C3;border:1px solid var(--clr-amber);border-radius:6px;padding:.75rem 1rem;margin-bottom:1rem;">
           <strong style="color:#B45309;">⚠️ Acción de Alta Autoridad</strong>
           <p class="text-sm" style="color:#78350F;margin:.25rem 0 0;">
             Esta acción revierte el estado de <strong>Rechazada</strong> a
@@ -474,7 +474,7 @@ export class ManagerStrategy extends DashboardStrategy {
         <div class="modal-actions">
           <button class="btn btn-ghost" id="rev-cancel">Cancelar</button>
           <button class="btn btn-sm" id="rev-confirm"
-                  style="background:#F59E0B;color:#000;border:none;font-weight:600;">
+                  style="background:var(--clr-amber);color:#000;border:none;font-weight:600;">
             Confirmar Revertir Rechazo
           </button>
         </div>`;

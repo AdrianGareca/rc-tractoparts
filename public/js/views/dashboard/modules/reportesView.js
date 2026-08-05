@@ -125,10 +125,10 @@ function _buildClientesPorOrigenTable(rows) {
           <td class="text-right">${Number(o.total_clientes ?? 0)}</td>
           <td class="text-right fw-600">
             ${Number(o.total_usd ?? 0) > 0
-              ? `<span style="color:#10B981;">USD ${Number(o.total_usd).toFixed(2)}</span>`
+              ? `<span style="color:var(--clr-green);">USD ${Number(o.total_usd).toFixed(2)}</span>`
               : ''}
             ${Number(o.total_bob ?? 0) > 0
-              ? `<span style="color:#8B5CF6;margin-left:.25rem;">BOB ${Number(o.total_bob).toFixed(2)}</span>`
+              ? `<span style="color:var(--clr-violet);margin-left:.25rem;">BOB ${Number(o.total_bob).toFixed(2)}</span>`
               : ''}
             ${Number(o.total_usd ?? 0) === 0 && Number(o.total_bob ?? 0) === 0 ? '—' : ''}
           </td>
@@ -185,10 +185,10 @@ function _buildTopClientesTable(rows, propio = false) {
           <td class="text-right">${Number(c.proformas_emitidas ?? 0)}</td>
           <td class="text-right fw-600">
             ${Number(c.total_usd ?? 0) > 0
-              ? `<span style="color:#10B981;">USD ${Number(c.total_usd).toFixed(2)}</span>`
+              ? `<span style="color:var(--clr-green);">USD ${Number(c.total_usd).toFixed(2)}</span>`
               : ''}
             ${Number(c.total_bob ?? 0) > 0
-              ? `<span style="color:#8B5CF6;margin-left:.25rem;">BOB ${Number(c.total_bob).toFixed(2)}</span>`
+              ? `<span style="color:var(--clr-violet);margin-left:.25rem;">BOB ${Number(c.total_bob).toFixed(2)}</span>`
               : ''}
             ${Number(c.total_usd ?? 0) === 0 && Number(c.total_bob ?? 0) === 0 ? '—' : ''}
           </td>
@@ -245,19 +245,19 @@ function _buildLeaderboardTable(rows, rol) {
        </td></tr>`
     : safeRows.map((e) => {
         const tasa   = parseFloat(e.tasa_aprobacion ?? 0);
-        const color  = tasa >= 60 ? '#10B981' : tasa >= 40 ? '#F59E0B' : '#EF4444';
+        const color  = tasa >= 60 ? 'var(--clr-green)' : tasa >= 40 ? 'var(--clr-amber)' : 'var(--clr-red)';
         return `
           <tr>
             <td class="fw-600">${escHtml(e.ejecutivo)}</td>
             <td class="text-right">${Number(e.total_creadas ?? 0)}</td>
-            <td class="text-right" style="color:#10B981;">${Number(e.total_aprobadas ?? 0)}</td>
+            <td class="text-right" style="color:var(--clr-green);">${Number(e.total_aprobadas ?? 0)}</td>
             <td class="text-right fw-600" style="color:${color};">${tasa.toFixed(1)}%</td>
             <td class="text-right fw-600">
               ${Number(e.total_usd ?? 0) > 0
-                ? `<span style="color:#3B82F6;">USD ${Number(e.total_usd).toFixed(2)}</span>`
+                ? `<span style="color:var(--clr-blue);">USD ${Number(e.total_usd).toFixed(2)}</span>`
                 : ''}
               ${Number(e.total_bob ?? 0) > 0
-                ? `<span style="color:#8B5CF6;margin-left:.25rem;">BOB ${Number(e.total_bob).toFixed(2)}</span>`
+                ? `<span style="color:var(--clr-violet);margin-left:.25rem;">BOB ${Number(e.total_bob).toFixed(2)}</span>`
                 : ''}
               ${Number(e.total_usd ?? 0) === 0 && Number(e.total_bob ?? 0) === 0 ? '—' : ''}
             </td>
@@ -575,7 +575,7 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
     // and never add up to a combined "grand total".
     const isUSD      = moneda === 'USD';
     const monLabel   = isUSD ? 'USD' : 'BOB';
-    const monAccent  = isUSD ? '#3B82F6' : '#8B5CF6';
+    const monAccent  = isUSD ? 'var(--clr-blue)' : 'var(--clr-violet)';
     const volSel     = Number(
       (isUSD ? volumen.total_mes_usd : volumen.total_mes_bob) ?? 0
     ).toFixed(2);
@@ -584,7 +584,7 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
     const ratioPct   = conversion.ratio_pct       ?? '0.0';
     const aceptadas  = conversion.total_aceptadas  ?? 0;
     const rechazadas = conversion.total_rechazadas ?? 0;
-    const ratioColor = parseFloat(ratioPct) >= 50 ? '#10B981' : '#EF4444';
+    const ratioColor = parseFloat(ratioPct) >= 50 ? 'var(--clr-green)' : 'var(--clr-red)';
 
     // ── Advanced BI data ──────────────────────────────────────────────────
     const rol = advancedRes.rol ?? 'Jefe';
@@ -616,7 +616,7 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
             <div class="stat-card-value">${volSel}</div>
             <div class="stat-card-label">Volumen ${monLabel} (período)</div>
           </div>
-          <div class="stat-card" style="--stat-accent:#F59E0B;">
+          <div class="stat-card" style="--stat-accent:var(--clr-amber);">
             <div class="stat-card-value">${totalCot}</div>
             <div class="stat-card-label">Cotizaciones (período)</div>
           </div>
@@ -624,11 +624,11 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
             <div class="stat-card-value">${ratioPct}%</div>
             <div class="stat-card-label">Tasa de Éxito (período)</div>
           </div>
-          <div class="stat-card" style="--stat-accent:#10B981;">
+          <div class="stat-card" style="--stat-accent:var(--clr-green);">
             <div class="stat-card-value">${aceptadas}</div>
             <div class="stat-card-label">Confirmadas (período)</div>
           </div>
-          <div class="stat-card" style="--stat-accent:#EF4444;">
+          <div class="stat-card" style="--stat-accent:var(--clr-red);">
             <div class="stat-card-value">${rechazadas}</div>
             <div class="stat-card-label">Rechazadas (período)</div>
           </div>
@@ -660,10 +660,10 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
                     <tr>
                       <td class="fw-600">${escHtml(e.ejecutivo)}</td>
                       <td class="text-right">${e.total}</td>
-                      <td class="text-right" style="color:#10B981;">${e.aceptadas}</td>
-                      <td class="text-right" style="color:#EF4444;">${e.rechazadas}</td>
-                      <td class="text-right" style="color:#F59E0B;">${e.pendientes}</td>
-                      <td class="text-right" style="color:#F97316;">${e.en_revision}</td>
+                      <td class="text-right" style="color:var(--clr-green);">${e.aceptadas}</td>
+                      <td class="text-right" style="color:var(--clr-red);">${e.rechazadas}</td>
+                      <td class="text-right" style="color:var(--clr-amber);">${e.pendientes}</td>
+                      <td class="text-right" style="color:var(--clr-orange);">${e.en_revision}</td>
                       <td class="text-right fw-600">${monLabel} ${Number(
                         (isUSD ? e.volumen_usd : e.volumen_bob) ?? 0
                       ).toFixed(2)}</td>

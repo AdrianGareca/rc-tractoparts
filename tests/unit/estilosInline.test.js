@@ -206,3 +206,77 @@ describe('los emoji de la interfaz sólo pueden disminuir', () => {
     expect(culpables).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// EL TRINQUETE DE LOS COLORES ESCRITOS A MANO
+//
+// Habia 81 colores hexadecimales sueltos en el JavaScript, y los seis mas
+// frecuentes eran EXACTAMENTE tokens que ya existian en tokens.css:
+//
+//   #3B82F6 (11 veces) = --clr-blue        #F97316 (8) = --clr-orange
+//   #10B981  (9)       = --clr-green       #8B5CF6 (6) = --clr-violet
+//   #F59E0B  (8)       = --clr-amber       #EF4444 (5) = --clr-red
+//
+// POR QUE IMPORTA
+// El proyecto esta migrando a la identidad de las proformas (azul marino y
+// naranja). Un color escrito a mano NO SIGUE la paleta: se puede cambiar
+// tokens.css entero y esos 81 lugares se quedan como estaban. Es la misma
+// deuda que los estilos inline — el diseno clavado en el codigo — solo que mas
+// dificil de ver, porque un hex no llama la atencion como un style="".
+//
+// Quedan 29: variantes que NO tienen token exacto (los verdes del boton de
+// enviar, un par de azules mas oscuros). Reemplazarlos por el token mas
+// parecido cambiaria el aspecto, asi que esperan a que se decida si merecen
+// token propio o si el boton merece su clase.
+// ---------------------------------------------------------------------------
+describe('los colores escritos a mano sólo pueden disminuir', () => {
+  const TOPE = 29;
+
+  // Se arma con RegExp desde una CADENA y no como literal. La primera versión
+  // usaba /#[0-9A-Fa-f]{6}/ y devolvía cero coincidencias: al escribir el
+  // archivo, el  se convirtió en un carácter de retroceso real (0x08), que
+  // es invisible al leer el código pero en la expresión exige un backspace
+  // después del color. Un test que da cero y pasa es peor que uno que falla.
+  const HEX = '#[0-9A-Fa-f]{6}';
+
+  const contar = () => archivos.reduce((total, f) => {
+    const src = fs.readFileSync(f, 'utf8');
+    return total + (src.match(new RegExp(HEX, 'g')) || []).length;
+  }, 0);
+
+  test(`no hay más de ${TOPE} colores hex en public/js`, () => {
+    const actual = contar();
+
+    if (actual > TOPE) {
+      throw new Error(
+        `Hay ${actual} colores hexadecimales sueltos y el tope es ${TOPE}. ` +
+        'Un color escrito a mano no sigue la paleta: se puede cambiar tokens.css ' +
+        'entero y ese lugar se queda como estaba. Buscá el token equivalente en ' +
+        'public/css/tokens.css y usá var(--clr-…).'
+      );
+    }
+    expect(actual).toBeLessThanOrEqual(TOPE);
+  });
+
+  test('si bajaron, hay que bajar el tope', () => {
+    const actual = contar();
+    if (actual < TOPE) {
+      throw new Error(`Ahora hay ${actual} colores hex (el tope decía ${TOPE}). Bajá TOPE a ${actual}.`);
+    }
+    expect(actual).toBe(TOPE);
+  });
+
+  // Los seis que ya se migraron no deben volver: son los que tienen token
+  // exacto, así que no hay excusa para escribirlos a mano.
+  test.each(['#3B82F6', '#10B981', '#F59E0B', '#F97316', '#8B5CF6', '#EF4444'])(
+    '%s ya no aparece: tiene token propio',
+    (hex) => {
+      const culpables = archivos.filter((f) => {
+        const src = fs.readFileSync(f, 'utf8');
+        return src.includes(hex) || src.includes(hex.toLowerCase());
+      }).map((f) => rel(f));
+
+      expect(culpables).toEqual([]);
+    }
+  );
+});

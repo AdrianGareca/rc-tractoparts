@@ -45,14 +45,14 @@ export function licitacionBadgeHtml(estado) {
 }
 
 export const STAT_COLOR = {
-  'Pendiente':             '#F59E0B',
-  'En revision':           '#F97316',
-  'En espera':             '#6366F1',
-  'Aprobada internamente': '#10B981',
-  'Enviada al cliente':    '#3B82F6',
-  'Confirmada':            '#8B5CF6',
-  'Aceptada':              '#8B5CF6',
-  'Rechazada':             '#EF4444',
+  'Pendiente':             'var(--clr-amber)',
+  'En revision':           'var(--clr-orange)',
+  'En espera':             'var(--clr-indigo)',
+  'Aprobada internamente': 'var(--clr-green)',
+  'Enviada al cliente':    'var(--clr-blue)',
+  'Confirmada':            'var(--clr-violet)',
+  'Aceptada':              'var(--clr-violet)',
+  'Rechazada':             'var(--clr-red)',
 };
 
 export function badgeHtml(estado) {
