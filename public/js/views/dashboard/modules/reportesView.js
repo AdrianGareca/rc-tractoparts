@@ -157,21 +157,29 @@ function _buildClientesPorOrigenTable(rows) {
 
 // ---------------------------------------------------------------------------
 // _buildTopClientesTable
-// Renders the "Top 10 Clientes de Mayor Impacto" HTML table.
-// Guards against null/empty data with a clean empty-state row.
+// La tabla de clientes. Guarda contra datos nulos con un estado vacio limpio.
 //
-// @param {Array}  rows  — top_clientes array from /api/reportes/advanced
-// @returns {string}     — HTML string for the <table> block
+// EL TITULO CAMBIA SEGUN QUIEN MIRA, y no es cosmetica: son dos preguntas
+// distintas. El Jefe quiere saber QUIENES PESAN MAS en la empresa, asi que ve
+// los diez de mayor volumen. El ejecutivo quiere ver SU CARTERA completa —
+// recortarla a diez le escondia clientes propios en su propio reporte, que fue
+// exactamente lo que reporto.
+//
+// @param {Array}   rows       — top_clientes de /api/reportes/advanced
+// @param {boolean} [propio]   — true cuando el reporte es del ejecutivo mismo
+// @returns {string}           — HTML del bloque <table>
 // ---------------------------------------------------------------------------
-function _buildTopClientesTable(rows) {
+function _buildTopClientesTable(rows, propio = false) {
   const safeRows = rows ?? [];
   const tbody = safeRows.length === 0
-    ? `<tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--text-muted);">
-         Sin registros de clientes para este período.
+    ? `<tr><td colspan="${propio ? 4 : 5}" class="empty-cell">
+         ${propio
+           ? 'Todavía no hay clientes con cotizaciones confirmadas o enviadas en este período.'
+           : 'Sin registros de clientes para este período.'}
        </td></tr>`
     : safeRows.map((c, i) => `
         <tr>
-          <td class="text-right fw-600" style="color:var(--text-secondary);width:2.5rem;">${i + 1}</td>
+          ${propio ? '' : `<td class="text-right fw-600 rank-cell">${i + 1}</td>`}
           <td class="fw-600">${escHtml(c.cliente)}</td>
           <td class="text-muted text-sm">${escHtml(c.nit)}</td>
           <td class="text-right">${Number(c.proformas_emitidas ?? 0)}</td>
@@ -189,18 +197,21 @@ function _buildTopClientesTable(rows) {
   return `
     <div class="card mb-2">
       <div class="card-header">
-        <h3>Top 10 Clientes de Mayor Impacto</h3>
-        <span class="text-muted text-sm">Basado en cotizaciones Confirmadas / Enviadas al cliente</span>
+        <h3>${propio ? 'Mis clientes' : 'Clientes de mayor impacto'}</h3>
+        <span class="text-muted text-sm">
+          ${propio ? `${safeRows.length} cliente(s)` : 'Los diez de mayor volumen'} ·
+          cotizaciones confirmadas o enviadas al cliente
+        </span>
       </div>
       <div class="table-wrapper">
         <table class="data-table">
           <thead>
             <tr>
-              <th class="text-right">#</th>
+              ${propio ? '' : '<th class="text-right">#</th>'}
               <th>Cliente / Empresa</th>
               <th>NIT</th>
-              <th class="text-right">Proformas Emitidas</th>
-              <th class="text-right">Total Facturado</th>
+              <th class="text-right">Proformas emitidas</th>
+              <th class="text-right">Total facturado</th>
             </tr>
           </thead>
           <tbody>${tbody}</tbody>
@@ -373,7 +384,7 @@ async function loadExecutiveMetrics(panel, desde, hasta) {
     // complemento. Antes el reporte del ejecutivo era solo esas dos tablas.
     dataEl.innerHTML = `
       <div id="mym-indicadores"></div>
-      ${_buildTopClientesTable(top_clientes)}
+      ${_buildTopClientesTable(top_clientes, true)}
       ${_buildLeaderboardTable(leaderboard, rol)}`;
 
     await renderMisMetricas(dataEl.querySelector('#mym-indicadores'), { desde, hasta });
@@ -663,7 +674,7 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
         </div>
       </div>
 
-      <!-- ── BI: Top 10 Clients ── -->
+      <!-- ── BI: clientes de mayor impacto (vista de empresa) ── -->
       ${_buildTopClientesTable(top_clientes)}
 
       <!-- ── BI: Executive Leaderboard ── -->

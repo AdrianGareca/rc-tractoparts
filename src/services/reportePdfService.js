@@ -39,6 +39,11 @@ const PDFDocument = require('pdfkit');
 // si ese build no trae el ICU completo, toLocaleString('es-BO') cae a ingles en
 // silencio — el PDF salia con "July 12, 2026" en un documento en castellano.
 const { fmtNum, formatDate, formatDateTime, formatMes } = require('./pdf/format');
+// La franja de logos de marcas y el subtitulo enmarcado son lo que hace
+// RECONOCIBLE a una proforma de RC Tractoparts. Reusar el mismo dibujante —y no
+// una copia— garantiza que si manana cambia una marca, cambie en los dos
+// documentos a la vez.
+const { drawBrandStrip } = require('./pdf/drawers/brandStrip');
 
 const ASSETS_DIR = path.join(__dirname, '..', 'assets', 'images');
 const LOGO_PATH  = path.join(ASSETS_DIR, 'rc_logo.png');
@@ -151,10 +156,23 @@ function sectionTitle(doc, text, y) {
     doc.addPage();
     y = MARGIN;
   }
-  doc.rect(MARGIN, y, CW, 16).fill(C.NAVY);
-  doc.font('Helvetica-Bold').fontSize(8.5).fillColor(C.WHITE)
-     .text(text.toUpperCase(), MARGIN + 6, y + 4, { width: CW - 12, lineBreak: false });
-  return y + 24;
+
+  // ESTETICA DE LA PROFORMA, no de tablero.
+  // Antes esto era una banda marina rellena con texto blanco: se veia como un
+  // dashboard, no como el documento que la empresa imprime. La proforma resuelve
+  // sus titulos al reves — texto marino directamente sobre blanco, chico y en
+  // mayusculas, separado por un filete NARANJA (ver drawThreeColumnGrid en
+  // pdf/drawers/infoGrid.js, que lo describe como "physical proforma aesthetic").
+  //
+  // Copiar ese tratamiento es lo que hace que un reporte y una cotizacion se
+  // lean como papeles de la misma empresa.
+  doc.font('Helvetica-Bold').fontSize(8).fillColor(C.NAVY)
+     .text(text.toUpperCase(), MARGIN, y, { width: CW, characterSpacing: 0.6, lineBreak: false });
+
+  doc.moveTo(MARGIN, y + 12).lineTo(PW - MARGIN, y + 12)
+     .lineWidth(0.9).strokeColor(C.ORANGE).stroke();
+
+  return y + 20;
 }
 
 // ---------------------------------------------------------------------------
@@ -209,11 +227,24 @@ function simpleTable(doc, { columns, rows, y, emptyLabel }) {
 }
 
 function statBox(doc, x, y, w, label, value, color) {
-  doc.roundedRect(x, y, w, 42, 4).lineWidth(0.8).fillAndStroke(C.LIGHT_GRAY, C.BORDER_GRAY);
+  // Misma logica que sectionTitle: la proforma usa cajas BLANCAS con borde fino
+  // y un filete naranja bajo el rotulo, no rectangulos redondeados con relleno
+  // gris. El redondeo y el fondo tenue son lenguaje de tablero web; en un papel
+  // impreso se leen como un elemento ajeno al resto del documento.
+  //
+  // El rotulo va ARRIBA y el numero abajo, al reves que antes: es el orden en
+  // que la proforma presenta cada dato (etiqueta chica, valor grande), y ademas
+  // permite leer la columna de rotulos de un vistazo cuando hay cuatro cajas.
+  doc.rect(x, y, w, 42).lineWidth(0.5).fillAndStroke(C.WHITE, C.BORDER_GRAY);
+
+  doc.font('Helvetica-Bold').fontSize(6.5).fillColor(C.NAVY)
+     .text(label.toUpperCase(), x + 7, y + 6, { width: w - 14, lineBreak: false });
+
+  doc.moveTo(x, y + 16).lineTo(x + w, y + 16)
+     .lineWidth(0.8).strokeColor(C.ORANGE).stroke();
+
   doc.font('Helvetica-Bold').fontSize(13).fillColor(color || C.NAVY)
-     .text(value, x + 8, y + 8, { width: w - 16, lineBreak: false });
-  doc.font('Helvetica').fontSize(7).fillColor(C.MID_GRAY)
-     .text(label, x + 8, y + 26, { width: w - 16, lineBreak: false });
+     .text(value, x + 7, y + 22, { width: w - 14, lineBreak: false });
 }
 
 // ---------------------------------------------------------------------------
@@ -454,6 +485,21 @@ async function generateReportePdf(data) {
         rol,
         nombreUsuario,
       });
+
+      // La franja de marcas, igual que en la proforma. Pesa 136 KB en total
+      // desde que se optimizaron los logos, asi que sumarla no engorda el PDF
+      // de forma apreciable — y es lo primero que identifica al documento como
+      // de esta empresa.
+      y = drawBrandStrip(doc, y);
+
+      // Titulo enmarcado entre dos reglas marinas: el mismo tratamiento que
+      // drawSubtitle le da a "PROFORMA REPUESTOS".
+      doc.moveTo(MARGIN, y).lineTo(PW - MARGIN, y).lineWidth(0.8).strokeColor(C.NAVY).stroke();
+      doc.font('Helvetica-Bold').fontSize(12).fillColor(C.NAVY)
+         .text(mode === 'company' ? 'REPORTE GENERAL' : 'REPORTE INDIVIDUAL',
+           MARGIN, y + 5, { width: CW, align: 'center', lineBreak: false });
+      doc.moveTo(MARGIN, y + 21).lineTo(PW - MARGIN, y + 21).lineWidth(0.8).strokeColor(C.NAVY).stroke();
+      y += 32;
 
       if (mode === 'company' && progreso) {
         y = sectionTitle(doc, 'Resumen General', y);

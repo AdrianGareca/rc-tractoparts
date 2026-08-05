@@ -54,3 +54,19 @@
 
 /* ===== 28. TABLE utilities ===== */
 .text-right { text-align: right; }
+
+/* Celda del estado vacío de una tabla: reemplaza al style="" que estaba
+   repetido en cada tabla con el mismo texto centrado y gris. */
+.empty-cell {
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--text-muted);
+}
+
+/* Columna del número de ranking. Sólo aparece en la vista de empresa: en «mis
+   clientes» ordenar por volumen no es una competencia, y numerar la propia
+   cartera del 1 al 40 no aporta nada. */
+.rank-cell {
+  color: var(--text-secondary);
+  width: 2.5rem;
+}

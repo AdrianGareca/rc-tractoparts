@@ -137,9 +137,20 @@ async function getAdvancedReports(ejecutivoId = null, fechaDesde = null, fechaHa
     return { clauses, params };
   };
 
-  // ── Top 10 Clients ──────────────────────────────────────────────────────
-  // For Jefe/Admin: company-wide, all executives.
-  // For Ejecutivo: restricted to their own accepted/sent quotations.
+  // ── Clientes ────────────────────────────────────────────────────────────
+  // Jefe/Admin: toda la empresa, recortado a los diez de mayor volumen — con
+  // cuatrocientos clientes, una tabla completa no se lee y la pregunta que un
+  // Jefe se hace es «quiénes pesan más».
+  //
+  // Ejecutivo: TODOS los suyos, sin recorte. Es otra pregunta: no quiere el
+  // ranking de la empresa, quiere su cartera. Recortarla a diez le escondía
+  // clientes propios en su propio reporte, que fue justamente lo que reportó.
+  //
+  // El límite alto (y no ausente) es una red: si algún día un ejecutivo tiene
+  // miles de clientes, el reporte se degrada mostrando menos en vez de tardar
+  // un minuto en abrir.
+  const TOPE_CLIENTES = isEjecutivo ? 500 : 10;
+
   const tc      = buildFilters();
   const tcExtra = tc.clauses.length ? ' AND ' + tc.clauses.join(' AND ') : '';
   const topClientesSql = `
@@ -154,7 +165,7 @@ async function getAdvancedReports(ejecutivoId = null, fechaDesde = null, fechaHa
         WHERE c.estado IN ('Confirmada', 'Aceptada', 'Enviada al cliente')${tcExtra}
         GROUP BY c.id_cliente, cl.razon_social, cl.nit
         ORDER BY total_usd DESC
-        LIMIT 10`;
+        LIMIT ${TOPE_CLIENTES}`;
   const [topClientesRows] = await pool.execute(topClientesSql, tc.params);
 
   // ── Executive Leaderboard ───────────────────────────────────────────────

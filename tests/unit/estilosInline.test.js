@@ -75,7 +75,7 @@ describe('un elemento nunca lleva dos atributos class', () => {
 // `--stat-accent` que cada tarjeta inyecta con su propio color.
 // ---------------------------------------------------------------------------
 describe('los estilos inline sólo pueden disminuir', () => {
-  const TOPE = 213;
+  const TOPE = 211;
 
   const contar = () => archivos.reduce((total, f) => {
     const src = fs.readFileSync(f, 'utf8');
