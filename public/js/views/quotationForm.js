@@ -183,7 +183,7 @@ class FormMediator {
     fpSelect?.addEventListener('change', () => {
       const group  = this.#container.querySelector('#forma_pago_custom_group');
       const isOtro = fpSelect.value === '__otro__';
-      if (group) group.style.display = isOtro ? '' : 'none';
+      group?.classList.toggle('hidden', !isOtro);
       if (isOtro) this.#container.querySelector('#forma_pago_custom')?.focus();
     });
 

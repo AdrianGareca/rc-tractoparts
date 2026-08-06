@@ -109,3 +109,9 @@ img { max-width: 100%; display: block; }
     scroll-behavior: auto !important;
   }
 }
+
+/* Espaciados finos que no entran en la escala .mt-1/.mt-2/.mt-3 (medio, uno y
+   uno y medio). Se usan donde el aire tiene que ser menor que medio renglón:
+   el pie de un bloque de datos, un comentario debajo de su rótulo. */
+.mt-025 { margin-top: .25rem; }
+.fst-italic { font-style: italic; }

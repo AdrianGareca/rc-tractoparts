@@ -62,6 +62,13 @@
   --clr-indigo: #6366F1;   /* indigo-500 */
   --clr-slate:  #64748B;   /* slate-500  */
 
+  /* El naranja de la proforma impresa. Es el del filete bajo cada título de
+     sección en el PDF (ver src/services/pdf/constants.js), más terroso que
+     --clr-orange. Existe acá para que la pantalla y el papel usen el MISMO
+     valor: estaba escrito a mano en proformaTemplate.js, así que el día que se
+     ajuste la identidad impresa la pantalla se quedaría con el anterior. */
+  --clr-proforma-orange: #C85A0F;
+
   /* Verde de Excel. NO es --clr-green: es más apagado y más frío, el de la
      marca de la planilla. Existe como token propio porque el botón «Descargar
      Excel» sí tiene motivo para no seguir la paleta — el color dice qué formato

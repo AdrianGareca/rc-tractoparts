@@ -100,3 +100,75 @@
   background: var(--bg-hover);
   color: var(--text-primary);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LA PROFORMA EN PANTALLA — clases que salieron de sus estilos inline
+
+   proformaTemplate.js tenía 20 atributos style="" y 6 colores escritos a mano.
+   Es la pantalla que más importa que siga la identidad: es la misma proforma
+   que el cliente recibe impresa, así que un color suelto acá es la pantalla y
+   el papel diciendo cosas distintas.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Fila de botones de una acción excepcional. */
+.proforma-acciones-fila {
+  display: flex;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+
+/* Bloque «Revertir Rechazo» — acción de alta autoridad, separada del resto por
+   un filete ámbar para que no se confunda con las operaciones de todos los días. */
+.revertir-rechazo {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--clr-amber);
+}
+
+/* Usa el token y no el #B45309 que estaba escrito: ese hex es el valor de
+   --clr-amber-soft SÓLO en el tema claro, así que en los oscuros quedaba un
+   marrón ilegible sobre fondo oscuro. */
+.revertir-rechazo-title { color: var(--clr-amber-soft); }
+
+/* Botón naranja de la proforma. No existía como clase, y se pedía con
+   style="background:var(--clr-orange);color:#fff;border:none". El de al lado
+   pedía el ámbar de la misma forma, sin darse cuenta de que eso ya es
+   .btn-warning. */
+.btn-orange {
+  background: var(--clr-orange);
+  color: var(--clr-white);
+  border-color: var(--clr-orange);
+}
+.btn-orange:hover:not(:disabled) { background: var(--clr-proforma-orange); }
+
+/* Panel de revisión del Administrador. */
+.admin-review-panel {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.textarea-vertical { resize: vertical; }
+
+/* Comentario del Administrador, tal como lo ve el ejecutivo o el Jefe. Estaba
+   escrito DOS VECES con el mismo style de cinco propiedades — una vez para el
+   comentario real y otra para el «sin comentarios». */
+.comentario-admin {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--bg-raised);
+  border-left: 3px solid var(--clr-orange);
+  border-radius: 4px;
+}
+
+/* Rótulo de un bloque de datos (Solicitante, Equipo). Tenía #1D4ED8 a mano,
+   que es el valor de --clr-blue-soft en el tema claro nada más. */
+.proforma-bloque-label { color: var(--clr-blue-soft); }
+
+/* El descuento en el total: naranja de la proforma, igual que en el PDF. */
+.proforma-descuento {
+  color: var(--clr-proforma-orange);
+  font-weight: 600;
+}
+
+.mt-04 { margin-top: .4rem; }

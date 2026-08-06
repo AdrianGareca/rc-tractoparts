@@ -59,7 +59,7 @@ export function buildProformaHTML(q, id, viewMode) {
           <td class="text-right fw-600">${Number(d.subtotal).toFixed(2)}</td>
         </tr>`;
       }).join('')
-    : `<tr><td colspan="${showCodigos ? 6 : 5}" style="text-align:center;color:var(--text-muted);">Sin ítems registrados</td></tr>`;
+    : `<tr><td colspan="${showCodigos ? 6 : 5}" class="empty-cell">Sin ítems registrados</td></tr>`;
 
   // Operational action grid — contextual buttons based on current state.
   // Rendered for the Jefe AND for delegated executives (Delegación de Funciones
@@ -133,20 +133,18 @@ export function buildProformaHTML(q, id, viewMode) {
       </button>
     </div>` : ''}
     ${canRevertir ? `
-    <div class="approval-actions" style="margin-top:1rem;border-top:2px solid var(--clr-amber);padding-top:1rem;">
-      <h4 class="approval-actions-title" style="color:#B45309;">Revertir Rechazo</h4>
-      <p class="text-sm" style="color:var(--text-secondary);margin-bottom:.75rem;">
+    <div class="approval-actions revertir-rechazo">
+      <h4 class="approval-actions-title revertir-rechazo-title">Revertir Rechazo</h4>
+      <p class="text-sm text-secondary mb-1">
         Como autoridad comercial superior, puede revaluar esta cotización y reintroducirla
         en el flujo de aprobación. Las observaciones de rechazo previas serán preservadas
         en el historial de estados.
       </p>
-      <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
-        <button class="btn btn-warning btn-sm" id="btn-revertir-pendiente"
-                style="background:var(--clr-amber);color:#000;border:none;">
+      <div class="proforma-acciones-fila">
+        <button class="btn btn-warning btn-sm" id="btn-revertir-pendiente">
           Revertir a Pendiente
         </button>
-        <button class="btn btn-warning btn-sm" id="btn-revertir-revision"
-                style="background:var(--clr-orange);color:#fff;border:none;">
+        <button class="btn btn-orange btn-sm" id="btn-revertir-revision">
           Revertir a En Revisión
         </button>
       </div>
@@ -155,16 +153,15 @@ export function buildProformaHTML(q, id, viewMode) {
 
   // Admin action panel — comment box + "En Espera" + "Solicitar Cambios" buttons
   const adminButtons = adminMode ? `
-    <div class="approval-actions" style="border-top:1px solid var(--border);margin-top:1.5rem;padding-top:1.25rem;">
+    <div class="approval-actions admin-review-panel">
       <h4 class="approval-actions-title">Revisión del Administrador</h4>
-      <div class="form-group" style="margin-bottom:.75rem;">
+      <div class="form-group mb-1">
         <label class="form-label" for="admin-comment-input">Comentario de Supervisión</label>
-        <textarea class="form-control" id="admin-comment-input" rows="3"
-                  placeholder="Ej: Verificar disponibilidad con proveedor antes de aprobar..."
-                  style="resize:vertical;">${escHtml(q.comentarios_admin ?? '')}</textarea>
+        <textarea class="form-control textarea-vertical" id="admin-comment-input" rows="3"
+                  placeholder="Ej: Verificar disponibilidad con proveedor antes de aprobar...">${escHtml(q.comentarios_admin ?? '')}</textarea>
         <span class="field-error" id="admin-comment-err"></span>
       </div>
-      <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+      <div class="proforma-acciones-fila">
         <button class="btn btn-ghost btn-sm" id="btn-save-comment">
           Guardar Comentario
         </button>
@@ -192,14 +189,14 @@ export function buildProformaHTML(q, id, viewMode) {
   // empty-state placeholder is also rendered so the section is never invisible.
   // Hidden in adminMode because that mode already provides an editable textarea.
   const adminCommentBlock = !adminMode && q.comentarios_admin
-    ? `<div class="form-group" style="margin-top:1rem;padding:1rem;background:var(--bg-secondary,#f8f9fa);border-left:3px solid var(--clr-orange);border-radius:4px;">
+    ? `<div class="form-group comentario-admin">
       <span class="form-label text-orange">Comentario del Administrador</span>
-      <p class="proforma-description" style="margin-top:.25rem;">${escHtml(q.comentarios_admin)}</p>
+      <p class="proforma-description mt-025">${escHtml(q.comentarios_admin)}</p>
     </div>`
     : jefeMode && !adminMode
-      ? `<div class="form-group" style="margin-top:1rem;padding:1rem;background:var(--bg-secondary,#f8f9fa);border-left:3px solid var(--clr-orange);border-radius:4px;">
+      ? `<div class="form-group comentario-admin">
       <span class="form-label text-orange">Comentario del Administrador</span>
-      <p class="proforma-description text-muted" style="margin-top:.25rem;font-style:italic;">Sin comentarios del Administrador.</p>
+      <p class="proforma-description text-muted mt-025 fst-italic">Sin comentarios del Administrador.</p>
     </div>`
       : '';
 
@@ -243,8 +240,8 @@ export function buildProformaHTML(q, id, viewMode) {
 
       <!-- Solicitor data (DATOS DEL SOLICITANTE — mirrors the PDF grid) -->
       <div class="form-group mb-2">
-        <span class="form-label" style="color:#1D4ED8;">Datos del Solicitante</span>
-        <div class="proforma-meta-bar" style="margin-top:.4rem;">
+        <span class="form-label proforma-bloque-label">Datos del Solicitante</span>
+        <div class="proforma-meta-bar mt-04">
           <div class="proforma-meta-item">
             <span class="form-label">Nombre</span>
             <p>${v(q.nombre_sol)}</p>
@@ -270,8 +267,8 @@ export function buildProformaHTML(q, id, viewMode) {
 
       <!-- Equipment data (DATOS DEL EQUIPO — mirrors the PDF grid) -->
       <div class="form-group mb-2">
-        <span class="form-label" style="color:#1D4ED8;">Datos del Equipo</span>
-        <div class="proforma-meta-bar" style="margin-top:.4rem;">
+        <span class="form-label proforma-bloque-label">Datos del Equipo</span>
+        <div class="proforma-meta-bar mt-04">
           <div class="proforma-meta-item">
             <span class="form-label">Marca</span>
             <p>${v(q.equipo_marca)}</p>
@@ -321,7 +318,7 @@ export function buildProformaHTML(q, id, viewMode) {
         ${descuento > 0 ? `
         <div class="proforma-total-row">
           <span>Descuento</span>
-          <span style="color:#C85A0F;font-weight:600;">− ${q.moneda} ${descuento.toFixed(2)}</span>
+          <span class="proforma-descuento">− ${q.moneda} ${descuento.toFixed(2)}</span>
         </div>` : ''}
         <div class="proforma-total-row proforma-grand-total">
           <span>TOTAL</span>

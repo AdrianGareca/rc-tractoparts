@@ -15,13 +15,11 @@ import { stateIcon } from '../../shared/icons.js';
 export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
   // Shared "(Opcional)" label marker — appended to every non-mandatory field
   // so users know at a glance which inputs can be left blank.
-  const OPT = '<span style="color:#9ca3af;font-size:.8rem;font-weight:400;">(Opcional)</span>';
+  const OPT = '<span class="label-opcional">(Opcional)</span>';
 
   const corrPreview = nextCorrelativo
-    ? `<div class="correlativo-preview" style="display:inline-flex;align-items:center;gap:.5rem;
-           padding:.25rem .75rem;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;
-           font-size:.85rem;color:#1D4ED8;font-weight:600;margin-bottom:.75rem;">
-         <span style="color:var(--clr-gray);font-weight:400;">Próximo Nº:</span>
+    ? `<div class="correlativo-preview">
+         <span class="correlativo-preview-label">Próximo Nº:</span>
          <span>${escText(nextCorrelativo)}</span>
        </div>`
     : '';
@@ -34,7 +32,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
       <!-- Header fields -->
       <div class="form-row">
         <!-- CLIENT SELECTOR: replaces the old number input -->
-        <div class="form-group" style="flex:2;">
+        <div class="form-group fg-doble">
           <label class="form-label" for="cliente-search">Cliente *</label>
           <div class="client-select-wrapper">
             <div class="client-search-group">
@@ -123,7 +121,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
       <!-- DATOS DEL SOLICITANTE -->
       <details class="form-section-details" open>
         <summary class="form-section-summary">Datos del Solicitante</summary>
-        <div class="form-row" style="margin-top:.75rem;">
+        <div class="form-row form-row-seccion">
           <div class="form-group">
             <label class="form-label" for="solicitante_nombre">Nombre del Solicitante ${OPT}</label>
             <input class="form-control" type="text" id="solicitante_nombre"
@@ -155,7 +153,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
       <!-- DATOS DEL EQUIPO -->
       <details class="form-section-details" open>
         <summary class="form-section-summary">Datos del Equipo</summary>
-        <div class="form-row" style="margin-top:.75rem;">
+        <div class="form-row form-row-seccion">
           <div class="form-group">
             <label class="form-label" for="equipo_marca">Marca ${OPT}</label>
             <input class="form-control" type="text" id="equipo_marca"
@@ -196,20 +194,22 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
       <!-- Line items — OBSERVER Subject changes trigger all three Observers -->
       <div class="line-items-section">
         <h4>Ítems de Detalle</h4>
-        <div class="table-wrapper" style="border-radius:6px;">
+        <div class="table-wrapper">
           <table class="line-items-table">
             <thead>
             <tr>
-              <th style="width:22%">Descripción</th>
-              <th style="width:10%">Cód. Parte</th>
-              <th style="width:10%">Cód. Alt.</th>
-              <th style="width:11%">Marca</th>
-              <th style="width:7%">UM</th>
-              <th style="width:7%">Cantidad</th>
-              <th style="width:11%">Precio Unit.</th>
-              <th style="width:10%">Subtotal</th>
-              <th style="width:10%">T. Entrega</th>
-              <th style="width:2%"></th>
+              <!-- Los anchos viven en quotation-form.css: se reparten el 100%,
+                   así que sólo tienen sentido los diez juntos. -->
+              <th>Descripción</th>
+              <th>Cód. Parte</th>
+              <th>Cód. Alt.</th>
+              <th>Marca</th>
+              <th>UM</th>
+              <th>Cantidad</th>
+              <th>Precio Unit.</th>
+              <th>Subtotal</th>
+              <th>T. Entrega</th>
+              <th></th>
             </tr>
           </thead>
             <tbody id="items-body"></tbody>
@@ -227,15 +227,15 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
           <span class="totals-value" id="totals-subtotal">0.00</span>
         </div>
         <div class="totals-row">
-          <label for="totals-discount" style="font-size:.85rem;color:var(--text-secondary);">
+          <label for="totals-discount" class="totals-discount-label">
             Descuento Manual (monto fijo)
           </label>
           <input
             type="number"
             id="totals-discount"
+            class="totals-discount-input"
             min="0" step="any"
             placeholder="0.00"
-            style="width:120px;text-align:right;padding:.25rem .5rem;border:1px solid var(--border);border-radius:4px;font-size:.9rem;"
             title="Ingrese un descuento en monto absoluto (no porcentaje). Se resta directamente del subtotal."
           />
         </div>
@@ -246,8 +246,8 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
       </div>
 
       <!-- Payment terms + PDF config -->
-      <div class="form-row" style="margin-top:1rem;align-items:flex-end;gap:1rem;flex-wrap:wrap;">
-        <div class="form-group" style="flex:2;min-width:220px;">
+      <div class="form-row form-row-pie">
+        <div class="form-group fg-doble-min">
           <label class="form-label" for="forma_pago">Forma de Pago</label>
           <select class="form-control" id="forma_pago">
             <option value="">Por defecto (60% ANTICIPO Y SALDO CONTRA ENTREGA)</option>
@@ -259,15 +259,17 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
             <option value="__otro__">Otro (Personalizado)</option>
           </select>
         </div>
-        <div class="form-group" style="flex:2;min-width:220px;display:none;" id="forma_pago_custom_group">
+        <!-- Nace oculto con .hidden y NO con style="display:none": el JS lo
+             muestra al elegir «Otro», y vaciar un estilo inline no muestra
+             nada — sólo deja que gane la hoja de estilos. -->
+        <div class="form-group fg-doble-min hidden" id="forma_pago_custom_group">
           <label class="form-label" for="forma_pago_custom">Forma de Pago Personalizada</label>
           <input class="form-control" type="text" id="forma_pago_custom"
                  placeholder="Ej: 70% ANTICIPO Y SALDO A 30 DÍAS" maxlength="200" />
         </div>
-        <div class="form-group" style="display:flex;align-items:center;gap:.5rem;padding-bottom:.25rem;">
-          <input type="checkbox" id="mostrar_codigos" checked
-                 style="width:16px;height:16px;cursor:pointer;" />
-          <label for="mostrar_codigos" class="form-label" style="margin:0;cursor:pointer;">
+        <div class="form-group fg-casilla">
+          <input type="checkbox" id="mostrar_codigos" checked class="casilla" />
+          <label for="mostrar_codigos" class="form-label label-casilla">
             Mostrar columna CÓDIGO en el PDF
           </label>
         </div>

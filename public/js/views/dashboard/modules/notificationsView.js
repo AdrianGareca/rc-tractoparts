@@ -82,7 +82,7 @@ function _buildNotifItem(n) {
 
   return `
     <li style="padding:.6rem .75rem;border:1px solid ${borderColor};border-left:4px solid ${borderColor};
-               border-radius:6px;margin-bottom:.5rem;background:var(--bg-secondary);">
+               border-radius:6px;margin-bottom:.5rem;background:var(--bg-raised);">
       <strong>${escHtml(n.numero_correlativo)}</strong>
       — ${escHtml(n.cliente_nombre ?? '—')}<br>
       <span class="text-sm text-secondary">

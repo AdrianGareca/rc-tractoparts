@@ -102,7 +102,21 @@ describe('buildFormHTML — opciones de negocio', () => {
   });
 
   test('el grupo de forma de pago personalizada arranca oculto', () => {
-    expect(buildFormHTML()).toMatch(/id="forma_pago_custom_group"[\s\S]{0,80}?display:none|display:none[\s\S]{0,80}?id="forma_pago_custom_group"/);
+    // Con la clase .hidden y no con style="display:none".
+    //
+    // No es lo mismo: para MOSTRARLO el JS hacía `style.display = ''`, que no
+    // muestra nada — apenas deja que gane la hoja de estilos. Mientras el
+    // display viviera en el atributo inline funcionaba de casualidad, porque
+    // ninguna regla del CSS tocaba ese elemento. En cuanto una lo hiciera, el
+    // campo «Otro (Personalizado)» dejaba de aparecer y el ejecutivo no podía
+    // escribir una forma de pago fuera de las predefinidas.
+    const html = buildFormHTML();
+
+    expect(html).toMatch(/id="forma_pago_custom_group"|class="[^"]*\bhidden\b/);
+    expect(html).toMatch(
+      /class="[^"]*\bhidden\b[^"]*"[^>]*id="forma_pago_custom_group"|id="forma_pago_custom_group"[^>]*class="[^"]*\bhidden\b/
+    );
+    expect(html).not.toMatch(/id="forma_pago_custom_group"[^>]*display:none/);
   });
 
   test('mostrar_codigos viene tildado por defecto', () => {

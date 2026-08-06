@@ -192,13 +192,41 @@ describe('populateHeaderForEdit — robustez', () => {
 });
 
 describe('setFormaPago', () => {
+  // El campo libre se oculta con la clase .hidden, no con style.display.
+  //
+  // POR QUÉ IMPORTA LA DIFERENCIA
+  // Antes el <div> nacía con style="display:none" y para mostrarlo se hacía
+  // `group.style.display = ''`. Eso funciona sólo mientras NINGUNA regla del
+  // CSS toque el display de ese elemento: vaciar el estilo inline no muestra
+  // nada, apenas deja que gane lo que diga la hoja de estilos. Al mover el
+  // display:none a una clase —que es lo que pedía sacar los estilos inline—
+  // el campo "Otro (Personalizado)" habría dejado de aparecer, y el ejecutivo
+  // no habría podido escribir una forma de pago fuera de las predefinidas.
+  //
+  // .hidden es lo que ya usa el resto del proyecto (el spinner, el nombre del
+  // archivo Excel) y dice lo que quiere decir.
+
+  /** Elemento mínimo con la parte de classList que usa el código. */
+  function fakeEl() {
+    const clases = new Set();
+    return {
+      classList: {
+        add:    (c) => clases.add(c),
+        remove: (c) => clases.delete(c),
+        toggle: (c, on) => (on ? clases.add(c) : clases.delete(c)),
+        contains: (c) => clases.has(c),
+      },
+      get oculto() { return clases.has('hidden'); },
+    };
+  }
+
   /** Contenedor con el select, el grupo del campo libre y el input. */
   function fakeFormaPago(opciones) {
     const sel = {
       value: '',
       options: opciones.map((v) => ({ value: v })),
     };
-    const group = { style: { display: '' } };
+    const group = fakeEl();
     const input = { value: '' };
     return {
       sel, group, input,
@@ -218,7 +246,7 @@ describe('setFormaPago', () => {
     setFormaPago(c, '30% DE ANTICIPO');
 
     expect(c.sel.value).toBe('30% DE ANTICIPO');
-    expect(c.group.style.display).toBe('none');
+    expect(c.group.oculto).toBe(true);
     expect(c.input.value).toBe('');
   });
 
@@ -228,7 +256,7 @@ describe('setFormaPago', () => {
     setFormaPago(c, '70% ANTICIPO Y SALDO A 30 DIAS');
 
     expect(c.sel.value).toBe('__otro__');
-    expect(c.group.style.display).toBe('');
+    expect(c.group.oculto).toBe(false);
     expect(c.input.value).toBe('70% ANTICIPO Y SALDO A 30 DIAS');
   });
 
@@ -238,7 +266,7 @@ describe('setFormaPago', () => {
     setFormaPago(c, '');
 
     expect(c.sel.value).toBe('');
-    expect(c.group.style.display).toBe('none');
+    expect(c.group.oculto).toBe(true);
   });
 
   test('"__otro__" no se considera un preset válido', () => {
@@ -249,7 +277,7 @@ describe('setFormaPago', () => {
     setFormaPago(c, '__otro__');
 
     expect(c.sel.value).toBe('__otro__');
-    expect(c.group.style.display).toBe('');
+    expect(c.group.oculto).toBe(false);
   });
 
   test('sin el select en el DOM no rompe', () => {

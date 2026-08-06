@@ -130,13 +130,18 @@ export function setFormaPago(container, value) {
     (o) => o.value === value && o.value !== '__otro__'
   );
 
+  // Se oculta con la clase .hidden y no con style.display. Vaciar un estilo
+  // inline no muestra nada: sólo deja que gane la hoja de estilos, así que en
+  // cuanto una regla del CSS tocara el display de este <div> el campo libre
+  // dejaría de aparecer — y el ejecutivo no podría escribir una forma de pago
+  // fuera de las predefinidas. .hidden es lo que usa el resto del proyecto.
   if (!value || isPreset) {
     sel.value = value || '';
-    if (group) group.style.display = 'none';
+    group?.classList.add('hidden');
     if (input) input.value = '';
   } else {
     sel.value = '__otro__';
-    if (group) group.style.display = '';
+    group?.classList.remove('hidden');
     if (input) input.value = value;
   }
 }

@@ -48,11 +48,112 @@
   margin-bottom: .65rem;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   EL FORMULARIO DE COTIZACIÓN — clases que salieron de sus estilos inline
+
+   formTemplate.js tenía 25 atributos style="". Cada clase de acá lleva el
+   nombre de PARA QUÉ es, no de qué hace: .fg-doble y no .flex-2. La diferencia
+   importa cuando dentro de un año alguien quiera cambiar el ancho del campo de
+   cliente y tenga que decidir si toca esta regla o si se lleva puesto otro
+   panel que casualmente usaba el mismo flex.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* La marca «(Opcional)» que acompaña a las etiquetas no obligatorias. */
+.label-opcional {
+  color: var(--clr-gray-soft);
+  font-size: .8rem;
+  font-weight: 400;
+}
+
+/* Chip con el próximo número de correlativo.
+   Tenía el nombre de clase puesto pero NINGUNA regla detrás: todo el aspecto
+   estaba en un style inline con tres colores a mano (#EFF6FF, #BFDBFE,
+   #1D4ED8). Eran colores de tema claro fijos, así que en los temas oscuros
+   quedaba una tarjeta blanca. Ahora usa la receta de aviso azul que el
+   proyecto ya tenía (.form-alert.alert-info), que sí sigue al tema. */
+.correlativo-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .25rem .75rem;
+  margin-bottom: .75rem;
+  background: var(--alert-bg-blue);
+  border: 1px solid var(--alert-br-blue);
+  border-radius: var(--radius-sm);
+  font-size: .85rem;
+  font-weight: 600;
+  color: var(--clr-blue-soft);
+}
+
+.correlativo-preview-label { color: var(--text-muted); font-weight: 400; }
+
+/* Un .form-group que ocupa el doble que sus hermanos de fila. El de cliente
+   y los de forma de pago: campos donde el texto es largo y partirlo en dos
+   renglones hace perder de vista con qué cliente se está cotizando. */
+.fg-doble     { flex: 2; }
+.fg-doble-min { flex: 2; min-width: 220px; }
+
+/* La fila de campos que va dentro de un <details> desplegable (Solicitante,
+   Equipo): necesita aire respecto del resumen que la abre. */
+.form-row-seccion { margin-top: .75rem; }
+
+/* La última fila del formulario: forma de pago y opciones del PDF. Se alinea
+   por abajo porque sus campos tienen alturas distintas — un <select> y una
+   casilla— y alineados por arriba la casilla queda flotando. */
+.form-row-pie {
+  margin-top: 1rem;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Grupo cuyo control es una casilla de verificación en vez de un campo. */
+.fg-casilla {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding-bottom: .25rem;
+}
+
+.casilla       { width: 16px; height: 16px; cursor: pointer; }
+.label-casilla { margin: 0; cursor: pointer; }
+
+/* Descuento manual, dentro del panel de totales. */
+.totals-discount-label { font-size: .85rem; color: var(--text-secondary); }
+
+.totals-discount-input {
+  width: 120px;
+  text-align: right;
+  padding: .25rem .5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: .9rem;
+}
+
+.line-items-section .table-wrapper { border-radius: var(--radius-sm); }
+
 .line-items-table {
   width: 100%;
   border-collapse: collapse;
   font-size: .84rem;
 }
+
+/* ANCHOS DE COLUMNA — los diez juntos, a propósito.
+   Estaban como style="width:22%" en cada <th>. Sacarlos de a uno no servía de
+   nada: un ancho solo no significa nada sin los otros nueve, porque lo que se
+   reparte es el 100%. O se migra la tabla entera o no se toca.
+   Si se agrega o saca una columna hay que revisar TODA esta lista — los
+   nth-child se corren solos y en silencio. */
+.line-items-table th:nth-child(1)  { width: 22%; }  /* Descripción   */
+.line-items-table th:nth-child(2)  { width: 10%; }  /* Cód. Parte    */
+.line-items-table th:nth-child(3)  { width: 10%; }  /* Cód. Alt.     */
+.line-items-table th:nth-child(4)  { width: 11%; }  /* Marca         */
+.line-items-table th:nth-child(5)  { width:  7%; }  /* UM            */
+.line-items-table th:nth-child(6)  { width:  7%; }  /* Cantidad      */
+.line-items-table th:nth-child(7)  { width: 11%; }  /* Precio Unit.  */
+.line-items-table th:nth-child(8)  { width: 10%; }  /* Subtotal      */
+.line-items-table th:nth-child(9)  { width: 10%; }  /* T. Entrega    */
+.line-items-table th:nth-child(10) { width:  2%; }  /* quitar ítem   */
 
 .line-items-table th {
   background: var(--bg-raised);

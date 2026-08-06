@@ -77,7 +77,7 @@ describe('un elemento nunca lleva dos atributos class', () => {
 // `--stat-accent` que cada tarjeta inyecta con su propio color.
 // ---------------------------------------------------------------------------
 describe('los estilos inline sólo pueden disminuir', () => {
-  const TOPE = 177;
+  const TOPE = 133;
 
   const contar = () => archivos.reduce((total, f) => {
     const src = fs.readFileSync(f, 'utf8');
@@ -131,6 +131,15 @@ describe('las clases nuevas existen en el CSS', () => {
     // Componentes que estaban escritos como estilo inline duplicado.
     'btn-excel', 'btn-add-inline', 'btn-add-inline-sm', 'btn-fila-entera',
     'drop-zone-excel', 'empty-icon', 'file-icon',
+    // El formulario de cotización, migrado panel por panel.
+    'label-opcional', 'correlativo-preview', 'correlativo-preview-label',
+    'fg-doble', 'fg-doble-min', 'form-row-seccion', 'form-row-pie',
+    'fg-casilla', 'casilla', 'label-casilla',
+    'totals-discount-label', 'totals-discount-input',
+    // La proforma en pantalla.
+    'proforma-acciones-fila', 'revertir-rechazo', 'revertir-rechazo-title',
+    'btn-orange', 'admin-review-panel', 'textarea-vertical', 'comentario-admin',
+    'proforma-bloque-label', 'proforma-descuento', 'mt-04', 'mt-025', 'fst-italic',
   ])('.%s está definida', (clase) => {
     expect(CSS).toMatch(new RegExp(`\\.${clase}\\s*[,{]`));
   });
@@ -227,7 +236,7 @@ describe('los emoji de la interfaz sólo pueden disminuir', () => {
 // token propio o si el boton merece su clase.
 // ---------------------------------------------------------------------------
 describe('los colores escritos a mano sólo pueden disminuir', () => {
-  const TOPE = 20;
+  const TOPE = 10;
 
   // Se arma con RegExp desde una CADENA y no como literal. La primera versión
   // usaba /#[0-9A-Fa-f]{6}/ y devolvía cero coincidencias: al escribir el
