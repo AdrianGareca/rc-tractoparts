@@ -26,11 +26,13 @@
   color-scheme: dark;
 
   /* Backgrounds */
-  --bg-deep:    #0F172A;   /* slate-900 — page base */
-  --bg-surface: #1E293B;   /* slate-800 — cards, sidebar, topbar */
-  --bg-raised:  #263448;   /* slightly lighter surface */
-  --bg-hover:   #2E3F58;   /* hover state for rows / items */
-  --bg-input:   #0F172A;   /* input fields */
+  /* Superficies del tema oscuro, derivadas del marino de la proforma y ya no
+     del gris azulado de Tailwind. Ver «LA IDENTIDAD DE LA EMPRESA» más abajo. */
+  --bg-deep:    #121D33;   /* base de la página — marino profundo */
+  --bg-surface: #1B2B4B;   /* tarjetas, barra lateral, barra superior — EL marino */
+  --bg-raised:  #24375E;   /* superficie apenas elevada */
+  --bg-hover:   #2D4373;   /* hover de filas / ítems */
+  --bg-input:   #121D33;   /* campos de formulario */
 
   /* Esqueletos de carga. `base` es el bloque en reposo; `shine` es el brillo que
      lo recorre. Van como tokens y no como literales porque el contraste que
@@ -40,7 +42,7 @@
   --skeleton-shine: rgba(255, 255, 255, .07);
 
   /* Borders */
-  --border:      #334155;  /* slate-700 */
+  --border:      #33456B;  /* marino claro — de la familia, ya no slate-700 */
   --border-focus:#10B981;  /* emerald — focus ring */
 
   /* Text */
@@ -61,6 +63,29 @@
   --clr-teal:   #14B8A6;   /* teal-500   */
   --clr-indigo: #6366F1;   /* indigo-500 */
   --clr-slate:  #64748B;   /* slate-500  */
+
+  /* ── LA IDENTIDAD DE LA EMPRESA ────────────────────────────────────────────
+     El azul marino de la proforma impresa (src/services/pdf/constants.js NAVY).
+     Es el color de la cabecera, del encabezado de la tabla de ítems y del
+     cuadro de totales del documento que recibe el cliente.
+
+     POR QUÉ SE TRAE A LA PANTALLA
+     Toda la paleta de esta hoja es la de Tailwind sin cambiar: los propios
+     comentarios de más abajo la documentan (slate-100, slate-300, slate-900, y
+     los acentos en el tono 500). Es el juego de colores por defecto del marco
+     de CSS más usado que hay, así que una aplicación que lo deja tal cual
+     comparte literalmente sus colores con todas las demás que hicieron lo
+     mismo. No se ve mal: se ve genérica.
+
+     Mientras tanto la empresa YA TIENE identidad —marino y naranja— y estaba
+     sólo en el papel. Las superficies oscuras pasan a derivarse de este marino
+     en vez del gris azulado de Tailwind. Es un corrimiento de tono, no un
+     cambio de diseño: se siente, no se nota. Los colores de ESTADO no se
+     tocan, porque codifican significado que la gente ya aprendió. */
+  --clr-navy:       #1B2B4B;
+  --clr-navy-deep:  #121D33;   /* un paso más oscuro — base de la página */
+  --clr-navy-soft:  #24375E;   /* superficie elevada */
+  --clr-navy-hover: #2D4373;   /* hover de filas */
 
   /* El naranja de la proforma impresa. Es el del filete bajo cada título de
      sección en el PDF (ver src/services/pdf/constants.js), más terroso que
@@ -203,18 +228,22 @@
    =========================================================================== */
 
 :root {
-  --light-bg-deep:    #F1F5F9;  /* slate-100 — base de la página */
-  --light-bg-surface: #FFFFFF;  /* tarjetas, sidebar, topbar */
-  --light-bg-raised:  #F8FAFC;  /* slate-50 — superficie apenas elevada */
-  --light-bg-hover:   #E2E8F0;  /* slate-200 — hover de filas */
+  /* Mismo criterio que el tema oscuro: los neutros se corren hacia la familia
+     del marino de la proforma en vez de quedarse en el slate de Tailwind. Es
+     medio grado de tono — se siente, no se nota — y hace que la pantalla y el
+     papel pertenezcan al mismo juego de colores. */
+  --light-bg-deep:    #EFF2F7;  /* base de la página */
+  --light-bg-surface: #FFFFFF;  /* tarjetas, barra lateral, barra superior */
+  --light-bg-raised:  #F7F9FC;  /* superficie apenas elevada */
+  --light-bg-hover:   #E1E7F0;  /* hover de filas */
   --light-bg-input:   #FFFFFF;
 
-  --light-skeleton-base:  #E2E8F0;                      /* slate-200 */
+  --light-skeleton-base:  #E1E7F0;
   --light-skeleton-shine: rgba(255, 255, 255, .75);     /* casi blanco: en claro un brillo tenue no se ve */
 
-  --light-border:      #CBD5E1; /* slate-300 */
+  --light-border:      #C9D2E0; /* de la familia del marino */
 
-  --light-text-primary:   #0F172A; /* slate-900 */
+  --light-text-primary:   #141F38; /* marino profundo, no negro azulado */
   --light-text-secondary: #475569; /* slate-600 */
   --light-text-muted:     #64748B; /* slate-500 */
 

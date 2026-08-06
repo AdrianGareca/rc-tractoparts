@@ -1,10 +1,10 @@
 // =============================================================================
 // public/js/views/dashboard/strategies/adminStrategy.js
 // STRATEGY: AdminStrategy (Administracion role)
-// Tabs: Cola de Revisión, Todas las Cotizaciones, Gestión de Usuarios, Auditoría
+// Tabs: Cola de revisión, Todas las cotizaciones, Gestión de usuarios, Auditoría
 // Key difference from ManagerStrategy:
 //   • Can add comments & put quotations "En espera" — but CANNOT approve/reject
-//   • Sees Jefe's approval queue in read-only mode (Cola de Revisión)
+//   • Sees Jefe's approval queue in read-only mode (Cola de revisión)
 //   • Has full User CRUD access (same as Jefe per spec)
 //
 // Extracted verbatim from dashboardView.js as part of the file-size cleanup
@@ -44,13 +44,13 @@ export class AdminStrategy extends DashboardStrategy {
 
     container.innerHTML = `
       <div class="tab-bar" id="admin-tabs">
-        <button class="tab-btn active" data-tab="review">Cola de Revisión</button>
-        <button class="tab-btn" data-tab="quotations">Todas las Cotizaciones</button>
+        <button class="tab-btn active" data-tab="review">Cola de revisión</button>
+        <button class="tab-btn" data-tab="quotations">Todas las cotizaciones</button>
         <button class="tab-btn" data-tab="licitaciones">Licitaciones</button>
-        <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
-        <button class="tab-btn" data-tab="clientes">Gestión de Clientes</button>
-        <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
-        <button class="tab-btn" data-tab="consumo">Consumo por Cliente</button>
+        <button class="tab-btn" data-tab="users">Gestión de usuarios</button>
+        <button class="tab-btn" data-tab="clientes">Gestión de clientes</button>
+        <button class="tab-btn" data-tab="audit">Registros de auditoría</button>
+        <button class="tab-btn" data-tab="consumo">Consumo por cliente</button>
         <button class="tab-btn" data-tab="reportes">Reportes</button>
       </div>
       <div id="admin-panel"></div>
@@ -114,7 +114,7 @@ export class AdminStrategy extends DashboardStrategy {
       panel.innerHTML = `
         <div class="card">
           <div class="card-header">
-            <h3>Cola de Revisión (${rows.length})</h3>
+            <h3>Cola de revisión (${rows.length})</h3>
             <span class="text-muted text-sm">Puede añadir comentarios y poner en espera</span>
           </div>
           <div class="table-wrapper">
@@ -136,8 +136,8 @@ export class AdminStrategy extends DashboardStrategy {
                     <td>${fmtDate(r.fecha_emision)}</td>
                     <td>${fmtDate(r.fecha_validez)}</td>
                     <td>
-                      <button class="btn btn-primary btn-sm" data-review="${r.id}"
-                              style="white-space:nowrap;">
+                      <button class="btn btn-primary btn-sm nowrap" data-review="${r.id}"
+                             >
                         Revisar
                       </button>
                     </td>
@@ -182,7 +182,7 @@ export class AdminStrategy extends DashboardStrategy {
           });
         });
 
-        // Wire "Poner en Espera con Comentario" button
+        // Wire "Poner en espera con Comentario" button
         body.querySelector('#btn-admin-en-espera')?.addEventListener('click', () => {
           const comment = body.querySelector('#admin-comment-input')?.value.trim() ?? '';
           const errEl   = body.querySelector('#admin-comment-err');
@@ -200,7 +200,7 @@ export class AdminStrategy extends DashboardStrategy {
           });
         });
 
-        // Wire "Solicitar Cambios" button (Administracion → Pendiente)
+        // Wire "Solicitar cambios" button (Administracion → Pendiente)
         body.querySelector('#btn-admin-solicitar-cambios')?.addEventListener('click', () => {
           const comment = body.querySelector('#admin-comment-input')?.value.trim() ?? '';
           const errEl2  = body.querySelector('#admin-comment-err');
@@ -243,8 +243,8 @@ export class AdminStrategy extends DashboardStrategy {
       panel.innerHTML = `
         <div class="card">
           <div class="card-header">
-            <h3>Gestión de Usuarios</h3>
-            <button class="btn btn-primary btn-sm" id="btn-create-user-admin">+ Nuevo Usuario</button>
+            <h3>Gestión de usuarios</h3>
+            <button class="btn btn-primary btn-sm" id="btn-create-user-admin">+ Nuevo usuario</button>
           </div>
           <div class="table-wrapper">
             <table class="data-table">

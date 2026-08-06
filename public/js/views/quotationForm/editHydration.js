@@ -4,7 +4,7 @@
 //
 //   populateHeaderForEdit — vuelca la cabecera guardada en los inputs
 //   populateLicitaciones  — llena el desplegable "Licitacion asociada"
-//   setFormaPago          — resuelve preset vs texto libre en Forma de Pago
+//   setFormaPago          — resuelve preset vs texto libre en Forma de pago
 //
 // Extraido de FormMediator sin cambios de comportamiento: eran metodos que
 // solo tocaban #container / #editData / #prefill, asi que ahora los reciben.
@@ -65,7 +65,7 @@ export function populateHeaderForEdit(container, editData) {
 
   // Financial / PDF config fields
   set('#descuento_manual', q.descuento_manual != null ? String(q.descuento_manual) : '');
-  // forma_pago: select the matching quick option, or 'Otro (Personalizado)'
+  // forma_pago: select the matching quick option, or 'Otro (personalizado)'
   // with the custom text input revealed when the stored value is not a preset.
   setFormaPago(container, q.forma_pago ?? '');
   const mostrarCodigos = q.mostrar_codigos != null ? Boolean(Number(q.mostrar_codigos)) : true;
@@ -115,10 +115,10 @@ export async function populateLicitaciones(container, { editData = null, prefill
 // ── Private: forma_pago select helpers ─────────────────────────────────────
 
 /**
- * _setFormaPago — hydrates the Forma de Pago <select> from a stored value.
+ * _setFormaPago — hydrates the Forma de pago <select> from a stored value.
  * A value matching one of the quick-select presets selects it directly;
  * empty/null keeps the default option; any other string selects
- * 'Otro (Personalizado)' and reveals + fills the custom text input.
+ * 'Otro (personalizado)' and reveals + fills the custom text input.
  */
 export function setFormaPago(container, value) {
   const sel   = container.querySelector('#forma_pago');

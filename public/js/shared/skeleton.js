@@ -69,8 +69,8 @@ export function tableSkeleton({ filas = 6, columnas = 6, etiqueta = 'Cargando da
 export function cardsSkeleton({ tarjetas = 4, etiqueta = 'Cargando indicadores' } = {}) {
   const items = Array.from({ length: tarjetas }, () => `
     <div class="skeleton-card">
-      <span class="skeleton-bar" style="width:55%;height:.65rem;"></span>
-      <span class="skeleton-bar" style="width:75%;height:1.4rem;margin-top:.6rem;"></span>
+      <span class="skeleton-bar skeleton-bar-titulo"></span>
+      <span class="skeleton-bar skeleton-bar-cifra"></span>
     </div>`).join('');
 
   return `

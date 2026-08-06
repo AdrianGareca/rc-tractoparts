@@ -141,3 +141,8 @@ body.modal-open .page-shell {
 .modal-dialog.modal-wide {
   max-width: 820px;
 }
+
+/* Variante ancha del sub-modal: el detalle de una licitación lleva tablas de
+   cotizaciones vinculadas y de gastos, que a 560px se leen apretadas.
+   Estaba como style="max-width:720px" pisando el max-width de .sub-modal. */
+.sub-modal-wide { max-width: 720px; }

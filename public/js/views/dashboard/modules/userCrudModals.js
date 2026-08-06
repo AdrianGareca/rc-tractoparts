@@ -21,21 +21,21 @@ import {
 } from '../commands.js';
 
 /**
- * showCreateUserModal — "Crear Nuevo Usuario" modal.
+ * showCreateUserModal — "Crear usuario" modal.
  * @param {Function} onDone — called after a successful create (typically re-renders the users tab)
  */
 export function showCreateUserModal(onDone) {
   // Delegación de Funciones — only Jefe/Administracion/SysAdmin may set the flag.
   const canDelegate = ['Jefe', 'Administracion', 'SysAdmin'].includes(AuthSession.getRole());
-  UI.openModal('Crear Nuevo Usuario', (body) => {
+  UI.openModal('Crear usuario', (body) => {
     body.innerHTML = `
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label" for="nu-nombre">Nombre Completo *</label>
+          <label class="form-label" for="nu-nombre">Nombre completo *</label>
           <input class="form-control" type="text" id="nu-nombre" />
         </div>
         <div class="form-group">
-          <label class="form-label" for="nu-usuario">Nombre de Usuario *</label>
+          <label class="form-label" for="nu-usuario">Nombre de usuario *</label>
           <input class="form-control" type="text" id="nu-usuario" autocapitalize="none" />
         </div>
       </div>
@@ -64,7 +64,7 @@ export function showCreateUserModal(onDone) {
       <div class="form-alert" id="nu-alert"></div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="nu-cancel">Cancelar</button>
-        <button class="btn btn-primary" id="nu-confirm">Crear Usuario</button>
+        <button class="btn btn-primary" id="nu-confirm">Crear usuario</button>
       </div>`;
 
     body.querySelector('#nu-cancel')?.addEventListener('click', UI.closeModal);
@@ -102,17 +102,17 @@ export function showCreateUserModal(onDone) {
 }
 
 /**
- * showEditUserModal — "Editar Usuario" modal.
+ * showEditUserModal — "Editar usuario" modal.
  * @param {Function} onDone — called after a successful update
  */
 export function showEditUserModal(id, nombre, idRol, canApprove, onDone) {
   // Delegación de Funciones — only Jefe/Administracion/SysAdmin may set the flag.
   const canDelegate = ['Jefe', 'Administracion', 'SysAdmin'].includes(AuthSession.getRole());
   const isDelegated = String(canApprove) === '1' || canApprove === true;
-  UI.openModal('Editar Usuario', (body) => {
+  UI.openModal('Editar usuario', (body) => {
     body.innerHTML = `
       <div class="form-group">
-        <label class="form-label" for="eu-nombre">Nombre Completo</label>
+        <label class="form-label" for="eu-nombre">Nombre completo</label>
         <input class="form-control" type="text" id="eu-nombre" value="${escHtml(nombre ?? '')}" />
       </div>
       <div class="form-group">
@@ -133,12 +133,12 @@ export function showEditUserModal(id, nombre, idRol, canApprove, onDone) {
         </label>
       </div>` : ''}
       <div class="form-group">
-        <label class="form-label" for="eu-password">Nueva Contraseña (dejar vacío para no cambiar)</label>
+        <label class="form-label" for="eu-password">Nueva contraseña (dejar vacío para no cambiar)</label>
         <input class="form-control" type="password" id="eu-password" />
       </div>
       <div class="modal-actions">
         <button class="btn btn-ghost" id="eu-cancel">Cancelar</button>
-        <button class="btn btn-primary" id="eu-confirm">Guardar Cambios</button>
+        <button class="btn btn-primary" id="eu-confirm">Guardar cambios</button>
       </div>`;
 
     body.querySelector('#eu-cancel')?.addEventListener('click', UI.closeModal);
@@ -166,14 +166,14 @@ export function showEditUserModal(id, nombre, idRol, canApprove, onDone) {
  * @param {Function} onDone — called after a successful deactivation
  */
 export function confirmDeactivateUser(id, username, onDone) {
-  UI.openModal('Confirmar Desactivación', (body) => {
+  UI.openModal('Confirmar desactivación', (body) => {
     body.innerHTML = `
       <div class="confirm-dialog">
         <h4>¿Desactivar al usuario "${escHtml(username)}"?</h4>
         <p>El usuario no podrá acceder al sistema. Esta acción puede revertirse editando el usuario.</p>
-        <div style="display:flex;justify-content:center;gap:.75rem;">
+        <div class="acciones-centro">
           <button class="btn btn-ghost" id="dc-cancel">Cancelar</button>
-          <button class="btn btn-danger" id="dc-confirm">Sí, Desactivar</button>
+          <button class="btn btn-danger" id="dc-confirm">Sí, desactivar</button>
         </div>
       </div>`;
 
@@ -194,14 +194,14 @@ export function confirmDeactivateUser(id, username, onDone) {
  * @param {Function} onDone — called after a successful activation
  */
 export function confirmActivateUser(id, username, onDone) {
-  UI.openModal('Confirmar Activación', (body) => {
+  UI.openModal('Confirmar activación', (body) => {
     body.innerHTML = `
       <div class="confirm-dialog">
         <h4>¿Activar al usuario "${escHtml(username)}"?</h4>
         <p>El usuario podrá acceder al sistema nuevamente.</p>
-        <div style="display:flex;justify-content:center;gap:.75rem;">
+        <div class="acciones-centro">
           <button class="btn btn-ghost" id="ac-cancel">Cancelar</button>
-          <button class="btn btn-success" id="ac-confirm">Sí, Activar</button>
+          <button class="btn btn-success" id="ac-confirm">Sí, activar</button>
         </div>
       </div>`;
 

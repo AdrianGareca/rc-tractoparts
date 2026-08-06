@@ -209,7 +209,7 @@ export async function submitQuotation({ container, editId, items, uploadedExcel,
   btnSubmit.disabled = true;
   const label   = btnSubmit.querySelector('.btn-label');
   const spinner = btnSubmit.querySelector('.btn-spinner');
-  const originalLabel = editId ? 'Guardar Cambios' : 'Crear Cotización';
+  const originalLabel = editId ? 'Guardar cambios' : 'Crear cotización';
   if (label)   label.textContent = editId ? 'Guardando...' : 'Creando...';
   if (spinner) spinner.classList.remove('hidden');
   alert.className = 'form-alert';

@@ -115,3 +115,19 @@ img { max-width: 100%; display: block; }
    el pie de un bloque de datos, un comentario debajo de su rótulo. */
 .mt-025 { margin-top: .25rem; }
 .fst-italic { font-style: italic; }
+
+/* Utilidades que aparecieron al migrar los últimos paneles. */
+.ml-025      { margin-left: .25rem; }
+.mt-04       { margin-top: .4rem; }
+.items-end   { align-items: flex-end; }
+.gap-3       { gap: 1rem; }
+.nowrap      { white-space: nowrap; }
+.inline-flex-gap { display: inline-flex; align-items: center; gap: .35rem; }
+/* Un campo que se queda con el espacio sobrante de su fila. El min-width:0 es
+   lo que le permite ACHICARSE: sin él, un <select> con una opción larga se
+   niega a bajar de su ancho natural y desborda la fila. */
+.fg-crece     { flex: 1; min-width: 0; }
+.fg-crece-min { flex: 1; min-width: 150px; }
+.fg-doble-min160 { flex: 2; min-width: 160px; margin: 0; }
+.fg-120 { width: 120px; }
+.fg-130 { width: 130px; margin: 0; }

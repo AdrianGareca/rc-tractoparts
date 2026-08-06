@@ -153,7 +153,7 @@ export async function refreshNotifBadge(UI) {
           UI.openModal('Notificaciones', (body) => {
             const sectionHtml = (titleColor, title, items) => items.length > 0 ? `
               <p class="text-sm fw-600" style="color:${titleColor};margin:.75rem 0 .35rem;">${title}</p>
-              <ul style="list-style:none;padding:0;margin:0 0 .75rem;">
+              <ul class="lista-limpia mb-1">
                 ${items.map(_buildNotifItem).join('')}
               </ul>` : '';
 
@@ -164,13 +164,13 @@ export async function refreshNotifBadge(UI) {
             // "Mark as read" clears every table-backed notification (aprobaciones,
             // envíos y licitaciones). Se muestra siempre que haya alguna marcable.
             const markReadBtn = marcables > 0
-              ? `<button id="btn-marcar-leidas" class="btn btn-ghost btn-sm" style="margin-top:.75rem;">
+              ? `<button id="btn-marcar-leidas" class="btn btn-ghost btn-sm mt-1">
                    Marcar como leídas
                  </button>`
               : '';
 
             body.innerHTML = `
-              <p class="text-sm" style="color:var(--text-secondary);margin-bottom:.75rem;">
+              <p class="text-sm text-secondary mb-1">
                 Tienes <strong>${rows.length}</strong> notificación${rows.length > 1 ? 'es' : ''} pendiente${rows.length > 1 ? 's' : ''}.
               </p>
               ${aprobSection}

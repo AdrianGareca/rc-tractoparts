@@ -42,7 +42,7 @@ function tarjeta({ titulo, valor, detalle = '', acento = 'var(--clr-blue)', gran
         ${valor}
       </div>
       <div class="stat-card-label">${escHtml(titulo)}</div>
-      ${detalle ? `<div class="text-muted text-xs" style="margin-top:.35rem;line-height:1.35;">${detalle}</div>` : ''}
+      ${detalle ? `<div class="text-muted text-xs stat-detalle">${detalle}</div>` : ''}
     </div>`;
 }
 
@@ -101,17 +101,17 @@ function tablaPorMes(filas) {
         <h3>Mi evolución</h3>
         <span class="text-muted text-sm">Emitidas contra cerradas, mes a mes</span>
       </div>
-      <div style="padding:1rem 1.25rem;display:flex;flex-direction:column;gap:.6rem;">
+      <div class="panel-barras">
         ${filas.map((f) => {
           const pct = f.emitidas > 0 ? Math.round((f.cerradas / f.emitidas) * 100) : 0;
           return `
-          <div style="display:flex;align-items:center;gap:.75rem;">
-            <span class="text-sm text-muted" style="min-width:5rem;">${escHtml(f.mes)}</span>
-            <div style="flex:1;height:1.15rem;background:var(--bg-hover);border-radius:var(--radius-sm);overflow:hidden;position:relative;">
+          <div class="barra-mes">
+            <span class="text-sm text-muted barra-mes-etiqueta">${escHtml(f.mes)}</span>
+            <div class="barra-pista">
               <div style="width:${(f.emitidas / tope) * 100}%;height:100%;background:rgba(59,130,246,.35);"></div>
               <div style="width:${(f.cerradas / tope) * 100}%;height:100%;background:var(--clr-green);position:absolute;top:0;left:0;"></div>
             </div>
-            <span class="text-sm" style="min-width:8.5rem;text-align:right;">
+            <span class="text-sm barra-mes-cifra">
               <strong>${f.cerradas}</strong> de ${f.emitidas}
               <span class="text-muted">(${pct}%)</span>
             </span>

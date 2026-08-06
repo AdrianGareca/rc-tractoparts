@@ -107,7 +107,7 @@ class FormMediator {
     // catálogos de arriba: mountQuotationForm devuelve el destroy de forma
     // síncrona, así que destroy() ya corrió y este render llega tarde.
     // Escribir igual pisaría #modal-body, que para este momento puede
-    // pertenecer a OTRO modal (Gestión de Clientes, detalle de proforma…),
+    // pertenecer a OTRO modal (Gestión de clientes, detalle de proforma…),
     // dejando un formulario muerto dentro de una ventana que no es la suya.
     if (this.#draftLock.isDestroyed()) return;
 
@@ -177,7 +177,7 @@ class FormMediator {
       this.#subject._notify();
     });
 
-    // Wire Forma de Pago dropdown — 'Otro (Personalizado)' reveals the free-text
+    // Wire Forma de pago dropdown — 'Otro (personalizado)' reveals the free-text
     // input; picking any preset hides it again.
     const fpSelect = this.#container.querySelector('#forma_pago');
     fpSelect?.addEventListener('change', () => {
@@ -304,7 +304,7 @@ class FormMediator {
         // muestra la cantidad fusionada.
         this._onRemoveItem(currentIdx);
         showToast(
-          `Cód. Parte "${rawCodigo}" ya existe con la misma marca — cantidad fusionada: ${merged}.`,
+          `Cód. parte "${rawCodigo}" ya existe con la misma marca — cantidad fusionada: ${merged}.`,
           'info'
         );
       },

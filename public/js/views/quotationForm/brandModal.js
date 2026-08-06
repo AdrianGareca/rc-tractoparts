@@ -54,12 +54,12 @@ export function openBrandModal(rowIndex, { container, brands, onFieldChange } = 
   overlay.innerHTML = /* html */ `
     <div class="sub-modal">
       <div class="sub-modal-header">
-        <h4 id="bm-title">Registrar Nueva Marca</h4>
+        <h4 id="bm-title">Registrar nueva marca</h4>
         <button type="button" class="btn-icon sub-modal-close" id="bm-close" aria-label="Cerrar">✕</button>
       </div>
       <div class="sub-modal-body">
         <div class="form-group">
-          <label class="form-label" for="bm-nombre">Nombre de la Marca *</label>
+          <label class="form-label" for="bm-nombre">Nombre de la marca *</label>
           <input class="form-control" type="text" id="bm-nombre"
                  placeholder="Ej: Hitachi" maxlength="100" />
           <span class="field-error" id="bm-err"></span>

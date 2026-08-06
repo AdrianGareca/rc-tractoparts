@@ -600,3 +600,218 @@
   gap: var(--space-2);
   margin-top: var(--space-4);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PANEL DE PROFORMAS DEL DÍA (executiveStrategy.js)
+
+   Una tarjeta con filete azul a la izquierda que el ejecutivo ve primero al
+   entrar. Estaba escrita dos veces con el mismo style —una para el caso con
+   datos y otra para el vacío— y las dos repetían el color, el borde y el
+   margen. Un solo dueño: la clase.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.panel-del-dia {
+  border-left: 4px solid var(--clr-blue);
+  margin-bottom: 1rem;
+}
+
+.panel-del-dia .card-header { padding-bottom: .5rem; }
+.panel-del-dia .card-header h4 { margin: 0; color: var(--clr-blue); }
+
+/* El texto de «no hay nada hoy». Lleva el padding de la tarjeta porque va
+   suelto, sin la caja que envuelve a la tabla. */
+.panel-del-dia-vacio { padding: .5rem 1rem 1rem; }
+
+/* Insignia de conteo: cuántas van hoy. A diferencia de las de estado, no
+   codifica una situación — es un número —, así que va en el azul de la
+   sección y no en un color de la máquina de estados. */
+.badge-conteo {
+  background: var(--clr-blue);
+  color: var(--clr-white);
+}
+
+/* Tabla secundaria: la que acompaña a un panel, no la del listado principal. */
+.data-table-sm { font-size: .85rem; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LO QUE QUEDABA COMO ESTILO INLINE EN LOS PANELES
+
+   Antes de escribir cada regla revisé si la clase ya existía. Varias sí:
+   .filter-bar ya hacía flex/gap/wrap/align-end, .truncate ya recortaba con
+   puntos suspensivos, .sub-modal ya traía max-width:560px y .item-input ya
+   daba el ancho de los campos de la tabla de ítems. Estaban siendo
+   reimplementadas inline encima de sí mismas.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Mensaje de error de un formulario. Reserva su alto SIEMPRE, aunque esté
+   vacío: sin el min-height, al aparecer el error empuja todo lo de abajo y el
+   botón que la persona estaba por apretar se corre de lugar. */
+.form-error {
+  color: var(--clr-red);
+  min-height: 1.2em;
+  font-size: .8rem;
+}
+
+/* Subtítulo dentro de un modal de detalle: separa bloques (Gastos, Documentos,
+   Historial) sin la jerarquía de un encabezado de tarjeta. */
+.sub-seccion-title { margin: 1rem 0 .35rem; }
+
+/* Lista sin viñetas ni sangría — la base de toda lista de documentos, gastos
+   o eventos. Se repetía como style="list-style:none;padding:0;margin:0". */
+.lista-limpia { list-style: none; padding: 0; margin: 0; }
+
+/* Un renglón de esas listas: ícono, nombre que se recorta, acciones. */
+.lista-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* El nombre, que es lo único que puede crecer sin límite. */
+.lista-item-nombre {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Fila de acciones al pie de un bloque. */
+.acciones-fila {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .5rem;
+}
+
+.acciones-centro { display: flex; justify-content: center; gap: .75rem; }
+
+/* Detalle desplegable de la bitácora: pares dato/valor en dos columnas. */
+.audit-dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: .4rem 1rem;
+}
+.audit-dl dt {
+  color: var(--text-secondary);
+  font-size: .78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.audit-dl dd { margin: 0; font-size: .82rem; word-break: break-word; }
+
+.audit-detail-cell { background: var(--bg-raised); padding: .85rem 1rem; }
+
+/* La dirección IP va en monoespaciada: se compara de un vistazo entre filas,
+   y con tipografía proporcional los dígitos no quedan alineados. */
+.mono { font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; }
+
+/* Encabezado de columna que ordena la tabla al hacer clic. */
+.th-ordenable { cursor: pointer; user-select: none; }
+
+/* ── BARRA COMPARATIVA (misMetricas) ────────────────────────────────────────
+   Emitidas contra cerradas, mes a mes. Dos barras superpuestas: la de atrás
+   es el total emitido y la de adelante, en verde, lo que se cerró. La lectura
+   es la proporción, no el número. */
+.barra-mes {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+.barra-mes-etiqueta { min-width: 5rem; }
+.barra-mes-cifra    { min-width: 8.5rem; text-align: right; }
+
+.barra-pista {
+  flex: 1;
+  height: 1.15rem;
+  background: var(--bg-hover);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  position: relative;
+}
+.barra-emitidas { height: 100%; background: var(--badge-bg-blue); }
+.barra-cerradas { height: 100%; background: var(--clr-green); position: absolute; top: 0; left: 0; }
+
+.panel-barras {
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+
+/* ── LÍNEA DE TIEMPO (timelineView) ─────────────────────────────────────── */
+.timeline { list-style: none; padding: 0; margin: 0; position: relative; }
+
+.timeline-item {
+  display: flex;
+  gap: .75rem;
+  margin-bottom: .75rem;
+  align-items: flex-start;
+}
+
+.timeline-punto {
+  flex-shrink: 0;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  margin-top: 4px;
+  background: var(--clr-indigo);
+}
+/* El evento más reciente, arriba de todo. */
+.timeline-punto-actual { background: var(--clr-blue); }
+
+.timeline-texto { font-size: .85rem; line-height: 1.4; }
+
+.timeline-seccion {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.timeline-seccion h4 {
+  margin-bottom: .75rem;
+  font-size: .95rem;
+  color: var(--text-secondary);
+}
+
+/* Anchos de filtro que faltaban en la escala. */
+.fc-xnarrow { min-width: 120px; }
+
+/* Renglón compacto de una lista de archivos elegidos, antes de subirlos. */
+.lista-item-compacto {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .15rem 0;
+  font-size: .82rem;
+}
+
+/* Pares dato/valor de la cabecera de un detalle. */
+.datos-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: .25rem .75rem;
+  margin: .75rem 0;
+}
+
+/* Texto de ayuda al pie del encabezado de un panel. */
+.panel-ayuda {
+  margin: 0;
+  padding: .6rem 1.25rem;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+/* La cifra de resultado (ganancia o pérdida) de una licitación. */
+.resultado-cifra { font-size: 1.02rem; }
+
+/* Detalle al pie de una tarjeta de indicador. */
+.stat-detalle { margin-top: .35rem; line-height: 1.35; }
+
+/* La grilla de indicadores cuando va DENTRO de una tarjeta y no suelta en la
+   página: no necesita el margen inferior, que lo pone la tarjeta. */
+.stats-grid-en-tarjeta { padding: 1rem 1rem 0; margin-bottom: 0; }
+
+/* Esqueleto de una tarjeta de indicador: un renglón de rótulo y una cifra. */
+.skeleton-bar-titulo { width: 55%; height: .65rem; }
+.skeleton-bar-cifra  { width: 75%; height: 1.4rem; margin-top: .6rem; }

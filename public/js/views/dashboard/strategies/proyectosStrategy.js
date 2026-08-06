@@ -2,8 +2,8 @@
 // public/js/views/dashboard/strategies/proyectosStrategy.js
 // STRATEGY: ProyectosStrategy (Proyectos role — tenders/licitaciones executive)
 //
-// Tabs: Licitaciones (default) + Gestión de Clientes.
-// Proyectos NEVER creates cotizaciones — there is no "Nueva Cotización" action
+// Tabs: Licitaciones (default) + Gestión de clientes.
+// Proyectos NEVER creates cotizaciones — there is no "Nueva cotización" action
 // anywhere in this strategy. They build the licitación, hand it to the
 // commercial executive (moving it to 'Cotizando'), and track the contest.
 //
@@ -28,7 +28,7 @@ export class ProyectosStrategy extends DashboardStrategy {
     container.innerHTML = `
       <div class="tab-bar" id="proyectos-tabs">
         <button class="tab-btn active" data-tab="licitaciones">Licitaciones</button>
-        <button class="tab-btn" data-tab="clientes">Gestión de Clientes</button>
+        <button class="tab-btn" data-tab="clientes">Gestión de clientes</button>
       </div>
       <div id="proyectos-panel"></div>
     `;

@@ -1,6 +1,6 @@
 // =============================================================================
 // public/js/views/dashboard/modules/clienteItemReport.js
-// Reporte «Consumo por Ítem» — qué repuestos se piden, cuánto y a quién.
+// Reporte «Consumo por ítem» — qué repuestos se piden, cuánto y a quién.
 //
 // PARA QUÉ SIRVE (esto define todo el diseño)
 // La empresa cotiza todo lo que le mandan. Muchas piezas chicas no valen la
@@ -152,8 +152,8 @@ export async function mountClienteItemReport(panel, opts = {}) {
   panel.innerHTML = `
     <div class="card">
       <div class="card-header flex-wrap gap-2">
-        <h3>Consumo por Ítem</h3>
-        <div style="display:flex;gap:.5rem;align-items:center;">
+        <h3>Consumo por ítem</h3>
+        <div class="flex gap-1 items-center">
           <span class="text-muted text-sm" id="ci-total"></span>
           <button class="btn btn-ghost btn-sm" id="ci-csv">Exportar CSV</button>
         </div>
@@ -197,8 +197,8 @@ export async function mountClienteItemReport(panel, opts = {}) {
         <button class="btn btn-ghost btn-sm filter-action" id="ci-clear">Limpiar</button>
       </div>
 
-      <p class="text-sm" id="ci-nota"
-         style="margin:0;padding:.6rem 1.25rem;color:var(--text-muted);border-bottom:1px solid var(--border);"></p>
+      <p class="text-sm panel-ayuda" id="ci-nota"
+        ></p>
 
       <div class="card-toolbar" id="ci-pagination"></div>
       <div id="ci-results">${tableSkeleton({ columnas: 7, etiqueta: 'Cargando consumo' })}</div>
@@ -255,8 +255,8 @@ export async function mountClienteItemReport(panel, opts = {}) {
       if (!c.clave) return `<th${c.derecha ? ' class="text-right"' : ''}>${c.texto}</th>`;
       const activo = state.sortBy === c.clave;
       const flecha = activo ? (state.sortOrder === 'ASC' ? ' ▲' : ' ▼') : '';
-      return `<th data-sort="${c.clave}"${c.derecha ? ' class="text-right"' : ''}
-                  style="cursor:pointer;user-select:none;">${c.texto}${flecha}</th>`;
+      return `<th data-sort="${c.clave}"${c.derecha ? ' class="text-right th-ordenable"' : ''}
+                 >${c.texto}${flecha}</th>`;
     }).join('');
   }
 

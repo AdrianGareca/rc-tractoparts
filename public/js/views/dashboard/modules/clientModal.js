@@ -1,6 +1,6 @@
 // =============================================================================
 // public/js/views/dashboard/modules/clientModal.js
-// "Nuevo Cliente" / "Editar Cliente" sub-modal — shared between the quotation
+// "Nuevo cliente" / "Editar Cliente" sub-modal — shared between the quotation
 // form's inline client search (quotationForm.js) and the "Gestión de
 // Clientes" management tab (clientsView.js), so the fields, validation, and
 // duplicate-NIT handling live in exactly one place.
@@ -35,13 +35,13 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
   overlay.innerHTML = /* html */ `
     <div class="sub-modal">
       <div class="sub-modal-header">
-        <h4 id="subm-title">${isEdit ? 'Editar Cliente' : 'Registrar Nuevo Cliente'}</h4>
+        <h4 id="subm-title">${isEdit ? 'Editar Cliente' : 'Registrar Nuevo cliente'}</h4>
         <button type="button" class="btn-icon sub-modal-close" id="subm-close" aria-label="Cerrar">✕</button>
       </div>
       <div class="sub-modal-body">
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label" for="nc-razon-social">Razón Social *</label>
+            <label class="form-label" for="nc-razon-social">Razón social *</label>
             <input class="form-control" type="text" id="nc-razon-social"
                    placeholder="Nombre comercial o legal" maxlength="150"
                    value="${escHtml(client?.razon_social ?? '')}" />
@@ -90,8 +90,8 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
         </div>
         <div class="form-group">
           <label class="form-label" for="nc-origen">Origen del cliente</label>
-          <div style="display:flex;gap:4px;align-items:center;">
-            <select class="form-control" id="nc-origen" style="flex:1;min-width:0;">
+          <div class="item-marca-grupo">
+            <select class="form-control fg-crece" id="nc-origen">
               <option value="">— Sin clasificar —</option>
             </select>
             <button type="button" id="nc-add-origen" title="Agregar nuevo origen"
@@ -99,9 +99,9 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
               +
             </button>
           </div>
-          <div id="nc-origen-new" style="display:none;gap:.5rem;margin-top:.5rem;">
-            <input class="form-control" type="text" id="nc-origen-new-input"
-                   placeholder="Ej: Feria comercial" maxlength="100" style="flex:1;" />
+          <div id="nc-origen-new" class="hidden gap-1 mt-1">
+            <input class="form-control fg-crece" type="text" id="nc-origen-new-input"
+                   placeholder="Ej: Feria comercial" maxlength="100" />
             <button type="button" class="btn btn-ghost btn-sm" id="nc-origen-new-save">Guardar</button>
             <button type="button" class="btn btn-ghost btn-sm" id="nc-origen-new-cancel">✕</button>
           </div>
@@ -111,7 +111,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" id="subm-cancel">Cancelar</button>
           <button type="button" class="btn btn-primary" id="subm-save">
-            <span id="subm-label">${isEdit ? 'Guardar Cambios' : 'Guardar Cliente'}</span>
+            <span id="subm-label">${isEdit ? 'Guardar cambios' : 'Guardar Cliente'}</span>
             <span class="spinner hidden" id="subm-spinner"></span>
           </button>
         </div>
@@ -267,7 +267,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
       }
 
       saveBtn.disabled = false;
-      if (labelEl)   labelEl.textContent = isEdit ? 'Guardar Cambios' : 'Guardar Cliente';
+      if (labelEl)   labelEl.textContent = isEdit ? 'Guardar cambios' : 'Guardar Cliente';
       if (spinnerEl) spinnerEl.classList.add('hidden');
     }
   });

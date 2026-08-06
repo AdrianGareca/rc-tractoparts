@@ -1,7 +1,7 @@
 // =============================================================================
 // public/js/views/dashboard/strategies/executiveStrategy.js
 // STRATEGY: ExecutiveStrategy (Ejecutivo role)
-//   • Summary stats, own quotation table, "Nueva Cotización" action
+//   • Summary stats, own quotation table, "Nueva cotización" action
 //   • Delegación de Funciones ampliada — executives holding
 //     can_approve_quotations get the full operational action grid too.
 //
@@ -61,7 +61,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     container.innerHTML = `
       <div id="stats-section" class="stats-grid"></div>
 
-      <!-- Proformas del Día — daily intake widget -->
+      <!-- Proformas del día — daily intake widget -->
       <div id="proformas-hoy-section"></div>
 
       <!-- Métricas personales BI — loaded after quotations -->
@@ -70,10 +70,10 @@ export class ExecutiveStrategy extends DashboardStrategy {
       <div class="card">
         <div class="card-header">
           <h3>Cotizaciones</h3>
-          <div style="display:flex;gap:.5rem;">
+          <div class="flex gap-1">
             <button class="btn btn-ghost btn-sm" id="btn-manage-clients">Clientes</button>
-            <button class="btn btn-ghost btn-sm" id="btn-consumo">Consumo por Cliente</button>
-            <button class="btn btn-primary btn-sm" id="btn-new-quotation">+ Nueva Cotización</button>
+            <button class="btn btn-ghost btn-sm" id="btn-consumo">Consumo por cliente</button>
+            <button class="btn btn-primary btn-sm" id="btn-new-quotation">+ Nueva cotización</button>
           </div>
         </div>
 
@@ -82,10 +82,10 @@ export class ExecutiveStrategy extends DashboardStrategy {
              (id_ejecutivo / excluir_ejecutivo). -->
         <div class="tab-bar mb-2" id="exec-scope-tabs">
           <button class="tab-btn active" data-scope="mias" type="button">
-            Mis Cotizaciones <span class="badge" data-scope-count="mias">0</span>
+            Mis cotizaciones <span class="badge" data-scope-count="mias">0</span>
           </button>
           <button class="tab-btn" data-scope="equipo" type="button">
-            Cotizaciones del Equipo <span class="badge" data-scope-count="equipo">0</span>
+            Cotizaciones del equipo <span class="badge" data-scope-count="equipo">0</span>
           </button>
         </div>
 
@@ -104,7 +104,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
           </div>
           <div class="form-group">
             <label class="form-label">Buscar</label>
-            <input class="form-control" type="search" id="filter-q" placeholder="Correlativo, cliente…" style="min-width:180px;" />
+            <input class="form-control fc-wide" type="search" id="filter-q" placeholder="Correlativo, cliente…" />
           </div>
           <button class="btn btn-ghost btn-sm filter-action" id="btn-filter-apply">Filtrar</button>
         </div>
@@ -115,7 +115,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
       </div>
 
       <!-- Licitaciones (only for delegated executives — mounted after render) -->
-      <div id="exec-licitaciones-section" style="margin-top:1.25rem;"></div>
+      <div id="exec-licitaciones-section" class="mt-3"></div>
     `;
 
     this.#seccion = createListSection({
@@ -131,7 +131,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     });
 
     document.getElementById('btn-new-quotation')?.addEventListener('click', () => {
-      UI.openModal('Nueva Cotización', (body) => {
+      UI.openModal('Nueva cotización', (body) => {
         const destroy = mountQuotationForm(body, {
           onSuccess: (q) => {
             UI.closeModal();
@@ -146,7 +146,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     });
 
     document.getElementById('btn-manage-clients')?.addEventListener('click', () => {
-      UI.openModal('Gestión de Clientes', (body) => { mountClientsTab(body); }, { wide: true });
+      UI.openModal('Gestión de clientes', (body) => { mountClientsTab(body); }, { wide: true });
     });
 
     // Mismo patron que "Clientes": el reporte es una tabla ancha que no entra
@@ -264,23 +264,23 @@ export class ExecutiveStrategy extends DashboardStrategy {
 
       if (rows.length === 0) {
         section.innerHTML = `
-          <div class="card" style="border-left:4px solid var(--clr-blue);margin-bottom:1rem;">
-            <div class="card-header" style="padding-bottom:.5rem;">
-              <h4 style="margin:0;color:var(--clr-blue);">Proformas del Día — ${escHtml(today)}</h4>
+          <div class="card panel-del-dia">
+            <div class="card-header">
+              <h4>Proformas del día — ${escHtml(today)}</h4>
             </div>
-            <p class="text-muted" style="padding:.5rem 1rem 1rem;">Sin proformas emitidas hoy.</p>
+            <p class="text-muted panel-del-dia-vacio">Sin proformas emitidas hoy.</p>
           </div>`;
         return;
       }
 
       section.innerHTML = `
-        <div class="card" style="border-left:4px solid var(--clr-blue);margin-bottom:1rem;">
-          <div class="card-header" style="padding-bottom:.5rem;">
-            <h4 style="margin:0;color:var(--clr-blue);">Proformas del Día — ${escHtml(today)}</h4>
-            <span class="badge" style="background:var(--clr-blue);color:#fff;">${rows.length} emitida${rows.length > 1 ? 's' : ''}</span>
+        <div class="card panel-del-dia">
+          <div class="card-header">
+            <h4>Proformas del día — ${escHtml(today)}</h4>
+            <span class="badge badge-conteo">${rows.length} emitida${rows.length > 1 ? 's' : ''}</span>
           </div>
           <div class="table-wrapper m-0">
-            <table class="data-table" style="font-size:.85rem;">
+            <table class="data-table data-table-sm">
               <thead>
                 <tr><th>Correlativo</th><th>Cliente</th><th>Monto</th><th>Estado</th></tr>
               </thead>
@@ -428,7 +428,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
         <table class="data-table">
           <thead>
             <tr>
-              <th>N° Correlativo</th><th>Cliente</th>
+              <th>N° correlativo</th><th>Cliente</th>
               ${isTeam ? '<th>Ejecutivo</th>' : ''}
               <th>Fecha</th><th>Monto</th>
               <th>Estado</th><th>Acciones</th>
@@ -486,7 +486,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
       const q       = quotData.value.data;
       const history = histData.status === 'fulfilled' ? (histData.value.data ?? []) : [];
 
-      // Delegación de Funciones — render the "Aprobar Internamente" action only
+      // Delegación de Funciones — render the "Aprobar internamente" action only
       // when this executive holds the delegated flag. From a pre-approval state
       // buildProformaHTML('delegate') adds the single approve button.
       const delegated  = AuthSession.canApproveQuotations();
@@ -500,8 +500,8 @@ export class ExecutiveStrategy extends DashboardStrategy {
 
         if (editable) {
           body.insertAdjacentHTML('afterbegin', `
-            <div style="display:flex;justify-content:flex-end;margin-bottom:1rem;">
-              <button class="btn btn-primary btn-sm" id="btn-editar-cotizacion">Editar Cotización</button>
+            <div class="flex justify-end mb-2">
+              <button class="btn btn-primary btn-sm" id="btn-editar-cotizacion">Editar cotización</button>
             </div>`);
           body.querySelector('#btn-editar-cotizacion')?.addEventListener('click', () =>
             this._editQuotation(q));
@@ -517,7 +517,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
 
           body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () =>
             this._confirmDelegatedStateChange(id, 'Pendiente',
-              'Solicitar Cambios',
+              'Solicitar cambios',
               'La cotización volverá a estado Pendiente para correcciones.',
               'Observaciones para el propietario *',
               true,
@@ -525,7 +525,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
 
           body.querySelector('#btn-en-espera')?.addEventListener('click', () =>
             this._confirmDelegatedStateChange(id, 'En espera',
-              'Poner en Espera',
+              'Poner en espera',
               'La decisión queda suspendida mientras se verifica disponibilidad con el proveedor.',
               'Motivo de la espera (opcional)',
               false,
@@ -580,7 +580,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
   // endpoint. The backend authorizes this only because the executive carries the
   // can_approve_quotations flag (re-read fresh from the DB server-side).
   _confirmDelegatedApproval(id) {
-    UI.openModal('Aprobar Internamente', (body) => {
+    UI.openModal('Aprobar internamente', (body) => {
       body.innerHTML = `
         <div class="confirm-dialog">
           <h4>¿Confirmar aprobación interna?</h4>
@@ -594,7 +594,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" id="del-cancel">Cancelar</button>
-          <button class="btn btn-success" id="del-confirm">Sí, Aprobar</button>
+          <button class="btn btn-success" id="del-confirm">Sí, aprobar</button>
         </div>`;
 
       body.querySelector('#del-cancel')?.addEventListener('click', UI.closeModal);
@@ -626,11 +626,11 @@ export class ExecutiveStrategy extends DashboardStrategy {
     });
   }
 
-  // ── Edit an existing 'Pendiente' quotation (Solicitar Cambios workflow) ──────
+  // ── Edit an existing 'Pendiente' quotation (Solicitar cambios workflow) ──────
   // Mounts the shared quotation form in edit mode, pre-populated with the current
   // header + line items, and PUTs the changes to PUT /api/cotizaciones/:id.
   _editQuotation(q) {
-    UI.openModal(`Editar Cotización ${q.numero_correlativo}`, (body) => {
+    UI.openModal(`Editar cotización ${q.numero_correlativo}`, (body) => {
       const destroy = mountQuotationForm(body, {
         quotation: q,
         onSuccess: (updated) => {
@@ -660,19 +660,19 @@ export class ExecutiveStrategy extends DashboardStrategy {
       AuthSession.canApproveQuotations()
     );
 
-    UI.openModal('Cambiar Estado', (body) => {
+    UI.openModal('Cambiar estado', (body) => {
       // Sin transiciones posibles, un <select> vacío no explica nada. Se dice
       // por qué y se ofrece cerrar, en vez de dejar un formulario inerte.
       if (opciones.length === 0) {
         body.innerHTML = `
-          <p style="color:var(--text-secondary);margin-bottom:1rem;">
+          <p class="text-secondary mb-2">
             Estado actual: ${badgeHtml(currentStatus)}
           </p>
           <p class="text-sm text-secondary">
             Desde este estado no hay cambios disponibles para tu rol.
             Si hace falta moverla, pedíselo al Jefe.
           </p>
-          <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
+          <div class="flex justify-end mt-2">
             <button class="btn btn-ghost" id="cancel-status">Cerrar</button>
           </div>`;
         body.querySelector('#cancel-status')?.addEventListener('click', UI.closeModal);
@@ -680,11 +680,11 @@ export class ExecutiveStrategy extends DashboardStrategy {
       }
 
       body.innerHTML = `
-        <p style="color:var(--text-secondary);margin-bottom:1rem;">
+        <p class="text-secondary mb-2">
           Estado actual: ${badgeHtml(currentStatus)}
         </p>
         <div class="form-group">
-          <label class="form-label" for="new-status">Nuevo Estado</label>
+          <label class="form-label" for="new-status">Nuevo estado</label>
           <select class="form-control" id="new-status">
             ${opciones.map(s => `<option value="${escHtml(s)}">${escHtml(s)}</option>`).join('')}
           </select>

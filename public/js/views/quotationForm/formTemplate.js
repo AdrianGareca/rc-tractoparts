@@ -47,7 +47,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
               />
               <button type="button" id="btn-nuevo-cliente" class="btn btn-outline-green btn-sm btn-nuevo-cliente"
                       title="Registrar nuevo cliente en el sistema">
-                + Nuevo Cliente
+                + Nuevo cliente
               </button>
             </div>
             <!-- Hidden field stores the resolved numeric client ID -->
@@ -59,7 +59,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="fecha_emision">Fecha de Emisión *</label>
+          <label class="form-label" for="fecha_emision">Fecha de emisión *</label>
           <input class="form-control" type="date" id="fecha_emision" required />
           <span class="field-error" id="err-fecha"></span>
         </div>
@@ -88,19 +88,19 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label" for="entidad_emisora">Entidad Emisora *</label>
+          <label class="form-label" for="entidad_emisora">Entidad emisora *</label>
           <select class="form-control" id="entidad_emisora">
             <option value="Empresa unipersonal de Ronald Roca Cartagena">Empresa unipersonal de Ronald Roca Cartagena</option>
             <option value="Roca Importaciones S.R.L.">Roca Importaciones S.R.L.</option>
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label" for="tipo_pedido">Tipo / Canal de Pedido</label>
+          <label class="form-label" for="tipo_pedido">Tipo / canal de pedido</label>
           <input class="form-control" type="text" id="tipo_pedido" placeholder="Ej: EMAIL, PRESENCIAL, TELÉFONO" maxlength="50" />
         </div>
         <div class="form-group">
           <label class="form-label" for="fecha_validez">
-            Fecha de Validez
+            Fecha de validez
             <span
               class="info-icon"
               tabindex="0"
@@ -120,7 +120,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
 
       <!-- DATOS DEL SOLICITANTE -->
       <details class="form-section-details" open>
-        <summary class="form-section-summary">Datos del Solicitante</summary>
+        <summary class="form-section-summary">Datos del solicitante</summary>
         <div class="form-row form-row-seccion">
           <div class="form-group">
             <label class="form-label" for="solicitante_nombre">Nombre del Solicitante ${OPT}</label>
@@ -152,7 +152,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
 
       <!-- DATOS DEL EQUIPO -->
       <details class="form-section-details" open>
-        <summary class="form-section-summary">Datos del Equipo</summary>
+        <summary class="form-section-summary">Datos del equipo</summary>
         <div class="form-row form-row-seccion">
           <div class="form-group">
             <label class="form-label" for="equipo_marca">Marca ${OPT}</label>
@@ -185,7 +185,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
       <!-- CONDICIONES LOGÍSTICAS -->
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label" for="tiempo_entrega">Tiempo de Entrega (general)</label>
+          <label class="form-label" for="tiempo_entrega">Tiempo de entrega (general)</label>
           <input class="form-control" type="text" id="tiempo_entrega"
                  placeholder="Ej: 25 DÍAS CALENDARIO" maxlength="100" />
         </div>
@@ -193,7 +193,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
 
       <!-- Line items — OBSERVER Subject changes trigger all three Observers -->
       <div class="line-items-section">
-        <h4>Ítems de Detalle</h4>
+        <h4>Ítems de detalle</h4>
         <div class="table-wrapper">
           <table class="line-items-table">
             <thead>
@@ -201,14 +201,14 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
               <!-- Los anchos viven en quotation-form.css: se reparten el 100%,
                    así que sólo tienen sentido los diez juntos. -->
               <th>Descripción</th>
-              <th>Cód. Parte</th>
+              <th>Cód. parte</th>
               <th>Cód. Alt.</th>
               <th>Marca</th>
               <th>UM</th>
               <th>Cantidad</th>
               <th>Precio Unit.</th>
               <th>Subtotal</th>
-              <th>T. Entrega</th>
+              <th>T. entrega</th>
               <th></th>
             </tr>
           </thead>
@@ -248,7 +248,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
       <!-- Payment terms + PDF config -->
       <div class="form-row form-row-pie">
         <div class="form-group fg-doble-min">
-          <label class="form-label" for="forma_pago">Forma de Pago</label>
+          <label class="form-label" for="forma_pago">Forma de pago</label>
           <select class="form-control" id="forma_pago">
             <option value="">Por defecto (60% ANTICIPO Y SALDO CONTRA ENTREGA)</option>
             <option value="20% DE ANTICIPO">20% DE ANTICIPO</option>
@@ -256,14 +256,14 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
             <option value="40% DE ANTICIPO">40% DE ANTICIPO</option>
             <option value="50% DE ANTICIPO">50% DE ANTICIPO</option>
             <option value="60% DE ANTICIPO">60% DE ANTICIPO</option>
-            <option value="__otro__">Otro (Personalizado)</option>
+            <option value="__otro__">Otro (personalizado)</option>
           </select>
         </div>
         <!-- Nace oculto con .hidden y NO con style="display:none": el JS lo
              muestra al elegir «Otro», y vaciar un estilo inline no muestra
              nada — sólo deja que gane la hoja de estilos. -->
         <div class="form-group fg-doble-min hidden" id="forma_pago_custom_group">
-          <label class="form-label" for="forma_pago_custom">Forma de Pago Personalizada</label>
+          <label class="form-label" for="forma_pago_custom">Forma de pago personalizada</label>
           <input class="form-control" type="text" id="forma_pago_custom"
                  placeholder="Ej: 70% ANTICIPO Y SALDO A 30 DÍAS" maxlength="200" />
         </div>
@@ -277,7 +277,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
 
       <!-- Excel optional attachment -->
       <div class="form-group mt-2">
-        <label class="form-label">Planilla Excel de Auditoría (opcional)</label>
+        <label class="form-label">Planilla Excel de auditoría (opcional)</label>
         <div class="drop-zone drop-zone-excel" id="excel-drop-zone">
           <input type="file" id="excel-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
           <div class="drop-zone-icon">${stateIcon('subir')}</div>
@@ -294,7 +294,7 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
       <div class="modal-actions">
         <button type="button" id="btn-cancel" class="btn btn-ghost">Cancelar</button>
         <button type="submit" id="btn-submit" class="btn btn-primary">
-          <span class="btn-label">${isEdit ? 'Guardar Cambios' : 'Crear Cotización'}</span>
+          <span class="btn-label">${isEdit ? 'Guardar cambios' : 'Crear cotización'}</span>
           <span class="spinner hidden btn-spinner"></span>
         </button>
       </div>

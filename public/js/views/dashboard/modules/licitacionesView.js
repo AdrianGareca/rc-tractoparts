@@ -10,7 +10,7 @@
 //   • Delegated Ejecutivo — read + limited transitions, defaultEstado=Cotizando
 //
 // mountLicitacionesTab(panel, opts)
-//   opts.canCreate     {boolean} show "+ Nueva Licitación" (Proyectos/Jefe/SysAdmin)
+//   opts.canCreate     {boolean} show "+ Nueva licitación" (Proyectos/Jefe/SysAdmin)
 //   opts.defaultEstado {string}  preselect an estado filter (e.g. 'Cotizando')
 //   opts.onCreateCotizacion {function(licitacion)} optional — when provided, the
 //                              detail shows a "Crear cotización vinculada" button
@@ -45,12 +45,12 @@ export async function mountLicitacionesTab(panel, opts = {}) {
     <div class="card">
       <div class="card-header flex-wrap gap-2">
         <h3>Licitaciones</h3>
-        <div style="display:flex;gap:.5rem;align-items:center;">
+        <div class="flex gap-1 items-center">
           <span class="text-muted text-sm" id="lic-total"></span>
-          ${canCreate ? '<button class="btn btn-primary btn-sm" id="lic-new">+ Nueva Licitación</button>' : ''}
+          ${canCreate ? '<button class="btn btn-primary btn-sm" id="lic-new">+ Nueva licitación</button>' : ''}
         </div>
       </div>
-      <div class="filter-bar" style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end;">
+      <div class="filter-bar">
         <div class="form-group m-0">
           <label class="form-label">Buscar</label>
           <input class="form-control fc-wide" type="search" id="lic-search" placeholder="Código, nombre o convocante…" />

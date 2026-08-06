@@ -39,13 +39,13 @@ export class ManagerStrategy extends DashboardStrategy {
 
     container.innerHTML = `
       <div class="tab-bar" id="manager-tabs">
-        <button class="tab-btn active" data-tab="approvals">Cola de Aprobación</button>
-        <button class="tab-btn" data-tab="quotations">Todas las Cotizaciones</button>
+        <button class="tab-btn active" data-tab="approvals">Cola de aprobación</button>
+        <button class="tab-btn" data-tab="quotations">Todas las cotizaciones</button>
         <button class="tab-btn" data-tab="licitaciones">Licitaciones</button>
-        <button class="tab-btn" data-tab="users">Gestión de Usuarios</button>
-        <button class="tab-btn" data-tab="clientes">Gestión de Clientes</button>
-        <button class="tab-btn" data-tab="audit">Registros de Auditoría</button>
-        <button class="tab-btn" data-tab="consumo">Consumo por Cliente</button>
+        <button class="tab-btn" data-tab="users">Gestión de usuarios</button>
+        <button class="tab-btn" data-tab="clientes">Gestión de clientes</button>
+        <button class="tab-btn" data-tab="audit">Registros de auditoría</button>
+        <button class="tab-btn" data-tab="consumo">Consumo por cliente</button>
         <button class="tab-btn" data-tab="reportes">Reportes</button>
       </div>
       <div id="manager-panel"></div>
@@ -110,7 +110,7 @@ export class ManagerStrategy extends DashboardStrategy {
       panel.innerHTML = `
         <div class="card">
           <div class="card-header">
-            <h3>Cola de Aprobación (${rows.length})</h3>
+            <h3>Cola de aprobación (${rows.length})</h3>
             <span class="text-muted text-sm">Haz clic en "Revisar y Decidir" para ver la proforma completa</span>
           </div>
           <div class="table-wrapper">
@@ -133,8 +133,8 @@ export class ManagerStrategy extends DashboardStrategy {
                     <td>${fmtDate(r.fecha_emision)}</td>
                     <td>${fmtDate(r.fecha_validez)}</td>
                     <td>
-                      <button class="btn btn-primary btn-sm" data-review="${r.id}"
-                              style="white-space:nowrap;">
+                      <button class="btn btn-primary btn-sm nowrap" data-review="${r.id}"
+                             >
                         Revisar y Decidir
                       </button>
                     </td>
@@ -169,7 +169,7 @@ export class ManagerStrategy extends DashboardStrategy {
         // Wire the 4 state-machine action buttons
         body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () => {
           this._confirmStateChange(id, 'Pendiente',
-            'Solicitar Cambios',
+            'Solicitar cambios',
             'La cotización volverá al Ejecutivo para correcciones.',
             'Observaciones para el ejecutivo *',
             true,
@@ -178,7 +178,7 @@ export class ManagerStrategy extends DashboardStrategy {
 
         body.querySelector('#btn-en-espera')?.addEventListener('click', () => {
           this._confirmStateChange(id, 'En espera',
-            'Poner en Espera',
+            'Poner en espera',
             'La decisión queda suspendida mientras se verifica disponibilidad de stock con el proveedor.',
             'Motivo de la espera (opcional)',
             false,
@@ -227,7 +227,7 @@ export class ManagerStrategy extends DashboardStrategy {
     }
   }
 
-  // ── Generic state-transition confirmation dialog (Solicitar Cambios / En Espera) ──
+  // ── Generic state-transition confirmation dialog (Solicitar cambios / En Espera) ──
 
   // El dialogo vive en modules/stateChangeDialog.js: estaba escrito identico
   // aca y en executiveStrategy, y lo unico que cambiaba era el prefijo de los
@@ -257,7 +257,7 @@ export class ManagerStrategy extends DashboardStrategy {
   }
 
   _showApproveDialog(id, aprobado, _triggerBtn) {
-    const title  = aprobado ? 'Aprobar Cotización' : 'Rechazar Cotización';
+    const title  = aprobado ? 'Aprobar cotización' : 'Rechazar Cotización';
     const label  = aprobado ? 'Observaciones (opcional)' : 'Justificación del rechazo *';
 
     UI.openModal(title, (body) => {
@@ -306,7 +306,7 @@ export class ManagerStrategy extends DashboardStrategy {
     });
   }
 
-  // ── Full detail view from "Todas las Cotizaciones" (Jefe — with action buttons) ──
+  // ── Full detail view from "Todas las cotizaciones" (Jefe — with action buttons) ──
 
   async _viewFullDetail(id, correlativo) {
     try {
@@ -319,14 +319,14 @@ export class ManagerStrategy extends DashboardStrategy {
         // Wire action buttons (same as approval detail)
         body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () => {
           this._confirmStateChange(id, 'Pendiente',
-            'Solicitar Cambios',
+            'Solicitar cambios',
             'La cotización volverá al Ejecutivo para correcciones.',
             'Observaciones para el ejecutivo *', true,
             'Cambios solicitados — cotización regresada al ejecutivo.');
         });
         body.querySelector('#btn-en-espera')?.addEventListener('click', () => {
           this._confirmStateChange(id, 'En espera',
-            'Poner en Espera',
+            'Poner en espera',
             'La decisión queda suspendida mientras se verifica disponibilidad.',
             'Motivo de la espera (opcional)', false,
             'Cotización puesta en espera.');
@@ -340,7 +340,7 @@ export class ManagerStrategy extends DashboardStrategy {
 
         // FIX: #btn-aceptar was missing from _viewFullDetail — wired here so
         // quotations in 'Aprobada internamente' / 'Enviada al cliente' reached
-        // from the "Todas las Cotizaciones" tab can complete the sale closure.
+        // from the "Todas las cotizaciones" tab can complete the sale closure.
         body.querySelector('#btn-aceptar')?.addEventListener('click', () => {
           this._confirmStateChange(id, 'Confirmada',
             'Confirmar Cotización — Cierre de Venta',
@@ -466,7 +466,7 @@ export class ManagerStrategy extends DashboardStrategy {
           </p>
         </div>
         <div class="form-group">
-          <label class="form-label" for="rev-obs">Justificación de la Revaluación *</label>
+          <label class="form-label" for="rev-obs">Justificación de la revaluación *</label>
           <textarea class="form-control" id="rev-obs" rows="3"
                     placeholder="Ej: Nueva información del proveedor cambia las condiciones comerciales."></textarea>
           <span class="field-error" id="rev-err"></span>
@@ -475,7 +475,7 @@ export class ManagerStrategy extends DashboardStrategy {
           <button class="btn btn-ghost" id="rev-cancel">Cancelar</button>
           <button class="btn btn-sm" id="rev-confirm"
                   style="background:var(--clr-amber);color:#000;border:none;font-weight:600;">
-            Confirmar Revertir Rechazo
+            Confirmar Revertir rechazo
           </button>
         </div>`;
 
@@ -512,8 +512,8 @@ export class ManagerStrategy extends DashboardStrategy {
       panel.innerHTML = `
         <div class="card">
           <div class="card-header">
-            <h3>Gestión de Usuarios</h3>
-            <button class="btn btn-primary btn-sm" id="btn-create-user">+ Nuevo Usuario</button>
+            <h3>Gestión de usuarios</h3>
+            <button class="btn btn-primary btn-sm" id="btn-create-user">+ Nuevo usuario</button>
           </div>
           <div class="table-wrapper">
             <table class="data-table">

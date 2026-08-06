@@ -7,7 +7,7 @@
 //   wireClientSearch  — debounce, selección, blur y botones del sub-modal
 //
 // El alta/edición delega en dashboard/modules/clientModal.js (el mismo que usa
-// la pestaña "Gestión de Clientes"), así los campos, la validación y el manejo
+// la pestaña "Gestión de clientes"), así los campos, la validación y el manejo
 // de NIT duplicado viven en un solo lugar.
 //
 // Extraído de FormMediator._wireClientSearch sin cambios de comportamiento.
@@ -148,7 +148,7 @@ export function wireClientSearch({ container, onDirty } = {}) {
     setTimeout(closeDropdown, BLUR_CLOSE_DELAY_MS);
   });
 
-  // Wire the "+ Nuevo Cliente" express-registration button
+  // Wire the "+ Nuevo cliente" express-registration button
   container.querySelector('#btn-nuevo-cliente')?.addEventListener('click', () => {
     openModalCliente(container, { mode: 'create', client: null, onSaved: selectClient });
   });

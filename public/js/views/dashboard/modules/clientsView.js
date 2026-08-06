@@ -1,6 +1,6 @@
 // =============================================================================
 // public/js/views/dashboard/modules/clientsView.js
-// "Gestión de Clientes" tab — paginated list of ALL clients (active and
+// "Gestión de clientes" tab — paginated list of ALL clients (active and
 // inactive), with search, create, edit, deactivate, and reactivate. Shared by
 // every dashboard strategy (Ejecutivo, Jefe, Administracion) so the entire
 // flow lives here once instead of being duplicated per strategy.
@@ -32,10 +32,10 @@ export async function mountClientsTab(panel) {
   panel.innerHTML = `
     <div class="card">
       <div class="card-header flex-wrap gap-2">
-        <h3>Gestión de Clientes</h3>
-        <div style="display:flex;gap:.5rem;align-items:center;">
+        <h3>Gestión de clientes</h3>
+        <div class="flex gap-1 items-center">
           <span class="text-muted text-sm" id="clients-total"></span>
-          <button class="btn btn-primary btn-sm" id="clients-new">+ Nuevo Cliente</button>
+          <button class="btn btn-primary btn-sm" id="clients-new">+ Nuevo cliente</button>
         </div>
       </div>
       <div class="filter-bar">
@@ -91,7 +91,7 @@ export async function mountClientsTab(panel) {
           <table class="data-table">
             <thead>
               <tr>
-                <th>Razón Social</th><th>NIT</th><th>Contacto</th>
+                <th>Razón social</th><th>NIT</th><th>Contacto</th>
                 <th>Email</th><th>Teléfono</th><th>Estado</th><th>Acciones</th>
               </tr>
             </thead>
@@ -137,10 +137,10 @@ export async function mountClientsTab(panel) {
           if (!client) return;
 
           const ok = await confirmDialog({
-            title:        'Confirmar Desactivación',
+            title:        'Confirmar desactivación',
             message:      `¿Desactivar al cliente "${escHtml(client.razon_social)}"? ` +
                           `Podrá reactivarse luego editándolo.`,
-            confirmLabel: 'Sí, Desactivar',
+            confirmLabel: 'Sí, desactivar',
             confirmClass: 'btn-danger',
           });
           if (!ok) return;

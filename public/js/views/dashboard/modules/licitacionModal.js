@@ -81,20 +81,20 @@ export function openLicitacionModal({ mode = 'create', licitacion = null, onSave
                 placeholder="Objeto de la licitación, alcance, notas…">${isEdit && licitacion.descripcion ? escHtml(licitacion.descripcion) : ''}</textarea>
     </div>
 
-    <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
-      <div class="form-group" style="flex:1;min-width:150px;">
+    <div class="flex gap-2 flex-wrap">
+      <div class="form-group fg-crece-min">
         <label class="form-label" for="lic-presupuesto">Presupuesto referencial</label>
         <input class="form-control" id="lic-presupuesto" type="number" min="0" step="0.01"
                value="${isEdit && licitacion.presupuesto_referencial != null ? escHtml(String(licitacion.presupuesto_referencial)) : ''}"
                placeholder="0.00" />
       </div>
-      <div class="form-group" style="width:120px;">
+      <div class="form-group fg-120">
         <label class="form-label" for="lic-moneda">Moneda</label>
         <select class="form-control" id="lic-moneda">
           ${CURRENCIES.map((c) => `<option value="${c}" ${isEdit && licitacion.moneda === c ? 'selected' : ''}>${c}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group" style="flex:1;min-width:150px;">
+      <div class="form-group fg-crece-min">
         <label class="form-label" for="lic-fecha-limite">Fecha límite</label>
         <input class="form-control" id="lic-fecha-limite" type="date"
                value="${isEdit && licitacion.fecha_limite ? escHtml(String(licitacion.fecha_limite).slice(0, 10)) : ''}" />
@@ -106,7 +106,7 @@ export function openLicitacionModal({ mode = 'create', licitacion = null, onSave
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.innerHTML = `
-    <div class="sub-modal" style="max-width:560px;">
+    <div class="sub-modal">
       <div class="sub-modal-header">
         <h4>${title}${isAttach ? ` — ${escHtml(licitacion.codigo)}` : ''}</h4>
         <button type="button" class="btn-icon sub-modal-close" id="lic-close" aria-label="Cerrar">✕</button>
@@ -117,17 +117,17 @@ export function openLicitacionModal({ mode = 'create', licitacion = null, onSave
 
           <div class="form-group">
             <label class="form-label">Documentos ${showHeaderFields ? '<span class="text-muted">(opcional)</span>' : ''}</label>
-            <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
-              <input type="file" id="lic-doc-input" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" style="display:none;" />
+            <div class="flex items-center gap-1 flex-wrap">
+              <input type="file" id="lic-doc-input" class="hidden" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" />
               <button type="button" class="btn btn-ghost btn-sm" id="lic-doc-pick">Elegir archivos</button>
               <span class="text-muted text-sm">PDF, Word, Excel o imágenes · varios a la vez</span>
             </div>
-            <div id="lic-doc-filelist" style="margin-top:.35rem;"></div>
+            <div id="lic-doc-filelist" class="mt-04"></div>
           </div>
 
-          <div class="form-error" id="lic-form-err" style="color:var(--clr-red);min-height:1.2em;"></div>
+          <div class="form-error" id="lic-form-err"></div>
 
-          <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:.5rem;">
+          <div class="flex justify-end gap-1 mt-1">
             <button type="button" class="btn btn-ghost" id="lic-cancel">Cancelar</button>
             <button type="submit" class="btn btn-primary" id="lic-submit">${submitLabel}</button>
           </div>
@@ -226,9 +226,9 @@ export function openLicitacionModal({ mode = 'create', licitacion = null, onSave
     const listEl = $('#lic-doc-filelist');
     if (!listEl) return;
     listEl.innerHTML = selectedFiles.map((f, i) => `
-      <div style="display:flex;align-items:center;gap:.4rem;padding:.15rem 0;font-size:.82rem;">
+      <div class="lista-item-compacto">
         <span>${docIcon(f.name)}</span>
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(f.name)}</span>
+        <span class="lista-item-nombre">${escHtml(f.name)}</span>
         <button type="button" class="btn-icon" data-remove-file="${i}" aria-label="Quitar">✕</button>
       </div>`).join('');
     listEl.querySelectorAll('[data-remove-file]').forEach((btn) => {

@@ -3,7 +3,7 @@
 // Espejo navegable de la máquina de estados del servidor.
 //
 // POR QUÉ EXISTE
-// El selector "Cambiar Estado" del dashboard ofrecía los 8 estados sin filtrar
+// El selector "Cambiar estado" del dashboard ofrecía los 8 estados sin filtrar
 // por rol ni por estado de origen. Elegir uno inválido no producía nada visible:
 // el servidor devolvía 403 con un mensaje técnico y el usuario quedaba mirando
 // un error que no tenía forma de anticipar. Peor con la llave del jefe, donde la

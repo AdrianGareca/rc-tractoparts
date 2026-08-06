@@ -9,7 +9,7 @@
 //
 //     DashboardStrategy  (abstract interface — dashboard/strategies/dashboardStrategy.js)
 //       ├─ ExecutiveStrategy  — Ejecutivo  (dashboard/strategies/executiveStrategy.js)
-//       │    • Summary stats, own quotation table, "Nueva Cotización" action
+//       │    • Summary stats, own quotation table, "Nueva cotización" action
 //       ├─ ManagerStrategy    — Jefe / SysAdmin  (dashboard/strategies/managerStrategy.js)
 //       │    • Global overview, pending-approval queue, all quotations,
 //       │      User CRUD panel, Audit Logs workspace
@@ -156,17 +156,17 @@ class DashboardController {
       links = `
         <span class="sidebar-section-label">Panel Principal</span>
         <button class="sidebar-link active" data-section="approvals">
-          ${navIcon('aprobacion')} Cola de Aprobación
+          ${navIcon('aprobacion')} Cola de aprobación
         </button>
         <button class="sidebar-link" data-section="quotations">
-          ${navIcon('cotizaciones')} Todas las Cotizaciones
+          ${navIcon('cotizaciones')} Todas las cotizaciones
         </button>
         <span class="sidebar-section-label">Administración</span>
         <button class="sidebar-link" data-section="users">
-          ${navIcon('usuarios')} Gestión de Usuarios
+          ${navIcon('usuarios')} Gestión de usuarios
         </button>
         <button class="sidebar-link" data-section="audit">
-          ${navIcon('auditoria')} Registros de Auditoría
+          ${navIcon('auditoria')} Registros de auditoría
         </button>
         <button class="sidebar-link" id="sidebar-api-docs">
           ${navIcon('docs')} Documentación API
@@ -179,17 +179,17 @@ class DashboardController {
       links = `
         <span class="sidebar-section-label">Panel Principal</span>
         <button class="sidebar-link active" data-section="review">
-          ${navIcon('revision')} Cola de Revisión
+          ${navIcon('revision')} Cola de revisión
         </button>
         <button class="sidebar-link" data-section="quotations">
-          ${navIcon('cotizaciones')} Todas las Cotizaciones
+          ${navIcon('cotizaciones')} Todas las cotizaciones
         </button>
         <span class="sidebar-section-label">Administración</span>
         <button class="sidebar-link" data-section="users">
-          ${navIcon('usuarios')} Gestión de Usuarios
+          ${navIcon('usuarios')} Gestión de usuarios
         </button>
         <button class="sidebar-link" data-section="audit">
-          ${navIcon('auditoria')} Registros de Auditoría
+          ${navIcon('auditoria')} Registros de auditoría
         </button>
         <span class="sidebar-section-label">Cuenta</span>
         <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
@@ -202,7 +202,7 @@ class DashboardController {
           ${navIcon('licitaciones')} Licitaciones
         </button>
         <button class="sidebar-link" data-section="clientes">
-          ${navIcon('clientes')} Gestión de Clientes
+          ${navIcon('clientes')} Gestión de clientes
         </button>
         <span class="sidebar-section-label">Cuenta</span>
         <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
@@ -212,10 +212,10 @@ class DashboardController {
       links = `
         <span class="sidebar-section-label">Mi Trabajo</span>
         <button class="sidebar-link active" data-section="quotations">
-          ${navIcon('cotizaciones')} Mis Cotizaciones
+          ${navIcon('cotizaciones')} Mis cotizaciones
         </button>
         <button class="sidebar-link btn-new-cot" data-section="new">
-          ${navIcon('nueva')} Nueva Cotización
+          ${navIcon('nueva')} Nueva cotización
         </button>
         <span class="sidebar-section-label">Cuenta</span>
         <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
@@ -256,7 +256,7 @@ class DashboardController {
       btn.addEventListener('click', () => {
         // Special shortcut: "new" opens the modal immediately
         if (btn.dataset.section === 'new') {
-          UI.openModal('Nueva Cotización', (body) => {
+          UI.openModal('Nueva cotización', (body) => {
             const destroy = mountQuotationForm(body, {
               onSuccess: (q) => {
                 UI.closeModal();

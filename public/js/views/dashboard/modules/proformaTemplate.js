@@ -97,13 +97,13 @@ export function buildProformaHTML(q, id, viewMode) {
       <h4 class="approval-actions-title">${jefeMode ? 'Decisión del Jefe' : 'Acciones Operativas — Delegación de Funciones'}</h4>
       <div class="approval-actions-grid">
         ${canRetract ? `<button class="btn btn-warning btn-sm" id="btn-solicitar-cambios">
-          Solicitar Cambios
+          Solicitar cambios
         </button>` : ''}
         ${canHold ? `<button class="btn btn-hold btn-sm" id="btn-en-espera">
-          Poner en Espera
+          Poner en espera
         </button>` : ''}
         ${canApprove ? `<button class="btn btn-success" id="btn-aprobar">
-          Aprobar Cotización
+          Aprobar cotización
         </button>` : ''}
         ${canEnviarCliente ? `<button class="btn btn-success" id="btn-enviar-cliente">
           Aprobar y Enviar al Cliente
@@ -134,7 +134,7 @@ export function buildProformaHTML(q, id, viewMode) {
     </div>` : ''}
     ${canRevertir ? `
     <div class="approval-actions revertir-rechazo">
-      <h4 class="approval-actions-title revertir-rechazo-title">Revertir Rechazo</h4>
+      <h4 class="approval-actions-title revertir-rechazo-title">Revertir rechazo</h4>
       <p class="text-sm text-secondary mb-1">
         Como autoridad comercial superior, puede revaluar esta cotización y reintroducirla
         en el flujo de aprobación. Las observaciones de rechazo previas serán preservadas
@@ -151,34 +151,34 @@ export function buildProformaHTML(q, id, viewMode) {
     </div>` : ''}
     ` : '';
 
-  // Admin action panel — comment box + "En Espera" + "Solicitar Cambios" buttons
+  // Admin action panel — comment box + "En Espera" + "Solicitar cambios" buttons
   const adminButtons = adminMode ? `
     <div class="approval-actions admin-review-panel">
       <h4 class="approval-actions-title">Revisión del Administrador</h4>
       <div class="form-group mb-1">
-        <label class="form-label" for="admin-comment-input">Comentario de Supervisión</label>
+        <label class="form-label" for="admin-comment-input">Comentario de supervisión</label>
         <textarea class="form-control textarea-vertical" id="admin-comment-input" rows="3"
                   placeholder="Ej: Verificar disponibilidad con proveedor antes de aprobar...">${escHtml(q.comentarios_admin ?? '')}</textarea>
         <span class="field-error" id="admin-comment-err"></span>
       </div>
       <div class="proforma-acciones-fila">
         <button class="btn btn-ghost btn-sm" id="btn-save-comment">
-          Guardar Comentario
+          Guardar comentario
         </button>
         <button class="btn btn-hold btn-sm" id="btn-admin-en-espera">
-          Poner en Espera con Comentario
+          Poner en espera con Comentario
         </button>
         ${
           ['En revision', 'En espera', 'Aprobada internamente'].includes(q.estado)
             ? `<button class="btn btn-warning btn-sm" id="btn-admin-solicitar-cambios">
-          Solicitar Cambios
+          Solicitar cambios
         </button>`
             : ''
         }
       </div>
     </div>` : '';
 
-  // NOTE (Delegación ampliada): the former single "Aprobar Internamente" button
+  // NOTE (Delegación ampliada): the former single "Aprobar internamente" button
   // block was superseded by the full operational grid above (jefeButtons renders
   // in delegate mode too). Delegated actions are wired by ExecutiveStrategy to
   // flow through PUT /:id/estado — never the jefeOnly POST /:id/aprobar route.
@@ -219,11 +219,11 @@ export function buildProformaHTML(q, id, viewMode) {
           <p>${escHtml(q.ejecutivo_nombre ?? '—')}</p>
         </div>
         <div class="proforma-meta-item">
-          <span class="form-label">Fecha Emisión</span>
+          <span class="form-label">Fecha de emisión</span>
           <p>${fmtDate(q.fecha_emision)}</p>
         </div>
         <div class="proforma-meta-item">
-          <span class="form-label">Fecha de Validez</span>
+          <span class="form-label">Fecha de validez</span>
           <p>${fmtDate(q.fecha_validez)}</p>
         </div>
         <div class="proforma-meta-item">
@@ -240,7 +240,7 @@ export function buildProformaHTML(q, id, viewMode) {
 
       <!-- Solicitor data (DATOS DEL SOLICITANTE — mirrors the PDF grid) -->
       <div class="form-group mb-2">
-        <span class="form-label proforma-bloque-label">Datos del Solicitante</span>
+        <span class="form-label proforma-bloque-label">Datos del solicitante</span>
         <div class="proforma-meta-bar mt-04">
           <div class="proforma-meta-item">
             <span class="form-label">Nombre</span>
@@ -267,7 +267,7 @@ export function buildProformaHTML(q, id, viewMode) {
 
       <!-- Equipment data (DATOS DEL EQUIPO — mirrors the PDF grid) -->
       <div class="form-group mb-2">
-        <span class="form-label proforma-bloque-label">Datos del Equipo</span>
+        <span class="form-label proforma-bloque-label">Datos del equipo</span>
         <div class="proforma-meta-bar mt-04">
           <div class="proforma-meta-item">
             <span class="form-label">Marca</span>
@@ -297,8 +297,8 @@ export function buildProformaHTML(q, id, viewMode) {
         <table class="data-table proforma-items-table">
           <thead>
             <tr>
-              <th>Descripción del Ítem</th>
-              ${showCodigos ? '<th>Cód. Parte</th>' : ''}
+              <th>Descripción del ítem</th>
+              ${showCodigos ? '<th>Cód. parte</th>' : ''}
               <th>Marca</th>
               <th class="text-right">Cantidad</th>
               <th class="text-right">Precio Unit. (${q.moneda})</th>
@@ -328,13 +328,13 @@ export function buildProformaHTML(q, id, viewMode) {
 
       ${q.obs_aprobacion ? `
       <div class="form-group mt-2">
-        <span class="form-label">Observaciones de Aprobación</span>
+        <span class="form-label">Observaciones de aprobación</span>
         <p class="proforma-description">${escHtml(q.obs_aprobacion)}</p>
       </div>` : ''}
 
       ${q.observaciones ? `
       <div class="form-group mt-1">
-        <span class="form-label">Observaciones Generales</span>
+        <span class="form-label">Observaciones generales</span>
         <p class="proforma-description">${escHtml(q.observaciones)}</p>
       </div>` : ''}
 

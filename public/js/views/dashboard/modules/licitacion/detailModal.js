@@ -335,7 +335,7 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
     resultadoHtml = `
       <div style="margin-top:.5rem;padding:.6rem .8rem;border-radius:8px;
            background:${ganancia ? 'rgba(16,185,129,.14)' : 'rgba(239,68,68,.14)'};">
-        <strong style="font-size:1.02rem;">${ganancia ? 'Ganancia' : 'Pérdida'}: ${fmtMoney(Math.abs(resultado), lic.moneda)}</strong><br>
+        <strong class="resultado-cifra">${ganancia ? 'Ganancia' : 'Pérdida'}: ${fmtMoney(Math.abs(resultado), lic.moneda)}</strong><br>
         <span class="text-sm">Ingreso (cotizado aprobado/confirmado): ${fmtMoney(ingreso, lic.moneda)}
           &nbsp;−&nbsp; Gastos: ${fmtMoney(gastosT, lic.moneda)}</span>
         ${lic.tiene_gastos_otra_moneda
@@ -359,21 +359,21 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
            </tbody></table></div>`;
 
     const addForm = canGastos ? `
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:.5rem;">
-        <div class="form-group" style="flex:2;min-width:160px;margin:0;">
+      <div class="acciones-fila items-end">
+        <div class="form-group fg-doble-min160">
           <label class="form-label text-sm" for="licd-gasto-concepto">Concepto</label>
           <input class="form-control" id="licd-gasto-concepto" type="text" maxlength="200" placeholder="Ej. Transporte a obra" />
         </div>
-        <div class="form-group" style="width:130px;margin:0;">
+        <div class="form-group fg-130">
           <label class="form-label text-sm" for="licd-gasto-monto">Monto (${escHtml(lic.moneda || 'BOB')})</label>
           <input class="form-control" id="licd-gasto-monto" type="number" min="0" step="0.01" placeholder="0.00" />
         </div>
         <button class="btn btn-primary btn-sm" id="licd-gasto-add">Agregar gasto</button>
       </div>
-      <div class="form-error" id="licd-gasto-err" style="color:var(--clr-red);min-height:1.2em;"></div>` : '';
+      <div class="form-error" id="licd-gasto-err"></div>` : '';
 
     gastosSectionHtml = `
-      <h5 style="margin:1rem 0 .35rem;">Gastos (${gastos.length})</h5>
+      <h5 class="sub-seccion-title">Gastos (${gastos.length})</h5>
       ${gastosList}
       ${addForm}`;
   }
@@ -383,11 +383,11 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
   // desde "Nueva/Editar Licitación" (licitacionModal.js), no desde aquí.
   const docsListHtml = documentos.length === 0
     ? `<p class="text-muted text-sm">Aún no hay documentos adjuntos.${canManageDocs ? ' Usá "Adjuntar" para subir el primero.' : ''}</p>`
-    : `<ul style="list-style:none;padding:0;margin:0;">
+    : `<ul class="lista-limpia">
          ${documentos.map((d) => `
-           <li style="display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px solid var(--border);">
+           <li class="lista-item">
              <span>${docIcon(d.nombre_original)}</span>
-             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(d.nombre_original)}">${escHtml(d.nombre_original)}</span>
+             <span class="lista-item-nombre" title="${escHtml(d.nombre_original)}">${escHtml(d.nombre_original)}</span>
              <span class="text-muted text-sm">${fmtFileSize(d.tamano_bytes)}</span>
              <span class="text-muted text-sm">${escHtml(d.nombre_usuario ?? '—')} · ${fmtDateTime(d.creado_en)}</span>
              <button class="btn btn-ghost btn-sm" data-doc-download="${d.id}" data-doc-name="${escHtml(d.nombre_original)}"></button>
@@ -396,24 +396,24 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
        </ul>`;
 
   const transButtons = trans.length > 0
-    ? `<div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem;">
+    ? `<div class="acciones-fila">
          ${trans.map((t) => `<button class="btn btn-sm ${t === 'No adjudicada' || t === 'Archivada' ? 'btn-ghost' : 'btn-primary'}" data-lic-transition="${escHtml(t)}">→ ${escHtml(t)}</button>`).join('')}
        </div>
        <div class="form-group mt-1">
          <label class="form-label text-sm" for="licd-observacion">Observación (obligatoria para "No adjudicada")</label>
          <textarea class="form-control" id="licd-observacion" rows="2" maxlength="2000" placeholder="Nota de la transición…"></textarea>
        </div>
-       <div class="form-error" id="licd-trans-err" style="color:var(--clr-red);min-height:1.2em;"></div>`
+       <div class="form-error" id="licd-trans-err"></div>`
     : '<p class="text-muted text-sm mt-1">No tienes transiciones disponibles para esta licitación en su estado actual.</p>';
 
   return `
-    <div class="sub-modal" style="max-width:720px;">
+    <div class="sub-modal sub-modal-wide">
       <div class="sub-modal-header">
         <h4>${escHtml(lic.codigo)} — ${escHtml(lic.nombre)}</h4>
         <button type="button" class="btn-icon sub-modal-close" id="licd-close" aria-label="Cerrar">✕</button>
       </div>
       <div class="sub-modal-body">
-        <div style="display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between;">
+        <div class="flex flex-wrap gap-3 items-center justify-between">
           <div>${licitacionBadgeHtml(lic.estado)}
             ${canEdit ? '<button class="btn btn-ghost btn-sm ml-1" id="licd-edit">Editar</button>' : ''}
             ${canManageDocs ? '<button class="btn btn-ghost btn-sm ml-1" id="licd-attach">Adjuntar</button>' : ''}
@@ -424,7 +424,7 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
           <div class="text-sm text-muted">Responsable: ${escHtml(lic.responsable_nombre ?? '—')}</div>
         </div>
 
-        <dl style="display:grid;grid-template-columns:auto 1fr;gap:.25rem .75rem;margin:.75rem 0;">
+        <dl class="datos-dl">
           <dt class="text-muted text-sm">Convocante</dt><dd>${escHtml(lic.cliente_nombre ?? '—')}</dd>
           <dt class="text-muted text-sm">Fecha límite</dt><dd>${fmtDate(lic.fecha_limite)}</dd>
           ${lic.descripcion ? `<dt class="text-muted text-sm">Descripción</dt><dd>${escHtml(lic.descripcion)}</dd>` : ''}
@@ -434,20 +434,20 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
         ${budgetHtml}
         ${resultadoHtml}
 
-        <h5 style="margin:1rem 0 .35rem;">Cotizaciones vinculadas (${cots.length})</h5>
+        <h5 class="sub-seccion-title">Cotizaciones vinculadas (${cots.length})</h5>
         ${cotsHtml}
 
         ${gastosSectionHtml}
 
-        <h5 style="margin:1rem 0 .35rem;">Documentos (${documentos.length})</h5>
+        <h5 class="sub-seccion-title">Documentos (${documentos.length})</h5>
         ${docsListHtml}
 
-        <h5 style="margin:1rem 0 .35rem;">Cambiar estado</h5>
+        <h5 class="sub-seccion-title">Cambiar estado</h5>
         ${transButtons}
 
         ${history.length > 0
           ? buildTimelineHtml(history)
-          : '<h5 style="margin:1rem 0 .35rem;">Historial</h5><p class="text-muted text-sm">Sin eventos de historial todavía.</p>'}
+          : '<h5 class="sub-seccion-title">Historial</h5><p class="text-muted text-sm">Sin eventos de historial todavía.</p>'}
       </div>
     </div>`;
 }

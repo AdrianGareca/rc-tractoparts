@@ -49,19 +49,19 @@ describe('buildFormHTML — contrato de ids con el Mediator', () => {
 });
 
 describe('buildFormHTML — modo creación vs edición', () => {
-  test('en creación el botón dice "Crear Cotización"', () => {
-    expect(buildFormHTML({ isEdit: false })).toContain('Crear Cotización');
-    expect(buildFormHTML({ isEdit: false })).not.toContain('Guardar Cambios');
+  test('en creación el botón dice "Crear cotización"', () => {
+    expect(buildFormHTML({ isEdit: false })).toContain('Crear cotización');
+    expect(buildFormHTML({ isEdit: false })).not.toContain('Guardar cambios');
   });
 
-  test('en edición el botón dice "Guardar Cambios"', () => {
-    expect(buildFormHTML({ isEdit: true })).toContain('Guardar Cambios');
-    expect(buildFormHTML({ isEdit: true })).not.toContain('Crear Cotización');
+  test('en edición el botón dice "Guardar cambios"', () => {
+    expect(buildFormHTML({ isEdit: true })).toContain('Guardar cambios');
+    expect(buildFormHTML({ isEdit: true })).not.toContain('Crear cotización');
   });
 
   test('sin argumentos no explota y asume creación', () => {
     expect(() => buildFormHTML()).not.toThrow();
-    expect(buildFormHTML()).toContain('Crear Cotización');
+    expect(buildFormHTML()).toContain('Crear cotización');
   });
 });
 

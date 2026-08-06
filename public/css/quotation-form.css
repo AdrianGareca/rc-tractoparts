@@ -360,3 +360,14 @@
   color: var(--text-muted);
   text-align: center;
 }
+
+/* Campos dentro de una fila de ítems. Los anchos estaban inline en siete
+   lugares de lineItemsComponent.js con cinco valores distintos. */
+.item-full   { width: 100%; font-size: .8rem; }
+.item-marca  { flex: 1; min-width: 0; font-size: .8rem; padding: 2px 4px; }
+.item-unidad { width: 80px; font-size: .8rem; padding: 2px 4px; }
+.item-cant   { width: 72px; }
+.item-precio { width: 100px; }
+
+/* El grupo marca + botón de alta rápida. */
+.item-marca-grupo { display: flex; gap: 4px; align-items: center; }

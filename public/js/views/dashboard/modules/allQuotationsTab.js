@@ -1,6 +1,6 @@
 // =============================================================================
 // public/js/views/dashboard/modules/allQuotationsTab.js
-// SHARED: "Todas las Cotizaciones" filterable tab (Jefe + Admin)
+// SHARED: "Todas las cotizaciones" filterable tab (Jefe + Admin)
 //
 // Both ManagerStrategy and AdminStrategy render an identical filterable table,
 // differing only in how the "Ver Detalle" button opens the record. This module
@@ -41,10 +41,10 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
   panel.innerHTML = `
     <div class="card">
       <div class="card-header flex-wrap gap-2">
-        <h3>Todas las Cotizaciones</h3>
+        <h3>Todas las cotizaciones</h3>
         <span class="text-muted text-sm" id="allq-total"></span>
       </div>
-      <div class="filter-bar" style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;padding:0 1rem 1rem;">
+      <div class="filter-bar">
         <div class="form-group">
           <label class="form-label">Estado</label>
           <select class="form-control fc-narrow" id="allq-estado">
@@ -68,9 +68,9 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
         </div>
         <div class="form-group">
           <label class="form-label">Buscar</label>
-          <input class="form-control" type="search" id="allq-q" placeholder="Correlativo, cliente, NIT…" style="min-width:190px;" />
+          <input class="form-control fc-wide" type="search" id="allq-q" placeholder="Correlativo, cliente, NIT…" />
         </div>
-        <button class="btn btn-primary btn-sm filter-action" id="allq-apply">Aplicar Filtros</button>
+        <button class="btn btn-primary btn-sm filter-action" id="allq-apply">Aplicar filtros</button>
         <button class="btn btn-ghost btn-sm filter-action"   id="allq-clear">Limpiar</button>
       </div>
       <div class="card-toolbar" id="allq-pagination"></div>

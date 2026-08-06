@@ -23,7 +23,7 @@
 /** Los que aparecieron alguna vez en public/js. Al sacar uno se deja igual. */
 const EMOJI = [
   // Documentos y datos
-  '📦', '📅', '📊', '📋', '📑', '📄', '📝', '📈', '📉', '📌', '📎', '🗑',
+  '📦', '📅', '📊', '📋', '📑', '📄', '📝', '📈', '📉', '📌', '📎', '🗑', '📍',
   // Personas y lugares
   '🏢', '👤', '👥', '🚜',
   // Estados y acciones

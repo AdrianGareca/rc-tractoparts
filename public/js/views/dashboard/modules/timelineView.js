@@ -229,10 +229,10 @@ export function buildTimelineHtml(history) {
       ? ` <em class="text-secondary">Obs: ${escHtml(h.observacion)}</em>`
       : '';
     return `
-      <li style="display:flex;gap:.75rem;margin-bottom:.75rem;align-items:flex-start;">
+      <li class="timeline-item">
         <span style="flex-shrink:0;width:10px;height:10px;border-radius:50%;
                      margin-top:4px;background:${isFirst ? 'var(--clr-blue)' : 'var(--clr-indigo)'};"></span>
-        <div style="font-size:.85rem;line-height:1.4;">
+        <div class="timeline-texto">
           <strong>${fecha}</strong> — ${label}<br>
           <span class="text-secondary">
             Usuario: ${escHtml(h.nombre_usuario ?? '—')}
@@ -244,10 +244,10 @@ export function buildTimelineHtml(history) {
   }).join('');
 
   return `
-    <div style="margin-top:1.5rem;border-top:1px solid var(--border);padding-top:1rem;">
-      <h4 style="margin-bottom:.75rem;font-size:.95rem;color:var(--text-secondary);">Historial de Seguimiento
+    <div class="timeline-seccion">
+      <h4>Historial de Seguimiento
       </h4>
-      <ol style="list-style:none;padding:0;margin:0;position:relative;">
+      <ol class="timeline">
         ${items}
       </ol>
     </div>`;
@@ -267,8 +267,8 @@ export function buildQuotationDetailButtons(quotation) {
     <button
       type="button"
       id="btn-ver-pdf"
-      class="btn btn-primary btn-sm"
-      style="display:inline-flex;align-items:center;gap:.35rem;"
+      class="btn btn-primary btn-sm inline-flex-gap"
+     
     >
       Ver PDF Adjunto
     </button>`;
@@ -284,7 +284,7 @@ export function buildQuotationDetailButtons(quotation) {
     : '';
 
   return `
-    <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1rem;">
+    <div class="acciones-fila mt-2">
       ${pdfBtn}
       ${excelBtn}
     </div>`;

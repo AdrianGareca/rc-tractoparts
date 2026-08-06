@@ -44,7 +44,7 @@ export function confirmStateChange({
 }) {
   UI.openModal(title, (body) => {
     body.innerHTML = `
-      <p class="text-sm" style="color:var(--text-secondary);margin-bottom:1rem;">
+      <p class="text-sm text-secondary mb-2">
         ${description}
       </p>
       <div class="form-group">

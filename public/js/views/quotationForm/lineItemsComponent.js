@@ -47,21 +47,21 @@ export function buildRowHtml(index, itemData = null, brands = []) {
            value="${safeDesc}" placeholder="Descripción del ítem" />
   </td>
   <td>
-    <input class="item-input item-codigo" type="text" data-field="codigo" data-idx="${index}"
+    <input class="item-input item-codigo item-full" type="text" data-field="codigo" data-idx="${index}"
            value="${safeCod}" placeholder="Ej: 7E-6116" maxlength="50"
-           style="width:100%;font-size:.8rem;"
+          
            title="Código de Parte del fabricante. Si ya existe en otra fila, las cantidades se suman automáticamente." />
   </td>
   <td>
-    <input class="item-input" type="text" data-field="codigo_alternativo" data-idx="${index}"
+    <input class="item-input item-full" type="text" data-field="codigo_alternativo" data-idx="${index}"
            value="${safeCodAlt}" placeholder="Ej: P553191" maxlength="100"
-           style="width:100%;font-size:.8rem;"
+          
            title="Código alternativo o código cruzado del fabricante." />
   </td>
   <td class="item-marca-cell">
-    <div style="display:flex;gap:4px;align-items:center;">
+    <div class="item-marca-grupo">
       <select class="form-control item-marca" data-field="marca_id" data-idx="${index}"
-              style="flex:1;min-width:0;font-size:.8rem;padding:2px 4px;">
+             >
         <option value="">— Sin marca —</option>
         ${brandOptions}
       </select>
@@ -72,8 +72,8 @@ export function buildRowHtml(index, itemData = null, brands = []) {
     </div>
   </td>
   <td>
-    <select class="form-control unit-select" name="detalles[][unidad]" data-field="unidad" data-idx="${index}"
-            style="width:80px;font-size:.8rem;padding:2px 4px;">
+    <select class="form-control unit-select item-unidad" name="detalles[][unidad]" data-field="unidad" data-idx="${index}"
+           >
       <option value="PZA"${safeUnidadVal === 'PZA' ? ' selected' : ''}>PZA (Piezas)</option>
       <option value="GGO"${safeUnidadVal === 'GGO' ? ' selected' : ''}>GGO (Juegos)</option>
       <option value="KIT"${safeUnidadVal === 'KIT' ? ' selected' : ''}>KIT (Kits)</option>
@@ -81,18 +81,18 @@ export function buildRowHtml(index, itemData = null, brands = []) {
     </select>
   </td>
   <td>
-    <input class="item-input" type="number" data-field="cantidad" data-idx="${index}"
-           value="${safeCant}" min="0.0001" step="any" style="width:72px;" />
+    <input class="item-input item-cant" type="number" data-field="cantidad" data-idx="${index}"
+           value="${safeCant}" min="0.0001" step="any" />
   </td>
   <td>
-    <input class="item-input" type="number" data-field="precio_unitario" data-idx="${index}"
-           value="${safePrice}" min="0" step="any" style="width:100px;" />
+    <input class="item-input item-precio" type="number" data-field="precio_unitario" data-idx="${index}"
+           value="${safePrice}" min="0" step="any" />
   </td>
   <td class="item-subtotal" data-item-subtotal="${index}">0.00</td>
   <td>
-    <input class="item-input" type="text" data-field="tiempo_entrega" data-idx="${index}"
+    <input class="item-input item-full" type="text" data-field="tiempo_entrega" data-idx="${index}"
            value="${safeTEnt}" placeholder="Ej: 15 días" maxlength="100"
-           style="width:100%;font-size:.8rem;" />
+           />
   </td>
   <td>
     <button type="button" class="btn-remove-item" data-remove="${index}" title="Eliminar ítem">✕</button>

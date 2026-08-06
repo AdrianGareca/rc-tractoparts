@@ -1,6 +1,6 @@
 // =============================================================================
 // public/js/views/dashboard/modules/auditView.js
-// "Registros de Auditoría" tab — filterable, paginated security log viewer.
+// "Registros de auditoría" tab — filterable, paginated security log viewer.
 //
 // Reads from GET /api/auditoria (bitacora_auditoria), populated live across
 // the whole app by src/utils/auditLog.js#logEvent(). Shared by ManagerStrategy
@@ -88,7 +88,7 @@ function resultadoBadgeHtml(resultado) {
 // require a synchronized frontend change to remain readable.
 // ---------------------------------------------------------------------------
 const FIELD_LABELS = {
-  nombre_usuario:    'Nombre de Usuario',
+  nombre_usuario:    'Nombre de usuario',
   id_rol:            'Rol Asignado',
   updated_fields:    'Campos Modificados',
   reason:            'Motivo',
@@ -99,11 +99,11 @@ const FIELD_LABELS = {
   monto_total:       'Monto Total',
   item_count:        'Cantidad de Ítems',
   comentario_admin:  'Comentario del Administrador',
-  razon_social:      'Razón Social',
+  razon_social:      'Razón social',
   nit:               'NIT',
   error:             'Error',
   estado_anterior:   'Estado Anterior',
-  nuevo_estado:      'Nuevo Estado',
+  nuevo_estado:      'Nuevo estado',
   observacion:       'Observación',
   observaciones:     'Observación',
   aprobado:          'Aprobado',
@@ -175,12 +175,12 @@ function buildDetalleHtml(detalle) {
   if (entries.length === 0) return '';
 
   return `
-    <dl style="margin:0;display:grid;grid-template-columns:max-content 1fr;gap:.4rem 1rem;">
+    <dl class="audit-dl">
       ${entries.map(([key, value]) => `
-        <dt style="color:var(--text-secondary);font-size:.78rem;font-weight:600;white-space:nowrap;">
+        <dt>
           ${escHtml(FIELD_LABELS[key] || humanizeKey(key))}
         </dt>
-        <dd style="margin:0;font-size:.82rem;word-break:break-word;">
+        <dd>
           ${escHtml(formatDetalleValue(key, value))}
         </dd>
       `).join('')}
@@ -198,7 +198,7 @@ export async function mountAuditLogTab(panel) {
   panel.innerHTML = `
     <div class="card">
       <div class="card-header flex-wrap gap-2">
-        <h3>Registros de Auditoría</h3>
+        <h3>Registros de auditoría</h3>
         <span class="text-muted text-sm" id="audit-total"></span>
       </div>
       <div class="filter-bar">
@@ -216,7 +216,7 @@ export async function mountAuditLogTab(panel) {
         </div>
         <div class="form-group">
           <label class="form-label">Resultado</label>
-          <select class="form-control" id="audit-resultado" style="min-width:120px;">
+          <select class="form-control fc-xnarrow" id="audit-resultado">
             <option value="">Todos</option>
             <option value="exito">✓ Éxito</option>
             <option value="fallo">✗ Fallo</option>
@@ -234,7 +234,7 @@ export async function mountAuditLogTab(panel) {
           <label class="form-label">Usuario</label>
           <input class="form-control fc-medium" type="search" id="audit-usuario" placeholder="Nombre de usuario…" />
         </div>
-        <button class="btn btn-primary btn-sm filter-action" id="audit-apply">Aplicar Filtros</button>
+        <button class="btn btn-primary btn-sm filter-action" id="audit-apply">Aplicar filtros</button>
         <button class="btn btn-ghost btn-sm filter-action"   id="audit-clear">Limpiar</button>
       </div>
       <div class="card-toolbar" id="audit-pagination"></div>
@@ -321,7 +321,7 @@ export async function mountAuditLogTab(panel) {
           <table class="data-table">
             <thead>
               <tr>
-                <th>Fecha y Hora</th><th>Usuario</th><th>Acción</th>
+                <th>Fecha y hora</th><th>Usuario</th><th>Acción</th>
                 <th>Tabla</th><th>Registro</th><th>Resultado</th><th>IP</th><th></th>
               </tr>
             </thead>
@@ -336,14 +336,14 @@ export async function mountAuditLogTab(panel) {
                   <td class="text-sm">${escHtml(ENTIDAD_LABELS[r.entidad] ?? r.entidad ?? '—')}</td>
                   <td class="text-sm">${r.id_entidad ?? '—'}</td>
                   <td>${resultadoBadgeHtml(r.resultado)}</td>
-                  <td class="text-muted text-xs" style="font-family:monospace;">${escHtml(r.ip_origen ?? '—')}</td>
+                  <td class="text-muted text-xs mono">${escHtml(r.ip_origen ?? '—')}</td>
                   <td>${detalleHtml
                     ? `<button class="btn btn-ghost btn-sm" data-audit-detail="${r.id}">Detalle</button>`
                     : ''}</td>
                 </tr>
                 ${detalleHtml ? `
-                <tr class="audit-detail-row" id="audit-detail-${r.id}" style="display:none;">
-                  <td colspan="8" style="background:var(--bg-raised);padding:.85rem 1rem;">
+                <tr class="audit-detail-row hidden" id="audit-detail-${r.id}">
+                  <td colspan="8" class="audit-detail-cell">
                     ${detalleHtml}
                   </td>
                 </tr>` : ''}`;

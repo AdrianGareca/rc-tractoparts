@@ -107,7 +107,7 @@ async function downloadReportePdf(btn, desde, hasta) {
 
 // ---------------------------------------------------------------------------
 // _buildClientesPorOrigenTable
-// Renders the "Clientes por Origen" HTML table (company/manager reports only
+// Renders the "Clientes por origen" HTML table (company/manager reports only
 // — never computed for the Ejecutivo's individual report).
 //
 // @param {Array}  rows  — clientes_por_origen array from /api/reportes/advanced
@@ -116,7 +116,7 @@ async function downloadReportePdf(btn, desde, hasta) {
 function _buildClientesPorOrigenTable(rows) {
   const safeRows = rows ?? [];
   const tbody = safeRows.length === 0
-    ? `<tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--text-muted);">
+    ? `<tr><td colspan="3" class="empty-cell">
          Sin clientes clasificados todavía.
        </td></tr>`
     : safeRows.map((o) => `
@@ -128,7 +128,7 @@ function _buildClientesPorOrigenTable(rows) {
               ? `<span class="text-green">USD ${Number(o.total_usd).toFixed(2)}</span>`
               : ''}
             ${Number(o.total_bob ?? 0) > 0
-              ? `<span style="color:var(--clr-violet);margin-left:.25rem;">BOB ${Number(o.total_bob).toFixed(2)}</span>`
+              ? `<span class="text-violet ml-025">BOB ${Number(o.total_bob).toFixed(2)}</span>`
               : ''}
             ${Number(o.total_usd ?? 0) === 0 && Number(o.total_bob ?? 0) === 0 ? '—' : ''}
           </td>
@@ -137,8 +137,8 @@ function _buildClientesPorOrigenTable(rows) {
   return `
     <div class="card mb-2">
       <div class="card-header">
-        <h3>📍 Clientes por Origen</h3>
-        <span class="text-muted text-sm">De dónde vienen los clientes activos — clasificación editable en Gestión de Clientes</span>
+        <h3>Clientes por origen</h3>
+        <span class="text-muted text-sm">De dónde vienen los clientes activos — clasificación editable en Gestión de clientes</span>
       </div>
       <div class="table-wrapper">
         <table class="data-table">
@@ -146,7 +146,7 @@ function _buildClientesPorOrigenTable(rows) {
             <tr>
               <th>Origen</th>
               <th class="text-right">Clientes</th>
-              <th class="text-right">Volumen del Período</th>
+              <th class="text-right">Volumen del período</th>
             </tr>
           </thead>
           <tbody>${tbody}</tbody>
@@ -188,7 +188,7 @@ function _buildTopClientesTable(rows, propio = false) {
               ? `<span class="text-green">USD ${Number(c.total_usd).toFixed(2)}</span>`
               : ''}
             ${Number(c.total_bob ?? 0) > 0
-              ? `<span style="color:var(--clr-violet);margin-left:.25rem;">BOB ${Number(c.total_bob).toFixed(2)}</span>`
+              ? `<span class="text-violet ml-025">BOB ${Number(c.total_bob).toFixed(2)}</span>`
               : ''}
             ${Number(c.total_usd ?? 0) === 0 && Number(c.total_bob ?? 0) === 0 ? '—' : ''}
           </td>
@@ -208,7 +208,7 @@ function _buildTopClientesTable(rows, propio = false) {
           <thead>
             <tr>
               ${propio ? '' : '<th class="text-right">#</th>'}
-              <th>Cliente / Empresa</th>
+              <th>Cliente / empresa</th>
               <th>NIT</th>
               <th class="text-right">Proformas emitidas</th>
               <th class="text-right">Total facturado</th>
@@ -222,8 +222,8 @@ function _buildTopClientesTable(rows, propio = false) {
 
 // ---------------------------------------------------------------------------
 // _buildLeaderboardTable
-// Renders the "Rendimiento del Equipo de Ventas" (managers) or
-// "Mi Rendimiento Personal" (Ejecutivo) HTML table.
+// Renders the "Rendimiento del equipo de ventas" (managers) or
+// "Mi rendimiento personal" (Ejecutivo) HTML table.
 //
 // @param {Array}  rows      — leaderboard array from /api/reportes/advanced
 // @param {string} rol       — caller's role from the API response
@@ -232,15 +232,15 @@ function _buildTopClientesTable(rows, propio = false) {
 function _buildLeaderboardTable(rows, rol) {
   const isEjecutivo = rol === 'Ejecutivo';
   const title       = isEjecutivo
-    ? 'Mi Rendimiento Personal'
-    : 'Rendimiento del Equipo de Ventas';
+    ? 'Mi rendimiento personal'
+    : 'Rendimiento del equipo de ventas';
   const subtitle    = isEjecutivo
     ? 'Historial acumulado de tu actividad comercial'
     : 'Leaderboard histórico de ejecutivos — ordenado por volumen generado';
 
   const safeRows = rows ?? [];
   const tbody = safeRows.length === 0
-    ? `<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted);">
+    ? `<tr><td colspan="6" class="empty-cell">
          Sin registros de ejecutivos para este período.
        </td></tr>`
     : safeRows.map((e) => {
@@ -257,7 +257,7 @@ function _buildLeaderboardTable(rows, rol) {
                 ? `<span class="text-blue">USD ${Number(e.total_usd).toFixed(2)}</span>`
                 : ''}
               ${Number(e.total_bob ?? 0) > 0
-                ? `<span style="color:var(--clr-violet);margin-left:.25rem;">BOB ${Number(e.total_bob).toFixed(2)}</span>`
+                ? `<span class="text-violet ml-025">BOB ${Number(e.total_bob).toFixed(2)}</span>`
                 : ''}
               ${Number(e.total_usd ?? 0) === 0 && Number(e.total_bob ?? 0) === 0 ? '—' : ''}
             </td>
@@ -275,10 +275,10 @@ function _buildLeaderboardTable(rows, rol) {
           <thead>
             <tr>
               <th>Ejecutivo</th>
-              <th class="text-right">Proformas Creadas</th>
+              <th class="text-right">Proformas creadas</th>
               <th class="text-right">Aprobadas por Jefe</th>
-              <th class="text-right">Tasa de Aprobación</th>
-              <th class="text-right">Total Generado</th>
+              <th class="text-right">Tasa de aprobación</th>
+              <th class="text-right">Total generado</th>
             </tr>
           </thead>
           <tbody>${tbody}</tbody>
@@ -303,10 +303,10 @@ export async function renderExecutiveMetrics(panel) {
   panel.innerHTML = `
     <div class="card mb-2">
       <div class="card-header">
-        <h3>Filtrar mi Reporte</h3>
+        <h3>Filtrar mi reporte</h3>
         <span class="text-muted text-sm">Filtra tus propias cotizaciones por un día o un rango de fechas</span>
       </div>
-      <div class="filter-bar" style="padding:1rem;">
+      <div class="filter-bar">
         <div class="form-group">
           <label class="form-label">Rango rápido</label>
           <select class="form-control fc-narrow" id="mym-preset">
@@ -412,10 +412,10 @@ export async function renderReportes(panel) {
   panel.innerHTML = `
     <div class="card mb-2">
       <div class="card-header">
-        <h3>Período del Reporte</h3>
+        <h3>Período del reporte</h3>
         <span class="text-muted text-sm">Filtra las métricas por fecha, ejecutivo y moneda</span>
       </div>
-      <div class="filter-bar" style="padding:1rem;">
+      <div class="filter-bar">
         <div class="form-group">
           <label class="form-label">Rango rápido</label>
           <select class="form-control fc-narrow" id="rep-preset">
@@ -445,7 +445,7 @@ export async function renderReportes(panel) {
         </div>
         <div class="form-group">
           <label class="form-label">Moneda</label>
-          <select class="form-control" id="rep-moneda" style="min-width:130px;">
+          <select class="form-control fc-xnarrow" id="rep-moneda">
             <option value="BOB" selected>Bolivianos (BOB)</option>
             <option value="USD">Dólares (USD)</option>
           </select>
@@ -464,7 +464,7 @@ export async function renderReportes(panel) {
   const monedaEl = panel.querySelector('#rep-moneda');
 
   // Populate the Ejecutivo dropdown from /api/usuarios — same source and
-  // filtering as the "Todas las Cotizaciones" tab, so both filter bars always
+  // filtering as the "Todas las cotizaciones" tab, so both filter bars always
   // offer the identical list. Non-fatal: on failure it stays as "Todos" only.
   try {
     const usersResp  = await api.get('/api/usuarios');
@@ -611,7 +611,7 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
             ? `<span class="text-muted text-sm">Métricas de un solo ejecutivo — no son los totales de la empresa</span>`
             : ''}
         </div>
-        <div class="stats-grid" style="padding:1rem 1rem 0;">
+        <div class="stats-grid stats-grid-en-tarjeta">
           <div class="stat-card" style="--stat-accent:${monAccent};">
             <div class="stat-card-value">${volSel}</div>
             <div class="stat-card-label">Volumen ${monLabel} (período)</div>
@@ -655,7 +655,7 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
             </thead>
             <tbody>
               ${por_ejecutivo.length === 0
-                ? `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--text-muted);">Sin datos para el período seleccionado.</td></tr>`
+                ? `<tr><td colspan="7" class="empty-cell">Sin datos para el período seleccionado.</td></tr>`
                 : por_ejecutivo.map(e => `
                     <tr>
                       <td class="fw-600">${escHtml(e.ejecutivo)}</td>
@@ -680,7 +680,7 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
       <!-- ── BI: Executive Leaderboard ── -->
       ${_buildLeaderboardTable(leaderboard, rol)}
 
-      <!-- ── BI: Clientes por Origen ── -->
+      <!-- ── BI: Clientes por origen ── -->
       <!-- Omitted when scoped to one executive: the backend only computes this
            for company-wide reports (it counts ACTIVE CLIENTS, not quotations,
            so it is not an executive-level metric). Rendering it would show an
