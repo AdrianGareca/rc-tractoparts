@@ -54,9 +54,38 @@ function listarJs(dir) {
 // 'modules/x.js' a secas no diría si es del navegador o del servidor.
 const rel = (p) => path.relative(PROYECTO, p).split(path.sep).join('/');
 
-/** Toda función del archivo, con su nombre, su línea y cuántas ocupa. */
+/**
+ * Cuántas líneas de CÓDIGO tiene un tramo — sin comentarios ni líneas en blanco.
+ *
+ * POR QUÉ NO SE CUENTAN LAS LÍNEAS TOTALES
+ * La primera versión medía `end - start + 1`, y eso ponía a pelear dos cosas que
+ * el proyecto quiere las dos: comentar denso, línea por línea, y mantener las
+ * funciones cortas. Al comentar `validateTransitionByRole` como corresponde,
+ * pasó de unas 80 líneas a 123 — sin que se agregara una sola instrucción.
+ *
+ * Con esa métrica, la forma más fácil de «arreglar» una función larga habría
+ * sido borrarle los comentarios. Que es exactamente lo contrario de lo que hay
+ * que hacer.
+ *
+ * Lo que hace difícil de leer una función es la cantidad de cosas que HACE, y
+ * eso se mide en instrucciones. Un comentario no agrega carga: la quita.
+ */
+function contarCodigo(lineas, desde, hasta) {
+  let n = 0;
+  // `desde` y `hasta` vienen 1-indexados desde Babel; el arreglo es 0-indexado.
+  for (let i = desde - 1; i < hasta && i < lineas.length; i++) {
+    const t = lineas[i].trim();
+    if (!t) continue;                                      // línea en blanco
+    if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) continue;
+    n += 1;
+  }
+  return n;
+}
+
+/** Toda función del archivo, con su nombre, su línea y cuánto código ocupa. */
 function funcionesDe(file) {
   const src = fs.readFileSync(file, 'utf8');
+  const lineas = src.split(String.fromCharCode(10));
 
   let ast;
   try {
@@ -83,7 +112,7 @@ function funcionesDe(file) {
       encontradas.push({
         nombre: nodo.id?.name || nodo.key?.name || '(anónima)',
         linea:  nodo.loc.start.line,
-        largo:  nodo.loc.end.line - nodo.loc.start.line + 1,
+        largo:  contarCodigo(lineas, nodo.loc.start.line, nodo.loc.end.line),
       });
     }
 
@@ -102,11 +131,11 @@ const todas = RAICES.flatMap(listarJs).flatMap((f) =>
 // ---------------------------------------------------------------------------
 describe('el tamaño de las funciones sólo puede bajar', () => {
   // La más larga que hay hoy. Al partir una, este número baja.
-  const TOPE_MAXIMO = 321;
+  const TOPE_MAXIMO = 271;
 
   // Cuántas pasan de 80 líneas — el umbral donde una función deja de entrar en
   // una pantalla y hay que hacer scroll para saber qué hace.
-  const TOPE_GRANDES = 58;
+  const TOPE_GRANDES = 39;
   const UMBRAL_GRANDE = 80;
 
   test(`ninguna función pasa de ${TOPE_MAXIMO} líneas`, () => {
