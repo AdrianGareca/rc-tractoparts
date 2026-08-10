@@ -21,6 +21,10 @@ const { logEvent, AuditActions } = require('../../utils/auditLog');
 // La regeneración del PDF (purgar + generar + guardar ruta, no fatal) estaba
 // duplicada en cuatro controllers; ahora vive en pdfRegeneration.js.
 const { regenerateQuotationPdf } = require('./pdfRegeneration');
+// Las siete verificaciones previas a un cambio de estado, una por función.
+// Se importan agrupadas y no sueltas para que en el cuerpo se lea
+// `Guards.verificarPermisoDeRol(...)`: el prefijo dice de dónde sale la regla.
+const Guards = require('./stateTransitionGuards');
 
 const QuotationStateController = {
 
@@ -37,124 +41,65 @@ const QuotationStateController = {
   // Request body: { nuevo_estado: string, observacion?: string }
   // ---------------------------------------------------------------------------
   async updateStatus(req, res) {
-    const id                                          = parseInt(req.params.id, 10);
+    const id                                             = parseInt(req.params.id, 10);
     const { nuevo_estado, observacion, comentario_admin } = req.body;
-    const userRol    = req.user.rol;
-    const clientIp   = req.ip || req.socket?.remoteAddress || null;
+    const userRol  = req.user.rol;
+    const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    // ── Basic validation ──────────────────────────────────────────────────────
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
+    // ── Las siete verificaciones previas ──────────────────────────────────────
+    // Viven en ./stateTransitionGuards.js, una función por verificación. Cada
+    // una devuelve null si está todo bien, o { status, body } si hay que cortar.
+    //
+    // Están escritas para correr EN ESTE ORDEN y no es intercambiable: el
+    // motivo de reapertura se pide después del permiso de rol (a quien no puede
+    // se le responde 403, no 422 por un campo que igual no lo habría salvado), y
+    // la lista previa corre después de confirmar que el destino es alcanzable,
+    // para no consultar la base por una transición que ya se sabe inválida.
 
-    if (!nuevo_estado || typeof nuevo_estado !== 'string') {
-      return res.status(422).json({ success: false, message: 'nuevo_estado is required and must be a string.' });
-    }
-
-    if (!QuotationModel.VALID_STATES.includes(nuevo_estado)) {
-      return res.status(422).json({
-        success: false,
-        message: `Invalid target state '${nuevo_estado}'. Valid states: [${QuotationModel.VALID_STATES.join(', ')}]`,
-      });
-    }
+    // 1. La forma de lo que llegó. Es la única que no toca la base, así que va
+    //    primera: una petición mal formada no llega a costar una consulta.
+    const errEntrada = Guards.verificarEntrada(req.params.id, nuevo_estado);
+    if (errEntrada) return res.status(errEntrada.status).json(errEntrada.body);
 
     try {
-      // ── Fetch current state ────────────────────────────────────────────────
       const quotation = await QuotationModel.findById(id);
 
-      if (!quotation) {
-        return res.status(404).json({
-          success: false,
-          message: `Quotation with ID ${id} was not found.`,
-        });
-      }
+      // 2. Que exista, y que no esté ya en el estado pedido.
+      const errExiste = Guards.verificarExistenciaYEstado(quotation, id, nuevo_estado);
+      if (errExiste) return res.status(errExiste.status).json(errExiste.body);
 
       const estadoActual = quotation.estado;
 
-      // ── Dynamic Function Delegation lookup (AMPLIADA) ──────────────────────
-      // Read the caller's can_approve_quotations flag straight from the DB so a
-      // freshly-granted (or revoked) delegation takes effect immediately — no
-      // re-login needed and no trust placed in the JWT payload.
-      // A delegated Ejecutivo operates the FULL lifecycle with the Jefe's
-      // transition matrix, so the flag must be resolved for EVERY transition an
-      // Ejecutivo attempts, not only the 'Aprobada internamente' target. Other
-      // roles never depend on it (except the legacy Administracion approval
-      // grant), so the extra query is skipped for them.
-      let canApproveDelegated = false;
-      if (userRol === 'Ejecutivo' || nuevo_estado === 'Aprobada internamente') {
-        const actingUser = await UserModel.findById(req.user.id);
-        canApproveDelegated = Boolean(actingUser?.can_approve_quotations);
-      }
-
-      if (estadoActual === nuevo_estado) {
-        return res.status(422).json({
-          success: false,
-          message: `The quotation is already in the '${estadoActual}' state. No change needed.`,
-        });
-      }
-
-      // ── Role-based transition guard ────────────────────────────────────────
-      // Returns { valid, reason, allowedTransitions } — no DB call needed.
-      const transitionCheck = QuotationModel.validateTransitionByRole(
-        estadoActual,
-        nuevo_estado,
-        userRol,
-        canApproveDelegated
+      // 3. La delegación, leída de la base y no del token: revocarla tiene que
+      //    surtir efecto en el acto, sin esperar a que el JWT venza.
+      const canApproveDelegated = await Guards.resolverDelegacion(
+        userRol, nuevo_estado, req.user.id
       );
 
-      if (!transitionCheck.valid) {
-        return res.status(403).json({
-          success:             false,
-          message:             transitionCheck.reason,
-          allowed_transitions: transitionCheck.allowedTransitions || [],
-        });
-      }
+      // 4. El permiso de rol contra la matriz de transiciones. Devuelve la lista
+      //    de destinos válidos en los DOS casos: acompaña al 403 para que la
+      //    pantalla corrija sus opciones, y al 200 de más abajo para que pueda
+      //    redibujar el menú sin volver a preguntar.
+      const { error: errRol, allowedTransitions } = Guards.verificarPermisoDeRol(
+        estadoActual, nuevo_estado, userRol, canApproveDelegated
+      );
+      if (errRol) return res.status(errRol.status).json(errRol.body);
 
-      // ── La llave del jefe — motivo obligatorio ─────────────────────────────
-      // Se evalúa DESPUÉS del guard de rol: a quien no tiene la llave se le
-      // responde 403 (no puede), no 422 (le falta un campo). Pedirle el motivo
-      // a alguien que igual va a ser rechazado sería mentirle sobre por qué
-      // falló.
-      //
-      // La analogía manda acá: la llave abre la caja, pero el jefe firma el
-      // papel. Sin motivo escrito, dentro de tres meses nadie va a poder
-      // explicar por qué una venta cerrada volvió a borrador.
-      const esReapertura = QuotationModel.isReopening(estadoActual, nuevo_estado);
-      const motivo       = observacion != null ? String(observacion).trim() : '';
+      // 5. El motivo obligatorio si esto es una reapertura. Devuelve además los
+      //    dos datos calculados, que hacen falta más abajo para elegir la acción
+      //    de bitácora y para guardarlos en el detalle.
+      const { error: errMotivo, esReapertura, motivo } =
+        Guards.verificarMotivoDeReapertura(estadoActual, nuevo_estado, observacion);
+      if (errMotivo) return res.status(errMotivo.status).json(errMotivo.body);
 
-      if (esReapertura && !motivo) {
-        return res.status(422).json({
-          success: false,
-          message: 'Reabrir una venta ya confirmada exige un motivo. Indicá en "observacion" ' +
-                   'por qué se reabre (queda registrado en el historial y en la bitácora).',
-        });
-      }
+      // 6. La cotización tiene que estar completa para entrar al circuito.
+      const errLista = await Guards.verificarListaPrevia(id, nuevo_estado);
+      if (errLista) return res.status(errLista.status).json(errLista.body);
 
-      // ── Pre-submission checklist for ANY move into the approval pipeline ───
-      // The quotation must be complete (≥1 line item, monto_total, fecha_validez)
-      // before it can enter review OR be approved/sent/confirmed. Enforced on
-      // every forward target — not just 'En revision' — so a Jefe/SysAdmin (or a
-      // delegated Ejecutivo) cannot bypass it by jumping straight to approval.
-      // Pull-backs (Rechazada, En espera, Pendiente) are intentionally exempt.
-      if (QuotationModel.REVIEW_REQUIRED_TARGET_STATES.includes(nuevo_estado)) {
-        const reviewErrors = await QuotationModel.validateForReview(id);
+      // 7. El comentario del Administrador, que sólo ese rol puede adjuntar.
+      const adminComment = Guards.normalizarComentarioAdmin(userRol, comentario_admin);
 
-        if (reviewErrors.length > 0) {
-          return res.status(422).json({
-            success: false,
-            message: 'The quotation does not meet all requirements to enter the approval pipeline. ' +
-                     'Resolve the following issues and try again.',
-            errors:  reviewErrors,
-          });
-        }
-      }
-
-      // ── Execute the transition (optimistic concurrency) ───────────────────
-      // comentario_admin is forwarded only when the caller's role is Administracion.
-      const adminComment = (req.user.rol === 'Administracion' && comentario_admin != null)
-        ? String(comentario_admin).trim() || null
-        : null;
-
+      // ── A partir de acá se escribe ────────────────────────────────────────
       const updated = await QuotationModel.updateStatus(
         id,
         nuevo_estado,
@@ -308,7 +253,7 @@ const QuotationStateController = {
           id,
           estado_anterior:     estadoActual,
           nuevo_estado,
-          allowed_transitions: transitionCheck.allowedTransitions,
+          allowed_transitions: allowedTransitions,
         },
       });
     } catch (error) {

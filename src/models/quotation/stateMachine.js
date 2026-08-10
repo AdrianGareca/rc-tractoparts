@@ -42,17 +42,32 @@ function validateTransitionByRole(estadoActual, nuevoEstado, rol, canApproveQuot
   // route enforce the base role via middleware and never consult this matrix.
   // The flag is re-read fresh from the DB by the controller on every call, so
   // revoking it takes effect immediately without waiting for JWT expiry.
+  // El rol con el que se va a CONSULTAR la matriz, que puede no ser el rol real.
+  // La comparación es `=== true` y no `if (canApproveQuotations)` a propósito:
+  // el flag llega de MySQL como TINYINT, y un 1 numérico o la cadena '1' de un
+  // formulario mal armado no deben conceder la delegación por descuido.
   const effectiveRol = (rol === 'Ejecutivo' && canApproveQuotations === true) ? 'Jefe' : rol;
+
+  // La fila de la matriz: un objeto { estadoOrigen: [estadosDestino] }.
   const roleMatrix = ROLE_TRANSITIONS[effectiveRol];
 
-  // Rol desconocido — no debería llegar aquí si el middleware de autenticación está activo
+  // Rol que no está en la matriz. No debería llegar acá con el middleware de
+  // autenticación activo, pero se corta igual: un rol desconocido con la matriz
+  // en `undefined` reventaría dos líneas más abajo con un TypeError, y un 500
+  // esconde el problema real, que es un rol mal escrito o recién agregado.
   if (!roleMatrix) {
     return {
       valid:  false,
+      // Se informa el rol REAL, no el efectivo: al operador le sirve saber que
+      // el problema es su rol, no uno interno que nunca eligió.
       reason: `El rol '${rol}' no está reconocido en la máquina de estados del sistema.`,
     };
   }
 
+  // A dónde puede ir este rol DESDE el estado actual.
+  // El `|| []` cubre el estado terminal para ese rol: la matriz simplemente no
+  // tiene entrada para él, y una lista vacía se lee igual que «no puede moverla»
+  // en las tres ramas de abajo, sin necesitar un caso especial.
   const allowedFromState = roleMatrix[estadoActual] || [];
 
   // ── La llave del jefe — recorte sobre la matriz efectiva ──────────────────
@@ -65,12 +80,21 @@ function validateTransitionByRole(estadoActual, nuevoEstado, rol, canApproveQuot
   // ejecutivo con can_approve_quotations — que no es lo que pidió el negocio.
   // Es lo mismo que ya se decidió para revertir un rechazo, sólo que acá se
   // aplica en el servidor y no únicamente en la pantalla.
+  // `rol` y NO `effectiveRol`: ésa es toda la clave del bloque. Preguntar por el
+  // efectivo dejaría pasar al ejecutivo delegado, que acá justamente es a quien
+  // hay que frenar.
   if (isReopening(estadoActual, nuevoEstado) && !REOPEN_ROLES.includes(rol)) {
     return {
       valid:  false,
       reason: `Reabrir una cotización en estado '${estadoActual}' está reservado a los roles ` +
               `${REOPEN_ROLES.join(' y ')}. El rol '${rol}' no puede hacerlo` +
+              // Sólo se agrega la aclaración si el usuario TIENE la delegación:
+              // sin ella la frase confundiría más de lo que aclara, porque
+              // nombraría un permiso que la persona nunca tuvo.
               `${canApproveQuotations ? ', ni siquiera con la delegación de aprobación activa' : ''}.`,
+      // Se le devuelve el menú REAL, ya sin la opción que se le acaba de negar.
+      // El <select> de la pantalla se arma con esta lista, así que filtrarla acá
+      // es lo que evita que le vuelva a ofrecer un botón que da 403.
       allowedTransitions: allowedFromState.filter((s) => s !== REOPEN_TARGET_STATE),
     };
   }
@@ -87,22 +111,37 @@ function validateTransitionByRole(estadoActual, nuevoEstado, rol, canApproveQuot
   // 'Aprobada internamente' target and never removes a transition the base
   // role already had, so the audited core lifecycle is preserved.
   const isDelegatedApproval =
+    // Sólo este destino. La delegación concede UNA transición, no un rol.
     nuevoEstado === 'Aprobada internamente' &&
+    // Y sólo desde los estados donde aprobar tiene sentido. Sin esta línea se
+    // podría aprobar una cotización ya rechazada o archivada, salteando el
+    // ciclo entero.
     APPROVAL_SOURCE_STATES.includes(estadoActual) &&
+    // `rol` otra vez, no `effectiveRol`: acá da igual porque el flag se
+    // consulta aparte en el tercer término, pero nombrar el rol base mantiene
+    // legible de dónde sale cada permiso.
     (rol === 'Jefe' || rol === 'SysAdmin' || canApproveQuotations === true);
 
   if (isDelegatedApproval) {
     return {
       valid:              true,
+      // El Set evita duplicar 'Aprobada internamente' cuando el rol YA la tenía
+      // en su matriz (el Jefe la tiene). Sin él, el <select> de la pantalla
+      // mostraría la misma opción dos veces.
       allowedTransitions: Array.from(new Set([...allowedFromState, 'Aprobada internamente'])),
     };
   }
 
+  // Última puerta: el destino pedido no está en la lista del rol.
   if (!allowedFromState.includes(nuevoEstado)) {
-    // Mensaje de error específico: distinguir "sin transiciones posibles" de "destino incorrecto"
+    // Dos situaciones que se sienten iguales para quien las sufre y son
+    // distintas de arreglar, así que se distinguen en el mensaje: «este estado
+    // no lo movés vos» contra «lo movés, pero no hacia ahí».
     const reason = allowedFromState.length === 0
       ? `El rol '${rol}' no puede realizar ninguna transición desde el estado '${estadoActual}'. ` +
         `Este estado es de solo lectura para su rol.`
+      // Se enumeran los destinos válidos: el 403 así se lee como una
+      // instrucción y no como una pared.
       : `El rol '${rol}' no puede transicionar desde '${estadoActual}' hacia '${nuevoEstado}'. ` +
         `Transiciones permitidas desde '${estadoActual}' para su rol: [${allowedFromState.join(', ')}].`;
 
@@ -113,6 +152,8 @@ function validateTransitionByRole(estadoActual, nuevoEstado, rol, canApproveQuot
     };
   }
 
+  // Transición válida. Se devuelve igual la lista completa para que la pantalla
+  // pueda redibujar el menú sin volver a preguntarle al servidor.
   return { valid: true, allowedTransitions: allowedFromState };
 }
 
