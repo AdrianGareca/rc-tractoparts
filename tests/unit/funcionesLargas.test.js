@@ -26,7 +26,22 @@ const fs     = require('fs');
 const path   = require('path');
 const parser = require('@babel/parser');
 
-const RAIZ = path.resolve(__dirname, '../../src');
+// Las DOS raíces de código de la aplicación.
+//
+// La primera versión de este trinquete miraba sólo `src/`, y era un punto ciego
+// grave: al ampliarlo apareció que las CINCO funciones más largas del proyecto
+// entero estaban en `public/js` —buildProformaHTML con 346 líneas encabezando—
+// y que había 26 funciones de más de 80 líneas ahí sin vigilar.
+//
+// El backend no es más importante que el frontend por ser backend. Una función
+// de trescientas líneas que arma HTML es igual de imposible de tener en la
+// cabeza que una que valida una transición.
+const RAICES = [
+  path.resolve(__dirname, '../../src'),
+  path.resolve(__dirname, '../../public/js'),
+];
+
+const PROYECTO = path.resolve(__dirname, '../..');
 
 function listarJs(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -35,7 +50,9 @@ function listarJs(dir) {
   });
 }
 
-const rel = (p) => path.relative(RAIZ, p).split(path.sep).join('/');
+// Ruta relativa al proyecto y no a la raíz de cada uno: con dos raíces, un
+// 'modules/x.js' a secas no diría si es del navegador o del servidor.
+const rel = (p) => path.relative(PROYECTO, p).split(path.sep).join('/');
 
 /** Toda función del archivo, con su nombre, su línea y cuántas ocupa. */
 function funcionesDe(file) {
@@ -43,6 +60,9 @@ function funcionesDe(file) {
 
   let ast;
   try {
+    // 'unambiguous' deja que Babel decida entre módulo y script mirando el
+    // contenido. Hace falta porque las dos raíces usan sistemas distintos:
+    // `src/` es CommonJS (require) y `public/js` son módulos nativos (import).
     ast = parser.parse(src, { sourceType: 'unambiguous' });
   } catch {
     return [];   // un archivo que no parsea ya lo denuncia otro test
@@ -75,18 +95,18 @@ function funcionesDe(file) {
   return encontradas;
 }
 
-const todas = listarJs(RAIZ).flatMap((f) =>
+const todas = RAICES.flatMap(listarJs).flatMap((f) =>
   funcionesDe(f).map((fn) => ({ ...fn, archivo: rel(f) }))
 );
 
 // ---------------------------------------------------------------------------
 describe('el tamaño de las funciones sólo puede bajar', () => {
   // La más larga que hay hoy. Al partir una, este número baja.
-  const TOPE_MAXIMO = 237;
+  const TOPE_MAXIMO = 321;
 
   // Cuántas pasan de 80 líneas — el umbral donde una función deja de entrar en
   // una pantalla y hay que hacer scroll para saber qué hace.
-  const TOPE_GRANDES = 32;
+  const TOPE_GRANDES = 59;
   const UMBRAL_GRANDE = 80;
 
   test(`ninguna función pasa de ${TOPE_MAXIMO} líneas`, () => {
@@ -163,7 +183,7 @@ describe('el medidor mide algo', () => {
     // es deliberado y está documentado como espejo en LicitacionModel.js.
     const conocida = todas.find(
       (f) => f.nombre === 'validateTransitionByRole'
-          && f.archivo === 'models/quotation/stateMachine.js'
+          && f.archivo === 'src/models/quotation/stateMachine.js'
     );
 
     expect(conocida).toBeDefined();
