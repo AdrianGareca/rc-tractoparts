@@ -12,10 +12,202 @@
 import { escText } from './helpers.js';
 import { stateIcon } from '../../shared/icons.js';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LAS SECCIONES, UNA POR FUNCIÓN
+//
+// buildFormHTML tenía 271 líneas de código y era la función más larga del
+// proyecto. No era compleja —es una sola plantilla— pero sí imposible de
+// recorrer: para tocar el bloque del equipo había que bajar por el del
+// solicitante, la tabla de ítems y el panel de totales.
+//
+// Cada sección es ahora una función con nombre. El cuerpo principal quedó como
+// un índice de lo que tiene el formulario, que es lo que uno quiere ver al
+// abrir el archivo.
+//
+// Son puras y no reciben datos: el formulario se dibuja SIEMPRE vacío y lo
+// llena después editHydration.js leyendo la cotización. Por eso el único
+// parámetro que viaja es `OPT`, la marca «(Opcional)» de los rótulos.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Quién pidió la cotización: nombre, número de solicitud, área, contacto. */
+function seccionSolicitante(OPT) {
+  return `
+      <!-- DATOS DEL SOLICITANTE -->
+      <details class="form-section-details" open>
+        <summary class="form-section-summary">Datos del solicitante</summary>
+        <div class="form-row form-row-seccion">
+          <div class="form-group">
+            <label class="form-label" for="solicitante_nombre">Nombre del Solicitante ${OPT}</label>
+            <input class="form-control" type="text" id="solicitante_nombre"
+                   placeholder="Ej: Juan Pérez" maxlength="120" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="solicitante_no_solicitud">Nº Solicitud / OC ${OPT}</label>
+            <input class="form-control" type="text" id="solicitante_no_solicitud"
+                   placeholder="Ej: OC-2026-0045" maxlength="100" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="solicitante_area">Área / Departamento ${OPT}</label>
+            <input class="form-control" type="text" id="solicitante_area"
+                   placeholder="Ej: Mantenimiento" maxlength="100" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="solicitante_celular">Celular ${OPT}</label>
+            <input class="form-control" type="tel" id="solicitante_celular"
+                   placeholder="Ej: 77012345" maxlength="30" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="solicitante_correo">Correo ${OPT}</label>
+            <input class="form-control" type="email" id="solicitante_correo"
+                   placeholder="solicitante@empresa.com" maxlength="120" />
+          </div>
+        </div>
+      </details>
+`;
+}
+
+/** Sobre qué máquina es: marca, tipo, modelo, número de serie y de motor. */
+function seccionEquipo(OPT) {
+  return `
+      <!-- DATOS DEL EQUIPO -->
+      <details class="form-section-details" open>
+        <summary class="form-section-summary">Datos del equipo</summary>
+        <div class="form-row form-row-seccion">
+          <div class="form-group">
+            <label class="form-label" for="equipo_marca">Marca ${OPT}</label>
+            <input class="form-control" type="text" id="equipo_marca"
+                   placeholder="Ej: Caterpillar" maxlength="80" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="equipo_tipo">Tipo ${OPT}</label>
+            <input class="form-control" type="text" id="equipo_tipo"
+                   placeholder="Ej: Excavadora" maxlength="80" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="equipo_modelo">Modelo ${OPT}</label>
+            <input class="form-control" type="text" id="equipo_modelo"
+                   placeholder="Ej: 336" maxlength="80" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="equipo_serie">Nº Serie ${OPT}</label>
+            <input class="form-control" type="text" id="equipo_serie"
+                   placeholder="Ej: CAT0336XXXXX" maxlength="80" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="equipo_motor">Nº Motor ${OPT}</label>
+            <input class="form-control" type="text" id="equipo_motor"
+                   placeholder="Ej: C9.3" maxlength="80" />
+          </div>
+        </div>
+      </details>
+`;
+}
+
+/** La tabla de ítems. Las filas las agrega lineItemsComponent.js al vuelo. */
+function seccionItems() {
+  return `
+      <!-- Line items — OBSERVER Subject changes trigger all three Observers -->
+      <div class="line-items-section">
+        <h4>Ítems de detalle</h4>
+        <div class="table-wrapper">
+          <table class="line-items-table">
+            <thead>
+            <tr>
+              <!-- Los anchos viven en quotation-form.css: se reparten el 100%,
+                   así que sólo tienen sentido los diez juntos. -->
+              <th>Descripción</th>
+              <th>Cód. parte</th>
+              <th>Cód. Alt.</th>
+              <th>Marca</th>
+              <th>UM</th>
+              <th>Cantidad</th>
+              <th>Precio Unit.</th>
+              <th>Subtotal</th>
+              <th>T. entrega</th>
+              <th></th>
+            </tr>
+          </thead>
+            <tbody id="items-body"></tbody>
+          </table>
+        </div>
+        <button type="button" id="btn-add-item" class="btn btn-ghost btn-sm btn-add-item">
+          + Agregar ítem
+        </button>
+      </div>
+`;
+}
+
+/** Subtotal, descuento manual y total. Lo actualiza TotalsObserver. */
+function seccionTotales() {
+  return `
+      <!-- Totals panel — updated by TotalsObserver -->
+      <div class="totals-panel">
+        <div class="totals-row">
+          <span>Subtotal</span>
+          <span class="totals-value" id="totals-subtotal">0.00</span>
+        </div>
+        <div class="totals-row">
+          <label for="totals-discount" class="totals-discount-label">
+            Descuento Manual (monto fijo)
+          </label>
+          <input
+            type="number"
+            id="totals-discount"
+            class="totals-discount-input"
+            min="0" step="any"
+            placeholder="0.00"
+            title="Ingrese un descuento en monto absoluto (no porcentaje). Se resta directamente del subtotal."
+          />
+        </div>
+        <div class="totals-row total-final">
+          <span>Total</span>
+          <span class="totals-value" id="totals-total">0.00</span>
+        </div>
+      </div>
+`;
+}
+
+/** Forma de pago y la casilla de mostrar códigos en el PDF. */
+function seccionPago() {
+  return `
+      <!-- Payment terms + PDF config -->
+      <div class="form-row form-row-pie">
+        <div class="form-group fg-doble-min">
+          <label class="form-label" for="forma_pago">Forma de pago</label>
+          <select class="form-control" id="forma_pago">
+            <option value="">Por defecto (60% ANTICIPO Y SALDO CONTRA ENTREGA)</option>
+            <option value="20% DE ANTICIPO">20% DE ANTICIPO</option>
+            <option value="30% DE ANTICIPO">30% DE ANTICIPO</option>
+            <option value="40% DE ANTICIPO">40% DE ANTICIPO</option>
+            <option value="50% DE ANTICIPO">50% DE ANTICIPO</option>
+            <option value="60% DE ANTICIPO">60% DE ANTICIPO</option>
+            <option value="__otro__">Otro (personalizado)</option>
+          </select>
+        </div>
+        <!-- Nace oculto con .hidden y NO con style="display:none": el JS lo
+             muestra al elegir «Otro», y vaciar un estilo inline no muestra
+             nada — sólo deja que gane la hoja de estilos. -->
+        <div class="form-group fg-doble-min hidden" id="forma_pago_custom_group">
+          <label class="form-label" for="forma_pago_custom">Forma de pago personalizada</label>
+          <input class="form-control" type="text" id="forma_pago_custom"
+                 placeholder="Ej: 70% ANTICIPO Y SALDO A 30 DÍAS" maxlength="200" />
+        </div>
+        <div class="form-group fg-casilla">
+          <input type="checkbox" id="mostrar_codigos" checked class="casilla" />
+          <label for="mostrar_codigos" class="form-label label-casilla">
+            Mostrar columna CÓDIGO en el PDF
+          </label>
+        </div>
+      </div>
+`;
+}
+
 export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
   // Shared "(Opcional)" label marker — appended to every non-mandatory field
   // so users know at a glance which inputs can be left blank.
   const OPT = '<span class="label-opcional">(Opcional)</span>';
+
+
 
   const corrPreview = nextCorrelativo
     ? `<div class="correlativo-preview">
@@ -118,70 +310,8 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
         </div>
       </div>
 
-      <!-- DATOS DEL SOLICITANTE -->
-      <details class="form-section-details" open>
-        <summary class="form-section-summary">Datos del solicitante</summary>
-        <div class="form-row form-row-seccion">
-          <div class="form-group">
-            <label class="form-label" for="solicitante_nombre">Nombre del Solicitante ${OPT}</label>
-            <input class="form-control" type="text" id="solicitante_nombre"
-                   placeholder="Ej: Juan Pérez" maxlength="120" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="solicitante_no_solicitud">Nº Solicitud / OC ${OPT}</label>
-            <input class="form-control" type="text" id="solicitante_no_solicitud"
-                   placeholder="Ej: OC-2026-0045" maxlength="100" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="solicitante_area">Área / Departamento ${OPT}</label>
-            <input class="form-control" type="text" id="solicitante_area"
-                   placeholder="Ej: Mantenimiento" maxlength="100" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="solicitante_celular">Celular ${OPT}</label>
-            <input class="form-control" type="tel" id="solicitante_celular"
-                   placeholder="Ej: 77012345" maxlength="30" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="solicitante_correo">Correo ${OPT}</label>
-            <input class="form-control" type="email" id="solicitante_correo"
-                   placeholder="solicitante@empresa.com" maxlength="120" />
-          </div>
-        </div>
-      </details>
-
-      <!-- DATOS DEL EQUIPO -->
-      <details class="form-section-details" open>
-        <summary class="form-section-summary">Datos del equipo</summary>
-        <div class="form-row form-row-seccion">
-          <div class="form-group">
-            <label class="form-label" for="equipo_marca">Marca ${OPT}</label>
-            <input class="form-control" type="text" id="equipo_marca"
-                   placeholder="Ej: Caterpillar" maxlength="80" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="equipo_tipo">Tipo ${OPT}</label>
-            <input class="form-control" type="text" id="equipo_tipo"
-                   placeholder="Ej: Excavadora" maxlength="80" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="equipo_modelo">Modelo ${OPT}</label>
-            <input class="form-control" type="text" id="equipo_modelo"
-                   placeholder="Ej: 336" maxlength="80" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="equipo_serie">Nº Serie ${OPT}</label>
-            <input class="form-control" type="text" id="equipo_serie"
-                   placeholder="Ej: CAT0336XXXXX" maxlength="80" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="equipo_motor">Nº Motor ${OPT}</label>
-            <input class="form-control" type="text" id="equipo_motor"
-                   placeholder="Ej: C9.3" maxlength="80" />
-          </div>
-        </div>
-      </details>
-
+      ${seccionSolicitante(OPT)}
+      ${seccionEquipo(OPT)}
       <!-- CONDICIONES LOGÍSTICAS -->
       <div class="form-row">
         <div class="form-group">
@@ -191,90 +321,9 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
         </div>
       </div>
 
-      <!-- Line items — OBSERVER Subject changes trigger all three Observers -->
-      <div class="line-items-section">
-        <h4>Ítems de detalle</h4>
-        <div class="table-wrapper">
-          <table class="line-items-table">
-            <thead>
-            <tr>
-              <!-- Los anchos viven en quotation-form.css: se reparten el 100%,
-                   así que sólo tienen sentido los diez juntos. -->
-              <th>Descripción</th>
-              <th>Cód. parte</th>
-              <th>Cód. Alt.</th>
-              <th>Marca</th>
-              <th>UM</th>
-              <th>Cantidad</th>
-              <th>Precio Unit.</th>
-              <th>Subtotal</th>
-              <th>T. entrega</th>
-              <th></th>
-            </tr>
-          </thead>
-            <tbody id="items-body"></tbody>
-          </table>
-        </div>
-        <button type="button" id="btn-add-item" class="btn btn-ghost btn-sm btn-add-item">
-          + Agregar ítem
-        </button>
-      </div>
-
-      <!-- Totals panel — updated by TotalsObserver -->
-      <div class="totals-panel">
-        <div class="totals-row">
-          <span>Subtotal</span>
-          <span class="totals-value" id="totals-subtotal">0.00</span>
-        </div>
-        <div class="totals-row">
-          <label for="totals-discount" class="totals-discount-label">
-            Descuento Manual (monto fijo)
-          </label>
-          <input
-            type="number"
-            id="totals-discount"
-            class="totals-discount-input"
-            min="0" step="any"
-            placeholder="0.00"
-            title="Ingrese un descuento en monto absoluto (no porcentaje). Se resta directamente del subtotal."
-          />
-        </div>
-        <div class="totals-row total-final">
-          <span>Total</span>
-          <span class="totals-value" id="totals-total">0.00</span>
-        </div>
-      </div>
-
-      <!-- Payment terms + PDF config -->
-      <div class="form-row form-row-pie">
-        <div class="form-group fg-doble-min">
-          <label class="form-label" for="forma_pago">Forma de pago</label>
-          <select class="form-control" id="forma_pago">
-            <option value="">Por defecto (60% ANTICIPO Y SALDO CONTRA ENTREGA)</option>
-            <option value="20% DE ANTICIPO">20% DE ANTICIPO</option>
-            <option value="30% DE ANTICIPO">30% DE ANTICIPO</option>
-            <option value="40% DE ANTICIPO">40% DE ANTICIPO</option>
-            <option value="50% DE ANTICIPO">50% DE ANTICIPO</option>
-            <option value="60% DE ANTICIPO">60% DE ANTICIPO</option>
-            <option value="__otro__">Otro (personalizado)</option>
-          </select>
-        </div>
-        <!-- Nace oculto con .hidden y NO con style="display:none": el JS lo
-             muestra al elegir «Otro», y vaciar un estilo inline no muestra
-             nada — sólo deja que gane la hoja de estilos. -->
-        <div class="form-group fg-doble-min hidden" id="forma_pago_custom_group">
-          <label class="form-label" for="forma_pago_custom">Forma de pago personalizada</label>
-          <input class="form-control" type="text" id="forma_pago_custom"
-                 placeholder="Ej: 70% ANTICIPO Y SALDO A 30 DÍAS" maxlength="200" />
-        </div>
-        <div class="form-group fg-casilla">
-          <input type="checkbox" id="mostrar_codigos" checked class="casilla" />
-          <label for="mostrar_codigos" class="form-label label-casilla">
-            Mostrar columna CÓDIGO en el PDF
-          </label>
-        </div>
-      </div>
-
+      ${seccionItems()}
+      ${seccionTotales()}
+      ${seccionPago()}
       <!-- Excel optional attachment -->
       <div class="form-group mt-2">
         <label class="form-label">Planilla Excel de auditoría (opcional)</label>
