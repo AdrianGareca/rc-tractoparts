@@ -30,7 +30,6 @@ const cors      = require('cors');       // Cross-Origin Resource Sharing
 const morgan    = require('morgan');     // HTTP request logger
 const rateLimit = require('express-rate-limit'); // Brute-force / DDoS protection
 const swaggerUi   = require('swagger-ui-express');
-const swaggerJsdoc = require('swagger-jsdoc');
 const jwt         = require('jsonwebtoken'); // Verifies the short-lived docs-access token (see requireDocsAccess below)
 
 // Route modules
@@ -152,47 +151,13 @@ app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 // ---------------------------------------------------------------------------
 // 6. CONFIGURACIÓN DE SWAGGER (OPENAPI)
 // ---------------------------------------------------------------------------
-const swaggerOptions = {
-  definition: {
-    openapi: '3.0.0',
-    info: {
-      title: 'API de Gestión de Cotizaciones — RC Tractoparts',
-      version: '1.0.0',
-      description: 'Documentación interactiva de la API para el control de cotizaciones, usuarios y auditorías (XP-SCRUM).',
-    },
-    // Relative server URL: Swagger UI resolves every "Try it out" request
-    // against the SAME origin the docs page was loaded from. Locally that is
-    // http://localhost:3000; in production it is https://rctractoparts.org —
-    // no hardcoded host, no per-environment lists, no HTTPS→HTTP mixed-content
-    // blocks. (A hardcoded localhost here previously made the production docs
-    // fire requests at the viewer's own machine instead of the real API.)
-    servers: [
-      {
-        url: '/',
-        description: 'Servidor actual (mismo origen de esta página)',
-      },
-    ],
-    components: {
-      securitySchemes: {
-        bearerAuth: {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
-          description: 'Introduce tu token JWT. Pega SOLO el token sin el prefijo "Bearer".',
-        },
-      },
-    },
-    // Apply bearerAuth globally so every endpoint shows the padlock icon
-    // and Swagger UI automatically injects the Authorization header.
-    security: [{ bearerAuth: [] }],
-  },
-  apis: [
-    path.join(__dirname, 'routes', '*.js').replace(/\\/g, '/'),
-    path.join(__dirname, 'controllers', '*.js').replace(/\\/g, '/')
-  ], 
-};
+// La configuración vive en src/config/swagger.js: app.js arma el servidor
+// entero y sesenta líneas de configuración de documentación en el medio no
+// ayudaban a leer ninguna de las dos cosas. Además, mientras estuvo acá,
+// comprobar el spec obligaba a construir la aplicación completa con su
+// conexión a la base de datos.
+const { swaggerSpec: swaggerDocs } = require('./config/swagger');
 
-const swaggerDocs = swaggerJsdoc(swaggerOptions);
 
 // ---------------------------------------------------------------------------
 // 6b. requireDocsAccess — gates the Swagger index page (Jefe / SysAdmin only)

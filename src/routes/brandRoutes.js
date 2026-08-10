@@ -57,9 +57,9 @@ const QUOTE_ROLES = ['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin'];
  *                         type: string
  *                         example: Caterpillar
  *       401:
- *         description: Token JWT ausente o inválido
+ *         $ref: '#/components/responses/NoAutorizado'
  *       500:
- *         description: Error interno del servidor
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 router.get(
   '/',
@@ -141,13 +141,13 @@ router.get(
  *                     activo:
  *                       type: integer
  *       401:
- *         description: Token JWT ausente o inválido
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
  *         description: Rol no autorizado
  *       422:
  *         description: El campo nombre es requerido o supera 100 caracteres
  *       500:
- *         description: Error interno del servidor
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 router.post(
   '/',

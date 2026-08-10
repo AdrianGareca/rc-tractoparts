@@ -42,9 +42,9 @@ const advancedAuth = [authenticate, authorize(['Jefe', 'Administracion', 'SysAdm
  *       200:
  *         description: Reporte de progreso obtenido exitosamente.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
+ *         $ref: '#/components/responses/SinPermiso'
  *       422:
  *         description: Rango de fechas inválido.
  *       500:
@@ -72,9 +72,9 @@ router.get('/progreso', ...progresoAuth, ReportesController.getProgreso);
  *       200:
  *         description: Reporte avanzado obtenido exitosamente.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente.
+ *         $ref: '#/components/responses/SinPermiso'
  *       500:
  *         description: Error interno al ejecutar las consultas de agregación.
  */
@@ -109,9 +109,9 @@ router.get('/advanced', ...advancedAuth, ReportesController.getAdvancedReports);
  *           application/pdf:
  *             schema: { type: string, format: binary }
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente.
+ *         $ref: '#/components/responses/SinPermiso'
  *       422:
  *         description: Rango de fechas inválido.
  *       500:
@@ -180,7 +180,7 @@ router.get('/pdf', ...advancedAuth, ReportesController.getReportePdf);
  *       200:
  *         description: Reporte generado.
  *       401:
- *         description: Token ausente o invalido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       422:
  *         description: Fecha, estado u orden invalidos.
  *       500:
@@ -224,7 +224,7 @@ router.get('/cliente-item', authenticate, ReportesController.getClienteItem);
  *       200:
  *         description: Metricas obtenidas.
  *       401:
- *         description: Token ausente o invalido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       422:
  *         description: Fechas o id_ejecutivo invalidos.
  *       500:

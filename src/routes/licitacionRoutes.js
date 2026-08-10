@@ -145,9 +145,9 @@ const gastoRoles   = [authenticate, authorize(['Administracion', 'Proyectos', 'J
  *       200:
  *         description: Próximo correlativo previsualizado.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente.
+ *         $ref: '#/components/responses/SinPermiso'
  */
 // GET /api/licitaciones/next-correlativo
 router.get(
@@ -204,7 +204,7 @@ router.get(
  *       200:
  *         description: Lista paginada de licitaciones.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  */
 // GET /api/licitaciones
 router.get(
@@ -241,7 +241,7 @@ router.get(
  *       201:
  *         description: Licitación creada.
  *       403:
- *         description: Rol insuficiente.
+ *         $ref: '#/components/responses/SinPermiso'
  *       422:
  *         description: Validación fallida o cliente/responsable inexistente.
  */

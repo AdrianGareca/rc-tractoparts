@@ -54,6 +54,11 @@ function _pushDesktopNotif(title, body, icon = '/assets/images/rc_logo.png') {
 // ---------------------------------------------------------------------------
 // _tipoStyle — returns { borderColor, labelColor } for each tipo
 //
+// Los labelColor eran hexadecimales fijos (#065F46, #1D4ED8, #0F766E, #9A3412):
+// el tono 700/800 de cada matiz, que es el valor que --clr-*-soft toma SÓLO en
+// el tema claro. En los temas oscuros quedaba texto casi negro sobre fondo
+// oscuro. Con el token, el color sigue al tema.
+//
 // Cada tipo traía además un emoji que se anteponía al texto de la observación.
 // Sobraba por partida doble: la notificación ya lleva ese mismo color en el
 // borde izquierdo, y ya está agrupada bajo el título de su tipo. El dibujo era
@@ -61,10 +66,10 @@ function _pushDesktopNotif(title, body, icon = '/assets/images/rc_logo.png') {
 // que escribió una persona — que es lo único que hay para leer ahí.
 // ---------------------------------------------------------------------------
 function _tipoStyle(tipo) {
-  if (tipo === 'aprobacion')    return { borderColor: 'var(--clr-green)',  labelColor: '#065F46' };
-  if (tipo === 'envio_cliente') return { borderColor: 'var(--clr-blue)',   labelColor: '#1D4ED8' };
-  if (tipo === 'licitacion')    return { borderColor: 'var(--clr-teal)',   labelColor: '#0F766E' };
-  return                               { borderColor: 'var(--clr-orange)', labelColor: '#9A3412' }; // correccion
+  if (tipo === 'aprobacion')    return { borderColor: 'var(--clr-green)',  labelColor: 'var(--clr-green-soft)' };
+  if (tipo === 'envio_cliente') return { borderColor: 'var(--clr-blue)',   labelColor: 'var(--clr-blue-soft)' };
+  if (tipo === 'licitacion')    return { borderColor: 'var(--clr-teal)',   labelColor: 'var(--clr-teal-soft)' };
+  return                               { borderColor: 'var(--clr-orange)', labelColor: 'var(--clr-orange-soft)' }; // correccion
 }
 
 // ---------------------------------------------------------------------------
@@ -157,9 +162,9 @@ export async function refreshNotifBadge(UI) {
                 ${items.map(_buildNotifItem).join('')}
               </ul>` : '';
 
-            const aprobSection = sectionHtml('#065F46', 'Aprobaciones y envíos recientes', aprobaciones);
-            const licSection   = sectionHtml('#0F766E', 'Licitaciones', licitaciones);
-            const corrSection  = sectionHtml('#9A3412', 'Proformas que requieren correcciones', correcciones);
+            const aprobSection = sectionHtml('var(--clr-green-soft)', 'Aprobaciones y envíos recientes', aprobaciones);
+            const licSection   = sectionHtml('var(--clr-teal-soft)', 'Licitaciones', licitaciones);
+            const corrSection  = sectionHtml('var(--clr-orange-soft)', 'Proformas que requieren correcciones', correcciones);
 
             // "Mark as read" clears every table-backed notification (aprobaciones,
             // envíos y licitaciones). Se muestra siempre que haya alguna marcable.

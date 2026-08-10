@@ -98,7 +98,7 @@ const loginLimiter = rateLimit({
  *       422:
  *         description: Campos obligatorios faltantes.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 
 // POST /api/auth/login
@@ -122,7 +122,7 @@ router.post('/login', loginLimiter, validate(loginSchema), AuthController.login)
  *       401:
  *         description: Token inválido, expirado o ausente.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 
 // POST /api/auth/logout
@@ -148,7 +148,7 @@ router.post('/logout', authenticate, AuthController.logout);
  *       401:
  *         description: Token de sesión ausente o inválido.
  *       403:
- *         description: Rol insuficiente (requiere Jefe o SysAdmin).
+ *         $ref: '#/components/responses/SinPermiso'
  */
 router.get('/docs-token', authenticate, authorize(['Jefe', 'SysAdmin']), AuthController.getDocsToken);
 

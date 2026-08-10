@@ -203,11 +203,11 @@ const ejecutivoOnly = [authenticate, authorize(['Ejecutivo'])];
  *       200:
  *         description: Resumen de estados obtenido exitosamente.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente.
+ *         $ref: '#/components/responses/SinPermiso'
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // GET /api/cotizaciones/resumen
 // Quotation counts grouped by estado for the sidebar / dashboard widget.
@@ -240,11 +240,11 @@ router.get(
  *       200:
  *         description: Lista de cotizaciones pendientes de aprobación.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
+ *         $ref: '#/components/responses/SinPermiso'
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // GET /api/cotizaciones/pendientes-aprobacion
 // All quotations currently in 'En revision', ordered oldest-first.
@@ -362,11 +362,11 @@ router.post(
  *       200:
  *         description: Lista paginada de cotizaciones.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente.
+ *         $ref: '#/components/responses/SinPermiso'
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // GET /api/cotizaciones
 // Paginated, filtered, sorted listing.
@@ -520,13 +520,13 @@ router.get(
  *       201:
  *         description: Cotización creada exitosamente. Incluye número correlativo y datos completos.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente.
+ *         $ref: '#/components/responses/SinPermiso'
  *       422:
  *         description: Validación fallida (campos obligatorios o ítems inválidos).
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // POST /api/cotizaciones
 // Create a new quotation. Atomically generates the correlativo serial,
@@ -566,13 +566,13 @@ router.post(
  *       400:
  *         description: ID inválido.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente.
+ *         $ref: '#/components/responses/SinPermiso'
  *       404:
  *         description: Cotización no encontrada.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // GET /api/cotizaciones/:id
 // Full quotation detail: header + line items + approval metadata.
@@ -663,7 +663,7 @@ router.get(
  *       400:
  *         description: ID inválido.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
  *         description: No es el propietario de la cotización.
  *       404:
@@ -673,7 +673,7 @@ router.get(
  *       422:
  *         description: Datos de entrada inválidos.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // PUT /api/cotizaciones/:id
 // Executive-owner edit of a 'Pendiente' quotation (Solicitar Cambios workflow).
@@ -708,13 +708,13 @@ router.put(
  *       400:
  *         description: ID inválido.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente.
+ *         $ref: '#/components/responses/SinPermiso'
  *       404:
  *         description: Cotización no encontrada.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // GET /api/cotizaciones/:id/historial
 // Complete state-change timeline combining the creation event and every
@@ -771,7 +771,7 @@ router.get(
  *       400:
  *         description: ID inválido o estado no reconocido.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
  *         description: Transición no permitida para el rol actual.
  *       404:
@@ -781,7 +781,7 @@ router.get(
  *       422:
  *         description: Pre-flight fallido al enviar a revisión (faltan ítems, monto o fecha de validez).
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // PUT /api/cotizaciones/:id/estado
 // Role-restricted state machine transition.
@@ -840,9 +840,9 @@ router.put(
  *       400:
  *         description: ID inválido.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente (requiere Jefe o SysAdmin).
+ *         $ref: '#/components/responses/SinPermiso'
  *       404:
  *         description: Cotización no encontrada.
  *       409:
@@ -850,7 +850,7 @@ router.put(
  *       422:
  *         description: aprobado no proporcionado, no es booleano, o se rechaza sin observaciones.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // POST /api/cotizaciones/:id/aprobar
 // HU08 — Dedicated Jefe / SysAdmin approval / rejection endpoint.
@@ -899,15 +899,15 @@ router.post(
  *       400:
  *         description: ID inválido.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente (requiere Ejecutivo).
+ *         $ref: '#/components/responses/SinPermiso'
  *       404:
  *         description: Cotización no encontrada.
  *       422:
  *         description: Archivo ausente, tipo MIME no permitido o tamaño excedido.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // POST /api/cotizaciones/:id/pdf
 // Manual PDF upload by an Ejecutivo.
@@ -963,13 +963,13 @@ router.post(
  *       400:
  *         description: ID inválido.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente.
+ *         $ref: '#/components/responses/SinPermiso'
  *       404:
  *         description: Cotización no encontrada o sin PDF asociado.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // GET /api/cotizaciones/:id/pdf
 // Stream the stored PDF to the client with the correct Content-Disposition.
@@ -1026,15 +1026,15 @@ router.get(
  *       400:
  *         description: ID inválido.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente (requiere Administracion).
+ *         $ref: '#/components/responses/SinPermiso'
  *       404:
  *         description: Cotización no encontrada.
  *       422:
  *         description: Campo comentario_admin ausente.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // PATCH /api/cotizaciones/:id/comentario-admin
 // Administracion-only: write or overwrite the supervisor review comment.

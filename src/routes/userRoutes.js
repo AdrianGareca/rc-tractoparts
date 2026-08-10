@@ -40,11 +40,11 @@ const userMgmtRoles = [authenticate, authorize(['Jefe', 'Administracion', 'SysAd
  *       200:
  *         description: Lista de usuarios obtenida exitosamente.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
+ *         $ref: '#/components/responses/SinPermiso'
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 
 // GET  /api/usuarios      — list all users
@@ -97,13 +97,13 @@ router.get('/', ...userMgmtRoles, UserController.listUsers);
  *       201:
  *         description: Usuario creado exitosamente.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
+ *         $ref: '#/components/responses/SinPermiso'
  *       422:
  *         description: Datos de entrada inválidos.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 
 // POST /api/usuarios      — create a new user
@@ -128,13 +128,13 @@ router.post('/', ...userMgmtRoles, UserController.createUser);
  *       200:
  *         description: Datos del usuario.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
+ *         $ref: '#/components/responses/SinPermiso'
  *       404:
  *         description: Usuario no encontrado.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 
 // GET  /api/usuarios/:id  — get one user by ID
@@ -182,15 +182,15 @@ router.get('/:id', ...userMgmtRoles, UserController.getUserById);
  *       200:
  *         description: Usuario actualizado correctamente.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
+ *         $ref: '#/components/responses/SinPermiso'
  *       404:
  *         description: Usuario no encontrado.
  *       422:
  *         description: Datos de entrada inválidos.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 
 // PUT  /api/usuarios/:id  — partial update (name, role, active flag, password reset)
@@ -216,13 +216,13 @@ router.put('/:id', ...userMgmtRoles, UserController.updateUser);
  *       200:
  *         description: Usuario desactivado correctamente.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
+ *         $ref: '#/components/responses/SinPermiso'
  *       404:
  *         description: Usuario no encontrado.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 
 // DELETE /api/usuarios/:id — soft delete (sets activo=0)

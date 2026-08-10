@@ -77,7 +77,7 @@ describe('un elemento nunca lleva dos atributos class', () => {
 // `--stat-accent` que cada tarjeta inyecta con su propio color.
 // ---------------------------------------------------------------------------
 describe('los estilos inline sólo pueden disminuir', () => {
-  const TOPE = 27;
+  const TOPE = 23;
 
   const contar = () => archivos.reduce((total, f) => {
     const src = fs.readFileSync(f, 'utf8');
@@ -236,7 +236,7 @@ describe('los emoji de la interfaz sólo pueden disminuir', () => {
 // token propio o si el boton merece su clase.
 // ---------------------------------------------------------------------------
 describe('los colores escritos a mano sólo pueden disminuir', () => {
-  const TOPE = 10;
+  const TOPE = 0;
 
   // Se arma con RegExp desde una CADENA y no como literal. La primera versión
   // usaba /#[0-9A-Fa-f]{6}/ y devolvía cero coincidencias: al escribir el
@@ -245,9 +245,25 @@ describe('los colores escritos a mano sólo pueden disminuir', () => {
   // después del color. Un test que da cero y pasa es peor que uno que falla.
   const HEX = '#[0-9A-Fa-f]{6}';
 
+  // Se arma desde String.fromCharCode y no como literal '\n' por la misma razón
+  // que HEX es una cadena: al escribir este archivo con un script, la secuencia
+  // de escape se resolvió una capa antes de lo esperado y el salto de línea
+  // quedó DENTRO de la comilla, partiendo el literal en dos. Es el mismo tipo de
+  // error que el retroceso invisible que ya rompió este archivo una vez.
+  const SALTO = String.fromCharCode(10);
+
+  // No se cuentan los comentarios, por el mismo motivo que en el trinquete de
+  // los emoji: los que explican POR QUÉ se sacó un color necesitan nombrarlo
+  // —«eran #065F46 y #1D4ED8, que son de tema claro»— y si contaran, el
+  // trinquete no podría llegar nunca a cero y la documentación saldría
+  // penalizada. Se mide lo que ve el usuario.
   const contar = () => archivos.reduce((total, f) => {
     const src = fs.readFileSync(f, 'utf8');
-    return total + (src.match(new RegExp(HEX, 'g')) || []).length;
+    return total + src.split(SALTO).reduce((n, linea) => {
+      const t = linea.trim();
+      if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return n;
+      return n + (linea.match(new RegExp(HEX, 'g')) || []).length;
+    }, 0);
   }, 0);
 
   test(`no hay más de ${TOPE} colores hex en public/js`, () => {

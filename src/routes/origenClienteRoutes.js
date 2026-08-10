@@ -40,9 +40,9 @@ const CLIENT_ROLES = ['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin'];
  *       200:
  *         description: Lista de orígenes activos
  *       401:
- *         description: Token JWT ausente o inválido
+ *         $ref: '#/components/responses/NoAutorizado'
  *       500:
- *         description: Error interno del servidor
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 router.get('/', authenticate, authorize(CLIENT_ROLES), OrigenClienteController.getOrigenes);
 
@@ -75,7 +75,7 @@ router.get('/', authenticate, authorize(CLIENT_ROLES), OrigenClienteController.g
  *       422:
  *         description: El campo nombre es requerido o supera 100 caracteres
  *       500:
- *         description: Error interno del servidor
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 router.post('/', authenticate, authorize(CLIENT_ROLES), OrigenClienteController.createOrigen);
 

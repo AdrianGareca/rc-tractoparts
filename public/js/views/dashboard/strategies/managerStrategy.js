@@ -455,11 +455,18 @@ export class ManagerStrategy extends DashboardStrategy {
       ? 'Revertir a Pendiente (Borrador para Correcciones)'
       : 'Revertir a En Revisión (Flujo de Aprobación)';
 
+    // El recuadro de advertencia usa .form-alert.alert-warning, que el proyecto
+    // ya tenía. Estaba dibujado a mano con tres amarillos fijos que eran de tema
+    // claro: en los temas oscuros quedaba un cuadro casi blanco con texto marrón.
+    //
+    // La explicación va acá y no como comentario HTML dentro de la plantilla:
+    // un <!-- --> en un innerHTML se inserta en el DOM y viaja al navegador.
+    // Un comentario para quien lee el código no tiene por qué llegar al cliente.
     UI.openModal('Revertir rechazo / revaluar cotización', (body) => {
       body.innerHTML = `
-        <div style="background:#FEF9C3;border:1px solid var(--clr-amber);border-radius:6px;padding:.75rem 1rem;margin-bottom:1rem;">
-          <strong style="color:#B45309;">Acción de alta autoridad</strong>
-          <p class="text-sm" style="color:#78350F;margin:.25rem 0 0;">
+        <div class="form-alert alert-warning show mb-2">
+          <strong>Acción de alta autoridad</strong>
+          <p class="text-sm mt-025">
             Esta acción revierte el estado de <strong>Rechazada</strong> a
             <strong>${escHtml(targetState)}</strong> y reinyecta la cotización en el flujo de trabajo.
             El historial de rechazo se preservará en la trazabilidad de estados.
@@ -473,9 +480,8 @@ export class ManagerStrategy extends DashboardStrategy {
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" id="rev-cancel">Cancelar</button>
-          <button class="btn btn-sm" id="rev-confirm"
-                  style="background:var(--clr-amber);color:#000;border:none;font-weight:600;">
-            Confirmar Revertir rechazo
+          <button class="btn btn-warning btn-sm fw-600" id="rev-confirm">
+            Confirmar revertir rechazo
           </button>
         </div>`;
 

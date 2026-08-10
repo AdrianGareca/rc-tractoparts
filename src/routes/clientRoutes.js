@@ -43,9 +43,9 @@ const allRoles = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe'
  *       200:
  *         description: Lista de clientes coincidentes.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 router.get('/', ...allRoles, ClientController.search);
 
@@ -105,7 +105,7 @@ router.get('/', ...allRoles, ClientController.search);
  *       422:
  *         description: Datos de entrada inválidos.
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 router.post('/', ...allRoles, ClientController.create);
 
@@ -139,9 +139,9 @@ router.post('/', ...allRoles, ClientController.create);
  *       200:
  *         description: Lista paginada de clientes.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       500:
- *         description: Error interno del servidor.
+ *         $ref: '#/components/responses/ErrorInterno'
  */
 // NOTE: this literal route MUST be registered before GET /:id — otherwise
 // Express would match "/all" against the :id param route and try to parse

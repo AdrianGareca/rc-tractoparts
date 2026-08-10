@@ -62,9 +62,9 @@ const managerOnly = [authenticate, authorize(['Jefe', 'Administracion', 'SysAdmi
  *       200:
  *         description: Registros de auditoría obtenidos exitosamente.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente (requiere Jefe, Administracion o SysAdmin).
+ *         $ref: '#/components/responses/SinPermiso'
  *       422:
  *         description: Parámetro de filtro inválido.
  */
@@ -83,9 +83,9 @@ router.get('/', ...managerOnly, AuditoriaController.getAuditLogs);
  *       200:
  *         description: Opciones obtenidas exitosamente.
  *       401:
- *         description: Token ausente o inválido.
+ *         $ref: '#/components/responses/NoAutorizado'
  *       403:
- *         description: Rol insuficiente.
+ *         $ref: '#/components/responses/SinPermiso'
  */
 router.get('/opciones', ...managerOnly, AuditoriaController.getFilterOptions);
 
