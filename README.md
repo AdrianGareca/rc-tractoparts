@@ -13,6 +13,9 @@ REST API and lightweight web client for managing **quotations (proformas)** for 
 
 The backend is a Node.js + Express REST API backed by MySQL. The frontend is a vanilla-JavaScript (ES Modules) single-page application (SPA) served as static files by the same Express process — no build step required. The whole stack is containerized with Docker and orchestrated with Docker Compose.
 
+> **Working on the code?** See [`docs/`](docs/) for the design system and the
+> testing conventions — the decisions that are already made, and why.
+
 ---
 
 ## Table of Contents

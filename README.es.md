@@ -13,6 +13,9 @@ API REST y cliente web liviano para la gestión de **cotizaciones (proformas)** 
 
 El backend es una API REST en Node.js + Express respaldada por MySQL. El frontend es una aplicación de una sola página (SPA) en JavaScript puro (ES Modules), servida como archivos estáticos por el mismo proceso de Express — sin paso de compilación. Todo el stack está contenedorizado con Docker y orquestado con Docker Compose.
 
+> **¿Vas a tocar el código?** Mirá [`docs/`](docs/) para el sistema de diseño
+> y las convenciones de pruebas — las decisiones que ya están tomadas, y por qué.
+
 ---
 
 ## Tabla de Contenidos
