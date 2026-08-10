@@ -23,22 +23,22 @@
 import { escHtml } from '../helpers.js';
 import { REOPEN_SOURCE_STATES } from '../../../shared/quotationTransitions.js';
 
+
 /**
- * Calcula los permisos de interfaz y arma los tres bloques de botones.
+ * Qué acciones habilita el estado actual para quien está mirando.
  *
- * @param {Object}  q             — la cotización completa
- * @param {Object}  modo
- * @param {boolean} modo.jefeMode     — vista de decisión del Jefe
- * @param {boolean} modo.adminMode    — vista de revisión del Administrador
- * @param {boolean} modo.delegateMode — ejecutivo con delegación ampliada
- * @returns {{ jefeButtons:string, adminButtons:string, adminCommentBlock:string }}
+ * Función PURA: no arma HTML, sólo decide. Separarla de los botones es lo que
+ * permite responder «¿por qué no me aparece Archivar?» leyendo veinte líneas
+ * en vez de buscar un `if` entre el marcado.
+ *
+ * NINGUNA de estas condiciones es una medida de seguridad: el servidor
+ * revalida cada transición contra la matriz de roles y contra el flag de
+ * delegación releído de la base. Acá sólo se evita ofrecer un botón que va a
+ * devolver 403 — que es distinto de impedir la acción.
+ *
+ * @returns {Object} un booleano por acción, más `operative`
  */
-export function buildProformaActions(q, { jefeMode, adminMode, delegateMode }) {
-  // Operational action grid — contextual buttons based on current state.
-  // Rendered for the Jefe AND for delegated executives (Delegación de Funciones
-  // ampliada): both operate the full lifecycle with the same transitions. The
-  // backend re-validates every action against the DB-fresh flag, so these
-  // conditionals are pure UI gating.
+function calcularPermisos(q, { jefeMode, delegateMode }) {
   const operative       = jefeMode || delegateMode;
   const canApprove      = operative && ['Pendiente', 'En revision', 'En espera'].includes(q.estado);
   const canEnviarCliente= operative && ['Pendiente', 'En revision', 'En espera', 'Aprobada internamente'].includes(q.estado);
@@ -64,6 +64,20 @@ export function buildProformaActions(q, { jefeMode, adminMode, delegateMode }) {
   // delegado aunque opere con la matriz del Jefe, así que ofrecerle el botón
   // sería ofrecerle un 403. Mismo criterio que canRevertir.
   const canReabrir = jefeMode && REOPEN_SOURCE_STATES.includes(q.estado);
+
+
+  return {
+    operative, canApprove, canEnviarCliente, canAceptar, canRechazar,
+    canHold, canRetract, canRevertir, canArchivar, canReabrir,
+  };
+}
+
+/** La grilla de acciones del Jefe y del ejecutivo delegado. */
+function jefeButtonsHtml(q, jefeMode, permisos) {
+  const {
+    operative, canApprove, canEnviarCliente, canAceptar, canRechazar,
+    canHold, canRetract, canRevertir, canArchivar, canReabrir,
+  } = permisos;
 
   const jefeButtons = operative ? `
     <div class="approval-actions">
@@ -125,6 +139,12 @@ export function buildProformaActions(q, { jefeMode, adminMode, delegateMode }) {
     ` : '';
 
   // Admin action panel — comment box + "En Espera" + "Solicitar cambios" buttons
+
+  return jefeButtons;
+}
+
+/** El panel de revisión del Administrador: comentario y poner en espera. */
+function adminButtonsHtml(q, adminMode) {
   const adminButtons = adminMode ? `
     <div class="approval-actions admin-review-panel">
       <h4 class="approval-actions-title">Revisión del Administrador</h4>
@@ -155,7 +175,12 @@ export function buildProformaActions(q, { jefeMode, adminMode, delegateMode }) {
   // block was superseded by the full operational grid above (jefeButtons renders
   // in delegate mode too). Delegated actions are wired by ExecutiveStrategy to
   // flow through PUT /:id/estado — never the jefeOnly POST /:id/aprobar route.
-  const delegateButtons = '';
+
+  return adminButtons;
+}
+
+/** El comentario del Administrador, tal como lo ven el ejecutivo y el Jefe. */
+function adminCommentBlockHtml(q, { adminMode, jefeMode }) {
 
   // Read-only admin comment block — shown to ALL authenticated roles when a
   // comment exists, so Ejecutivos can see supervisor notes.  In Jefe mode an
@@ -172,5 +197,27 @@ export function buildProformaActions(q, { jefeMode, adminMode, delegateMode }) {
       <p class="proforma-description text-muted mt-025 fst-italic">Sin comentarios del Administrador.</p>
     </div>`
       : '';
-  return { jefeButtons, adminButtons, delegateButtons, adminCommentBlock };
+
+  return adminCommentBlock;
+}
+
+/**
+ * Arma los tres bloques de marcado a partir de los permisos.
+ *
+ * @param {Object}  q     — la cotización completa
+ * @param {Object}  modo  — { jefeMode, adminMode, delegateMode }
+ * @returns {{ jefeButtons, adminButtons, delegateButtons, adminCommentBlock }}
+ */
+export function buildProformaActions(q, { jefeMode, adminMode, delegateMode }) {
+  const permisos = calcularPermisos(q, { jefeMode, delegateMode });
+
+  return {
+    jefeButtons:       jefeButtonsHtml(q, jefeMode, permisos),
+    adminButtons:      adminButtonsHtml(q, adminMode),
+    // Vacío a propósito: el ejecutivo delegado usa la MISMA grilla que el
+    // Jefe (jefeButtons ya contempla delegateMode). La clave se mantiene
+    // porque la plantilla la interpola, y sacarla obligaría a tocarla.
+    delegateButtons:   '',
+    adminCommentBlock: adminCommentBlockHtml(q, { adminMode, jefeMode }),
+  };
 }
