@@ -26,6 +26,9 @@ const path                       = require('path');
 const LicitacionModel            = require('../models/LicitacionModel');
 const LicitacionDocumentModel    = require('../models/LicitacionDocumentModel');
 const { logEvent, AuditActions } = require('../utils/auditLog');
+// Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
+// con el mensaje en dos idiomas distintos.
+const { parseId } = require('../utils/parseId');
 
 // ---------------------------------------------------------------------------
 // Magic-number signatures per allowed extension. Mirrors the PDF ("%PDF-")
@@ -97,7 +100,7 @@ const LicitacionDocumentController = {
   // for the multer configuration and extension allowlist).
   // ---------------------------------------------------------------------------
   async uploadDocumentos(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'licitación');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
     const files    = req.files || [];
 
@@ -190,10 +193,8 @@ const LicitacionDocumentController = {
   // getDocumentos — GET /api/licitaciones/:id/documentos  (todos los autenticados)
   // ---------------------------------------------------------------------------
   async getDocumentos(req, res) {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'ID de licitación inválido.' });
-    }
+    const { id, error: idError } = parseId(req.params.id, 'licitación');
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const licitacion = await LicitacionModel.findById(id);
@@ -213,7 +214,7 @@ const LicitacionDocumentController = {
   // downloadDocumento — GET /api/licitaciones/:id/documentos/:docId  (todos)
   // ---------------------------------------------------------------------------
   async downloadDocumento(req, res) {
-    const id    = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'licitación');
     const docId = parseInt(req.params.docId, 10);
 
     if (isNaN(id) || id < 1 || isNaN(docId) || docId < 1) {
@@ -260,7 +261,7 @@ const LicitacionDocumentController = {
   // (responsable, Jefe, SysAdmin)
   // ---------------------------------------------------------------------------
   async deleteDocumento(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'licitación');
     const docId    = parseInt(req.params.docId, 10);
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 

@@ -23,6 +23,9 @@ const QuotationModel             = require('../models/QuotationModel');
 const UserModel                  = require('../models/UserModel');
 const { logEvent, AuditActions } = require('../utils/auditLog');
 const licitacionPdfService       = require('../services/licitacionPdfService');
+// Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
+// con el mensaje en dos idiomas distintos.
+const { parseId } = require('../utils/parseId');
 
 const LicitacionController = {
 
@@ -32,11 +35,9 @@ const LicitacionController = {
   // transmite directo, así siempre refleja el estado/cotizaciones/gastos actual.
   // ---------------------------------------------------------------------------
   async downloadPdf(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'licitación');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'ID de licitación inválido.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const licitacion = await LicitacionModel.findById(id);
@@ -231,10 +232,8 @@ const LicitacionController = {
   // getLicitacionById — GET /api/licitaciones/:id  (todos los autenticados)
   // ---------------------------------------------------------------------------
   async getLicitacionById(req, res) {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'ID de licitación inválido.' });
-    }
+    const { id, error: idError } = parseId(req.params.id, 'licitación');
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const licitacion = await LicitacionModel.findById(id);
@@ -252,10 +251,8 @@ const LicitacionController = {
   // getStateHistory — GET /api/licitaciones/:id/historial  (todos los autenticados)
   // ---------------------------------------------------------------------------
   async getStateHistory(req, res) {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'ID de licitación inválido.' });
-    }
+    const { id, error: idError } = parseId(req.params.id, 'licitación');
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const licitacion = await LicitacionModel.findById(id);
@@ -281,10 +278,8 @@ const LicitacionController = {
   // Solo se puede editar la cabecera en estados 'En preparacion'/'Cotizando'.
   // ---------------------------------------------------------------------------
   async updateLicitacion(req, res) {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'ID de licitación inválido.' });
-    }
+    const { id, error: idError } = parseId(req.params.id, 'licitación');
+    if (idError) return res.status(idError.status).json(idError.body);
 
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
@@ -365,10 +360,8 @@ const LicitacionController = {
   // sin delegación → 403 del modelo.
   // ---------------------------------------------------------------------------
   async updateStatus(req, res) {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'ID de licitación inválido.' });
-    }
+    const { id, error: idError } = parseId(req.params.id, 'licitación');
+    if (idError) return res.status(idError.status).json(idError.body);
 
     const { nuevo_estado, observacion } = req.body;
     const userRol  = req.user.rol;

@@ -33,6 +33,8 @@
 
 const QuotationModel = require('../../models/QuotationModel');
 const UserModel      = require('../../models/UserModel');
+// La lectura del id de la URL, compartida con los otros ocho controladores.
+const { parseId }    = require('../../utils/parseId');
 
 // ---------------------------------------------------------------------------
 // 1. La forma de lo que llegó por HTTP
@@ -49,15 +51,13 @@ const UserModel      = require('../../models/UserModel');
  * @returns {{status:number, body:object}|null}
  */
 function verificarEntrada(idCrudo, nuevoEstado) {
-  // Base 10 explícita: sin ella, un id que empiece con '0' se interpretaría
-  // como octal en motores viejos, y '0x1A' como hexadecimal.
-  const id = parseInt(idCrudo, 10);
-
-  // `isNaN` cubre el texto no numérico; `< 1` cubre el 0 y los negativos, que
-  // son sintácticamente válidos pero no pueden existir como AUTO_INCREMENT.
-  if (isNaN(id) || id < 1) {
-    return { status: 400, body: { success: false, message: 'Invalid quotation ID.' } };
-  }
+  // La lectura del id se delega a parseId (src/utils/parseId.js). Cuando escribí
+  // este guardián copié la comprobación a mano — y así sumé una repetición
+  // número 29 a las 28 que después terminé unificando. Vale la pena señalarlo:
+  // extraer código a un módulo nuevo no evita duplicarlo, si uno no revisa
+  // antes si esa pieza ya existía en algún lado.
+  const { error } = parseId(idCrudo, 'cotización');
+  if (error) return error;
 
   // Se comprueba el tipo además de la presencia: un cliente que mande
   // `nuevo_estado: ["Confirmada"]` pasaría el chequeo de verdad y después

@@ -31,6 +31,9 @@ const QuotationNotificationController = require('./quotation/quotationNotificati
 // Helpers compartidos: transaccion con reintento y regeneracion del PDF
 const { withDeadlockRetry }      = require('./quotation/transactionHelpers');
 const { regenerateQuotationPdf } = require('./quotation/pdfRegeneration');
+// Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
+// con el mensaje en dos idiomas distintos.
+const { parseId } = require('../utils/parseId');
 
 
 const QuotationController = {
@@ -285,12 +288,10 @@ const QuotationController = {
   //              → regenerate PDF (single-PDF invariant) → audit.
   // ---------------------------------------------------------------------------
   async updateQuotation(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cotización');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     const { id_cliente, descripcion, fecha_emision, detalles = [] } = req.body;
 
@@ -456,11 +457,9 @@ const QuotationController = {
   // getQuotationById — GET /api/cotizaciones/:id  (All roles)
   // ---------------------------------------------------------------------------
   async getQuotationById(req, res) {
-    const id = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cotización');
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const quotation = await QuotationModel.findById(id);
@@ -497,12 +496,10 @@ const QuotationController = {
   // Request body: { "comentario_admin": "text" }
   // ---------------------------------------------------------------------------
   async patchComentarioAdmin(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cotización');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     // Defense-in-depth: controller asserts role even though route middleware already guards it
     if (req.user.rol !== 'Administracion') {

@@ -7,6 +7,9 @@
 
 const ClientModel              = require('../models/ClientModel');
 const { logEvent, AuditActions } = require('../utils/auditLog');
+// Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
+// con el mensaje en dos idiomas distintos.
+const { parseId } = require('../utils/parseId');
 
 // Simple RFC 5322-compliant email pattern (no external dependency)
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -37,11 +40,9 @@ const ClientController = {
   // be looked up from the management screen (e.g. to reactivate it).
   // ---------------------------------------------------------------------------
   async getById(req, res) {
-    const id = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cliente');
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid client ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const client = await ClientModel.findByIdAny(id);
@@ -204,12 +205,10 @@ const ClientController = {
   // endpoint. When omitted, the client's current active status is preserved.
   // ---------------------------------------------------------------------------
   async update(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cliente');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid client ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     const { razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente } = req.body;
 
@@ -346,12 +345,10 @@ const ClientController = {
   // UserController.deactivateUser's exact pattern.
   // ---------------------------------------------------------------------------
   async deactivate(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cliente');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid client ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const existing = await ClientModel.findByIdAny(id);

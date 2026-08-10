@@ -27,6 +27,9 @@ const { regenerateQuotationPdf } = require('./pdfRegeneration');
 const Guards = require('./stateTransitionGuards');
 // Los cuatro efectos posteriores a una transicion ya confirmada.
 const Effects = require('./stateTransitionEffects');
+// Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
+// con el mensaje en dos idiomas distintos.
+const { parseId } = require('../../utils/parseId');
 
 const QuotationStateController = {
 
@@ -43,7 +46,7 @@ const QuotationStateController = {
   // Request body: { nuevo_estado: string, observacion?: string }
   // ---------------------------------------------------------------------------
   async updateStatus(req, res) {
-    const id                                             = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cotización');
     const { nuevo_estado, observacion, comentario_admin } = req.body;
     const userRol  = req.user.rol;
     const clientIp = req.ip || req.socket?.remoteAddress || null;
@@ -211,13 +214,11 @@ const QuotationStateController = {
   //   { "aprobado": true | false, "observaciones": "text" (required on reject) }
   // ---------------------------------------------------------------------------
   async approveQuotation(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cotización');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
     // ── Basic validation ──────────────────────────────────────────────────────
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     const { aprobado, observaciones } = req.body;
 
@@ -401,11 +402,9 @@ const QuotationStateController = {
   // (from cotizacion_historial_estados). Section 4.3.
   // ---------------------------------------------------------------------------
   async getStateHistory(req, res) {
-    const id = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cotización');
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const quotation = await QuotationModel.findById(id);

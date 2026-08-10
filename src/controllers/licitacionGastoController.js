@@ -19,6 +19,9 @@ const LicitacionModel            = require('../models/LicitacionModel');
 const LicitacionGastoModel       = require('../models/LicitacionGastoModel');
 const { logEvent, AuditActions } = require('../utils/auditLog');
 const { sumGastosEnMoneda }      = require('../utils/licitacionTotals');
+// Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
+// con el mensaje en dos idiomas distintos.
+const { parseId } = require('../utils/parseId');
 
 // Estados en los que se pueden gestionar gastos (post-adjudicación).
 const GASTO_ALLOWED_STATES = ['Adjudicada', 'Archivada'];
@@ -39,11 +42,9 @@ const LicitacionGastoController = {
   // addGasto — POST /api/licitaciones/:id/gastos
   // ---------------------------------------------------------------------------
   async addGasto(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'licitación');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'ID de licitación inválido.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     const { concepto, monto, moneda } = req.body;
 
@@ -118,10 +119,8 @@ const LicitacionGastoController = {
   // getGastos — GET /api/licitaciones/:id/gastos  (todos los autenticados)
   // ---------------------------------------------------------------------------
   async getGastos(req, res) {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'ID de licitación inválido.' });
-    }
+    const { id, error: idError } = parseId(req.params.id, 'licitación');
+    if (idError) return res.status(idError.status).json(idError.body);
     try {
       const licitacion = await LicitacionModel.findById(id);
       if (!licitacion) {
@@ -150,7 +149,7 @@ const LicitacionGastoController = {
   // deleteGasto — DELETE /api/licitaciones/:id/gastos/:gastoId
   // ---------------------------------------------------------------------------
   async deleteGasto(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'licitación');
     const gastoId  = parseInt(req.params.gastoId, 10);
     const clientIp = req.ip || req.socket?.remoteAddress || null;
     if (isNaN(id) || id < 1 || isNaN(gastoId) || gastoId < 1) {

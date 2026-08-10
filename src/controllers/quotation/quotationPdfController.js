@@ -20,6 +20,9 @@ const path                       = require('path');
 const QuotationModel             = require('../../models/QuotationModel');
 const { logEvent, AuditActions } = require('../../utils/auditLog');
 const pdfService                 = require('../../services/pdfService');
+// Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
+// con el mensaje en dos idiomas distintos.
+const { parseId } = require('../../utils/parseId');
 
 // ---------------------------------------------------------------------------
 // buildPdfDownloadName
@@ -50,12 +53,10 @@ const QuotationPdfController = {
   // uploadPdf — POST /api/cotizaciones/:id/pdf  (Role: Ejecutivo)
   // ---------------------------------------------------------------------------
   async uploadPdf(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cotización');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     if (!req.file) {
       return res.status(422).json({
@@ -145,12 +146,10 @@ const QuotationPdfController = {
   //             on-the-fly PDFKit generation as an emergency safety net.
   // ---------------------------------------------------------------------------
   async downloadPdf(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cotización');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const quotation = await QuotationModel.findById(id);
@@ -246,12 +245,10 @@ const QuotationPdfController = {
   //     rejected before the path touches the database (OWASP A08).
   // ---------------------------------------------------------------------------
   async uploadFiles(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cotización');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     const files   = req.files || {};
     const pdfFile = files.pdf?.[0]   ?? null;
@@ -400,12 +397,10 @@ const QuotationPdfController = {
   // Returns 404 when no Excel spreadsheet has been attached yet.
   // ---------------------------------------------------------------------------
   async downloadExcel(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'cotización');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid quotation ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const quotation = await QuotationModel.findById(id);

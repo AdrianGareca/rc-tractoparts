@@ -9,6 +9,9 @@
 const bcrypt    = require('bcryptjs');
 const UserModel = require('../models/UserModel');
 const { logEvent, AuditActions } = require('../utils/auditLog');
+// Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
+// con el mensaje en dos idiomas distintos.
+const { parseId } = require('../utils/parseId');
 
 // Roles permitted to grant/revoke "Delegación de Funciones"
 // (can_approve_quotations). Jefe (id_rol 3) and Administracion (id_rol 2) per
@@ -53,11 +56,9 @@ const UserController = {
   // getUserById — GET /api/usuarios/:id
   // ---------------------------------------------------------------------------
   async getUserById(req, res) {
-    const id = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'usuario');
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid user ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const user = await UserModel.findById(id);
@@ -148,12 +149,10 @@ const UserController = {
   // Partial update: supports nombre_completo, id_rol, activo, and password reset.
   // ---------------------------------------------------------------------------
   async updateUser(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'usuario');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid user ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const existing = await UserModel.findById(id);
@@ -228,12 +227,10 @@ const UserController = {
   // Soft delete: sets activo=0. Hard delete is blocked if the user has quotations.
   // ---------------------------------------------------------------------------
   async deactivateUser(req, res) {
-    const id       = parseInt(req.params.id, 10);
+    const { id, error: idError } = parseId(req.params.id, 'usuario');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (isNaN(id) || id < 1) {
-      return res.status(400).json({ success: false, message: 'Invalid user ID.' });
-    }
+    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
       const existing = await UserModel.findById(id);
