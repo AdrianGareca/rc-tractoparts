@@ -25,6 +25,8 @@ const { regenerateQuotationPdf } = require('./pdfRegeneration');
 // Se importan agrupadas y no sueltas para que en el cuerpo se lea
 // `Guards.verificarPermisoDeRol(...)`: el prefijo dice de dónde sale la regla.
 const Guards = require('./stateTransitionGuards');
+// Los cuatro efectos posteriores a una transicion ya confirmada.
+const Effects = require('./stateTransitionEffects');
 
 const QuotationStateController = {
 
@@ -119,132 +121,45 @@ const QuotationStateController = {
         });
       }
 
-      // ── Persist in the dedicated state history table (non-fatal) ────────────
-      // Audit logging failures must never mask a successfully committed transition.
-      try {
-        await QuotationModel.logStateHistory({
-          id_cotizacion:   id,
-          estado_anterior: estadoActual,
-          estado_nuevo:    nuevo_estado,
-          id_usuario:      req.user.id,
-          nombre_usuario:  req.user.nombre_usuario,
-          rol_usuario:     userRol,
-          observacion:     observacion || null,
-          ip_origen:       clientIp,
-        });
+      // ── Los cuatro efectos posteriores ────────────────────────────────────
+      // Viven en ./stateTransitionEffects.js. Comparten una regla: el UPDATE ya
+      // esta confirmado, asi que NINGUNO puede hacer fallar la respuesta. Si el
+      // registro en bitacora falla, o el PDF no se regenera, o la notificacion
+      // no entra, la cotizacion igual cambio de estado — y decirle al usuario
+      // "no funciono" lo llevaria a reintentar sobre un estado que ya no es el
+      // que el cree.
+      const usuario = {
+        id:             req.user.id,
+        nombre_usuario: req.user.nombre_usuario,
+        rol:            userRol,
+      };
 
-        // Una reapertura se registra con su propia acción: buscar "qué ventas se
-        // reabrieron" tiene que ser un filtro, no una excavación entre cientos
-        // de CAMBIAR_ESTADO rutinarios.
-        await logEvent({
-          id_usuario:     req.user.id,
-          nombre_usuario: req.user.nombre_usuario,
-          accion:         esReapertura ? AuditActions.REABRIR_COTIZACION : AuditActions.CAMBIAR_ESTADO,
-          entidad:        'cotizaciones',
-          id_entidad:     id,
-          detalle: {
-            estado_anterior: estadoActual,
-            nuevo_estado,
-            observacion:     observacion || null,
-            ...(esReapertura ? { motivo_reapertura: motivo } : {}),
-          },
-          ip_origen:  clientIp,
-          resultado:  'exito',
-        });
-      } catch (auditErr) {
-        console.warn('[QuotationStateController.updateStatus] Audit logging failed (non-fatal):', auditErr.message);
-      }
+      // 1. La huella: la linea de tiempo de esta cotizacion y la bitacora
+      //    transversal del sistema. Son dos registros con propositos distintos.
+      await Effects.registrarHuella({
+        id, estadoActual, nuevoEstado: nuevo_estado, usuario,
+        observacion, clientIp, esReapertura, motivo,
+      });
 
-      // ── Live PDF regeneration after every successful transition ─────────────
-      // The PDF's "ESTADO" card must always reflect the CURRENT state. Rather
-      // than keeping a frozen file (which would stay stuck on, e.g., 'Aprobada
-      // internamente'), we re-fetch the quotation with its new estado and
-      // overwrite the stored PDF on every successful transition. Non-fatal:
-      // a regeneration failure must never roll back a committed state change.
-      //
-      // SINGLE-PDF INVARIANT: a quotation may only ever own ONE physical file.
-      // We purge the previously stored PDF from disk BEFORE generating the new
-      // one, so storage never accumulates a trail of stale state PDFs.
+      // 2. El PDF: su tarjeta de ESTADO tiene que reflejar el estado ACTUAL, asi
+      //    que se regenera en cada transicion en vez de quedar congelado. Se
+      //    relee la cotizacion porque `quotation` todavia tiene el estado viejo.
       const refreshed = await QuotationModel.findById(id);
       await regenerateQuotationPdf(refreshed, {
         label: `QuotationStateController.updateStatus → '${nuevo_estado}'`,
       });
 
-      // ── Notification for the owning Ejecutivo ──────────────────────────────
-      // Fires whenever a quotation reaches 'Enviada al cliente' or 'Confirmada',
-      // REGARDLESS of who drove the transition (Jefe, SysAdmin, Administracion,
-      // or a delegated Ejecutivo). The owner is notified so they can follow up.
-      // Self-notification is skipped — the actor already knows about their action.
-      // 'Aceptada' is accepted as a legacy alias of 'Confirmada'.
-      if (['Enviada al cliente', 'Confirmada', 'Aceptada'].includes(nuevo_estado) &&
-          quotation.id_ejecutivo !== req.user.id) {
-        try {
-          const tipoMap = {
-            'Enviada al cliente': 'envio_cliente',
-            'Confirmada':         'aprobacion',
-            'Aceptada':           'aprobacion',
-          };
-          const mensaje = nuevo_estado === 'Enviada al cliente'
-            ? `La cotización #${quotation.numero_correlativo} ` +
-              `para ${quotation.cliente_nombre ?? String(quotation.id_cliente)} ` +
-              `ha sido enviada al cliente. Ya puedes darle seguimiento.`
-            : `La cotización #${quotation.numero_correlativo} ` +
-              `para ${quotation.cliente_nombre ?? String(quotation.id_cliente)} ` +
-              `ha sido confirmada. ¡Cierre de venta registrado!`;
+      // 3. El aviso al ejecutivo dueño: por el hito comercial, y por la
+      //    reapertura si la hubo. Omite la autonotificacion.
+      await Effects.notificarAlEjecutivo({
+        id, quotation, nuevoEstado: nuevo_estado, usuario, esReapertura, motivo,
+      });
 
-          await QuotationModel.insertNotificacion({
-            id_usuario:    quotation.id_ejecutivo,
-            id_cotizacion: id,
-            tipo:          tipoMap[nuevo_estado],
-            mensaje,
-          });
-        } catch (notifErr) {
-          console.warn('[QuotationStateController.updateStatus] Notification insert failed (non-fatal):', notifErr.message);
-        }
-      }
-
-      // ── Aviso al ejecutivo dueño cuando le reabren una venta cerrada ───────
-      // Sin esto la cotización reaparecería en su lista como 'Pendiente' sin
-      // ninguna explicación: él la dio por cerrada. El motivo que escribió el
-      // jefe viaja en el mensaje, porque es justamente lo que el ejecutivo
-      // necesita para saber qué corregir. Se omite la autonotificación.
-      if (esReapertura && quotation.id_ejecutivo !== req.user.id) {
-        try {
-          await QuotationModel.insertNotificacion({
-            id_usuario:    quotation.id_ejecutivo,
-            id_cotizacion: id,
-            tipo:          'correccion',
-            mensaje: `La cotización #${quotation.numero_correlativo} fue REABIERTA por ` +
-                     `${req.user.nombre_usuario} y volvió a estado Pendiente para que la corrijas. ` +
-                     `Motivo: ${motivo}`,
-          });
-        } catch (notifErr) {
-          console.warn('[QuotationStateController.updateStatus] Reopen notification failed (non-fatal):', notifErr.message);
-        }
-      }
-
-      // ── Notificación al responsable de la licitación vinculada ──────────────
-      // Si esta cotización pertenece a una licitación y avanza a un hito clave
-      // (aprobada internamente / enviada / confirmada), se avisa al responsable
-      // Proyectos para que lleve el control del concurso. Skip auto-notificación
-      // si el propio responsable ejecutó la transición. Todo no fatal.
-      if (quotation.id_licitacion != null &&
-          ['Aprobada internamente', 'Enviada al cliente', 'Confirmada', 'Aceptada'].includes(nuevo_estado)) {
-        try {
-          const lic = await LicitacionModel.findById(quotation.id_licitacion);
-          if (lic && lic.id_responsable !== req.user.id) {
-            await QuotationModel.insertNotificacion({
-              id_usuario:    lic.id_responsable,
-              id_licitacion: lic.id,
-              tipo:          'licitacion',
-              mensaje: `La cotización #${quotation.numero_correlativo} vinculada a la licitación ` +
-                       `${lic.codigo} cambió a "${nuevo_estado}".`,
-            });
-          }
-        } catch (licNotifErr) {
-          console.warn('[QuotationStateController.updateStatus] Licitación notification failed (non-fatal):', licNotifErr.message);
-        }
-      }
+      // 4. El aviso al responsable de la licitacion, si esta cotizacion
+      //    pertenece a un concurso y llego a un hito que le importa.
+      await Effects.notificarALicitacion({
+        quotation, nuevoEstado: nuevo_estado, usuario,
+      });
 
       return res.status(200).json({
         success: true,
@@ -391,36 +306,27 @@ const QuotationStateController = {
         });
       }
 
-      // ── Write to the state history table (non-fatal) ─────────────────────
-      try {
-        await QuotationModel.logStateHistory({
-          id_cotizacion:   id,
-          estado_anterior: estadoAnterior,
-          estado_nuevo:    nuevoEstado,
-          id_usuario:      req.user.id,
-          nombre_usuario:  req.user.nombre_usuario,
-          rol_usuario:     req.user.rol,
-          observacion:     obsText,
-          ip_origen:       clientIp,
-        });
-
-        const auditAction = aprobado ? AuditActions.APROBAR : AuditActions.RECHAZAR;
-        await logEvent({
-          id_usuario:     req.user.id,
+      // ── La huella, con la misma función que usa updateStatus ──────────────
+      // Este bloque era una copia de treinta líneas idéntica a la de allá salvo
+      // por dos valores: la acción de bitácora (APROBAR/RECHAZAR en vez de
+      // CAMBIAR_ESTADO) y el detalle. Ahora se pasan como parámetro.
+      //
+      // La acción propia importa: contar aprobaciones tiene que ser un filtro,
+      // no leer el detalle de cada cambio de estado para ver cuál lo era.
+      await Effects.registrarHuella({
+        id,
+        estadoActual: estadoAnterior,
+        nuevoEstado,
+        usuario: {
+          id:             req.user.id,
           nombre_usuario: req.user.nombre_usuario,
-          accion:         auditAction,
-          entidad:        'cotizaciones',
-          id_entidad:     id,
-          detalle: {
-            aprobado,
-            observaciones: obsText,
-          },
-          ip_origen:      clientIp,
-          resultado:      'exito',
-        });
-      } catch (auditErr) {
-        console.warn('[QuotationStateController.approveQuotation] Audit logging failed (non-fatal):', auditErr.message);
-      }
+          rol:            req.user.rol,
+        },
+        observacion: obsText,
+        clientIp,
+        accion:  aprobado ? AuditActions.APROBAR : AuditActions.RECHAZAR,
+        detalle: { aprobado, observaciones: obsText },
+      });
 
       // ── Single post-commit re-fetch — reused by PDF regen AND notification ──
       // The approve() call only changes estado/aprobado_por/fecha_aprobacion.
