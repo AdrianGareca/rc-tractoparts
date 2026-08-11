@@ -23,6 +23,9 @@ import {
 import { UI }                  from '../modalUI.js';
 import { CommandInvoker, ChangeStatusCommand, ApproveQuotationCommand } from '../commands.js';
 import { DashboardStrategy, wireTabs } from './dashboardStrategy.js';
+// Faltaba. Sin este import, «Poner en espera», «Solicitar cambios»,
+// «Confirmar venta» y «Archivar» tiraban ReferenceError y no hacían NADA.
+import { confirmStateChange } from '../modules/stateChangeDialog.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
 import { mountClienteItemReport } from '../modules/clienteItemReport.js';
 import { emptyState }        from '../../../shared/listSection.js';

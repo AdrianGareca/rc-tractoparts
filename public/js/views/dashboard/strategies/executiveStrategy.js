@@ -23,6 +23,9 @@ import { allowedTransitions }   from '../../../shared/quotationTransitions.js';
 import { buildProformaHTML }      from '../modules/proformaTemplate.js';
 import { DISCARD_QUOTATION_MSG }  from '../constants.js';
 import { DashboardStrategy }      from './dashboardStrategy.js';
+// Faltaba. Sin este import, las seis acciones del ejecutivo delegado
+// (_confirmDelegatedStateChange) tiraban ReferenceError y no hacían NADA.
+import { confirmStateChange }     from '../modules/stateChangeDialog.js';
 import { ETIQUETAS_FECHA } from '../../../shared/pagination.js';
 import { mountClienteItemReport } from '../modules/clienteItemReport.js';
 import { createListSection } from '../../../shared/listSection.js';

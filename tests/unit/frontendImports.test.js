@@ -47,6 +47,30 @@ function namedImports(clause) {
     .map((s) => s.split(/\s+as\s+/)[0].trim());
 }
 
+/**
+ * Los nombres tal como quedan EN EL ÁMBITO LOCAL del archivo.
+ *
+ * Distinto de `namedImports`, que devuelve el nombre ORIGINAL — el que hay que
+ * buscar en el módulo de origen para saber si existe. Acá interesa el otro
+ * lado: en `import { escapeHtml as escHtml }`, lo que el archivo puede usar es
+ * `escHtml`, no `escapeHtml`.
+ *
+ * Confundirlos hacía que el guardia acusara a helpers.js de usar `escHtml` sin
+ * importarlo, cuando lo importa en su línea 103 con alias.
+ */
+function nombresLocales(clause) {
+  const m = /\{([^}]*)\}/.exec(clause);
+  if (!m) return [];
+  return m[1].split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    // Con `as`, el local es el de la DERECHA; sin `as`, es el mismo.
+    .map((s) => {
+      const partes = s.split(/\s+as\s+/);
+      return (partes[1] ?? partes[0]).trim();
+    });
+}
+
 /** Símbolos que un archivo exporta con nombre. */
 function exportedNames(src) {
   const names = new Set();
@@ -138,17 +162,30 @@ describe('imports del frontend', () => {
   // cuatro paneles llamaban a mountPagination() sin importarlo, y el navegador
   // tiraba «mountPagination is not defined» al abrir cualquier listado.
   //
-  // Se acota a los símbolos de public/js/shared/: son los que se comparten
-  // entre archivos y, por lo tanto, los que se pueden olvidar al copiar código
-  // de un panel a otro.
+  // LA PRIMERA VERSIÓN SÓLO MIRABA public/js/shared/, Y ESO ERA UN AGUJERO
+  // El razonamiento parecía sano: shared/ es lo que se comparte, así que es lo
+  // que uno olvida al copiar código de un panel a otro. Pero un módulo se puede
+  // compartir sin vivir en esa carpeta.
+  //
+  // Lo que se coló por ahí: `confirmStateChange`, que vive en
+  // modules/stateChangeDialog.js, se llamaba desde managerStrategy.js y
+  // executiveStrategy.js SIN importarlo en ninguno de los dos. En el navegador
+  // eso es un ReferenceError, y dejaba sin funcionar «Poner en espera»,
+  // «Solicitar cambios», «Confirmar venta» y «Archivar» para el Jefe, el
+  // SysAdmin y el ejecutivo delegado — las acciones centrales del producto.
+  //
+  // Nadie lo notó porque los botones que SÍ andan (Aprobar, Rechazar, Reabrir)
+  // tienen su propio diálogo y no pasan por ahí: la pantalla respondía a
+  // algunos botones y a otros no, que se lee como «se colgó», no como un bug.
+  //
+  // Ahora se miran los exportados de TODO public/js. Acotar el alcance de un
+  // guardia por comodidad es exactamente cómo se le hace un agujero.
   describe('símbolos compartidos usados sin importar', () => {
     const SHARED = path.join(ROOT, 'shared');
 
-    /** Nombres exportados por cada módulo de shared/. */
+    /** Nombres exportados por CUALQUIER módulo de public/js. */
     const compartidos = new Set(
-      fs.readdirSync(SHARED)
-        .filter((f) => f.endsWith('.js'))
-        .flatMap((f) => [...exportedNames(fs.readFileSync(path.join(SHARED, f), 'utf8'))])
+      archivos.flatMap((f) => [...exportedNames(fs.readFileSync(f, 'utf8'))])
     );
 
     /** Código sin comentarios ni literales: evita falsos positivos. */
@@ -160,6 +197,10 @@ describe('imports del frontend', () => {
         // de módulos, no uso del símbolo. El nombre nunca entra al ámbito local,
         // así que exigir que esté importado sería un falso positivo.
         .replace(/export\s*\{[^}]*\}\s*from\s*['"][^'"]+['"]\s*;?/g, ' ')
+        // Las propias sentencias `import`: el nombre ORIGINAL de un alias
+        // (`import { escapeHtml as escHtml }`) aparece ahi como texto, y sin
+        // descartarlas el guardia lo contaba como un uso sin importar.
+        .replace(/import\s+[^;]*?\s+from\s*['"][^'"]+['"]\s*;?/g, ' ')
         .replace(/`(?:\\.|[^`\\])*`/g, '``')    // template literals
         .replace(/'(?:\\.|[^'\\])*'/g, "''")    // comillas simples
         .replace(/"(?:\\.|[^"\\])*"/g, '""');   // comillas dobles
@@ -169,7 +210,9 @@ describe('imports del frontend', () => {
     function importados(src) {
       const nombres = new Set();
       for (const { clause } of parseImports(src)) {
-        namedImports(clause).forEach((n) => nombres.add(n));
+        // nombresLocales y no namedImports: interesa el nombre con el que el
+        // archivo lo USA, que con `as` es el de la derecha.
+        nombresLocales(clause).forEach((n) => nombres.add(n));
         const porDefecto = /^([A-Za-z0-9_$]+)\s*(,|$)/.exec(clause);
         if (porDefecto) nombres.add(porDefecto[1]);
       }
@@ -181,6 +224,16 @@ describe('imports del frontend', () => {
       const nombres = new Set();
       for (const m of src.matchAll(/(?:function|class)\s+([A-Za-z0-9_$]+)/g)) nombres.add(m[1]);
       for (const m of src.matchAll(/(?:const|let|var)\s+([A-Za-z0-9_$]+)/g)) nombres.add(m[1]);
+
+      // Los PARÁMETROS también son nombres del ámbito. Sin esto, el guardia
+      // acusaba a notificationsView.js de usar `UI` sin importarlo, cuando lo
+      // recibe como parámetro en `refreshNotifBadge(UI)`.
+      for (const m of src.matchAll(/(?:function\s*[A-Za-z0-9_$]*|=>)?\s*\(([^)]*)\)\s*(?:=>|\{)/g)) {
+        for (const p of m[1].split(',')) {
+          const nombre = /^\s*([A-Za-z0-9_$]+)/.exec(p);
+          if (nombre) nombres.add(nombre[1]);
+        }
+      }
       return nombres;
     }
 

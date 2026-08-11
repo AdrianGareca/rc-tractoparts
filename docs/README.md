@@ -7,6 +7,7 @@ discutirlas ni deshacerlas sin querer.
 
 | Documento | Responde a |
 |---|---|
+| [arquitectura.md](arquitectura.md) | Tengo que cambiar X, ¿dónde toco? ¿Por qué la misma matriz está en dos lados? ¿Qué se rompe sin dar error? |
 | [diseno.md](diseno.md) | ¿De qué color va esto? ¿Puedo poner un emoji? ¿Por qué mi `style=""` no se aplica? ¿Cómo nombro una clase? |
 | [pruebas.md](pruebas.md) | ¿Qué es un trinquete? ¿Por qué falla un guardia? ¿Por qué `--runInBand`? ¿Cómo escribo una prueba acá? |
 
