@@ -27,7 +27,7 @@ import { UI }                  from '../modalUI.js';
 import {
   CommandInvoker, ChangeStatusCommand, SetComentarioAdminCommand, HoldWithCommentCommand,
 } from '../commands.js';
-import { DashboardStrategy } from './dashboardStrategy.js';
+import { DashboardStrategy, wireTabs } from './dashboardStrategy.js';
 import { emptyState }        from '../../../shared/listSection.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
 import { mountClienteItemReport } from '../modules/clienteItemReport.js';
@@ -56,13 +56,12 @@ export class AdminStrategy extends DashboardStrategy {
       <div id="admin-panel"></div>
     `;
 
-    container.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        container.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.#activeTab = btn.dataset.tab;
-        this._renderPanel(btn.dataset.tab);
-      });
+    // El apagar/encender de las pestañas vive en dashboardStrategy.js: era
+    // idéntico en las tres estrategias que las tienen. El estado se queda acá
+    // porque #activeTab es privado de esta clase.
+    wireTabs(container, (tab) => {
+      this.#activeTab = tab;
+      this._renderPanel(tab);
     });
 
     await this._renderPanel(this.#activeTab);

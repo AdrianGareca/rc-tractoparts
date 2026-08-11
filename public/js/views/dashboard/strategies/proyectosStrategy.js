@@ -13,7 +13,7 @@
 
 import { mountClientsTab }        from '../modules/clientsView.js';
 import { mountLicitacionesTab }   from '../modules/licitacionesView.js';
-import { DashboardStrategy }      from './dashboardStrategy.js';
+import { DashboardStrategy, wireTabs } from './dashboardStrategy.js';
 
 export class ProyectosStrategy extends DashboardStrategy {
   #container;
@@ -33,13 +33,12 @@ export class ProyectosStrategy extends DashboardStrategy {
       <div id="proyectos-panel"></div>
     `;
 
-    container.querySelectorAll('.tab-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        container.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.#activeTab = btn.dataset.tab;
-        this._renderPanel(btn.dataset.tab);
-      });
+    // El apagar/encender de las pestañas vive en dashboardStrategy.js: era
+    // idéntico en las tres estrategias que las tienen. El estado se queda acá
+    // porque #activeTab es privado de esta clase.
+    wireTabs(container, (tab) => {
+      this.#activeTab = tab;
+      this._renderPanel(tab);
     });
 
     await this._renderPanel(this.#activeTab);
