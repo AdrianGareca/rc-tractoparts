@@ -40,9 +40,14 @@ const { pool } = require('../../src/config/db');
 jest.setTimeout(30000);
 
 let token, idEjec, idEjec2, idClienteA, idClienteB, idProducto, idMarca;
+// El Jefe existe para los dos casos que comparan a AMBOS ejecutivos: un
+// ejecutivo no puede verlos, y antes esos tests usaban su token — o sea que
+// afirmaban la fuga de /cliente-item como si fuera lo correcto.
+let idJefe, tokenJefe;
 const cotizaciones = [];
 
 const U_EJEC   = 'test_ejec_repci';
+const U_JEFE  = 'test_jefe_repci';
 const U_EJEC2  = 'test_ejec2_repci';
 const MARCA_NOMBRE = 'Test Marca REPCI';
 const PASSWORD = 'TestRepCI2026!';
@@ -78,7 +83,7 @@ beforeAll(async () => {
   await pool.execute(
     `DELETE FROM cotizaciones WHERE id_ejecutivo IN
        (SELECT id FROM usuarios WHERE nombre_usuario IN (?, ?))`, [U_EJEC, U_EJEC2]);
-  await pool.execute('DELETE FROM usuarios WHERE nombre_usuario IN (?, ?)', [U_EJEC, U_EJEC2]);
+  await pool.execute('DELETE FROM usuarios WHERE nombre_usuario IN (?, ?, ?)', [U_EJEC, U_EJEC2, U_JEFE]);
   await pool.execute('DELETE FROM marcas WHERE nombre = ?', [MARCA_NOMBRE]);
   await pool.execute('DELETE FROM clientes WHERE razon_social IN (?, ?)', [CLI_A, CLI_B]);
   await pool.execute('DELETE FROM productos WHERE codigo = ?', [COD_CAT]);
@@ -93,6 +98,15 @@ beforeAll(async () => {
     `INSERT INTO usuarios (nombre_completo, nombre_usuario, password_hash, id_rol, activo)
      VALUES (?, ?, ?, 1, 1)`, ['Test Ejecutivo2 REPCI', U_EJEC2, hash]);
   idEjec2 = u2.insertId;
+
+  // Un Jefe: los dos casos que comparan a AMBOS ejecutivos necesitan un rol
+  // que tenga permiso para verlos. Antes usaban el token del ejecutivo, o sea
+  // que afirmaban que un vendedor debia ver la cartera de su companero — el
+  // test estaba protegiendo la fuga de /cliente-item en vez de detectarla.
+  const [uj] = await pool.execute(
+    `INSERT INTO usuarios (nombre_completo, nombre_usuario, password_hash, id_rol, activo)
+     VALUES (?, ?, ?, 3, 1)`, ['Test Jefe REPCI', U_JEFE, hash]);
+  idJefe = uj.insertId;
 
   const [mk] = await pool.execute('INSERT INTO marcas (nombre) VALUES (?)', [MARCA_NOMBRE]);
   idMarca = mk.insertId;
@@ -153,6 +167,11 @@ beforeAll(async () => {
     .send({ nombre_usuario: U_EJEC, password: PASSWORD });
   expect(login.status).toBe(200);
   token = login.body.data.token;
+
+  const loginJefe = await request(app).post('/api/auth/login')
+    .send({ nombre_usuario: U_JEFE, password: PASSWORD });
+  expect(loginJefe.status).toBe(200);
+  tokenJefe = loginJefe.body.data.token;
 });
 
 afterAll(async () => {
@@ -161,7 +180,7 @@ afterAll(async () => {
     await pool.execute(`DELETE FROM cotizacion_detalles WHERE id_cotizacion IN (${m})`, cotizaciones);
     await pool.execute(`DELETE FROM cotizaciones WHERE id IN (${m})`, cotizaciones);
   }
-  await pool.execute('DELETE FROM usuarios WHERE id IN (?, ?)', [idEjec, idEjec2]);
+  await pool.execute('DELETE FROM usuarios WHERE id IN (?, ?, ?)', [idEjec, idEjec2, idJefe ?? 0]);
   if (idMarca) await pool.execute('DELETE FROM marcas WHERE id = ?', [idMarca]);
   await pool.execute('DELETE FROM clientes WHERE id IN (?, ?)', [idClienteA, idClienteB]);
   await pool.execute('DELETE FROM productos WHERE id = ?', [idProducto]);
@@ -171,6 +190,12 @@ afterAll(async () => {
 const pedir = (query = '') => request(app)
   .get(`/api/reportes/cliente-item${query ? '?' + query : ''}`)
   .set('Authorization', `Bearer ${token}`);
+
+/** Igual que `pedir`, pero como Jefe: para los casos que comparan a los dos
+ *  ejecutivos, que un ejecutivo no puede ni debe ver. */
+const pedirComoJefe = (query = '') => request(app)
+  .get(`/api/reportes/cliente-item${query ? '?' + query : ''}`)
+  .set('Authorization', `Bearer ${tokenJefe}`);
 
 /** Fila del reporte para un cliente y un codigo. */
 const buscar = (filas, cliente, codigo) =>
@@ -436,7 +461,8 @@ describe('RCI2 — separado por ejecutivo', () => {
   });
 
   test('RCI2-05: dos ejecutivos sobre el mismo cliente y codigo no se mezclan', async () => {
-    const res = await pedir(`id_cliente=${idClienteB}&limit=200`);
+    // Como Jefe: comparar las filas de DOS ejecutivos exige verlos a los dos.
+    const res = await pedirComoJefe(`id_cliente=${idClienteB}&limit=200`);
     const delOtro = res.body.data.filter((f) => f.id_ejecutivo === idEjec2);
     const delNuestro = res.body.data.filter((f) => f.id_ejecutivo === idEjec);
 
@@ -477,7 +503,9 @@ describe('RCI2 — marcas', () => {
 describe('RCI2 — vista por item, para decidir el stock', () => {
 
   test('RCI2-08: agrupa el mismo codigo entre todos los clientes', async () => {
-    const res = await pedir('agrupar=item&limit=200');
+    // Como Jefe: el total incluye las 5 unidades del segundo ejecutivo, y un
+    // ejecutivo no ve —ni debe ver— lo que cargo su companero.
+    const res = await pedirComoJefe('agrupar=item&limit=200');
     expect(res.status).toBe(200);
 
     const fila = res.body.data.find((f) => f.codigo === COD_CAT);

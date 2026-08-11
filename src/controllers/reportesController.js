@@ -234,6 +234,8 @@ const ReportesController = {
       const metricas = isManager
         ? null
         : await misMetricas.obtener({
+            // La clave la define el modelo (misMetricas.obtener), no el
+            // controlador: renombrarla acá rompe el bind de la consulta.
             idEjecutivo: req.user.id,
             desde: range.desde,
             hasta: range.hasta,
@@ -352,14 +354,40 @@ const ReportesController = {
       });
     }
 
+    // ── El alcance por ejecutivo, decidido en el servidor ────────────────────
+    // ESTE ENDPOINT NO PASABA POR ACÁ, Y ERA UNA FUGA DE DATOS.
+    //
+    // Tomaba `id_ejecutivo` directo de la consulta, así que cualquier usuario
+    // autenticado —incluido un Ejecutivo, o un Proyectos que ni siquiera
+    // cotiza— pedía el reporte sin parámetros y recibía la tabla completa: qué
+    // repuestos, en qué cantidades y a qué clientes le cotizó CADA vendedor de
+    // la empresa. Con `?id_ejecutivo=7` miraba la cartera de un compañero.
+    //
+    // En una empresa donde los ejecutivos compiten por comisión, eso es la
+    // lista de clientes y el detalle de precios de todos, servida por la API.
+    //
+    // `resolveEjecutivoScope` es —según su propio comentario— «el ÚNICO lugar
+    // donde se toma esa decisión de autorización», y ya lo usaban /progreso,
+    // /advanced y /mis-metricas. Este endpoint quedó afuera al agregarse
+    // después. La lección: un helper de autorización sólo protege lo que lo
+    // llama, y nada avisa cuando una ruta nueva no lo hace.
+    const alcance = resolveEjecutivoScope(req);
+    if (alcance.error) {
+      // 422 y no ignorar el valor en silencio: un id basura ignorado le
+      // devolvería la empresa entera al Jefe cuando él creía estar filtrando
+      // por una persona.
+      return res.status(422).json({ success: false, message: alcance.error });
+    }
+
     const filtros = {
       fecha_desde: rango.desde,
       fecha_hasta: rango.hasta,
       estado:      estado || null,
       q:           req.query.q || null,
       id_cliente:  req.query.id_cliente || null,
-      // Un ejecutivo mirando "lo mio", o el Jefe filtrando por vendedor.
-      id_ejecutivo: req.query.id_ejecutivo || null,
+      // Para un rol de gestión: null (toda la empresa) o el vendedor que eligió.
+      // Para cualquier otro rol: SIEMPRE su propio id, sin importar qué mandó.
+      id_ejecutivo: alcance.ejecutivoId,
     };
 
     const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
@@ -414,23 +442,38 @@ const ReportesController = {
       return res.status(422).json({ success: false, message: rango.error });
     }
 
-    let idEjecutivo = req.user.id;
-    if (req.query.id_ejecutivo && MANAGER_ROLES.has(req.user.rol)) {
-      const pedido = parseInt(req.query.id_ejecutivo, 10);
-      if (!Number.isInteger(pedido) || pedido < 1) {
-        return res.status(422).json({ success: false, message: 'id_ejecutivo invalido.' });
-      }
-      idEjecutivo = pedido;
+    // El alcance sale del mismo helper que el resto de los reportes. Antes esta
+    // lógica estaba reimplementada a mano acá: no estaba mal, pero era una
+    // segunda copia de una decisión de autorización — y la que se desincroniza
+    // no avisa, simplemente empieza a decidir distinto.
+    const alcance = resolveEjecutivoScope(req);
+    if (alcance.error) {
+      return res.status(422).json({ success: false, message: alcance.error });
     }
+
+    // LA DIFERENCIA CON LOS OTROS REPORTES, Y ES DELIBERADA:
+    // el helper devuelve `null` cuando un rol de gestión no filtra por nadie, y
+    // eso significa «toda la empresa». Acá no puede significar eso: la pantalla
+    // se llama «mis métricas» y un Jefe que la abre sin elegir vendedor quiere
+    // ver LAS SUYAS, no un agregado de todos. Por eso el null cae a su id.
+    //
+    // Para un rol que no es de gestión el helper ya devolvió su propio id, así
+    // que este `??` no lo alcanza — su alcance sigue siendo inamovible.
+    // Se llama igual que el campo del helper para que se lea de un vistazo
+    // de donde sale. El guardia de reportesAlcance.test.js tambien lo usa
+    // como senal: un filtro que no nombre ejecutivoId no vino del helper.
+    const ejecutivoId = alcance.ejecutivoId ?? req.user.id;
 
     try {
       const data = await misMetricas.obtener({
-        idEjecutivo,
+        // `idEjecutivo` es la clave que espera el modelo; `ejecutivoId` es el
+        // nombre local que sale del helper de alcance. Se mapea explicito.
+        idEjecutivo: ejecutivoId,
         desde: rango.desde,
         hasta: rango.hasta,
       });
 
-      return res.status(200).json({ success: true, id_ejecutivo: idEjecutivo, data });
+      return res.status(200).json({ success: true, id_ejecutivo: ejecutivoId, data });
     } catch (error) {
       console.error('[ReportesController.getMisMetricas] Error:', error.message);
       return res.status(500).json({ success: false, message: 'No se pudieron obtener las metricas.' });
