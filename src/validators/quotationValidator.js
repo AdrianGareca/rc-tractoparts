@@ -357,11 +357,51 @@ const createQuotationSchema = z.object(quotationShape).refine(...fechaValidezRef
 
 // ---------------------------------------------------------------------------
 // updateQuotationSchema — PUT /api/cotizaciones/:id  (Executive edit, Pendiente only)
-// Identical contract to creation: the edit form resubmits the full header + the
-// complete replacement set of line items. The controller enforces ownership and
-// the 'Pendiente'-only state guard; this schema enforces field-level safety.
+// Mismo contrato que la creación SALVO en dos campos, y la diferencia importa.
+//
+// EL BUG QUE ESTO ARREGLA
+// Editar usaba el shape de creación tal cual, con sus `.default('BOB')` y
+// `.default('Empresa unipersonal…')`. Como `validate()` reemplaza `req.body`
+// con la salida de Zod, esos dos campos NUNCA llegaban `undefined` al
+// controlador — así que su fallback `req.body.moneda || existing.moneda` era
+// código muerto: el primer término siempre tenía valor.
+//
+// Resultado: un PUT con el cuerpo mínimo que documenta Swagger le cambiaba la
+// moneda y la razón social emisora a una cotización que nadie quiso tocar. Una
+// de Roca Importaciones por USD 10.000 volvía como Bs 10.000 de la otra
+// entidad — y como la cuenta bancaria del PDF se resuelve POR
+// `entidad_emisora` (services/pdf/bankData.js), el cliente recibía una
+// proforma pidiéndole transferir a la cuenta equivocada, por la décima parte.
+//
+// POR QUÉ `.optional()` Y NO QUITAR EL DEFAULT DEL SHAPE
+// El default es CORRECTO al crear: los ejecutivos calculan en Bolivianos y una
+// cotización nueva sin moneda debe quedar en BOB, no en nulo. Lo que estaba mal
+// era aplicarlo también al editar, donde «no lo mandé» significa «dejalo como
+// está», no «poneme el valor por defecto».
+//
+// Con `.optional()` el campo llega `undefined` cuando no se envía, el fallback
+// del controlador vuelve a tener sentido, y mandarlo explícitamente sigue
+// cambiándolo — que es la operación legítima del formulario.
 // ---------------------------------------------------------------------------
-const updateQuotationSchema = z.object(quotationShape).refine(...fechaValidezRefinement);
+const updateQuotationSchema = z
+  .object({
+    ...quotationShape,
+    moneda: z
+      .string()
+      .trim()
+      .refine((v) => VALID_CURRENCIES.includes(v), {
+        message: `moneda must be one of: ${VALID_CURRENCIES.join(', ')}.`,
+      })
+      .optional(),
+    entidad_emisora: z
+      .string()
+      .trim()
+      .refine((v) => VALID_ENTITIES.includes(v), {
+        message: `entidad_emisora must be one of: ${VALID_ENTITIES.join(', ')}.`,
+      })
+      .optional(),
+  })
+  .refine(...fechaValidezRefinement);
 
 // ---------------------------------------------------------------------------
 // updateStatusSchema — PUT /api/cotizaciones/:id/estado

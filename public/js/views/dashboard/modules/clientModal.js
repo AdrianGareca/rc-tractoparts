@@ -150,11 +150,17 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
   const origenNewRow   = overlay.querySelector('#nc-origen-new');
   const origenNewInput = overlay.querySelector('#nc-origen-new-input');
   overlay.querySelector('#nc-add-origen')?.addEventListener('click', () => {
-    origenNewRow.style.display = 'flex';
+    // Con la clase .hidden y NO con style.display: la fila nace con
+    // class="hidden", que es `display: none !important`, y un style inline no
+    // le gana. Con style.display el bloque no aparecia nunca — y el focus()
+    // sobre un elemento oculto tampoco hace nada, asi que el cursor tampoco se
+    // movia. Consecuencia de negocio: el catalogo de origenes no crecia y el
+    // reporte «Clientes por origen» quedaba siempre en «Sin clasificar».
+    origenNewRow.classList.remove('hidden');
     origenNewInput.focus();
   });
   overlay.querySelector('#nc-origen-new-cancel')?.addEventListener('click', () => {
-    origenNewRow.style.display = 'none';
+    origenNewRow.classList.add('hidden');
     origenNewInput.value = '';
   });
   overlay.querySelector('#nc-origen-new-save')?.addEventListener('click', async () => {
@@ -169,7 +175,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
       opt.selected    = true;
       origenSelect.appendChild(opt);
       origenLocallyModified = true;
-      origenNewRow.style.display = 'none';
+      origenNewRow.classList.add('hidden');
       origenNewInput.value = '';
       showToast(`Origen "${origen.nombre}" registrado y seleccionado.`, 'success');
     } catch (err) {
@@ -184,7 +190,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
         }
         origenSelect.value = String(existing.id);
         origenLocallyModified = true;
-        origenNewRow.style.display = 'none';
+        origenNewRow.classList.add('hidden');
         origenNewInput.value = '';
         showToast(`Origen "${existing.nombre}" ya existe. Seleccionado automáticamente.`, 'info');
         return;

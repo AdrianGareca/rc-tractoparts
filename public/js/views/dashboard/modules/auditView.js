@@ -356,9 +356,16 @@ export async function mountAuditLogTab(panel) {
         btn.addEventListener('click', () => {
           const row = $(`#audit-detail-${btn.dataset.auditDetail}`);
           if (!row) return;
-          const opening = row.style.display === 'none';
-          row.style.display = opening ? '' : 'none';
-          btn.textContent = opening ? 'Ocultar' : 'Detalle';
+          // Con la clase .hidden y NO con style.display.
+          //
+          // La fila nace con class="audit-detail-row hidden", y .hidden lleva
+          // `display: none !important`. Un style inline NUNCA le gana a un
+          // !important de clase, así que el toggle por style.display no abría
+          // nada: primer clic sin efecto, segundo clic cambiando el rótulo a
+          // «Ocultar» con la fila todavía invisible.
+          const abriendo = row.classList.contains('hidden');
+          row.classList.toggle('hidden', !abriendo);
+          btn.textContent = abriendo ? 'Ocultar' : 'Detalle';
         });
       });
 
