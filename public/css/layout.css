@@ -126,10 +126,23 @@
   text-decoration: none;
 }
 
+/* EL ENLACE ACTIVO USA EL NARANJA DE LA IDENTIDAD, NO EL VERDE
+   Antes el fondo, el texto y el filete eran verdes mientras el ícono ya era
+   naranja: dos acentos distintos en un mismo elemento.
+
+   Y el verde no era neutral. En este sistema significa «Aprobada» y
+   «Confirmada»: es un color con significado en la máquina de estados. Usarlo
+   además para decir «acá estás parado» lo sobrecarga, y hace que una insignia
+   verde y una sección activa se lean como si tuvieran algo que ver.
+
+   El naranja no compite con ningún estado y ya es el acento de la casa: el
+   filete bajo cada título de tarjeta, y el que el PDF dibuja antes de cada
+   sección de la proforma. Que la navegación lo use también hace que la marca
+   aparezca en los tres lugares donde uno mira. */
 .sidebar-link.active {
-  background: rgba(16,185,129,.12);
-  color: var(--clr-green);
-  border-left-color: var(--clr-green);
+  background: var(--badge-bg-orange);
+  color: var(--clr-orange-soft);
+  border-left-color: var(--clr-orange);
   font-weight: 600;
 }
 

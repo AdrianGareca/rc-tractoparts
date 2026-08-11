@@ -34,6 +34,10 @@ const { regenerateQuotationPdf } = require('./quotation/pdfRegeneration');
 // Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
 // con el mensaje en dos idiomas distintos.
 const { parseId } = require('../utils/parseId');
+// La verificación del vínculo con una licitación, compartida entre crear y
+// editar: estaba escrita dos veces, y el segundo comentario decía «Mirror
+// createQuotation» — la duplicación era consciente.
+const { verificarVinculoLicitacion } = require('./quotation/licitacionLinkGuard');
 
 
 const QuotationController = {
@@ -84,23 +88,12 @@ const QuotationController = {
     // exige exactamente lo mismo (y responde 422 con más detalle). Ver
     // src/routes/quotationRoutes.js y src/validators/quotationValidator.js.
 
-    // ── Licitación link validation (optional) ─────────────────────────────────
-    // If the quotation is being linked to a licitación, verify it exists so we
-    // never store a dangling FK reference. Non-fatal for normal quotations:
-    // id_licitacion absent/null → skipped entirely.
-    if (id_licitacion != null) {
-      try {
-        const lic = await LicitacionModel.findById(parseInt(id_licitacion, 10));
-        if (!lic) {
-          return res.status(422).json({
-            success: false,
-            message: `La licitación #${id_licitacion} indicada no existe.`,
-          });
-        }
-      } catch (licErr) {
-        console.warn('[QuotationController.createQuotation] Licitación lookup failed (non-fatal):', licErr.message);
-      }
-    }
+    // El vínculo con una licitación se verifica en ./licitacionLinkGuard.js:
+    // estaba escrito igual acá y en updateQuotation. Existe además de la clave
+    // foránea porque protege distinto — un 422 que nombra el número, en vez del
+    // 500 genérico que produce una violación de FK.
+    const errLic = await verificarVinculoLicitacion(id_licitacion, 'QuotationController.createQuotation');
+    if (errLic) return res.status(errLic.status).json(errLic.body);
 
     // ── Duplicate detection (RF06 — non-blocking) ─────────────────────────────
     let duplicateWarning = null;
@@ -320,24 +313,11 @@ const QuotationController = {
         });
       }
 
-      // ── Licitación link validation ────────────────────────────────────────
-      // Mirror createQuotation: if the edit links/relinks to a licitación, verify
-      // it exists so a bad id returns a clean 422 instead of a raw FK-violation
-      // 500. null (unlink) skips the check. A lookup error is non-fatal — the FK
-      // constraint remains the last line of defense.
-      if (req.body.id_licitacion != null) {
-        try {
-          const lic = await LicitacionModel.findById(parseInt(req.body.id_licitacion, 10));
-          if (!lic) {
-            return res.status(422).json({
-              success: false,
-              message: `La licitación #${req.body.id_licitacion} indicada no existe.`,
-            });
-          }
-        } catch (licErr) {
-          console.warn('[QuotationController.updateQuotation] Licitación lookup failed (non-fatal):', licErr.message);
-        }
-      }
+      // Misma verificación que en createQuotation, ahora compartida.
+      // Un null explícito acá significa DESATAR la cotización de su licitación,
+      // y el guardián lo deja pasar sin consultar nada.
+      const errLic = await verificarVinculoLicitacion(req.body.id_licitacion, 'QuotationController.updateQuotation');
+      if (errLic) return res.status(errLic.status).json(errLic.body);
 
       // Recalculate the header total server-side from the line items so the
       // stored total always matches the actual detail rows (client value ignored).
