@@ -10,6 +10,9 @@
 
 const AuditLogModel = require('../models/AuditLogModel');
 const { AuditActions } = require('../utils/auditLog');
+// El bloque `pagination`, compartido: cuatro controladores lo armaban a mano
+// y los cuatro habian quedado distintos.
+const { construirPaginacion } = require('../utils/paginacion');
 
 const VALID_ACCIONES  = Object.values(AuditActions);
 const VALID_RESULTADOS = ['exito', 'fallo'];
@@ -76,16 +79,10 @@ const AuditoriaController = {
         AuditLogModel.countAll(filters),
       ]);
 
-      const totalPages = Math.ceil(totalRecords / limit) || 1;
-
       return res.status(200).json({
         success: true,
         data:    rows,
-        pagination: {
-          page, limit, totalRecords, totalPages,
-          hasNext: page < totalPages,
-          hasPrev: page > 1,
-        },
+        pagination: construirPaginacion({ page, limit, totalRecords }),
       });
     } catch (error) {
       console.error('[AuditoriaController.getAuditLogs] Error:', error.message);

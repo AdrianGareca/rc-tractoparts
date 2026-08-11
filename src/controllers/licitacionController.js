@@ -26,6 +26,8 @@ const licitacionPdfService       = require('../services/licitacionPdfService');
 // Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
 // con el mensaje en dos idiomas distintos.
 const { parseId } = require('../utils/parseId');
+// El bloque `pagination`, compartido.
+const { construirPaginacion } = require('../utils/paginacion');
 
 const LicitacionController = {
 
@@ -219,7 +221,10 @@ const LicitacionController = {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit),
+        // Este endpoint publica los campos sueltos y no un objeto `pagination`
+        // (licitacionesView.js lee body.total). No se cambia la forma; si el
+        // calculo, que antes daba 0 con la lista vacia en vez de 1.
+        totalPages: construirPaginacion({ page, limit, totalRecords: total }).totalPages,
         data,
       });
     } catch (error) {

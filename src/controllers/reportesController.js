@@ -20,6 +20,8 @@ const misMetricas          = require('../models/quotation/misMetricas');
 const reportePdfService    = require('../services/reportePdfService');
 const { formatDate }       = require('../services/pdf/format');
 const { logEvent, AuditActions } = require('../utils/auditLog');
+// El bloque `pagination`, compartido.
+const { construirPaginacion } = require('../utils/paginacion');
 
 // Roles that may view company-wide aggregate data
 const MANAGER_ROLES = new Set(['Jefe', 'Administracion', 'SysAdmin']);
@@ -382,14 +384,7 @@ const ReportesController = {
         agrupar,
         ejecutivos: listaEjecutivos,
         data: rows,
-        pagination: {
-          page,
-          limit,
-          totalRecords,
-          totalPages: Math.ceil(totalRecords / limit) || 1,
-          hasNext: page * limit < totalRecords,
-          hasPrev: page > 1,
-        },
+        pagination: construirPaginacion({ page, limit, totalRecords }),
       });
     } catch (error) {
       console.error('[ReportesController.getClienteItem] Error:', error.message);

@@ -16,6 +16,9 @@
 
 const QuotationModel = require('../../models/QuotationModel');
 const { parseQuotationFilters } = require('./quotationFilters');
+// El bloque `pagination`, compartido: cuatro controladores lo armaban a mano
+// y los cuatro habian quedado distintos.
+const { construirPaginacion } = require('../../utils/paginacion');
 
 const QuotationQueryController = {
 
@@ -44,19 +47,10 @@ const QuotationQueryController = {
         QuotationModel.countAll(filters),
       ]);
 
-      const totalPages = Math.ceil(totalRecords / limit) || 1;
-
       return res.status(200).json({
         success: true,
         data:    rows,
-        pagination: {
-          page,
-          limit,
-          totalRecords,
-          totalPages,
-          hasNext: page < totalPages,
-          hasPrev: page > 1,
-        },
+        pagination: construirPaginacion({ page, limit, totalRecords }),
       });
     } catch (error) {
       console.error('[QuotationController.getQuotations] Error:', error.message);

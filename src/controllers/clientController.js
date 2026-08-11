@@ -10,6 +10,8 @@ const { logEvent, AuditActions } = require('../utils/auditLog');
 // Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
 // con el mensaje en dos idiomas distintos.
 const { parseId } = require('../utils/parseId');
+// El bloque `pagination`, compartido.
+const { construirPaginacion } = require('../utils/paginacion');
 
 // Simple RFC 5322-compliant email pattern (no external dependency)
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -81,12 +83,10 @@ const ClientController = {
       return res.status(200).json({
         success: true,
         data:    clients,
-        pagination: {
-          page:            Math.max(1, page),
-          limit:           limitNum,
-          totalRecords:    total,
-          totalPages:      Math.max(1, Math.ceil(total / limitNum)),
-        },
+        // Antes este bloque NO mandaba hasNext ni hasPrev, mientras los otros
+        // tres endpoints paginados si. Ahora los cuatro cumplen el mismo
+        // contrato, que es el que documenta Swagger.
+        pagination: construirPaginacion({ page, limit: limitNum, totalRecords: total }),
       });
     } catch (err) {
       console.error('[ClientController.listAll] Error:', err.message);
