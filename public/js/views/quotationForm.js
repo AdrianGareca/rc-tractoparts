@@ -303,8 +303,13 @@ class FormMediator {
         // Se elimina esta fila (la nueva) y se re-renderiza; la fila superviviente
         // muestra la cantidad fusionada.
         this._onRemoveItem(currentIdx);
+        // El aviso nombra la marca porque ahora la fusión SÓLO ocurre con marca
+        // conocida y coincidente. Antes decía «con la misma marca» también
+        // cuando ninguna de las dos filas tenía marca todavía — una afirmación
+        // falsa justo en el momento en que se borraba una fila.
         showToast(
-          `Cód. parte "${rawCodigo}" ya existe con la misma marca — cantidad fusionada: ${merged}.`,
+          `Cód. parte "${rawCodigo}" ya estaba cargado con esa misma marca. ` +
+          `Se sumaron las cantidades: ${merged}.`,
           'info'
         );
       },

@@ -112,16 +112,56 @@ export function buildRowHtml(index, itemData = null, brands = []) {
 //
 // @returns {{ dupeIdx: number, merged: number }|null} — null si no hay fusión.
 // ---------------------------------------------------------------------------
+/**
+ * La marca de una fila, o null cuando todavía no se eligió.
+ *
+ * El `<select>` sin elegir devuelve la cadena vacía, no null, y una fila recién
+ * creada puede no tener la propiedad. Los tres casos significan lo mismo —
+ * «marca desconocida»— y tienen que compararse igual.
+ */
+const marcaDe = (item) => {
+  const v = item?.marca_id;
+  return (v === '' || v === undefined || v === null) ? null : v;
+};
+
 export function findDuplicateRow(items, currentIdx, rawCodigo) {
   const normalised = String(rawCodigo ?? '').trim().toUpperCase();
   if (!normalised) return null;              // en blanco — nada que fusionar
 
-  const currentMarca = items[currentIdx]?.marca_id ?? null;
+  const currentMarca = marcaDe(items[currentIdx]);
+
+  // ── SIN MARCA NO SE FUSIONA. NUNCA. ─────────────────────────────────────
+  // Antes se fusionaba: `null === null` se tomaba como «las dos sin marca, así
+  // que son la misma pieza». Eso borraba filas.
+  //
+  // El motivo es de MOMENTO, no de comparación. Esta función se dispara al
+  // SALIR del campo Código, y el orden natural de carga es descripción →
+  // código → marca. Cuando el usuario sale del código de la segunda fila
+  // todavía no bajó a elegir su marca: las dos valen null, la clave compuesta
+  // las ve idénticas, y la fila desaparece junto con la marca que estaba por
+  // elegir. El aviso decía «ya existe con la misma marca», que era falso —
+  // ninguna de las dos tenía marca.
+  //
+  // Y en repuestos de maquinaria pesada el MISMO número de parte pertenece a
+  // marcas distintas: CAT y CUMMINS comparten numeración. Fusionarlas no es un
+  // detalle de pantalla, es cotizar una pieza que el cliente no pidió.
+  //
+  // La asimetría del costo decide:
+  //   • no fusionar dos filas que sí eran duplicadas → se ven dos renglones y
+  //     se juntan a mano; molesta y se nota.
+  //   • fusionar dos que iban a tener marcas distintas → se BORRA una fila y
+  //     el dato se pierde, casi siempre sin que nadie lo note.
+  //
+  // Una marca vacía no es «sin marca»: es «todavía no la eligió». Adivinar
+  // sobre una clave incompleta destruye datos.
+  if (currentMarca === null) return null;
 
   const dupeIdx = items.findIndex((item, i) =>
     i !== currentIdx &&
     String(item.codigo || '').trim().toUpperCase() === normalised &&
-    (item.marca_id ?? null) === currentMarca
+    // La otra fila también tiene que tener marca conocida, y ser la misma.
+    marcaDe(item) !== null &&
+    marcaDe(item) === currentMarca
   );
   if (dupeIdx === -1) return null;           // clave compuesta única
 

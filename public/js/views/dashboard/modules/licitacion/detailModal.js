@@ -354,7 +354,7 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
                <td>${fmtMoney(g.monto, g.moneda)}</td>
                <td>${escHtml(g.nombre_usuario ?? '—')}</td>
                <td>${fmtDateTime(g.creado_en)}</td>
-               ${canGastos ? `<td><button class="btn btn-ghost btn-sm" data-gasto-delete="${g.id}" data-gasto-concepto="${escHtml(g.concepto)}"></button></td>` : ''}
+               ${canGastos ? `<td><button class="btn btn-ghost btn-sm" data-gasto-delete="${g.id}" data-gasto-concepto="${escHtml(g.concepto)}">Eliminar</button></td>` : ''}
              </tr>`).join('')}
            </tbody></table></div>`;
 
@@ -390,8 +390,14 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
              <span class="lista-item-nombre" title="${escHtml(d.nombre_original)}">${escHtml(d.nombre_original)}</span>
              <span class="text-muted text-sm">${fmtFileSize(d.tamano_bytes)}</span>
              <span class="text-muted text-sm">${escHtml(d.nombre_usuario ?? '—')} · ${fmtDateTime(d.creado_en)}</span>
-             <button class="btn btn-ghost btn-sm" data-doc-download="${d.id}" data-doc-name="${escHtml(d.nombre_original)}"></button>
-             ${canManageDocs ? `<button class="btn btn-ghost btn-sm" data-doc-delete="${d.id}" data-doc-name="${escHtml(d.nombre_original)}"></button>` : ''}
+             <!-- Estos tres botones se renderizaban VACIOS: el barrido de
+                  emojis les quito el rotulo y no dejo nada en su lugar. Quedaban
+                  dos cuadraditos identicos de ~10px, y el segundo borra el
+                  adjunto sin vuelta atras. El de eliminar ademas lleva
+                  btn-danger: una accion destructiva no puede verse igual que la
+                  de al lado. -->
+             <button class="btn btn-ghost btn-sm" data-doc-download="${d.id}" data-doc-name="${escHtml(d.nombre_original)}">Descargar</button>
+             ${canManageDocs ? `<button class="btn btn-danger btn-sm" data-doc-delete="${d.id}" data-doc-name="${escHtml(d.nombre_original)}">Eliminar</button>` : ''}
            </li>`).join('')}
        </ul>`;
 

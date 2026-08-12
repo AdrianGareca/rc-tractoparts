@@ -101,14 +101,30 @@ describe('findDuplicateRow — fusiona', () => {
     expect(findDuplicateRow(items, 1, '7E-6116')).toEqual({ dupeIdx: 0, merged: 3 });
   });
 
-  test('dos filas SIN marca con el mismo código sí se fusionan', () => {
+  // ── ESTOS DOS ESPERABAN LO CONTRARIO, Y ERA EL BUG ────────────────────────
+  // Afirmaban que dos filas sin marca con el mismo código SÍ debían fusionarse.
+  // Ventas reportó el síntoma: «sobre mismos códigos de ítems pero diferente
+  // marca se borra».
+  //
+  // La causa es de momento: la fusión se dispara al SALIR del campo Código, y
+  // el orden natural de carga es descripción → código → marca. Al salir del
+  // código de la segunda fila el usuario todavía no eligió su marca, así que
+  // las dos valen null, se ven idénticas, y la fila se borra junto con la marca
+  // que estaba por elegir.
+  //
+  // Los tests no «no cubrían» el agujero: lo declaraban correcto. Quien
+  // intentara arreglarlo se los habría encontrado en rojo. Ver la justificación
+  // completa en tests/unit/fusionItemsMarca.test.js.
+  test('dos filas SIN marca con el mismo código NO se fusionan', () => {
     const items = [row('P553191', null, 4), row('P553191', null, 6)];
-    expect(findDuplicateRow(items, 1, 'P553191')).toEqual({ dupeIdx: 0, merged: 10 });
+    expect(findDuplicateRow(items, 1, 'P553191')).toBeNull();
   });
 
-  test('trata undefined y null de marca como equivalentes', () => {
+  test('una marca ausente no equivale a otra ausente: son dos desconocidas', () => {
+    // `undefined` y `null` siguen normalizándose igual entre sí — lo que cambió
+    // es que «desconocida» ya no habilita la fusión.
     const items = [{ codigo: 'X1', cantidad: 1 }, row('X1', null, 1)];
-    expect(findDuplicateRow(items, 1, 'X1')).toEqual({ dupeIdx: 0, merged: 2 });
+    expect(findDuplicateRow(items, 1, 'X1')).toBeNull();
   });
 
   test('redondea la cantidad fusionada a 4 decimales', () => {
