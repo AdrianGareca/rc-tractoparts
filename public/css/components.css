@@ -23,8 +23,25 @@
 .badge-en-revision      { background: var(--badge-bg-orange);   color: var(--clr-orange-soft); }
 .badge-aprobada         { background: var(--badge-bg-green);   color: var(--clr-green-soft); }
 .badge-enviada          { background: var(--badge-bg-blue);   color: var(--clr-blue-soft); }
-.badge-confirmada       { background: var(--badge-bg-violet);   color: var(--clr-violet-soft); }
-.badge-aceptada         { background: var(--badge-bg-violet);   color: var(--clr-violet-soft); }
+/* CONFIRMADA PASA DE VIOLETA A VERDE, Y ES EL UNICO CAMBIO DE COLOR DE ESTADO
+   La paleta usaba SEIS matices para los estados (ambar, naranja, azul, violeta,
+   verde, rojo). Ese arcoiris es lo que mas queda de estetica generica, y el
+   violeta era el mas arbitrario de todos: no significaba nada.
+
+   'Confirmada' es la venta cerrada — exactamente lo que el verde ya significa
+   en 'Aprobada'. Darle su propio matiz obligaba a aprender un color de mas para
+   decir algo que la paleta ya sabia decir.
+
+   Se eligio ESTE cambio y no reducir los seis a tres porque es el unico que no
+   pisa un significado que la gente ya tenga incorporado: nadie asocia el
+   violeta con nada en particular, mientras que ambar-pendiente y rojo-rechazada
+   estan aprendidos despues de meses de uso.
+
+   Se distinguen de 'Aprobada' por el peso: la confirmada usa el verde pleno,
+   la aprobada el tono suave. Misma familia, distinta intensidad — que es lo
+   que son: aprobar es un paso hacia cerrar. */
+.badge-confirmada       { background: var(--badge-bg-green);    color: var(--clr-green); }
+.badge-aceptada         { background: var(--badge-bg-green);    color: var(--clr-green); }
 .badge-rechazada        { background: var(--badge-bg-red);    color: var(--clr-red-soft); }
 .badge-archivada        { background: var(--badge-bg-slate);  color: var(--text-secondary); }
 

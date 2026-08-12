@@ -30,12 +30,17 @@
 'use strict';
 
 const { pool } = require('../../config/db');
+// Qué cuenta como venta se decide en un solo lugar para todo el sistema.
+const { ESTADOS_VENTA } = require('./constants');
 
 // Estados en los que la cotizacion YA salio al cliente. Es el denominador de la
 // conversion: lo que todavia esta en preparacion no cuenta ni a favor ni en
 // contra. 'Aceptada' es el alias legado de 'Confirmada'.
 const ESTADOS_EN_LA_CANCHA = ['Enviada al cliente', 'Confirmada', 'Aceptada', 'Rechazada'];
-const ESTADOS_CERRADOS     = ['Confirmada', 'Aceptada'];
+// Lo cerrado es LO MISMO que una venta, y esa definicion vive en
+// constants.ESTADOS_VENTA. Tenerla escrita aca abria la puerta a que un
+// dia divergiera de los reportes sin que nadie lo notara.
+const ESTADOS_CERRADOS     = ESTADOS_VENTA;
 
 /** Fragmento WHERE comun: un ejecutivo y, opcionalmente, un rango de fechas. */
 function _where({ idEjecutivo, desde, hasta }) {

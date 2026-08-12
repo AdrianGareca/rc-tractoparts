@@ -8,6 +8,8 @@
 'use strict';
 
 const { pool } = require('../../config/db');
+// Que cuenta como venta: una sola definicion para todo el sistema.
+const { ESTADOS_VENTA, ESTADOS_DECIDIDOS, literalesDe } = require('./constants');
 
 // ---------------------------------------------------------------------------
 // getProgreso — Analytics for the Jefe / Administracion / SysAdmin dashboard,
@@ -55,10 +57,10 @@ async function getProgreso(fechaDesde, fechaHasta, ejecutivoId = null) {
   // Counts both 'Confirmada' (current) and legacy 'Aceptada' rows.
   const [conversionRows] = await pool.execute(`
       SELECT
-        SUM(CASE WHEN estado IN ('Confirmada', 'Aceptada') THEN 1 ELSE 0 END) AS total_aceptadas,
+        SUM(CASE WHEN estado IN (${literalesDe(ESTADOS_VENTA)}) THEN 1 ELSE 0 END) AS total_aceptadas,
         SUM(CASE WHEN estado = 'Rechazada' THEN 1 ELSE 0 END) AS total_rechazadas
       FROM cotizaciones
-      WHERE estado IN ('Confirmada', 'Aceptada', 'Rechazada')
+      WHERE estado IN (${literalesDe(ESTADOS_DECIDIDOS)})
         AND fecha_emision BETWEEN ? AND ?
         ${ejecPlain}
     `, scopedParams);
@@ -68,7 +70,7 @@ async function getProgreso(fechaDesde, fechaHasta, ejecutivoId = null) {
       SELECT
         u.nombre_completo                                              AS ejecutivo,
         COUNT(*)                                                       AS total,
-        SUM(CASE WHEN c.estado IN ('Confirmada', 'Aceptada') THEN 1 ELSE 0 END) AS aceptadas,
+        SUM(CASE WHEN c.estado IN (${literalesDe(ESTADOS_VENTA)}) THEN 1 ELSE 0 END) AS aceptadas,
         SUM(CASE WHEN c.estado = 'Rechazada' THEN 1 ELSE 0 END)      AS rechazadas,
         SUM(CASE WHEN c.estado = 'Pendiente' THEN 1 ELSE 0 END)      AS pendientes,
         SUM(CASE WHEN c.estado = 'En revision' THEN 1 ELSE 0 END)    AS en_revision,
@@ -162,7 +164,11 @@ async function getAdvancedReports(ejecutivoId = null, fechaDesde = null, fechaHa
           SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END) AS total_bob
         FROM cotizaciones c
         INNER JOIN clientes cl ON cl.id = c.id_cliente
-        WHERE c.estado IN ('Confirmada', 'Aceptada', 'Enviada al cliente')${tcExtra}
+        -- Que cuenta como venta lo decide constants.ESTADOS_VENTA. Antes esta
+        -- consulta sumaba tambien 'Enviada al cliente', asi que el volumen de
+        -- un cliente no coincidia con el del leaderboard, que ya usaba solo
+        -- lo confirmado. Al reducirse, los totales de Top Clientes BAJAN.
+        WHERE c.estado IN (${literalesDe(ESTADOS_VENTA)})${tcExtra}
         GROUP BY c.id_cliente, cl.razon_social, cl.nit
         ORDER BY total_usd DESC
         LIMIT ${TOPE_CLIENTES}`;
@@ -228,7 +234,8 @@ async function getAdvancedReports(ejecutivoId = null, fechaDesde = null, fechaHa
           LEFT JOIN origenes_cliente oc ON oc.id = cl.id_origen_cliente
           LEFT JOIN cotizaciones c
                  ON c.id_cliente = cl.id
-                AND c.estado IN ('Confirmada', 'Aceptada', 'Enviada al cliente')
+                -- Misma definicion que arriba y que el resto del sistema.
+                AND c.estado IN (${literalesDe(ESTADOS_VENTA)})
                 ${origenDateClause}
           WHERE cl.activo = 1
           GROUP BY oc.id, origen

@@ -8,18 +8,18 @@
        (todo lo demas lo consume) y responsive ultimo (debe poder pisar).
        Son <link> separados y no @import a proposito: @import encadena las
        descargas en serie y bloquea el render; estos bajan en paralelo. -->
-  <link rel="stylesheet" href="/css/tokens.css?v=19" />
-  <link rel="stylesheet" href="/css/base.css?v=19" />
-  <link rel="stylesheet" href="/css/layout.css?v=19" />
-  <link rel="stylesheet" href="/css/auth.css?v=19" />
-  <link rel="stylesheet" href="/css/buttons.css?v=19" />
-  <link rel="stylesheet" href="/css/forms.css?v=19" />
-  <link rel="stylesheet" href="/css/components.css?v=19" />
-  <link rel="stylesheet" href="/css/tables.css?v=19" />
-  <link rel="stylesheet" href="/css/modals.css?v=19" />
-  <link rel="stylesheet" href="/css/quotation-form.css?v=19" />
-  <link rel="stylesheet" href="/css/proforma.css?v=19" />
-  <link rel="stylesheet" href="/css/responsive.css?v=19" />
+  <link rel="stylesheet" href="/css/tokens.css?v=20" />
+  <link rel="stylesheet" href="/css/base.css?v=20" />
+  <link rel="stylesheet" href="/css/layout.css?v=20" />
+  <link rel="stylesheet" href="/css/auth.css?v=20" />
+  <link rel="stylesheet" href="/css/buttons.css?v=20" />
+  <link rel="stylesheet" href="/css/forms.css?v=20" />
+  <link rel="stylesheet" href="/css/components.css?v=20" />
+  <link rel="stylesheet" href="/css/tables.css?v=20" />
+  <link rel="stylesheet" href="/css/modals.css?v=20" />
+  <link rel="stylesheet" href="/css/quotation-form.css?v=20" />
+  <link rel="stylesheet" href="/css/proforma.css?v=20" />
+  <link rel="stylesheet" href="/css/responsive.css?v=20" />
 
   <!-- Tema guardado, aplicado ANTES del primer pintado para que no haya un
        flash del tema equivocado. Va después de los <link> (que ya están
@@ -28,6 +28,21 @@
   <script src="/js/theme-boot.js?v=3"></script>
 </head>
 <body class="dashboard-page">
+
+  <!-- Saltar al contenido — TIENE que ser el primer elemento enfocable de la
+       página, y por eso va antes del shell.
+
+       El dashboard pone la navegación completa antes del contenido en el orden
+       del documento. Con mouse da igual; con teclado significa que cada Tab
+       recorre el logo, un ítem de menú por cada pantalla habilitada, el usuario
+       del pie, el toggle, el buscador y el tema — antes de llegar a lo que la
+       persona vino a hacer. Y de nuevo en cada pantalla.
+
+       Está oculto fuera de la vista hasta que recibe foco (ver .skip-link en
+       base.css), así que con mouse nadie lo ve nunca. Un Tab y un Enter.
+
+       Cubierto por tests/unit/saltarAlContenido.test.js. -->
+  <a href="#page-content" class="skip-link">Saltar al contenido</a>
 
   <!-- ════════════════════════════════════════════════════════════════════
        PAGE SHELL — 2-column: sidebar (fixed) + content area

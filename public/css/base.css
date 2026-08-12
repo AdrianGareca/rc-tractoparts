@@ -131,3 +131,43 @@ img { max-width: 100%; display: block; }
 .fg-doble-min160 { flex: 2; min-width: 160px; margin: 0; }
 .fg-120 { width: 120px; }
 .fg-130 { width: 130px; margin: 0; }
+
+/* ── Saltar al contenido ─────────────────────────────────────────────────────
+   El primer elemento enfocable del dashboard, oculto hasta que alguien navega
+   con teclado. Ver el comentario en dashboard.html para el por que.
+
+   La tecnica: se lo manda ARRIBA de la pantalla (top:-100%) en vez de usar
+   display:none o visibility:hidden. Esos dos lo sacarian del recorrido de Tab
+   por completo — quedaria escrito en el HTML y nunca alcanzable, que es justo
+   lo unico que tenia que hacer.
+
+   Al recibir foco baja a la vista. Sin esa regla el foco se iria a un elemento
+   fuera de pantalla y la persona no sabria donde esta parada: peor que no
+   tener el enlace.
+
+   z-index alto porque la barra superior es fija y lo taparia. */
+.skip-link {
+  position: fixed;
+  top: -100%;
+  left: 1rem;
+  z-index: 1000;
+  padding: .6rem 1.1rem;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: var(--clr-orange);
+  color: var(--clr-white);
+  font-size: .9rem;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--shadow-md);
+  /* La transicion es solo del desplazamiento: aparece deslizandose desde
+     arriba, que es de donde viene. */
+  transition: top .15s ease;
+}
+
+.skip-link:focus {
+  top: 0;
+  /* El contorno propio del navegador sobre naranja pleno casi no se ve; este
+     halo blanco lo hace inconfundible. */
+  outline: 2px solid var(--clr-white);
+  outline-offset: -4px;
+}

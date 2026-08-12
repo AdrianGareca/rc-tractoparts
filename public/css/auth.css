@@ -83,3 +83,31 @@
   font-size: .75rem;
   color: var(--text-muted);
 }
+
+/* ── Bloque de ayuda de la pantalla de error ─────────────────────────────────
+   Solo lo usa 404.html. Vive acá y no en un archivo propio porque una hoja de
+   estilos mas es una descarga mas en la pantalla que tiene que aparecer rapido
+   justo cuando algo ya salio mal.
+
+   El texto va en gris secundario y no en el color de error: quien llega aca no
+   rompio nada, escribio mal una direccion o abrio un favorito viejo. Pintarlo
+   de rojo lo trataria como una falla suya. */
+.auth-ayuda {
+  margin: 1.25rem 0;
+  padding: .9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-hover);
+  font-size: .85rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.auth-ayuda p + p { margin-top: .6rem; }
+
+.auth-ayuda ul {
+  margin: .5rem 0 0 1.1rem;   /* la sangria deja lugar a la vinieta */
+  padding: 0;
+}
+
+.auth-ayuda li { margin-bottom: .25rem; }

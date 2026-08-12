@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RC Tractoparts — Página no encontrada</title>
+
+  <!-- Los buscadores no deben indexar una pantalla de error. -->
+  <meta name="robots" content="noindex" />
+
+  <!-- Se cargan solo las cuatro hojas que esta pantalla usa —no las doce del
+       dashboard—. Es una página de error: tiene que aparecer rápido incluso
+       cuando algo ya salió mal. Mismo ?v= que el resto para que comparta la
+       caché ya descargada y no vuelva a bajar los mismos bytes. -->
+  <link rel="stylesheet" href="/css/tokens.css?v=20" />
+  <link rel="stylesheet" href="/css/base.css?v=20" />
+  <link rel="stylesheet" href="/css/auth.css?v=20" />
+  <link rel="stylesheet" href="/css/buttons.css?v=20" />
+
+  <!-- El tema guardado, aplicado antes del primer pintado. Sin esto la pantalla
+       de error aparecería en claro para quien tiene el sistema en oscuro: el
+       fogonazo blanco se lee como «se rompió algo más». -->
+  <script src="/js/theme-boot.js?v=3"></script>
+</head>
+
+<!-- Se reusa `auth-page` a propósito: es la única pantalla que el sistema sabe
+     mostrar sin sesión, y quien llega acá puede no tenerla. -->
+<body class="auth-page">
+
+  <div class="auth-card">
+
+    <div class="auth-logo">
+      <div class="auth-logo-icon">
+        <!-- Sin onerror: en el login hay un respaldo por script, pero acá no se
+             ejecuta código. Si el logo no carga, queda el texto alternativo. -->
+        <img src="/assets/images/rc_logo.png" alt="RC Tractoparts" class="auth-logo-img" />
+      </div>
+      <h1>Página no encontrada</h1>
+      <p>La dirección que abrió no existe o cambió de lugar.</p>
+    </div>
+
+    <!-- Qué hacer ahora. Una pantalla de error que solo dice que hubo un error
+         deja a la persona sin siguiente paso; estas son las dos causas reales
+         y qué hacer con cada una. -->
+    <div class="auth-ayuda">
+      <p>Puede pasar por dos motivos:</p>
+      <ul>
+        <li>Un enlace guardado en favoritos que quedó viejo.</li>
+        <li>Un error de tipeo en la barra de direcciones.</li>
+      </ul>
+      <p>
+        Si llegó desde un enlace del propio sistema, avise al área de sistemas:
+        es un enlace roto y hay que corregirlo.
+      </p>
+    </div>
+
+    <!-- La salida. La dirección NO se repite en la pantalla: el texto del
+         pedido lo escribió quien mandó el enlace, y devolverlo dentro del HTML
+         es exactamente cómo se ejecuta código ajeno en el navegador de la
+         víctima. La página es estática y no menciona qué se pidió. -->
+    <a href="/" class="btn btn-primary btn-full">Volver al inicio</a>
+
+  </div>
+
+</body>
+</html>

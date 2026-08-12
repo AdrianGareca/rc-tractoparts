@@ -43,6 +43,26 @@
   padding: .5rem 1rem;
   color: var(--text-primary);
   vertical-align: middle;
+
+  /* ── Que un texto largo no rompa la tabla ─────────────────────────────────
+     Las descripciones de repuestos traen codigos de fabrica sin espacios que
+     pasan holgados los treinta caracteres. Sin esta regla el navegador se
+     niega a cortarlos —una "palabra" no se parte— y la celda empuja la tabla
+     a lo ancho hasta que aparece la barra horizontal: las columnas de la
+     derecha (los montos, el estado) se van fuera de la vista por culpa de UNA
+     fila.
+
+     `break-word` y no `anywhere` a proposito: los dos cortan cuando hace
+     falta, pero `anywhere` ademas le dice al navegador que la celda puede
+     achicarse hasta una letra, y entonces reparte los anchos como si todas
+     las columnas fueran igual de flexibles. El resultado es una tabla que se
+     redibuja distinto segun el contenido de la peor fila.
+
+     `text-wrap: pretty` es el retoque: evita que un renglon termine con una
+     sola palabra colgada. Donde el navegador no lo entiende, se ignora y la
+     celda se ve como antes. */
+  overflow-wrap: break-word;
+  text-wrap: pretty;
 }
 
 /* ── Cifras que se comparan entre filas ──────────────────────────────────────

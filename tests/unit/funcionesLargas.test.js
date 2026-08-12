@@ -131,11 +131,11 @@ const todas = RAICES.flatMap(listarJs).flatMap((f) =>
 // ---------------------------------------------------------------------------
 describe('el tamaño de las funciones sólo puede bajar', () => {
   // La más larga que hay hoy. Al partir una, este número baja.
-  const TOPE_MAXIMO = 269;
+  const TOPE_MAXIMO = 223;
 
   // Cuántas pasan de 80 líneas — el umbral donde una función deja de entrar en
   // una pantalla y hay que hacer scroll para saber qué hace.
-  const TOPE_GRANDES = 38;
+  const TOPE_GRANDES = 37;
   const UMBRAL_GRANDE = 80;
 
   test(`ninguna función pasa de ${TOPE_MAXIMO} líneas`, () => {

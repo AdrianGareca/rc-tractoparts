@@ -16,6 +16,10 @@
 
 const { pool } = require('../config/db');
 const { sumGastosEnMoneda } = require('../utils/licitacionTotals');
+// Que cuenta como venta se decide en un solo lugar: antes esta consulta
+// tenia su propia lista de cuatro estados y otras dos pantallas usaban
+// listas distintas para la misma pregunta.
+const { ESTADOS_VENTA, marcadoresDe } = require('./quotation/constants');
 
 // ---------------------------------------------------------------------------
 // VALID_STATES — debe reflejar EXACTAMENTE el ENUM de licitaciones.estado en
@@ -379,8 +383,16 @@ async function findById(id) {
         SUM(CASE WHEN c.moneda <> ? THEN 1 ELSE 0 END) AS otras_monedas
        FROM cotizaciones c
        WHERE c.id_licitacion = ?
-         AND c.estado IN ('Aprobada internamente', 'Enviada al cliente', 'Confirmada', 'Aceptada')`,
-    [licitacion.moneda, licitacion.moneda, id]
+         -- Que cuenta como venta lo decide constants.ESTADOS_VENTA, no esta
+         -- consulta. Antes tenia CUATRO estados y otras dos pantallas usaban
+         -- listas distintas: el mismo cliente aparecia con dos cifras segun
+         -- donde se lo mirara. Al reducirse a lo confirmado, este total BAJA
+         -- respecto de lo que mostraba antes: no es un error nuevo, es el
+         -- numero correcto empezando a mostrarse.
+         AND c.estado IN (${marcadoresDe(ESTADOS_VENTA)})`,
+    // Los estados van al final, en el mismo orden que sus marcadores: un
+    // parametro desalineado no da error, filtra por el valor equivocado.
+    [licitacion.moneda, licitacion.moneda, id, ...ESTADOS_VENTA]
   );
   licitacion.total_comprometido            = totales[0].total_comprometido;
   licitacion.tiene_cotizaciones_otra_moneda = Number(totales[0].otras_monedas) > 0;

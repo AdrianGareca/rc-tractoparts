@@ -233,6 +233,74 @@ const BASE_JOINS = `
   LEFT  JOIN usuarios ap ON ap.id = c.aprobado_por
 `;
 
+
+// ---------------------------------------------------------------------------
+// QUE CUENTA COMO VENTA
+//
+// LA PREGUNTA ESTABA RESPONDIDA CUATRO VECES, DISTINTO
+// Al medir el proyecto aparecieron cuatro definiciones de "venta" escritas a
+// mano en SQL, en tres archivos:
+//
+//   LicitacionModel (total comprometido)   Aprobada internamente, Enviada al
+//                                          cliente, Confirmada, Aceptada
+//   analyticsRepository (top clientes)     Confirmada, Aceptada, Enviada al cliente
+//   analyticsRepository (leaderboard)      Confirmada, Aceptada
+//
+// Consecuencia concreta: el MISMO cliente, en el MISMO mes, aparecia con dos
+// cifras distintas segun que pantalla se abriera. Cuando el Jefe preguntara
+// cual era la buena, no habia forma de responder sin leer SQL.
+//
+// LA DECISION, TOMADA CON EL AREA COMERCIAL
+// Venta es lo que el cliente CONFIRMO. Nada mas.
+//
+// Una cotizacion enviada al cliente es esfuerzo comercial, no ingreso: todavia
+// puede rechazarse. Y una aprobada internamente ni siquiera salio de la
+// empresa. Contarlas como venta infla los numeros con plata que no entro.
+//
+// Es la definicion mas conservadora de las cuatro, y eso es deliberado: un
+// reporte que sobreestima se descubre tarde y mal.
+//
+// EFECTO VISIBLE AL DESPLEGAR
+// El "total comprometido" de una licitacion va a BAJAR, porque hoy incluye los
+// cuatro estados. No es un error nuevo: es el numero correcto empezando a
+// mostrarse. Conviene avisarle al Jefe antes de que lo note solo.
+//
+// 'Aceptada' es el alias historico de 'Confirmada' y va siempre con ella.
+// ---------------------------------------------------------------------------
+const ESTADOS_VENTA = ['Confirmada', 'Aceptada'];
+
+// El denominador de la conversion: lo que ya salio al cliente y tuvo respuesta,
+// para bien o para mal. NO es lo mismo que ESTADOS_VENTA y no debe unificarse:
+// uno cuenta lo ganado, el otro lo decidido.
+const ESTADOS_DECIDIDOS = ['Confirmada', 'Aceptada', 'Rechazada'];
+
+/**
+ * Marcadores `?` para un IN, tantos como estados tenga la lista.
+ *
+ * Se usan marcadores y no interpolacion aunque los valores sean constantes
+ * nuestras: el dia que alguien arme una lista a partir de un filtro del
+ * usuario, el patron correcto ya esta ahi y no hay que acordarse de cambiarlo.
+ */
+const marcadoresDe = (lista) => lista.map(() => '?').join(', ');
+
+/**
+ * La misma lista, pero como literales SQL ya entrecomillados.
+ *
+ * CUANDO USAR ESTA Y NO marcadoresDe()
+ * Solo para constantes NUESTRAS, definidas en este archivo, que nunca vienen
+ * de una peticion. Nunca para nada que toque el usuario.
+ *
+ * Existe porque hay consultas que arman sus parametros dinamicamente (filtros
+ * opcionales de fecha, de ejecutivo) y meter marcadores en medio obliga a
+ * insertar los valores en la posicion exacta del arreglo. Un parametro
+ * desalineado no da error: MySQL filtra por el valor equivocado y devuelve
+ * numeros creibles pero falsos, que en un reporte es lo peor que puede pasar.
+ *
+ * Con literales no hay orden que respetar. El riesgo de inyeccion es cero
+ * porque los valores no salen de ninguna entrada: son estas dos cadenas.
+ */
+const literalesDe = (lista) => lista.map((e) => `'${e}'`).join(', ');
+
 module.exports = {
   VALID_STATES,
   ROLE_TRANSITIONS,
@@ -245,4 +313,8 @@ module.exports = {
   STATE_TRANSITIONS,
   SORTABLE_COLUMNS,
   BASE_JOINS,
+  ESTADOS_VENTA,
+  ESTADOS_DECIDIDOS,
+  marcadoresDe,
+  literalesDe,
 };

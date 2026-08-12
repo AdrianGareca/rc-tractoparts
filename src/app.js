@@ -240,8 +240,42 @@ app.get('/health', (req, res) => {
 
 // ---------------------------------------------------------------------------
 // 7. 404 Handler — catches requests to undefined routes
+//
+// La MISMA ruta responde distinto segun quien pregunte, y lo dice el propio
+// pedido en su encabezado Accept:
+//
+//   navegador (Accept: text/html)  -> public/404.html, en castellano y con
+//                                     un enlace de vuelta al inicio
+//   API / fetch (cualquier otro)   -> el JSON de siempre, sin cambios
+//
+// POR QUE: antes devolvia SIEMPRE JSON. Un cliente de API lo entiende; una
+// persona que escribio mal la direccion o abrio un favorito viejo veia llaves,
+// comillas y «Route not found» en ingles, sin ninguna salida ofrecida.
+//
+// El codigo 404 es el mismo en los dos casos — es lo que leen los buscadores,
+// los monitores de disponibilidad y el propio navegador. Solo cambia el cuerpo.
+//
+// Cubierto por tests/integration/paginaNoEncontrada.test.js.
 // ---------------------------------------------------------------------------
 app.use((req, res) => {
+  // Todo lo que cuelga de /api/ es API, sin importar que Accept mande.
+  //
+  // Hace falta la excepcion porque el navegador manda `Accept: text/html,...`
+  // en la navegacion, pero los fetch() del propio dashboard mandan `*/*` — y
+  // req.accepts() da 'html' para `*/*` (comodin: acepta todo). Sin esta linea,
+  // un endpoint mal escrito le devolveria HTML al frontend y el .json() del
+  // cliente explotaria con un error de sintaxis, en vez del mensaje que el
+  // codigo ya sabe mostrar.
+  const esApi = req.originalUrl.startsWith('/api/');
+
+  if (!esApi && req.accepts('html')) {
+    // sendFile y no un template: la pagina es ESTATICA a proposito. La
+    // direccion pedida la escribio quien mando el enlace; interpolarla dentro
+    // del HTML es exactamente como se ejecuta codigo ajeno en el navegador de
+    // la victima. En JSON es inofensivo, en HTML no.
+    return res.status(404).sendFile(path.join(__dirname, '..', 'public', '404.html'));
+  }
+
   res.status(404).json({
     success: false,
     message: `Route not found: ${req.method} ${req.originalUrl}`,
