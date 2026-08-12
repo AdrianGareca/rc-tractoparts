@@ -36,6 +36,11 @@ export class AdminStrategy extends DashboardStrategy {
   #container;
   #user;
   #activeTab = 'review';
+  // La limpieza del panel montado, para llamarla ANTES de montar el
+  // siguiente. Sin esto cada cambio de pestana dejaba dos escuchas
+  // huerfanas en document (las del menu de paginacion), cada una
+  // reteniendo por closure una tabla que ya no esta en el DOM.
+  #limpiarPanel = null;
 
   constructor(user) { super(); this.#user = user; }
 
@@ -72,14 +77,19 @@ export class AdminStrategy extends DashboardStrategy {
   }
 
   async _renderPanel(tab) {
+    // Se desmonta lo anterior antes de pisar el innerHTML: los montadores
+    // devuelven su limpieza justamente para esto.
+    this.#limpiarPanel?.();
+    this.#limpiarPanel = null;
+
     const panel = document.getElementById('admin-panel');
     if (!panel) return;
     switch (tab) {
       case 'review':     await this._renderReviewQueue(panel);    break;
       case 'quotations': await this._renderAllQuotations(panel);  break;
-      case 'licitaciones': await mountLicitacionesTab(panel, { canCreate: false }); break;
+      case 'licitaciones': this.#limpiarPanel = await mountLicitacionesTab(panel, { canCreate: false }); break;
       case 'users':      await this._renderUsers(panel);          break;
-      case 'clientes':   await mountClientsTab(panel);            break;
+      case 'clientes':   this.#limpiarPanel = await mountClientsTab(panel);            break;
       case 'audit':      await this._renderAuditLogs(panel);      break;
       case 'consumo':    await mountClienteItemReport(panel);          break;
       case 'reportes':   await this._renderReportes(panel);       break;
@@ -225,7 +235,7 @@ export class AdminStrategy extends DashboardStrategy {
   // ── Tab: All quotations (full detail, admin view) ─────────────────────────
 
   async _renderAllQuotations(panel) {
-    await mountAllQuotationsTab(panel, {
+    this.#limpiarPanel = await mountAllQuotationsTab(panel, {
       detailAttr:   'data-admin-view',
       onViewDetail: (id) => this._viewAdminDetail(id),
     });
@@ -322,6 +332,6 @@ export class AdminStrategy extends DashboardStrategy {
 
   // ── Tab: Audit logs ───────────────────────────────────────────────────────
   async _renderAuditLogs(panel) {
-    await mountAuditLogTab(panel);
+    this.#limpiarPanel = await mountAuditLogTab(panel);
   }
 }

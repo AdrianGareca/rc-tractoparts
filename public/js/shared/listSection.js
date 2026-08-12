@@ -24,6 +24,8 @@ import { tableSkeleton } from './skeleton.js';
 import { mountPagination } from './pagination.js';
 import { escapeHtml } from './escapeHtml.js';
 import { stateIcon } from './icons.js';
+// Ordena las llegadas: una respuesta vieja no pisa a una nueva.
+import { crearTurnero } from './ultimaGana.js';
 
 /**
  * El marcado de un panel sin nada que mostrar.
@@ -64,6 +66,10 @@ export function createListSection({
 }) {
   let destroyPag = null;
 
+  // Uno por seccion: que el listado de clientes pida algo no puede
+  // invalidar lo que esta cargando el de auditoria.
+  const turnero = crearTurnero();
+
   /** Desmonta la paginación y vacía su contenedor. */
   function clearPagination() {
     destroyPag?.();
@@ -91,6 +97,30 @@ export function createListSection({
       if (resultsEl) {
         resultsEl.innerHTML = tableSkeleton({ columnas: columnasAhora ?? columnas, etiqueta });
       }
+    },
+
+    /**
+     * Corre la consulta del panel y dice si su respuesta todavía vale.
+     *
+     * POR QUÉ ESTÁ ACÁ Y NO EN CADA PANEL
+     * Los cuatro paneles escribían el resultado apenas llegaba, sin nada que
+     * ordenara las llegadas. Si el usuario cambiaba el filtro antes de que la
+     * primera consulta terminara, la respuesta LENTA del pedido viejo pisaba a
+     * la RÁPIDA del nuevo — y los datos en pantalla no correspondían al filtro
+     * que decía el formulario. Sin error, sin parpadeo, sin nada que lo delate.
+     *
+     * Poniéndolo en la sección compartida, los cuatro lo heredan y el próximo
+     * panel no tiene que acordarse.
+     *
+     * @param   {Function} tarea — devuelve la promesa de la consulta
+     * @returns {Promise<{ vigente: boolean, valor: * }>}
+     *
+     * @example
+     *   const { vigente, valor } = await seccion.pedir(() => api.get(url));
+     *   if (!vigente) return;      // llegó tarde: no escribe
+     */
+    pedir(tarea) {
+      return turnero.ejecutar(tarea);
     },
 
     /** La tabla ya armada por el panel. */

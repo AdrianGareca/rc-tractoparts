@@ -19,6 +19,11 @@ export class ProyectosStrategy extends DashboardStrategy {
   #container;
   #user;
   #activeTab = 'licitaciones';
+  // La limpieza del panel montado, para llamarla ANTES de montar el
+  // siguiente. Sin esto cada cambio de pestana dejaba dos escuchas
+  // huerfanas en document (las del menu de paginacion), cada una
+  // reteniendo por closure una tabla que ya no esta en el DOM.
+  #limpiarPanel = null;
 
   constructor(user) { super(); this.#user = user; }
 
@@ -49,15 +54,20 @@ export class ProyectosStrategy extends DashboardStrategy {
   }
 
   async _renderPanel(tab) {
+    // Se desmonta lo anterior antes de pisar el innerHTML: los montadores
+    // devuelven su limpieza justamente para esto.
+    this.#limpiarPanel?.();
+    this.#limpiarPanel = null;
+
     const panel = document.getElementById('proyectos-panel');
     if (!panel) return;
     switch (tab) {
       case 'licitaciones':
         // Proyectos can create and manage their own licitaciones.
-        await mountLicitacionesTab(panel, { canCreate: true });
+        this.#limpiarPanel = await mountLicitacionesTab(panel, { canCreate: true });
         break;
       case 'clientes':
-        await mountClientsTab(panel);
+        this.#limpiarPanel = await mountClientsTab(panel);
         break;
     }
   }

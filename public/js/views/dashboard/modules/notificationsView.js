@@ -90,10 +90,10 @@ function _buildNotifItem(n) {
                border-radius:6px;margin-bottom:.5rem;background:var(--bg-raised);">
       <strong>${escHtml(n.numero_correlativo)}</strong>
       — ${escHtml(n.cliente_nombre ?? '—')}<br>
-      <span class="text-sm text-secondary">
-        ${n.solicitado_por ? `Gestionado por: ${escHtml(n.solicitado_por)}` : ''}
-        · ${fecha}
-      </span>
+      <!-- Antes habia un «Gestionado por: X» que traia el nombre del propio
+           destinatario: la consulta lo sacaba del dueno de la cotizacion, que
+           es quien recibe el aviso. Se quito; el mensaje ya nombra al autor. -->
+      <span class="text-sm text-secondary">${fecha}</span>
       ${mensaje}
     </li>`;
 }

@@ -102,13 +102,29 @@ async function findNotificacionesEjecutivo(id_ejecutivo) {
         n.id_cotizacion,
         n.id_licitacion,
         COALESCE(c.numero_correlativo, lic.codigo)     AS numero_correlativo,
-        COALESCE(cl.razon_social, licl.razon_social)   AS cliente_nombre,
-        u.nombre_completo   AS solicitado_por,
-        u.nombre_completo   AS rol_solicitante
+        COALESCE(cl.razon_social, licl.razon_social)   AS cliente_nombre
+        -- ACA HABIA DOS CAMPOS QUE MENTIAN, Y SE QUITARON:
+        --     u.nombre_completo AS solicitado_por,
+        --     u.nombre_completo AS rol_solicitante
+        --
+        -- La tabla de usuarios estaba unida por c.id_ejecutivo, o sea el DUENO
+        -- de la cotizacion. Y el dueno es justamente el DESTINATARIO de la
+        -- notificacion. Asi que el Jefe aprobaba la cotizacion de Ana, Ana
+        -- abria la campana, y leia "Gestionado por: Ana Perez". Ana no
+        -- gestiono nada: la recibio. Ademas el segundo alias devolvia un
+        -- nombre completo donde el nombre del campo promete un rol, y la
+        -- pantalla ni siquiera lo usaba.
+        --
+        -- NO se agrego una columna para guardar al autor: el MENSAJE ya lo
+        -- nombra en su propio texto ("ha sido aprobada por el Jefe", "fue
+        -- REABIERTA por Juan"). El campo era redundante ademas de falso, y
+        -- pagar una migracion para repetir lo que el mensaje ya dice no vale.
+        --
+        -- Al sacarlo se cae tambien el JOIN con usuarios, que solo existia
+        -- para estos dos alias: una union menos en cada sondeo de la campana.
       FROM notificaciones n
       LEFT JOIN cotizaciones c    ON c.id   = n.id_cotizacion
       LEFT JOIN clientes     cl   ON cl.id  = c.id_cliente
-      LEFT JOIN usuarios     u    ON u.id   = c.id_ejecutivo
       LEFT JOIN licitaciones lic  ON lic.id = n.id_licitacion
       LEFT JOIN clientes     licl ON licl.id = lic.id_cliente
       WHERE n.id_usuario = ?

@@ -302,7 +302,10 @@ export async function mountAuditLogTab(panel) {
     if (usuario)   params.set('usuario', usuario);
 
     try {
-      const data = await api.get(`/api/auditoria?${params.toString()}`);
+      const { vigente, valor: data } = await seccion.pedir(() =>
+        api.get(`/api/auditoria?${params.toString()}`));
+      if (!vigente) return;
+
       const rows = data.data ?? [];
       $('#audit-total').textContent = `${data.pagination?.totalRecords ?? rows.length} evento(s)`;
 
@@ -403,6 +406,15 @@ export async function mountAuditLogTab(panel) {
 
   // ── 5. Initial load ─────────────────────────────────────────────────────────
   await load();
+
+  // Devuelve la limpieza del panel. Sin esto, cada visita a la pestana
+  // dejaba DOS escuchas huerfanas en document (las del menu de paginacion),
+  // cada una reteniendo por closure una tabla que ya no esta en el DOM. A
+  // las treinta idas y vueltas hay sesenta manejadores corriendo en cada
+  // clic de la pagina y treinta subarboles que el recolector no puede
+  // liberar: la pestana se va poniendo lenta y no se recupera hasta
+  // recargar. Es acumulativo en sesiones largas, que es el uso real.
+  return () => seccion.destroy();
 }
 
 // ---------------------------------------------------------------------------

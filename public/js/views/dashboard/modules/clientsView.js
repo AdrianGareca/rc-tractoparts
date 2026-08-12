@@ -72,7 +72,14 @@ export async function mountClientsTab(panel) {
     if (state.q) params.set('q', state.q);
 
     try {
-      const data = await api.get(`/api/clientes/all?${params.toString()}`);
+      // seccion.pedir ordena las llegadas: si el usuario busco «san», corrigio
+      // a «sanchez» y la primera consulta (mas amplia) tarda mas, la tabla
+      // terminaba mostrando los resultados de «san» con el campo diciendo
+      // «sanchez» — y la paginacion montada con el total equivocado.
+      const { vigente, valor: data } = await seccion.pedir(() =>
+        api.get(`/api/clientes/all?${params.toString()}`));
+      if (!vigente) return;
+
       const rows = data.data ?? [];
       $('#clients-total').textContent = `${data.pagination?.totalRecords ?? rows.length} cliente(s)`;
 
@@ -207,6 +214,15 @@ export async function mountClientsTab(panel) {
 
   // ── 4. Initial load ───────────────────────────────────────────────────────
   await load();
+
+  // Devuelve la limpieza del panel. Sin esto, cada visita a la pestana
+  // dejaba DOS escuchas huerfanas en document (las del menu de paginacion),
+  // cada una reteniendo por closure una tabla que ya no esta en el DOM. A
+  // las treinta idas y vueltas hay sesenta manejadores corriendo en cada
+  // clic de la pagina y treinta subarboles que el recolector no puede
+  // liberar: la pestana se va poniendo lenta y no se recupera hasta
+  // recargar. Es acumulativo en sesiones largas, que es el uso real.
+  return () => seccion.destroy();
 }
 
 // ---------------------------------------------------------------------------

@@ -90,7 +90,10 @@ export async function mountLicitacionesTab(panel, opts = {}) {
     if (state.estado) params.set('estado', state.estado);
 
     try {
-      const body = await api.get(`/api/licitaciones?${params.toString()}`);
+      const { vigente, valor: body } = await seccion.pedir(() =>
+        api.get(`/api/licitaciones?${params.toString()}`));
+      if (!vigente) return;
+
       const rows = body.data ?? [];
       $('#lic-total').textContent = `${body.total ?? rows.length} licitación(es)`;
 
@@ -174,4 +177,13 @@ export async function mountLicitacionesTab(panel, opts = {}) {
   $('#lic-estado').addEventListener('change', () => { state.estado = $('#lic-estado').value; state.page = 1; load(); });
 
   await load();
+
+  // Devuelve la limpieza del panel. Sin esto, cada visita a la pestana
+  // dejaba DOS escuchas huerfanas en document (las del menu de paginacion),
+  // cada una reteniendo por closure una tabla que ya no esta en el DOM. A
+  // las treinta idas y vueltas hay sesenta manejadores corriendo en cada
+  // clic de la pagina y treinta subarboles que el recolector no puede
+  // liberar: la pestana se va poniendo lenta y no se recupera hasta
+  // recargar. Es acumulativo en sesiones largas, que es el uso real.
+  return () => seccion.destroy();
 }

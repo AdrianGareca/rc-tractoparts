@@ -11,6 +11,8 @@
 // =============================================================================
 
 import api, { showToast } from '../../../services/apiClient.js';
+// Evita que una respuesta lenta de un pedido viejo pise a una mas nueva.
+import { crearTurnero } from '../../../shared/ultimaGana.js';
 import { escHtml }        from '../helpers.js';
 import { saveBlobAs }     from './timelineView.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
@@ -539,16 +541,39 @@ async function loadReportesData(panel, desde, hasta, ejecutivoId = '', moneda = 
   }
 
   dataEl.innerHTML = tableSkeleton({ columnas: 5, etiqueta: 'Cargando reporte' });
+
+  // El turnero vive en el panel: cada pantalla de reportes tiene el suyo, y
+  // sobrevive entre llamadas porque el panel es el mismo elemento.
+  //
+  // SIN ESTO, EL JEFE VE DATOS DE OTRO PERIODO SIN ENTERARSE. Elegia «Este
+  // ano» y apretaba Aplicar (consulta pesada, tres segundos); sin esperar
+  // elegia «Hoy» y apretaba otra vez (cuatrocientos milisegundos). Terminaba
+  // primero la de hoy, y dos segundos y medio despues llegaba la del ano y
+  // pisaba la pantalla. Los numeros eran reales, solo que de otro periodo: no
+  // habia error, ni parpadeo, ni nada que lo delatara.
+  panel._turneroReportes = panel._turneroReportes ?? crearTurnero();
+
   try {
     let qs = `?fecha_desde=${encodeURIComponent(desde)}&fecha_hasta=${encodeURIComponent(hasta)}`;
     if (ejecutivoId) qs += `&id_ejecutivo=${encodeURIComponent(ejecutivoId)}`;
-    // Fire both requests in parallel — independent data sets
-    const [progresoRes, advancedRes] = await Promise.all([
-      api.get('/api/reportes/progreso' + qs),
-      api.get('/api/reportes/advanced' + qs),
-    ]);
-    // Cache the raw payloads so switching currency re-renders instantly
-    // without a second round-trip (both currencies are always present).
+
+    const { vigente, valor } = await panel._turneroReportes.ejecutar(() =>
+      // Las dos consultas en paralelo: son conjuntos de datos independientes.
+      Promise.all([
+        api.get('/api/reportes/progreso' + qs),
+        api.get('/api/reportes/advanced' + qs),
+      ])
+    );
+
+    // Llego tarde: ya hay un pedido mas nuevo en pantalla. Ni se pinta ni se
+    // cachea — la cache tambien pisaba, asi que cambiar de moneda volvia a
+    // dibujar los numeros equivocados sin ninguna peticion nueva.
+    if (!vigente) return;
+
+    const [progresoRes, advancedRes] = valor;
+
+    // Se guardan los payloads crudos para que cambiar de moneda redibuje al
+    // instante sin una segunda vuelta (las dos monedas vienen siempre).
     panel._reportesCache = { progresoRes, advancedRes, ejecutivoId };
     dataEl.innerHTML = buildReportesDataHTML(progresoRes, advancedRes, moneda, ejecutivoId);
   } catch (err) {
