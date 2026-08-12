@@ -150,12 +150,29 @@ const LicitacionController = {
         console.warn('[LicitacionController.createLicitacion] Audit logging failed (non-fatal):', auditErr.message);
       }
 
-      const created = await LicitacionModel.findById(licitacionId);
+      // Igual que en createQuotation: despues del commit, nada puede convertir
+      // una creacion exitosa en un error.
+      //
+      // Aca era todavia peor. LicitacionModel.findById dispara CUATRO consultas,
+      // y una de ellas va contra `licitacion_gastos` — una tabla que solo existe
+      // si se corrio sql/upgrade_2026_licitacion_gastos.sql. En una base sin esa
+      // migracion, TODA creacion de licitacion devolvia 500 aunque la fila se
+      // hubiera creado perfectamente.
+      let created = null;
+      try {
+        created = await LicitacionModel.findById(licitacionId);
+      } catch (postErr) {
+        console.warn(
+          '[LicitacionController.createLicitacion] Post-commit read failed (non-fatal):',
+          postErr.message
+        );
+      }
 
       return res.status(201).json({
         success: true,
-        message: `Licitación ${codigo} creada exitosamente.`,
-        data:    created,
+        message: `Licitación ${codigo} creada.`,
+        // Lo minimo para que la pantalla siga si la re-lectura fallo.
+        data:    created ?? { id: licitacionId, codigo },
       });
     } catch (error) {
       if (connection) {

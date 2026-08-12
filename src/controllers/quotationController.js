@@ -198,15 +198,36 @@ const QuotationController = {
         console.warn('[QuotationController.createQuotation] Draft lock cleanup failed (non-fatal):', lockErr.message);
       }
 
-      // ── Post-commit: fetch full record, generate PDF, write audit ───────────
-      const createdQuotation = await QuotationModel.findById(quotationId);
+      // ── DESPUES DEL COMMIT: NADA DE ESTO PUEDE HACER FALLAR LA RESPUESTA ────
+      // La cotizacion YA existe: el correlativo se consumio, la cabecera y los
+      // detalles estan escritos, y la transaccion cerro.
+      //
+      // Antes, el findById de aca abajo estaba desnudo dentro del try general.
+      // Si fallaba —conexion caida, timeout del pool— la excepcion salia por el
+      // catch, escribia en bitacora `resultado: 'fallo'` y devolvia 500
+      // «Failed to create quotation». El usuario lo leia como que no se guardo,
+      // reenviaba el formulario, y se creaba una SEGUNDA cotizacion con otro
+      // correlativo: dos registros para el mismo pedido, dos correlativos
+      // consumidos, y una bitacora afirmando que el primero fallo.
+      //
+      // El reintento es el que rompe los datos, y el reintento lo provoca el
+      // mensaje de error. Por eso a partir de aca todo es mejora, no requisito.
+      let createdQuotation = null;
+      try {
+        createdQuotation = await QuotationModel.findById(quotationId);
 
-      // PDF automático — no fatal: la cotización queda guardada igual.
-      // purge:false porque es un registro nuevo: no hay archivo anterior.
-      await regenerateQuotationPdf(createdQuotation, {
-        purge: false,
-        label: `QuotationController.createQuotation ${numeroCorrelativo}`,
-      });
+        // PDF automatico — no fatal: la cotizacion queda guardada igual.
+        // purge:false porque es un registro nuevo: no hay archivo anterior.
+        await regenerateQuotationPdf(createdQuotation, {
+          purge: false,
+          label: `QuotationController.createQuotation ${numeroCorrelativo}`,
+        });
+      } catch (postErr) {
+        console.warn(
+          '[QuotationController.createQuotation] Post-commit enrichment failed (non-fatal):',
+          postErr.message
+        );
+      }
 
       // Initial history record ('Pendiente' is the DB-valid initial state)
       // Non-fatal: audit logging failures must never mask a successfully committed quotation.
@@ -240,7 +261,10 @@ const QuotationController = {
         success:          true,
         message:          `Quotation created successfully with serial ${numeroCorrelativo}.`,
         duplicateWarning,
-        data:             createdQuotation,
+        // Si la re-lectura fallo, se devuelve lo minimo que la pantalla
+        // necesita para seguir: con el id y el correlativo alcanza para el
+        // aviso de exito y para refrescar el listado.
+        data:             createdQuotation ?? { id: quotationId, numero_correlativo: numeroCorrelativo },
       });
     } catch (error) {
       // El rollback y la devolución de la conexión ya los hizo withDeadlockRetry.
