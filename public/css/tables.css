@@ -58,11 +58,12 @@
      las columnas fueran igual de flexibles. El resultado es una tabla que se
      redibuja distinto segun el contenido de la peor fila.
 
-     `text-wrap: pretty` es el retoque: evita que un renglon termine con una
-     sola palabra colgada. Donde el navegador no lo entiende, se ignora y la
-     celda se ve como antes. */
+     Aca estuvo tambien `text-wrap: pretty`, que evita el renglon terminado en
+     una sola palabra colgada. Se saco: hoy solo lo entiende Chrome — ni
+     Firefox ni Safari — asi que la mayoria no lo veria nunca, y a cambio deja
+     un aviso permanente en el editor. Es un retoque, no la solucion; la
+     solucion es la linea de abajo. */
   overflow-wrap: break-word;
-  text-wrap: pretty;
 }
 
 /* ── Cifras que se comparan entre filas ──────────────────────────────────────
