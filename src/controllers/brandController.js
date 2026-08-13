@@ -8,7 +8,9 @@
 'use strict';
 
 const BrandModel   = require('../models/BrandModel');
-const { logEvent } = require('../utils/auditLog');
+// AuditActions y no la cadena a mano: lo que no esta en esa lista se guarda en
+// la bitacora pero no se puede filtrar despues. Ver el comentario en auditLog.js.
+const { logEvent, AuditActions } = require('../utils/auditLog');
 
 const BrandController = {
 
@@ -76,7 +78,7 @@ const BrandController = {
       await logEvent({
         id_usuario:    req.user?.id      ?? null,
         nombre_usuario: req.user?.nombre_usuario ?? null,
-        accion:        'CREAR_MARCA',
+        accion:        AuditActions.CREAR_MARCA,
         entidad:       'marcas',
         id_entidad:    brand.id,
         detalle:       { nombre: brand.nombre },

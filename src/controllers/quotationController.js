@@ -535,7 +535,7 @@ const QuotationController = {
       await logEvent({
         id_usuario:     req.user.id,
         nombre_usuario: req.user.nombre_usuario,
-        accion:         'ACTUALIZAR_COMENTARIO_ADMIN',
+        accion:         AuditActions.ACTUALIZAR_COMENTARIO_ADMIN,
         entidad:        'cotizaciones',
         id_entidad:     id,
         detalle:        { comentario_admin: sanitized || null },

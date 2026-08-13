@@ -98,6 +98,21 @@ const AuditActions = {
   DESACTIVAR_CLIENTE:'DESACTIVAR_CLIENTE',
   CREAR_ORIGEN_CLIENTE: 'CREAR_ORIGEN_CLIENTE',
   GENERAR_REPORTE_PDF:  'GENERAR_REPORTE_PDF',
+
+  // Estas dos se registraban con una cadena escrita a mano en su controlador,
+  // fuera de esta lista. La columna `accion` es VARCHAR(80) sin validacion, asi
+  // que los eventos SE GUARDABAN igual — pero VALID_ACCIONES del controlador de
+  // auditoria es literalmente Object.values(AuditActions), y es la lista que
+  // arma el desplegable «Accion» Y la que valida el filtro.
+  //
+  // O sea que la bitacora registraba quien agregaba marcas al catalogo y quien
+  // editaba el comentario administrativo de una cotizacion, y despues NEGABA
+  // que esas acciones existieran: el desplegable no las ofrecia y la API
+  // contestaba 422 si alguien las pedia. El dato estaba y el sistema decia que
+  // no. Lo vigila tests/unit/accionesDeBitacora.test.js.
+  CREAR_MARCA:                 'CREAR_MARCA',
+  ACTUALIZAR_COMENTARIO_ADMIN: 'ACTUALIZAR_COMENTARIO_ADMIN',
+
   CREAR_LICITACION:           'CREAR_LICITACION',
   EDITAR_LICITACION:          'EDITAR_LICITACION',
   CAMBIAR_ESTADO_LICITACION:  'CAMBIAR_ESTADO_LICITACION',
