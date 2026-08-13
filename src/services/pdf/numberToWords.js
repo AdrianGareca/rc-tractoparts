@@ -9,6 +9,10 @@
 
 'use strict';
 
+// El redondeo monetario compartido: la misma cuenta que decide el numero que se
+// imprime en la caja del TOTAL, para que las letras no digan otra cosa.
+const { redondearCentavos } = require('../../utils/quotationTotals');
+
 const _ONES = [
   '', 'UNO', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO',
   'NUEVE', 'DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE',
@@ -71,10 +75,47 @@ function _integerToWords(n) {
 
 function numberToWordsES(amount) {
   if (amount == null || isNaN(parseFloat(amount))) return 'CERO CON 00/100';
-  const abs   = Math.abs(parseFloat(amount));
-  const n     = Math.floor(abs);
-  const cents = Math.round((abs - n) * 100);
-  const cc    = String(cents).padStart(2, '0');
+  // Se redondea con la MISMA funcion que usa la caja del TOTAL antes de partir
+  // el numero, no despues. Sin esto las letras describen un numero distinto del
+  // impreso: 49.995 se imprime como 50.00 arriba —redondeo monetario, el medio
+  // va para arriba— pero aca se partia en 49 mas Math.round(0.995 * 100), y ese
+  // producto en punto flotante da 99.49999999999999, que redondea a 99.
+  //
+  //     TOTAL:  Bs. 50.00
+  //     SON:    CUARENTA Y NUEVE CON 99/100 BOLIVIANOS
+  //
+  // Las letras tienen que decir el numero que se imprime. Punto.
+  const abs = redondearCentavos(Math.abs(parseFloat(amount)));
+
+  let n     = Math.floor(abs);
+  let cents = Math.round((abs - n) * 100);
+
+  // ── El arrastre de los centavos ────────────────────────────────────────────
+  // Cuando el resto es 0.999… ese Math.round da 100, y sin esta corrección se
+  // imprimía tal cual. El PDF llegaba a decir:
+  //
+  //     TOTAL:  Bs. 189.00
+  //     SON:    CIENTO OCHENTA Y OCHO CON 100/100 BOLIVIANOS
+  //
+  // El número dice ciento ochenta y nueve y las letras ciento ochenta y ocho
+  // con cien centavos — que ni siquiera es un importe que exista. En una
+  // proforma boliviana el importe en letras es el que manda, así que las dos
+  // cifras del mismo documento se contradecían en el renglón con peso legal.
+  //
+  // Se llegaba por el total del PDF, que suma los subtotales sin redondear:
+  // catorce valores de dos decimales en punto flotante dejan residuo, y a veces
+  // cae para abajo (188.99999999999997). fmtNum lo imprime como 189.00 —toFixed
+  // redondea— pero acá se partía en 188 más 100 centavos.
+  //
+  // Cien centavos son un entero más y cero centavos. La causa se ataca además
+  // redondeando el total antes de llegar acá (ver drawers/totals.js); esto deja
+  // la función correcta para cualquier otro camino que aparezca después.
+  if (cents === 100) {
+    n += 1;
+    cents = 0;
+  }
+
+  const cc = String(cents).padStart(2, '0');
   if (n === 0) return `CERO CON ${cc}/100`;
 
   const w = _integerToWords(n);

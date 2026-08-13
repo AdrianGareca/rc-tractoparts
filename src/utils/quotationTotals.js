@@ -15,6 +15,49 @@
 'use strict';
 
 /**
+ * redondearCentavos
+ * Redondea a dos decimales con el medio HACIA ARRIBA, como cualquier factura.
+ *
+ * POR QUE NO ALCANZA toFixed(2)
+ * toFixed no es una funcion de redondeo monetario: trabaja sobre el numero
+ * binario que realmente guarda la maquina, no sobre el decimal que uno escribio.
+ *
+ *     (49.995).toFixed(2)  ===  "49.99"   y deberia ser 50.00
+ *     (1.005).toFixed(2)   ===  "1.00"    y deberia ser 1.01
+ *
+ * El binario mas cercano a 49.995 es 49.994999999999998863..., o sea un pelo por
+ * DEBAJO, y toFixed lo redondea para abajo. Cambiar a Math.round(x * 100) / 100
+ * no arregla nada: mueve el error de lugar, porque 1.005 * 100 da
+ * 100.49999999999999 y vuelve a caer para abajo.
+ *
+ * Se veia en la linea de la proforma: 1,5 metros de manguera a Bs. 33,33
+ * imprimian un subtotal de 49,99 mientras la calculadora del cliente daba
+ * 50,00. Y MySQL, que calcula sobre DECIMAL —aritmetica decimal exacta— redondea
+ * el medio para arriba, asi que el subtotal guardado por JavaScript y el que
+ * daria la base al rehacer la cuenta NO coincidian.
+ *
+ * COMO SE ARREGLA
+ * Antes de redondear se borra el ruido binario con toPrecision(15). Un `double`
+ * guarda entre 15 y 17 digitos significativos confiables; recortar a 15 devuelve
+ * el decimal que la persona escribio, y recien ahi se redondea.
+ *
+ * POR QUE NO ARITMETICA CON ENTEROS ESCALADOS, QUE SERIA LO EXACTO
+ * Porque cantidad admite 4 decimales y precio hasta once digitos: el producto
+ * escalado se pasa del entero seguro de JavaScript (9.007e15) y traeria un
+ * desborde silencioso, que es bastante peor que el centavo que vino a arreglar.
+ *
+ * Cubierto por tests/unit/redondeoDeCentavos.test.js.
+ *
+ * @param   {number} n
+ * @returns {number} el mismo numero con a lo sumo dos decimales
+ */
+function redondearCentavos(n) {
+  // toPrecision devuelve texto —a veces en notacion exponencial para numeros
+  // muy grandes o muy chicos—, y Number() lo entiende en las dos formas.
+  return Math.round(Number((n * 100).toPrecision(15))) / 100;
+}
+
+/**
  * calcularSubtotal
  * Compute the subtotal for one line item: cantidad × precio_unitario, rounded to 2 decimals.
  * Throws a descriptive error if inputs are invalid (callers must validate beforehand;
@@ -33,8 +76,7 @@ function calcularSubtotal(cantidad, precioUnitario) {
     throw new Error('precio_unitario debe ser mayor o igual a 0');
   }
 
-  // Multiply and round to exactly 2 decimal places (monetary precision)
-  return parseFloat((cantidad * precioUnitario).toFixed(2));
+  return redondearCentavos(cantidad * precioUnitario);
 }
 
 /**
@@ -55,7 +97,10 @@ function calcularMontoTotal(detalles) {
     return acc + calcularSubtotal(item.cantidad, item.precio_unitario);
   }, 0);
 
-  return parseFloat(total.toFixed(2));
+  // Se redondea igual al final aunque los sumandos ya vengan redondeados: sumar
+  // floats de dos decimales deja basura en el decimoquinto digito (0.1 + 0.2 da
+  // 0.30000000000000004), y ese residuo llega tal cual a MySQL.
+  return redondearCentavos(total);
 }
 
-module.exports = { calcularSubtotal, calcularMontoTotal };
+module.exports = { calcularSubtotal, calcularMontoTotal, redondearCentavos };

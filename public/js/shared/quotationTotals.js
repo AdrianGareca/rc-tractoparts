@@ -19,13 +19,33 @@ export function round2(n) {
   // y un campo con basura debe caer a 0 y no colarse como un importe válido.
   const x = Number(n);
 
-  // toFixed(2) devuelve una CADENA ('12.34'), así que hace falta volver a
-  // número o el `+` de la suma concatenaría texto en vez de sumar.
-  //
   // El no-finito cae a 0 en vez de propagar NaN: un solo NaN en una fila
   // contaminaría el total entero y la pantalla mostraría «NaN» donde va la
   // plata. Cero es incorrecto también, pero se ve y se corrige; NaN paraliza.
-  return Number.isFinite(x) ? parseFloat(x.toFixed(2)) : 0;
+  if (!Number.isFinite(x)) return 0;
+
+  // ── El medio centavo va PARA ARRIBA, como en toda factura ──────────────────
+  // Acá había `parseFloat(x.toFixed(2))`, y toFixed no es una función de
+  // redondeo monetario: trabaja sobre el número binario que realmente guarda la
+  // máquina, no sobre el decimal que la persona escribió.
+  //
+  //     (49.995).toFixed(2)  ===  '49.99'   y debería ser 50.00
+  //     (1.005).toFixed(2)   ===  '1.00'    y debería ser 1.01
+  //
+  // El binario más cercano a 49.995 es 49.994999999999998863…, o sea un pelo
+  // por debajo. Math.round(x * 100) / 100 tampoco sirve: mueve el error de
+  // lugar, porque 1.005 * 100 da 100.49999999999999.
+  //
+  // toPrecision(15) borra ese ruido —un `double` guarda entre 15 y 17 dígitos
+  // significativos confiables— y devuelve el decimal que se tecleó. Recién ahí
+  // se redondea.
+  //
+  // ES LA MISMA CUENTA que redondearCentavos() en src/utils/quotationTotals.js,
+  // y tiene que seguir siéndolo: acá se calcula lo que el vendedor VE mientras
+  // carga, allá lo que se GUARDA y se imprime. Si difieren, el vendedor arma la
+  // cotización mirando un total y el cliente recibe un PDF con otro.
+  // Lo exige tests/unit/redondeoDeCentavos.test.js.
+  return Math.round(Number((x * 100).toPrecision(15))) / 100;
 }
 
 /**

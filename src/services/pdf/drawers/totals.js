@@ -10,6 +10,9 @@
 const { C, PW, PH, MARGIN, CW } = require('../constants');
 const { fmtPrice, formatDate } = require('../format');
 const { numberToWordsES } = require('../numberToWords');
+// El redondeo monetario compartido: la MISMA cuenta que usa el servidor para
+// guardar los subtotales, y que el navegador para la vista previa en vivo.
+const { redondearCentavos } = require('../../../utils/quotationTotals');
 const { resolveBankData } = require('../bankData');
 const { drawLogoWatermark } = require('./watermark');
 const { drawFooter } = require('./footer');
@@ -38,9 +41,14 @@ function drawTotalsAndConditions(doc, quotation, startY) {
   // Subtotal = sum of line-item subtotals. Prices are already tax-inclusive,
   // so there is NO added IVA row: the subtotal equals the total unless a manual
   // cash discount applies.
-  const computedTotal = detalles.reduce(
-    (s, item) => s + parseFloat(item.subtotal || 0),
-    0
+  //
+  // El redondeo NO es cosmetico: sumar catorce valores de dos decimales en punto
+  // flotante deja residuo, y a veces cae para abajo (199.99999999999997 en lugar
+  // de 200). Ese residuo llegaba al importe en letras y lo partia en 199 mas 100
+  // centavos, asi que el PDF decia un numero arriba y otro abajo.
+  // Ver tests/unit/importeEnLetras.test.js.
+  const computedTotal = redondearCentavos(
+    detalles.reduce((s, item) => s + parseFloat(item.subtotal || 0), 0)
   );
 
   // Manual cash discount (descuento_manual) — an absolute amount subtracted
@@ -48,9 +56,11 @@ function drawTotalsAndConditions(doc, quotation, startY) {
   const discount    = quotation.descuento_manual != null ? parseFloat(quotation.descuento_manual) : 0;
   const hasDiscount = detalles.length > 0 && discount > 0;
 
+  // La resta vuelve a introducir error binario, asi que se redondea otra vez:
+  // es la ultima cuenta antes de que el numero se imprima y se diga en letras.
   const displayTotal = detalles.length > 0
-    ? Math.max(0, computedTotal - discount)
-    : parseFloat(quotation.monto_total || 0);
+    ? Math.max(0, redondearCentavos(computedTotal - discount))
+    : redondearCentavos(parseFloat(quotation.monto_total || 0));
 
   const currencyLabel = quotation.moneda === 'BOB' ? 'BOLIVIANOS' : 'DÓLARES AMERICANOS';
   const totalWords    = numberToWordsES(displayTotal);

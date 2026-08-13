@@ -88,15 +88,59 @@ const detalleItemSchema = z.object({
     .min(1,   'Item description must not be empty.')
     .max(255, 'Item description must not exceed 255 characters.'),
 
+  // ---------------------------------------------------------------------------
+  // EL NUMERO QUE SE VALIDA ES EL NUMERO QUE SE GUARDA
+  //
+  // Antes estos dos campos aceptaban cualquier cantidad de decimales, pero las
+  // columnas son DECIMAL(12,4) y DECIMAL(15,2). El subtotal se calculaba con el
+  // numero SIN redondear y el precio se guardaba YA redondeado, asi que la linea
+  // impresa en la proforma no cuadraba:
+  //
+  //     el usuario pega          12.345
+  //     MySQL guarda el precio   12.35
+  //     el subtotal se calculo   10 x 12.345 = 123.45
+  //
+  //     CANT   P. UNIT   SUBTOTAL
+  //       10     12.35     123.45     <- el cliente hace la cuenta y le da 123.50
+  //
+  // No hace falta que nadie tipee tres decimales a proposito: pasa con pegar
+  // precios de una lista del proveedor, que es como se cargan las cotizaciones
+  // grandes.
+  //
+  // El .transform() redondea UNA vez, al entrar, con la misma precision que la
+  // columna. De ahi en adelante todas las cuentas usan ese mismo valor.
+  //
+  // Se redondea en lugar de rechazar porque MySQL ya venia redondeando igual,
+  // solo que en un lado y no en el otro. Rechazar obligaria a corregir a mano
+  // fila por fila una lista pegada de cincuenta items, para llegar al mismo
+  // numero al que se llega solo.
+  //
+  // EL ORDEN IMPORTA: el .transform() va ANTES de los limites, y los limites se
+  // revisan sobre el valor YA redondeado. Al reves, una cantidad de 0.00001
+  // pasaria el .positive() y recien despues se convertiria en cero — que es
+  // justamente lo que la regla prohibe.
+  //
+  // Cubierto por tests/unit/laProformaCuadra.test.js.
+  // ---------------------------------------------------------------------------
+
   cantidad: z
     .number({ required_error: 'Quantity is required.', invalid_type_error: 'cantidad must be a number.' })
-    .positive('Quantity must be greater than 0.')
-    .max(999999.9999, 'Quantity is too large.'),
+    // Cuatro decimales, no dos: se venden metros de manguera y material a granel.
+    .transform((n) => Math.round(n * 10000) / 10000)
+    .pipe(
+      z.number()
+        .positive('Quantity must be greater than 0.')
+        .max(999999.9999, 'Quantity is too large.')
+    ),
 
   precio_unitario: z
     .number({ required_error: 'Unit price is required.', invalid_type_error: 'precio_unitario must be a number.' })
-    .min(0, 'Unit price must be 0 or greater.')
-    .max(99999999999.99, 'Unit price is too large.'),
+    .transform((n) => Math.round(n * 100) / 100)
+    .pipe(
+      z.number()
+        .min(0, 'Unit price must be 0 or greater.')
+        .max(99999999999.99, 'Unit price is too large.')
+    ),
 
   marca_id: z
     .number({ invalid_type_error: 'marca_id must be a number.' })
@@ -309,10 +353,17 @@ const quotationShape = {
 
   // Fixed cash discount subtracted from the subtotal to produce the final total.
   // Absolute monetary amount — NOT a percentage.
+  // Se redondea a los dos decimales de su columna por la misma razon que el
+  // precio: se resta del total que se imprime, y un descuento guardado distinto
+  // del que se uso para la cuenta descuadra el total final.
   descuento_manual: z
     .number({ invalid_type_error: 'descuento_manual must be a number.' })
-    .min(0, 'descuento_manual must be 0 or greater.')
-    .max(99999999999.99, 'descuento_manual is too large.')
+    .transform((n) => Math.round(n * 100) / 100)
+    .pipe(
+      z.number()
+        .min(0, 'descuento_manual must be 0 or greater.')
+        .max(99999999999.99, 'descuento_manual is too large.')
+    )
     .optional()
     .nullable(),
 
