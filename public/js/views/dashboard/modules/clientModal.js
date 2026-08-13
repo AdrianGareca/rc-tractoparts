@@ -1,27 +1,41 @@
 // =============================================================================
 // public/js/views/dashboard/modules/clientModal.js
-// "Nuevo cliente" / "Editar Cliente" sub-modal — shared between the quotation
-// form's inline client search (quotationForm.js) and the "Gestión de
-// Clientes" management tab (clientsView.js), so the fields, validation, and
-// duplicate-NIT handling live in exactly one place.
+// "Nuevo cliente" / "Editar Cliente" - el sub-modal compartido.
 //
-// Exports:
-//   openClienteModal({ mode, client, onSaved, mountTarget }) — renders the
-//     overlay into mountTarget (or document.body) and wires create/update.
+// Lo usan las dos puntas del sistema: la busqueda de cliente del formulario de
+// cotizacion (quotationForm.js), la pantalla de Gestion de Clientes
+// (clientsView.js) y el "+ Nuevo" del modal de licitaciones. Por eso los campos,
+// la validacion y el manejo del NIT repetido viven en un solo lugar.
+//
+// QUE QUEDO ACA Y QUE SE FUE
+// Esta funcion tenia 231 lineas de codigo: la plantilla, la carga del catalogo
+// de origenes con su alta en linea, y el guardado con su rama de NIT en
+// conflicto, todo en un cuerpo. Hoy es lo que su nombre dice, y cada pieza vive
+// en su archivo:
+//
+//   cliente/modalPlantilla.js   el HTML del formulario
+//   cliente/modalOrigen.js      el catalogo de origen y su alta en linea
+//   cliente/modalGuardado.js    que pasa al apretar guardar
+//
+// Es la misma reparticion que licitacionModal.js, a proposito: son dos modales
+// con la misma forma, y que se lean igual le quita trabajo a quien toque el
+// segundo despues de haber entendido el primero.
+//
+// Exporta: openClienteModal({ mode, client, onSaved, mountTarget })
 // =============================================================================
 
-import api, { showToast } from '../../../services/apiClient.js';
-import { escHtml }        from '../helpers.js';
+import { construirModalCliente }   from './cliente/modalPlantilla.js';
+import { montarSelectorDeOrigen }  from './cliente/modalOrigen.js';
+import { guardarCliente }          from './cliente/modalGuardado.js';
 
 /**
  * @param {Object}   opts
  * @param {'create'|'edit'} opts.mode
- * @param {Object|null} opts.client      - existing client data (edit mode only)
- * @param {Function} opts.onSaved        - (id, label) => void, called after a
- *   successful create/update, or when the user picks the client that already
- *   owns a conflicting NIT.
- * @param {HTMLElement} [opts.mountTarget] - where to append the overlay;
- *   defaults to document.body.
+ * @param {Object|null} opts.client      la fila existente (solo en 'edit')
+ * @param {Function} opts.onSaved        (id, rotulo) => void. Se llama al
+ *   guardar bien, y tambien cuando se elige el cliente que ya era dueno de un
+ *   NIT en conflicto.
+ * @param {HTMLElement} [opts.mountTarget] donde colgar el overlay
  */
 export function openClienteModal({ mode, client, onSaved, mountTarget }) {
   const isEdit = mode === 'edit';
@@ -31,93 +45,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-labelledby', 'subm-title');
-
-  overlay.innerHTML = /* html */ `
-    <div class="sub-modal">
-      <div class="sub-modal-header">
-        <h4 id="subm-title">${isEdit ? 'Editar Cliente' : 'Registrar Nuevo cliente'}</h4>
-        <button type="button" class="btn-icon sub-modal-close" id="subm-close" aria-label="Cerrar">✕</button>
-      </div>
-      <div class="sub-modal-body">
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" for="nc-razon-social">Razón social *</label>
-            <input class="form-control" type="text" id="nc-razon-social"
-                   placeholder="Nombre comercial o legal" maxlength="150"
-                   value="${escHtml(client?.razon_social ?? '')}" />
-            <span class="field-error" id="nc-err-razon"></span>
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="nc-nit">NIT</label>
-            <input class="form-control" type="text" id="nc-nit"
-                   placeholder="Ej: 1234567890" maxlength="20"
-                   value="${escHtml(client?.nit ?? '')}" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" for="nc-contacto">Contacto</label>
-            <input class="form-control" type="text" id="nc-contacto"
-                   placeholder="Nombre del responsable"
-                   value="${escHtml(client?.contacto ?? '')}" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="nc-telefono">Teléfono</label>
-            <input class="form-control" type="tel" id="nc-telefono"
-                   placeholder="Ej: 77012345"
-                   value="${escHtml(client?.telefono ?? '')}" />
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="nc-email">Email</label>
-          <input class="form-control" type="email" id="nc-email"
-                 placeholder="contacto@empresa.com"
-                 value="${escHtml(client?.email ?? '')}" />
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" for="nc-direccion">Dirección</label>
-            <input class="form-control" type="text" id="nc-direccion"
-                   placeholder="Av. Cristo Redentor #123" maxlength="200"
-                   value="${escHtml(client?.direccion ?? '')}" />
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="nc-ciudad">Ciudad</label>
-            <input class="form-control" type="text" id="nc-ciudad"
-                   placeholder="Santa Cruz de la Sierra" maxlength="100"
-                   value="${escHtml(client?.ciudad ?? '')}" />
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="nc-origen">Origen del cliente</label>
-          <div class="item-marca-grupo">
-            <select class="form-control fg-crece" id="nc-origen">
-              <option value="">— Sin clasificar —</option>
-            </select>
-            <button type="button" id="nc-add-origen" title="Agregar nuevo origen"
-                    class="btn-add-inline">
-              +
-            </button>
-          </div>
-          <div id="nc-origen-new" class="hidden gap-1 mt-1">
-            <input class="form-control fg-crece" type="text" id="nc-origen-new-input"
-                   placeholder="Ej: Feria comercial" maxlength="100" />
-            <button type="button" class="btn btn-ghost btn-sm" id="nc-origen-new-save">Guardar</button>
-            <button type="button" class="btn btn-ghost btn-sm" id="nc-origen-new-cancel">✕</button>
-          </div>
-          <span class="text-muted text-sm">Uso interno para reportes — no aparece en el PDF de la cotización.</span>
-        </div>
-        <div class="form-alert" id="nc-alert" role="alert"></div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-ghost" id="subm-cancel">Cancelar</button>
-          <button type="button" class="btn btn-primary" id="subm-save">
-            <span id="subm-label">${isEdit ? 'Guardar cambios' : 'Guardar Cliente'}</span>
-            <span class="spinner hidden" id="subm-spinner"></span>
-          </button>
-        </div>
-      </div>
-    </div>
-  `;
+  overlay.innerHTML = construirModalCliente(client, isEdit);
 
   (mountTarget || document.body).appendChild(overlay);
 
@@ -125,159 +53,16 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
 
   overlay.querySelector('#subm-close')?.addEventListener('click', close);
   overlay.querySelector('#subm-cancel')?.addEventListener('click', close);
+  // Clic en el fondo = cerrar. Se compara con el overlay mismo: un clic adentro
+  // del modal burbujea hasta aca y cerraria la ventana a mitad de la carga.
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
-  // ── Origen del cliente — load catalog and preselect the client's current value ──
-  const origenSelect = overlay.querySelector('#nc-origen');
-  // Guards against a race: if the user creates a new origin via "+" (below)
-  // before this initial GET resolves (slow/degraded network), a late
-  // innerHTML replacement here would silently wipe out that fresh selection.
-  let origenLocallyModified = false;
-  (async () => {
-    try {
-      const resp     = await api.get('/api/origenes-cliente');
-      if (origenLocallyModified) return;
-      const origenes = resp.data ?? [];
-      const current  = client?.id_origen_cliente ?? '';
-      origenSelect.innerHTML =
-        '<option value="">— Sin clasificar —</option>' +
-        origenes.map(o => `<option value="${o.id}"${String(o.id) === String(current) ? ' selected' : ''}>${escHtml(o.nombre)}</option>`).join('');
-    } catch {
-      // Non-fatal — the dropdown just stays at "— Sin clasificar —" if the catalog fails to load.
-    }
-  })();
+  montarSelectorDeOrigen({ overlay, client });
 
-  // "+" reveals the inline add-new-origen row instead of stacking another sub-modal.
-  const origenNewRow   = overlay.querySelector('#nc-origen-new');
-  const origenNewInput = overlay.querySelector('#nc-origen-new-input');
-  overlay.querySelector('#nc-add-origen')?.addEventListener('click', () => {
-    // Con la clase .hidden y NO con style.display: la fila nace con
-    // class="hidden", que es `display: none !important`, y un style inline no
-    // le gana. Con style.display el bloque no aparecia nunca — y el focus()
-    // sobre un elemento oculto tampoco hace nada, asi que el cursor tampoco se
-    // movia. Consecuencia de negocio: el catalogo de origenes no crecia y el
-    // reporte «Clientes por origen» quedaba siempre en «Sin clasificar».
-    origenNewRow.classList.remove('hidden');
-    origenNewInput.focus();
-  });
-  overlay.querySelector('#nc-origen-new-cancel')?.addEventListener('click', () => {
-    origenNewRow.classList.add('hidden');
-    origenNewInput.value = '';
-  });
-  overlay.querySelector('#nc-origen-new-save')?.addEventListener('click', async () => {
-    const nombre = origenNewInput.value.trim();
-    if (!nombre) return;
-    try {
-      const resp   = await api.post('/api/origenes-cliente', { nombre });
-      const origen = resp.data;
-      const opt    = document.createElement('option');
-      opt.value       = origen.id;
-      opt.textContent = origen.nombre;
-      opt.selected    = true;
-      origenSelect.appendChild(opt);
-      origenLocallyModified = true;
-      origenNewRow.classList.add('hidden');
-      origenNewInput.value = '';
-      showToast(`Origen "${origen.nombre}" registrado y seleccionado.`, 'success');
-    } catch (err) {
-      // 409 — origin already exists: auto-select it instead of erroring out.
-      if (err.status === 409 && err.data?.data) {
-        const existing = err.data.data;
-        if (!origenSelect.querySelector(`option[value="${existing.id}"]`)) {
-          const opt = document.createElement('option');
-          opt.value = existing.id;
-          opt.textContent = existing.nombre;
-          origenSelect.appendChild(opt);
-        }
-        origenSelect.value = String(existing.id);
-        origenLocallyModified = true;
-        origenNewRow.classList.add('hidden');
-        origenNewInput.value = '';
-        showToast(`Origen "${existing.nombre}" ya existe. Seleccionado automáticamente.`, 'info');
-        return;
-      }
-      showToast(err.data?.message || err.message || 'Error al crear el origen.', 'error');
-    }
-  });
+  overlay.querySelector('#subm-save')?.addEventListener('click', () =>
+    guardarCliente({ overlay, client, isEdit, onSaved, close })
+  );
 
-  // Close on backdrop click
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) close();
-  });
-
-  overlay.querySelector('#subm-save')?.addEventListener('click', async () => {
-    const razon_social = overlay.querySelector('#nc-razon-social')?.value.trim();
-    const nit          = overlay.querySelector('#nc-nit')?.value.trim()      || null;
-    const contacto     = overlay.querySelector('#nc-contacto')?.value.trim() || null;
-    const email        = overlay.querySelector('#nc-email')?.value.trim()    || null;
-    const telefono     = overlay.querySelector('#nc-telefono')?.value.trim() || null;
-    const direccion    = overlay.querySelector('#nc-direccion')?.value.trim() || null;
-    const ciudad       = overlay.querySelector('#nc-ciudad')?.value.trim()    || null;
-    const id_origen_cliente = overlay.querySelector('#nc-origen')?.value || null;
-
-    const alertEl  = overlay.querySelector('#nc-alert');
-    const errRazon = overlay.querySelector('#nc-err-razon');
-
-    // Client-side guard
-    if (!razon_social) {
-      errRazon.textContent = 'La razón social es requerida.';
-      return;
-    }
-    errRazon.textContent = '';
-    alertEl.className    = 'form-alert';
-    alertEl.textContent  = '';
-
-    const saveBtn    = overlay.querySelector('#subm-save');
-    const labelEl    = overlay.querySelector('#subm-label');
-    const spinnerEl  = overlay.querySelector('#subm-spinner');
-
-    saveBtn.disabled = true;
-    if (labelEl)   labelEl.textContent = 'Guardando...';
-    if (spinnerEl) spinnerEl.classList.remove('hidden');
-
-    try {
-      const payload = { razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente };
-      const resp    = isEdit
-        ? await api.put(`/api/clientes/${client.id}`, payload)
-        : await api.post('/api/clientes', payload);
-      const saved   = resp.data;
-      showToast(
-        isEdit
-          ? `Cliente "${saved.razon_social}" actualizado.`
-          : `Cliente "${saved.razon_social}" registrado.`,
-        'success'
-      );
-      onSaved(String(saved.id), saved.razon_social);
-      close();
-    } catch (err) {
-      // The NIT already belongs to a DIFFERENT client — offer to just pick
-      // that one instead of leaving the user stuck with a bare rejection.
-      const conflicting = err.data?.data?.conflictingClient;
-
-      if (conflicting) {
-        alertEl.innerHTML = `
-          ${escHtml(err.data?.message || 'Ese NIT ya está en uso.')}
-          Pertenece a <strong>${escHtml(conflicting.razon_social)}</strong>.
-          <button type="button" class="btn btn-ghost btn-sm mt-1" id="nc-use-existing">
-            Usar este cliente
-          </button>
-        `;
-        alertEl.className = 'form-alert show alert-error';
-        overlay.querySelector('#nc-use-existing')?.addEventListener('click', () => {
-          onSaved(String(conflicting.id), conflicting.razon_social);
-          close();
-        });
-      } else {
-        const msg = err.data?.message || err.message || 'Error al guardar el cliente.';
-        alertEl.textContent = msg;
-        alertEl.className   = 'form-alert show alert-error';
-      }
-
-      saveBtn.disabled = false;
-      if (labelEl)   labelEl.textContent = isEdit ? 'Guardar cambios' : 'Guardar Cliente';
-      if (spinnerEl) spinnerEl.classList.add('hidden');
-    }
-  });
-
-  // Auto-focus first field
+  // El cursor al primer campo, que es el unico obligatorio.
   overlay.querySelector('#nc-razon-social')?.focus();
 }

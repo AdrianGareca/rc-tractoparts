@@ -101,22 +101,45 @@ describe('un archivo no mezcla los dos mecanismos de visibilidad', () => {
 describe('los dos casos que ya se rompieron no vuelven', () => {
   // Se fijan por nombre porque son los que costó encontrar: ninguno daba error
   // y los dos rompían una función completa del producto.
+  // Se busca la marca EN TODO EL ÁRBOL y no en un archivo fijo.
+  //
+  // La primera versión clavaba la ruta ('modules/clientModal.js'), y al partir
+  // ese modal en tres el test se puso rojo sin que nada se hubiera roto: el
+  // alta de origen seguía funcionando igual, solo que desde
+  // cliente/modalOrigen.js. Un guardián de regresión que se rompe cuando el
+  // código se muda enseña a la gente que ponerse rojo puede no significar nada
+  // — y eso es lo peor que le puede pasar a una suite.
+  //
+  // Lo que se protege es el COMPORTAMIENTO: que ese elemento exista y que su
+  // visibilidad se alterne con clases. Dónde vive el archivo es un detalle.
+  const archivosDashboard = (function listar(dir) {
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const full = path.join(dir, e.name);
+      return e.isDirectory() ? listar(full) : (e.name.endsWith('.js') ? [full] : []);
+    });
+  })(path.join(RAIZ, 'views', 'dashboard'));
+
+  const sinComentarios = (src) => src
+    .split(String.fromCharCode(10))
+    .filter((l) => {
+      const t = l.trim();
+      return !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*');
+    })
+    .join(String.fromCharCode(10));
+
   test.each([
-    ['modules/auditView.js',   'audit-detail-row', 'el detalle de la bitácora'],
-    ['modules/clientModal.js', 'nc-origen-new',    'el alta de origen de cliente'],
-  ])('%s — %s se alterna con classList', (archivo, marca, _que) => {
-    const src = fs.readFileSync(path.join(RAIZ, 'views', 'dashboard', archivo), 'utf8');
+    ['audit-detail-row', 'el detalle de la bitácora'],
+    ['nc-origen-new',    'el alta de origen de cliente'],
+  ])('%s se alterna con classList — %s', (marca, _que) => {
+    const donde = archivosDashboard.filter((f) => fs.readFileSync(f, 'utf8').includes(marca));
 
-    expect(src).toContain(marca);
-    // La prueba concreta: en ese archivo no queda ningún `.style.display =`.
-    const sinComentarios = src
-      .split(String.fromCharCode(10))
-      .filter((l) => {
-        const t = l.trim();
-        return !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*');
-      })
-      .join(String.fromCharCode(10));
+    // Que siga existiendo en alguna parte: si desaparece, la función se borró.
+    expect(donde.length).toBeGreaterThan(0);
 
-    expect(sinComentarios).not.toMatch(/\.style\.display\s*=/);
+    // Y que en NINGUNO de los archivos que lo mencionan se vuelva a manejar su
+    // visibilidad con style.display — que es exactamente cómo se rompió.
+    for (const archivo of donde) {
+      expect(sinComentarios(fs.readFileSync(archivo, 'utf8'))).not.toMatch(/\.style\.display\s*=/);
+    }
   });
 });

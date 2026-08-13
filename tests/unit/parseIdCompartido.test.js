@@ -75,7 +75,7 @@ describe('parseId — lo que acepta y lo que no', () => {
 // EL TRINQUETE
 // ---------------------------------------------------------------------------
 describe('la validación a mano sólo puede disminuir', () => {
-  const TOPE = 4;
+  const TOPE = 1;
 
   const contar = () => archivos.reduce((total, f) => {
     // Se salta el propio helper: ahí la comprobación es la implementación.

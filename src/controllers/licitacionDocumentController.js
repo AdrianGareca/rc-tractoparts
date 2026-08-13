@@ -29,6 +29,10 @@ const { logEvent, AuditActions } = require('../utils/auditLog');
 // Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
 // con el mensaje en dos idiomas distintos.
 const { parseId } = require('../utils/parseId');
+// La cabecera de descarga, con el nombre en castellano intacto.
+const { cabeceraDeDescarga } = require('../utils/nombreDeDescarga');
+// El guardado de las filas: todas o ninguna, con vuelta atrás propia.
+const { persistirDocumentos } = require('./licitacion/persistirDocumentos');
 
 // ---------------------------------------------------------------------------
 // Magic-number signatures per allowed extension. Mirrors the PDF ("%PDF-")
@@ -106,9 +110,16 @@ const LicitacionDocumentController = {
 
     const cleanupAll = () => Promise.all(files.map((f) => unlink(path.resolve(process.cwd(), f.path))));
 
-    if (isNaN(id) || id < 1) {
+    // El error de parseId se usa tal como viene: trae el 400 y el mensaje en
+    // castellano ya armados. Antes se calculaba `idError` y se descartaba, y el
+    // control real era `isNaN(id) || id < 1` — que funcionaba de casualidad,
+    // porque parseId devuelve null y `null < 1` es cierto. Un cambio a
+    // `id: undefined` lo habria roto en silencio (`undefined < 1` es falso).
+    if (idError) {
+      // La limpieza va PRIMERO: multer ya escribio los archivos en disco antes
+      // de llegar aca, y salir sin borrarlos los deja acumulandose sin dueño.
       await cleanupAll();
-      return res.status(400).json({ success: false, message: 'ID de licitación inválido.' });
+      return res.status(idError.status).json(idError.body);
     }
 
     if (files.length === 0) {
@@ -145,22 +156,22 @@ const LicitacionDocumentController = {
         }
       }
 
-      // ── Persist one row per file ────────────────────────────────────────────
-      const created = [];
-      for (const file of files) {
-        const ext          = extOf(file.originalname);
-        const relativePath = ['storage/licitaciones', file.filename].join('/');
-        const docId = await LicitacionDocumentModel.create({
-          id_licitacion:   id,
-          nombre_original: file.originalname,
-          ruta_archivo:    relativePath,
-          mime_type:       MIME_BY_EXT[ext] || 'application/octet-stream',
-          tamano_bytes:    file.size,
-          id_usuario:      req.user.id,
-          nombre_usuario:  req.user.nombre_usuario,
-        });
-        created.push({ id: docId, nombre_original: file.originalname, tamano_bytes: file.size });
-      }
+      // ── Una fila por archivo: todas, o ninguna ──────────────────────────────
+      // Antes era un bucle a secas, y una falla en el archivo 3 de 5 dejaba las
+      // filas 1 y 2 en la base mientras el catch de abajo borraba los cinco
+      // archivos del disco: dos documentos visibles en la pantalla que al
+      // descargarse contestaban «ya no está disponible», para siempre.
+      // Ver src/controllers/licitacion/persistirDocumentos.js.
+      const created = await persistirDocumentos({
+        files,
+        idLicitacion: id,
+        usuario:      req.user,
+        modelo:       LicitacionDocumentModel,
+        // El MIME sale de la extensión YA VERIFICADA contra el número mágico
+        // unas líneas más arriba, nunca del Content-Type que declaró el cliente.
+        mimeDe:       (file) => MIME_BY_EXT[extOf(file.originalname)] || 'application/octet-stream',
+        borrarDeDisco: (ruta) => unlink(path.resolve(process.cwd(), ruta)),
+      });
 
       try {
         await logEvent({
@@ -214,12 +225,14 @@ const LicitacionDocumentController = {
   // downloadDocumento — GET /api/licitaciones/:id/documentos/:docId  (todos)
   // ---------------------------------------------------------------------------
   async downloadDocumento(req, res) {
-    const { id, error: idError } = parseId(req.params.id, 'licitación');
-    const docId = parseInt(req.params.docId, 10);
+    const { id,    error: idError }  = parseId(req.params.id,    'licitación');
+    const { id: docId, error: docError } = parseId(req.params.docId, 'documento');
 
-    if (isNaN(id) || id < 1 || isNaN(docId) || docId < 1) {
-      return res.status(400).json({ success: false, message: 'ID inválido.' });
-    }
+    // Dos identificadores, dos mensajes distintos: antes los dos caian en un
+    // 'ID inválido.' a secas y no habia forma de saber cual de los dos estaba
+    // mal mirando la respuesta.
+    if (idError)  return res.status(idError.status).json(idError.body);
+    if (docError) return res.status(docError.status).json(docError.body);
 
     try {
       const doc = await LicitacionDocumentModel.findById(docId);
@@ -234,12 +247,13 @@ const LicitacionDocumentController = {
         return res.status(404).json({ success: false, message: 'El archivo ya no está disponible en el servidor.' });
       }
 
-      // Sanitize the original filename for the Content-Disposition header
-      // (prevents header injection via a crafted upload filename).
-      const safeName = doc.nombre_original.replace(/[^\w.\- ]/g, '_');
-
+      // El nombre viaja en la cabecera con acentos y todo. Antes se saneaba con
+      // `replace(/[^\w.\- ]/g, '_')`, y `\w` es el alfabeto INGLÉS: cada
+      // «Especificación técnica.pdf» se descargaba como «Especificaci_n
+      // t_cnica.pdf». Ver src/utils/nombreDeDescarga.js — la cabecera lleva las
+      // dos formas, la ASCII y la UTF-8, que es lo que previó la RFC 6266.
       res.setHeader('Content-Type', doc.mime_type);
-      res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+      res.setHeader('Content-Disposition', cabeceraDeDescarga(doc.nombre_original));
       res.setHeader('X-Content-Type-Options', 'nosniff');
 
       const readStream = fs.createReadStream(absolutePath);
@@ -261,13 +275,12 @@ const LicitacionDocumentController = {
   // (responsable, Jefe, SysAdmin)
   // ---------------------------------------------------------------------------
   async deleteDocumento(req, res) {
-    const { id, error: idError } = parseId(req.params.id, 'licitación');
-    const docId    = parseInt(req.params.docId, 10);
+    const { id,    error: idError }  = parseId(req.params.id,    'licitación');
+    const { id: docId, error: docError } = parseId(req.params.docId, 'documento');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (isNaN(id) || id < 1 || isNaN(docId) || docId < 1) {
-      return res.status(400).json({ success: false, message: 'ID inválido.' });
-    }
+    if (idError)  return res.status(idError.status).json(idError.body);
+    if (docError) return res.status(docError.status).json(docError.body);
 
     try {
       const licitacion = await LicitacionModel.findById(id);
