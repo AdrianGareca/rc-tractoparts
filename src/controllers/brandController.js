@@ -2,105 +2,42 @@
 // src/controllers/brandController.js
 // Brand Controller — GET /api/marcas, POST /api/marcas
 //
-// Sprint 3: getBrands, createBrand
+// El catálogo de marcas de repuesto (Caterpillar, Komatsu, Hitachi…), que crece
+// desde el "+" de la columna Marca en cada fila del formulario de cotización.
+//
+// TODO EL COMPORTAMIENTO VIVE EN catalogoSimple.js
+// Este archivo tenía 104 líneas, y origenClienteController.js otras 99 diciendo
+// exactamente lo mismo — su propia cabecera admitía ser un espejo. Los dos se
+// habían separado en tres detalles que nadie notaba, entre ellos registrar la
+// auditoría con una cadena suelta que no estaba en AuditActions: el evento se
+// guardaba y a la vez era imposible de filtrar.
+//
+// Lo que queda acá es lo ÚNICO propio de las marcas: qué modelo consultar, cómo
+// se llama la entidad en la bitácora, y que "marca" es femenino.
 // =============================================================================
 
 'use strict';
 
-const BrandModel   = require('../models/BrandModel');
-// AuditActions y no la cadena a mano: lo que no esta en esa lista se guarda en
-// la bitacora pero no se puede filtrar despues. Ver el comentario en auditLog.js.
-const { logEvent, AuditActions } = require('../utils/auditLog');
+const BrandModel = require('../models/BrandModel');
+const { AuditActions } = require('../utils/auditLog');
+const { crearControladorDeCatalogo } = require('./catalogoSimple');
 
+const catalogo = crearControladorDeCatalogo({
+  modelo:     BrandModel,
+  tabla:      'marcas',
+  // Desde la lista, NUNCA una cadena suelta: lo que no está en AuditActions se
+  // guarda igual pero no aparece en el filtro de la bitácora, y la API contesta
+  // 422 si alguien lo pide. Acá había exactamente ese bug.
+  accion:     AuditActions.CREAR_MARCA,
+  sustantivo: 'marca',
+  genero:     'f',      // "La marca", "el nombre de la marca"
+});
+
+// Se conservan los nombres originales de los métodos porque son los que
+// referencian las rutas y la documentación de Swagger.
 const BrandController = {
-
-  // ---------------------------------------------------------------------------
-  // getBrands — GET /api/marcas
-  // Returns all active brands sorted alphabetically.
-  // Accessible to any authenticated role (Ejecutivo, Administracion, Jefe, SysAdmin).
-  // ---------------------------------------------------------------------------
-  async getBrands(req, res) {
-    try {
-      const brands = await BrandModel.getAll();
-      return res.status(200).json({ success: true, data: brands });
-    } catch (err) {
-      console.error('[BrandController.getBrands]', err);
-      return res.status(500).json({ success: false, message: 'Error retrieving brands.' });
-    }
-  },
-
-  // ---------------------------------------------------------------------------
-  // createBrand — POST /api/marcas
-  // Creates a new spare part brand.
-  //
-  // Business rules:
-  //   • nombre is trimmed of surrounding whitespace.
-  //   • A case-insensitive uniqueness check prevents duplicates
-  //     (e.g. 'caterpillar' and 'Caterpillar' map to the same record).
-  //   • If the name already exists (active or inactive), 409 Conflict is returned
-  //     with the existing record ID so the frontend can auto-select it.
-  // ---------------------------------------------------------------------------
-  async createBrand(req, res) {
-    const { nombre } = req.body;
-    const clientIp = req.ip || req.socket?.remoteAddress || null;
-
-    // ── Input validation ──────────────────────────────────────────────────────
-    if (!nombre || typeof nombre !== 'string' || nombre.trim().length === 0) {
-      return res.status(422).json({
-        success: false,
-        message: 'El nombre de la marca es requerido.',
-      });
-    }
-
-    const trimmed = nombre.trim();
-    if (trimmed.length > 100) {
-      return res.status(422).json({
-        success: false,
-        message: 'El nombre de la marca no puede superar 100 caracteres.',
-      });
-    }
-
-    try {
-      // ── Uniqueness check (case-insensitive) ──────────────────────────────────
-      const existing = await BrandModel.findByNombre(trimmed);
-      if (existing) {
-        return res.status(409).json({
-          success:  false,
-          message:  `La marca "${existing.nombre}" ya existe en el catálogo.`,
-          data:     existing,
-        });
-      }
-
-      // ── Create brand ─────────────────────────────────────────────────────────
-      const brand = await BrandModel.create(trimmed);
-
-      // ── Audit log ────────────────────────────────────────────────────────────
-      await logEvent({
-        id_usuario:    req.user?.id      ?? null,
-        nombre_usuario: req.user?.nombre_usuario ?? null,
-        accion:        AuditActions.CREAR_MARCA,
-        entidad:       'marcas',
-        id_entidad:    brand.id,
-        detalle:       { nombre: brand.nombre },
-        ip_origen:     clientIp,
-        resultado:     'exito',
-      });
-
-      return res.status(201).json({ success: true, data: brand });
-
-    } catch (err) {
-      // Handle MySQL duplicate key error as a safety net (race condition window)
-      if (err.code === 'ER_DUP_ENTRY') {
-        return res.status(409).json({
-          success: false,
-          message: `La marca "${trimmed}" ya existe en el catálogo.`,
-        });
-      }
-
-      console.error('[BrandController.createBrand]', err);
-      return res.status(500).json({ success: false, message: 'Error al crear la marca.' });
-    }
-  },
+  getBrands:   catalogo.listar,
+  createBrand: catalogo.crear,
 };
 
 module.exports = BrandController;

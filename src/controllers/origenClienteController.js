@@ -2,98 +2,40 @@
 // src/controllers/origenClienteController.js
 // Origen Cliente Controller — GET /api/origenes-cliente, POST /api/origenes-cliente
 //
-// Mirrors brandController.js — same validation/uniqueness/audit contract,
-// just for the client acquisition/type catalog instead of part brands.
+// El catálogo de cómo llegó cada cliente a la empresa (Feria comercial,
+// Recomendación, Visita en frío…), que crece desde el "+" del modal de cliente
+// y alimenta el reporte "Clientes por origen".
+//
+// TODO EL COMPORTAMIENTO VIVE EN catalogoSimple.js — ver el comentario de
+// brandController.js. Este archivo y aquél eran gemelos de 99 y 104 líneas; la
+// cabecera de éste lo decía sin rodeos ("Mirrors brandController.js — same
+// validation/uniqueness/audit contract"), y aun así se habían separado en tres
+// detalles que ninguno hacía fallar nada.
+//
+// Lo que queda acá es lo ÚNICO propio de los orígenes: qué modelo consultar,
+// cómo se llama la entidad en la bitácora, y que "origen" es masculino.
 // =============================================================================
 
 'use strict';
 
 const OrigenClienteModel = require('../models/OrigenClienteModel');
-const { logEvent, AuditActions } = require('../utils/auditLog');
+const { AuditActions } = require('../utils/auditLog');
+const { crearControladorDeCatalogo } = require('./catalogoSimple');
 
+const catalogo = crearControladorDeCatalogo({
+  modelo:     OrigenClienteModel,
+  tabla:      'origenes_cliente',
+  accion:     AuditActions.CREAR_ORIGEN_CLIENTE,
+  sustantivo: 'origen',
+  genero:     'm',        // "El origen", "el nombre del origen" — con la contracción
+  plural:     'orígenes', // el plural no es regular: lleva tilde
+});
+
+// Se conservan los nombres originales de los métodos porque son los que
+// referencian las rutas y la documentación de Swagger.
 const OrigenClienteController = {
-
-  // ---------------------------------------------------------------------------
-  // getOrigenes — GET /api/origenes-cliente
-  // Returns all active client origins sorted alphabetically.
-  // Accessible to any authenticated role that manages clients.
-  // ---------------------------------------------------------------------------
-  async getOrigenes(req, res) {
-    try {
-      const origenes = await OrigenClienteModel.getAll();
-      return res.status(200).json({ success: true, data: origenes });
-    } catch (err) {
-      console.error('[OrigenClienteController.getOrigenes]', err);
-      return res.status(500).json({ success: false, message: 'Error retrieving client origins.' });
-    }
-  },
-
-  // ---------------------------------------------------------------------------
-  // createOrigen — POST /api/origenes-cliente
-  // Creates a new client origin/type.
-  //
-  // Business rules (same as BrandController.createBrand):
-  //   • nombre is trimmed of surrounding whitespace.
-  //   • A case-insensitive uniqueness check prevents duplicates.
-  //   • If the name already exists (active or inactive), 409 Conflict is
-  //     returned with the existing record ID so the frontend can auto-select it.
-  // ---------------------------------------------------------------------------
-  async createOrigen(req, res) {
-    const { nombre } = req.body;
-    const clientIp = req.ip || req.socket?.remoteAddress || null;
-
-    if (!nombre || typeof nombre !== 'string' || nombre.trim().length === 0) {
-      return res.status(422).json({
-        success: false,
-        message: 'El nombre del origen es requerido.',
-      });
-    }
-
-    const trimmed = nombre.trim();
-    if (trimmed.length > 100) {
-      return res.status(422).json({
-        success: false,
-        message: 'El nombre del origen no puede superar 100 caracteres.',
-      });
-    }
-
-    try {
-      const existing = await OrigenClienteModel.findByNombre(trimmed);
-      if (existing) {
-        return res.status(409).json({
-          success:  false,
-          message:  `El origen "${existing.nombre}" ya existe en el catálogo.`,
-          data:     existing,
-        });
-      }
-
-      const origen = await OrigenClienteModel.create(trimmed);
-
-      await logEvent({
-        id_usuario:    req.user?.id      ?? null,
-        nombre_usuario: req.user?.nombre_usuario ?? null,
-        accion:        AuditActions.CREAR_ORIGEN_CLIENTE,
-        entidad:       'origenes_cliente',
-        id_entidad:    origen.id,
-        detalle:       { nombre: origen.nombre },
-        ip_origen:     clientIp,
-        resultado:     'exito',
-      });
-
-      return res.status(201).json({ success: true, data: origen });
-
-    } catch (err) {
-      if (err.code === 'ER_DUP_ENTRY') {
-        return res.status(409).json({
-          success: false,
-          message: `El origen "${trimmed}" ya existe en el catálogo.`,
-        });
-      }
-
-      console.error('[OrigenClienteController.createOrigen]', err);
-      return res.status(500).json({ success: false, message: 'Error al crear el origen de cliente.' });
-    }
-  },
+  getOrigenes:  catalogo.listar,
+  createOrigen: catalogo.crear,
 };
 
 module.exports = OrigenClienteController;
