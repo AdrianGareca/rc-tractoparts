@@ -105,7 +105,15 @@ function dibujarLineaSon(doc, quotation, y, displayTotal) {
       MARGIN + 30, y + (SON_H - 7.5) / 2,
       { width: CW - 36, lineBreak: false });
 
-  return y;
+  // Se DEVUELVE la y ya avanzada: el alto de la franja SON mas el aire que la
+  // separa del bloque de abajo.
+  //
+  // Esta linea se perdio al partir la funcion original y el efecto fue grave:
+  // sin ella las dos columnas arrancaban en la MISMA y que la franja SON, y el
+  // importe en letras quedaba impreso ENCIMA de "CONDICIONES DE LA OFERTA" —
+  // los dos textos superpuestos e ilegibles, en el PDF que se le manda al
+  // cliente. Lo vigila tests/unit/pdfBloqueDeCierre.test.js.
+  return y + SON_H + 8;
 }
 
 /**
@@ -325,4 +333,14 @@ function drawTotalsAndConditions(doc, quotation, startY) {
   return Math.max(ly, ry + 12) + 8;
 }
 
-module.exports = { drawTotalsAndConditions };
+// Las tres piezas internas se exportan ADEMAS de la principal para poder medir
+// la geometria por separado: que cada bloque devuelva una posicion mas abajo de
+// la que recibio es justo lo que fallo cuando esta funcion se partio, y desde
+// afuera solo se ve el PDF terminado.
+module.exports = {
+  drawTotalsAndConditions,
+  calcularImportes,
+  dibujarLineaSon,
+  dibujarCondicionesYBanco,
+  dibujarCajaDeTotales,
+};
