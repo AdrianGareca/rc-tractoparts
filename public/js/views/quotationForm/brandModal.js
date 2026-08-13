@@ -35,23 +35,18 @@ export function buildBrandOptions(brands, selectedId = null) {
     ).join('');
 }
 
-/**
- * Abre el sub-modal de registro de marca.
- *
- * @param {number} rowIndex — fila que disparó el alta (recibe la marca nueva)
- * @param {Object} deps
- *   container     {HTMLElement} — raíz del formulario (para buscar los selectores)
- *   brands        {Array}       — caché compartido de marcas (se muta in-place)
- *   onFieldChange {Function}    — (idx, field, value) del Mediator
- */
-export function openBrandModal(rowIndex, { container, brands, onFieldChange } = {}) {
-  const overlay = document.createElement('div');
-  overlay.className = 'sub-modal-overlay';
-  overlay.setAttribute('role', 'dialog');
-  overlay.setAttribute('aria-modal', 'true');
-  overlay.setAttribute('aria-labelledby', 'bm-title');
+// ---------------------------------------------------------------------------
+// openBrandModal tenía 99 líneas de código: el HTML, el refresco de TODOS los
+// selectores de marca de la grilla, y la rama de «esa marca ya existe». Se
+// partió por esas tres costuras — la misma repartición que clientModal.js y
+// licitacionModal.js, a propósito: son tres modales con la misma forma, y que se
+// lean igual le quita trabajo a quien toque el tercero después de haber
+// entendido el primero.
+// ---------------------------------------------------------------------------
 
-  overlay.innerHTML = /* html */ `
+/** El HTML del modal. Es fijo: no hay modo editar ni datos que precargar. */
+function construirModalMarca() {
+  return /* html */ `
     <div class="sub-modal">
       <div class="sub-modal-header">
         <h4 id="bm-title">Registrar nueva marca</h4>
@@ -75,91 +70,150 @@ export function openBrandModal(rowIndex, { container, brands, onFieldChange } = 
       </div>
     </div>
   `;
+}
 
+/**
+ * Deja la marca recién creada elegida en la fila que la pidió, y disponible en
+ * TODAS las demás.
+ *
+ * POR QUÉ SE RECORREN TODOS LOS SELECTORES Y NO SÓLO EL DE LA FILA
+ * El catálogo de marcas es uno solo para la grilla entera. Si la opción se
+ * agregara nada más que en la fila que la creó, las otras diecinueve seguirían
+ * sin verla y habría que crearla de nuevo en cada una — y el servidor
+ * contestaría 409 cada vez.
+ *
+ * Al reconstruir cada <select> se pierde su valor, así que se guarda antes y se
+ * restaura después. La única que cambia de valor es la fila que pidió la marca.
+ */
+function propagarMarcaNueva({ container, brands, brand, rowIndex, onFieldChange }) {
+  upsertBrand(brands, brand);
+
+  container.querySelectorAll('.item-marca').forEach((sel) => {
+    const valorPrevio = sel.value;
+    sel.innerHTML = buildBrandOptions(brands, brand.id);
+
+    const idx = parseInt(sel.dataset.idx, 10);
+    if (idx === rowIndex) {
+      sel.value = String(brand.id);
+      onFieldChange?.(rowIndex, 'marca_id', brand.id);
+    } else {
+      sel.value = valorPrevio;
+    }
+  });
+}
+
+/**
+ * La marca ya existía (409).
+ *
+ * No es un error para quien la escribió: quería esa marca y es exactamente la
+ * que hay. Se la elige y se avisa, en lugar de dejarlo con un rechazo y sin
+ * saber qué hacer — que termina con alguien registrando «HITACHI 2».
+ *
+ * @returns {boolean} true si se resolvió acá; false si hay que mostrar el error
+ */
+function adoptarMarcaExistente({ err, container, brands, rowIndex, onFieldChange }) {
+  if (!(err.status === 409 && err.data?.data)) return false;
+
+  const existente = err.data.data;
+  upsertBrand(brands, existente);
+
+  // Sólo la fila que la pidió: las demás se enteran la próxima vez que se
+  // redibujen, y forzar el redibujado entero por una marca que ya existía haría
+  // perder lo que haya a medio escribir en las otras filas.
+  const destino = container.querySelector(`.item-marca[data-idx="${rowIndex}"]`);
+  if (destino) {
+    if (!destino.querySelector(`option[value="${existente.id}"]`)) {
+      const opt = document.createElement('option');
+      opt.value       = existente.id;
+      opt.textContent = existente.nombre;
+      destino.appendChild(opt);
+    }
+    destino.value = String(existente.id);
+    onFieldChange?.(rowIndex, 'marca_id', existente.id);
+  }
+
+  showToast(`Marca "${existente.nombre}" ya existe. Seleccionada automáticamente.`, 'info');
+  return true;
+}
+
+/**
+ * Abre el sub-modal de registro de marca.
+ *
+ * @param {number} rowIndex — fila que disparó el alta (recibe la marca nueva)
+ * @param {Object} deps
+ *   container     {HTMLElement} — raíz del formulario (para buscar los selectores)
+ *   brands        {Array}       — caché compartido de marcas (se muta in-place)
+ *   onFieldChange {Function}    — (idx, field, value) del Mediator
+ */
+export function openBrandModal(rowIndex, { container, brands, onFieldChange } = {}) {
+  const overlay = document.createElement('div');
+  overlay.className = 'sub-modal-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', 'bm-title');
+  overlay.innerHTML = construirModalMarca();
+
+  // Se cuelga del cuerpo del modal de cotización si existe, y del body si no:
+  // este modal se abre DESDE otro modal, y colgarlo siempre del body lo dejaría
+  // por debajo del que lo abrió.
   container.closest('.modal-body, [id="modal-body"]')?.appendChild(overlay)
     ?? document.body.appendChild(overlay);
 
+  const $ = (sel) => overlay.querySelector(sel);
   const close = () => overlay.remove();
-  overlay.querySelector('#bm-close')?.addEventListener('click', close);
-  overlay.querySelector('#bm-cancel')?.addEventListener('click', close);
+
+  $('#bm-close')?.addEventListener('click', close);
+  $('#bm-cancel')?.addEventListener('click', close);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
-  overlay.querySelector('#bm-nombre')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); overlay.querySelector('#bm-save')?.click(); }
+  // Enter guarda: es un formulario de un solo campo, y obligar a ir al botón con
+  // el mouse rompe el ritmo de quien está cargando veinte ítems seguidos.
+  $('#bm-nombre')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); $('#bm-save')?.click(); }
   });
 
-  overlay.querySelector('#bm-save')?.addEventListener('click', async () => {
-    const nombre  = overlay.querySelector('#bm-nombre')?.value.trim();
-    const errEl   = overlay.querySelector('#bm-err');
-    const alertEl = overlay.querySelector('#bm-alert');
-    const saveBtn = overlay.querySelector('#bm-save');
-    const lbl     = overlay.querySelector('#bm-label');
-    const spin    = overlay.querySelector('#bm-spinner');
+  $('#bm-save')?.addEventListener('click', async () => {
+    const nombre  = $('#bm-nombre')?.value.trim();
+    const errEl   = $('#bm-err');
+    const alertEl = $('#bm-alert');
+    const boton   = $('#bm-save');
+    const rotulo  = $('#bm-label');
+    const spinner = $('#bm-spinner');
 
     if (!nombre) { errEl.textContent = 'El nombre es requerido.'; return; }
+
     errEl.textContent  = '';
     alertEl.className  = 'form-alert';
-    saveBtn.disabled   = true;
-    lbl.textContent    = 'Guardando...';
-    spin.classList.remove('hidden');
+    boton.disabled     = true;
+    rotulo.textContent = 'Guardando...';
+    spinner.classList.remove('hidden');
 
     try {
       const resp = await api.post('/api/marcas', { nombre });
-      const brand = resp.data;
-
-      // Update global brand cache
-      upsertBrand(brands, brand);
-
-      // Refresh ALL selectors across all rows with the new option
-      container.querySelectorAll('.item-marca').forEach(sel => {
-        const currentVal = sel.value;
-        sel.innerHTML = buildBrandOptions(brands, brand.id);
-        // Restore previous selection unless this is the target row
-        const idx = parseInt(sel.dataset.idx, 10);
-        if (idx === rowIndex) {
-          sel.value = String(brand.id);
-          onFieldChange?.(rowIndex, 'marca_id', brand.id);
-        } else {
-          sel.value = currentVal;
-        }
-      });
-
-      showToast(`Marca "${brand.nombre}" registrada y seleccionada.`, 'success');
+      propagarMarcaNueva({ container, brands, brand: resp.data, rowIndex, onFieldChange });
+      showToast(`Marca "${resp.data.nombre}" registrada y seleccionada.`, 'success');
       close();
     } catch (err) {
-      // If 409 — brand already exists: auto-select it
-      if (err.status === 409 && err.data?.data) {
-        const existing = err.data.data;
-        upsertBrand(brands, existing);
-
-        // Auto-select in target row
-        const targetSel = container.querySelector(`.item-marca[data-idx="${rowIndex}"]`);
-        if (targetSel) {
-          if (!targetSel.querySelector(`option[value="${existing.id}"]`)) {
-            const opt = document.createElement('option');
-            opt.value = existing.id;
-            opt.textContent = existing.nombre;
-            targetSel.appendChild(opt);
-          }
-          targetSel.value = String(existing.id);
-          onFieldChange?.(rowIndex, 'marca_id', existing.id);
-        }
-        showToast(`Marca "${existing.nombre}" ya existe. Seleccionada automáticamente.`, 'info');
+      if (adoptarMarcaExistente({ err, container, brands, rowIndex, onFieldChange })) {
         close();
         return;
       }
 
-      const msg = err.data?.message || err.message || 'Error al crear la marca.';
-      alertEl.textContent = msg;
+      alertEl.textContent = err.data?.message || err.message || 'Error al crear la marca.';
       alertEl.className   = 'form-alert show alert-error';
-      saveBtn.disabled    = false;
-      lbl.textContent     = 'Guardar Marca';
-      spin.classList.add('hidden');
+
+      // El botón se libera SÓLO en el camino de error: en el éxito el modal se
+      // cierra y el botón se va con él, y restaurarlo antes de cerrar reabre por
+      // un instante la ventana del doble clic.
+      boton.disabled     = false;
+      rotulo.textContent = 'Guardar Marca';
+      spinner.classList.add('hidden');
     }
   });
 
-  // Auto-focus brand name input
-  setTimeout(() => overlay.querySelector('#bm-nombre')?.focus(), 50);
+  // El foco al campo. El setTimeout espera a que el navegador termine de
+  // insertar el overlay: enfocar un nodo que todavía no se pintó no hace nada.
+  setTimeout(() => $('#bm-nombre')?.focus(), 50);
 
   return overlay;
 }

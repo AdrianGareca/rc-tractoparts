@@ -18,25 +18,24 @@ const { drawLogoWatermark } = require('./watermark');
 const { drawFooter } = require('./footer');
 
 // ---------------------------------------------------------------------------
-// drawTotalsAndConditions
-// Full-width "SON:" line (amount-in-words) followed by a two-column block:
-//   Left  (~55 % of CW): CONDICIONES DE LA OFERTA + DATOS BANCARIOS
-//   Right (~45 % of CW): Subtotal row (if items exist) + navy TOTAL box
+// EL BLOQUE DE CIERRE DE LA PROFORMA
+//
+// Era UNA funcion de 184 lineas. Se partio por sus costuras reales, que son las
+// que ya estaban marcadas con comentarios adentro: los importes, la linea SON,
+// la columna izquierda y la columna derecha.
+//
+// Las dos columnas arrancan en la MISMA `y` y bajan por su cuenta —una devuelve
+// `ly` y la otra `ry`—, y el bloque termina donde termina la mas larga. Por eso
+// cada una devuelve su altura final en vez de recibir una referencia: son
+// independientes, y tratarlas como tales es lo que permite leerlas por separado.
 // ---------------------------------------------------------------------------
-function drawTotalsAndConditions(doc, quotation, startY) {
-  // Page-break guard: the SON line + conditions/bank/total block needs
-  // ~150 pt. If the items table ended too low, PDFKit's auto page-break
-  // would fire mid-block on a doc.text() call — scattering labels onto a
-  // phantom page while the rects/lines stay behind. Start the whole block
-  // on a fresh page instead.
-  if (startY > PH - 240) {
-    doc.addPage();
-    drawLogoWatermark(doc);
-    drawFooter(doc, quotation);
-    startY = MARGIN;
-  }
 
-  const detalles = Array.isArray(quotation.detalles) ? quotation.detalles : [];
+/**
+ * Los tres numeros que se imprimen: subtotal, descuento y total.
+ *
+ * @returns {{ computedTotal: number, discount: number, hasDiscount: boolean, displayTotal: number }}
+ */
+function calcularImportes(quotation, detalles) {
 
   // Subtotal = sum of line-item subtotals. Prices are already tax-inclusive,
   // so there is NO added IVA row: the subtotal equals the total unless a manual
@@ -65,7 +64,17 @@ function drawTotalsAndConditions(doc, quotation, startY) {
   const currencyLabel = quotation.moneda === 'BOB' ? 'BOLIVIANOS' : 'DÓLARES AMERICANOS';
   const totalWords    = numberToWordsES(displayTotal);
 
-  let y = startY + 6;
+  return { computedTotal, discount, hasDiscount, displayTotal };
+}
+
+/**
+ * La linea SON: el importe en letras, a todo el ancho.
+ * Es el renglon con peso legal de la proforma boliviana.
+ * @returns {number} la `y` donde sigue el bloque de abajo
+ */
+function dibujarLineaSon(doc, quotation, y, displayTotal) {
+  const currencyLabel = quotation.moneda === 'BOB' ? 'BOLIVIANOS' : 'DOLARES AMERICANOS';
+  const totalWords    = numberToWordsES(displayTotal);
 
   // ── SON: line ─────────────────────────────────────────────────────────────
   const SON_H = 20;
@@ -96,14 +105,14 @@ function drawTotalsAndConditions(doc, quotation, startY) {
       MARGIN + 30, y + (SON_H - 7.5) / 2,
       { width: CW - 36, lineBreak: false });
 
-  y += SON_H + 8;
+  return y;
+}
 
-  // ── Two-column block ──────────────────────────────────────────────────────
-  const LEFT_W  = CW * 0.55;       // ≈ 287.8 pt
-  const RIGHT_W = CW - LEFT_W - 6; // ≈ 229.5 pt
-  const RIGHT_X = MARGIN + LEFT_W + 6;
-
-  // LEFT COLUMN ── CONDICIONES DE LA OFERTA ──────────────────────────────────
+/**
+ * Columna izquierda: condiciones de la oferta y datos bancarios.
+ * @returns {number} la `y` a la que llego esta columna
+ */
+function dibujarCondicionesYBanco(doc, quotation, y, LEFT_W) {
   let ly = y;
 
   doc
@@ -193,7 +202,16 @@ function drawTotalsAndConditions(doc, quotation, startY) {
     ly += 12;
   });
 
-  // RIGHT COLUMN ── Totals ───────────────────────────────────────────────────
+  return ly;
+}
+
+/**
+ * Columna derecha: subtotal, descuento y la caja del TOTAL.
+ * @returns {number} la `y` a la que llego esta columna
+ */
+function dibujarCajaDeTotales(doc, quotation, y, geo, importes, detalles) {
+  const { RIGHT_X, RIGHT_W } = geo;
+  const { computedTotal, discount, hasDiscount, displayTotal } = importes;
   let ry = y;
 
   // Subtotal row (only if there are line items)
@@ -265,6 +283,45 @@ function drawTotalsAndConditions(doc, quotation, startY) {
       RIGHT_X, ry,
       { width: RIGHT_W, align: 'right', lineBreak: false });
 
+  return ry;
+}
+
+// ---------------------------------------------------------------------------
+// drawTotalsAndConditions
+// Linea SON a todo el ancho, y debajo un bloque de dos columnas:
+//   Izquierda (~55 % de CW): CONDICIONES DE LA OFERTA + DATOS BANCARIOS
+//   Derecha   (~45 % de CW): subtotal, descuento y la caja del TOTAL
+// ---------------------------------------------------------------------------
+function drawTotalsAndConditions(doc, quotation, startY) {
+  // Page-break guard: the SON line + conditions/bank/total block needs
+  // ~150 pt. If the items table ended too low, PDFKit's auto page-break
+  // would fire mid-block on a doc.text() call — scattering labels onto a
+  // phantom page while the rects/lines stay behind. Start the whole block
+  // on a fresh page instead.
+  if (startY > PH - 240) {
+    doc.addPage();
+    drawLogoWatermark(doc);
+    drawFooter(doc, quotation);
+    startY = MARGIN;
+  }
+
+  const detalles = Array.isArray(quotation.detalles) ? quotation.detalles : [];
+  const importes = calcularImportes(quotation, detalles);
+
+  let y = startY + 6;
+  y = dibujarLineaSon(doc, quotation, y, importes.displayTotal);
+
+  // La geometria de las dos columnas. Se calcula aca y no adentro de cada una
+  // porque las dos tienen que coincidir: el ancho de la izquierda define donde
+  // empieza la derecha.
+  const LEFT_W  = CW * 0.55;       // ~ 287.8 pt
+  const RIGHT_W = CW - LEFT_W - 6; // ~ 229.5 pt
+  const RIGHT_X = MARGIN + LEFT_W + 6;
+
+  const ly = dibujarCondicionesYBanco(doc, quotation, y, LEFT_W);
+  const ry = dibujarCajaDeTotales(doc, quotation, y, { RIGHT_X, RIGHT_W }, importes, detalles);
+
+  // El bloque termina donde termina la columna mas larga.
   return Math.max(ly, ry + 12) + 8;
 }
 
