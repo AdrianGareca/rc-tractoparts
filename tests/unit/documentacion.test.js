@@ -36,6 +36,34 @@ const documentos = fs.readdirSync(DOCS)
 const TODO = documentos.map((d) => d.texto).join('\n');
 
 // ---------------------------------------------------------------------------
+// Los dos guardias de CSS de más abajo miran SOLO los documentos que hablan de
+// la interfaz.
+//
+// POR QUÉ HAY QUE ACOTARLOS
+// Detectan un token por `--algo` y una clase por `.algo`. En un documento de
+// diseño eso es exactamente lo que se quiere. En uno de operaciones del
+// servidor, esas dos formas significan otra cosa por completo:
+//
+//     --verify   --dry-run   --aplicar        banderas de línea de comandos
+//     .sql.gz    .parcial    .conf            extensiones de archivo
+//
+// Cuando se agregó respaldos.md, el guardia acusó cuatro banderas de mysqldump
+// y de los scripts por ser «tokens CSS inexistentes». No estaba encontrando un
+// problema: estaba leyendo un manual de servidor como si fuera una hoja de
+// estilos.
+//
+// Se listan por nombre y no por una regla automática a propósito: agregar un
+// documento a esta lista obliga a mirarlo y confirmar que de verdad no habla de
+// la interfaz, en lugar de que se excluya solo por casualidad.
+// ---------------------------------------------------------------------------
+const SIN_INTERFAZ = new Set(['respaldos.md']);
+
+const TEXTO_DE_INTERFAZ = documentos
+  .filter((d) => !SIN_INTERFAZ.has(d.nombre))
+  .map((d) => d.texto)
+  .join('\n');
+
+// ---------------------------------------------------------------------------
 describe('el índice nombra todos los documentos', () => {
   const indice = documentos.find((d) => d.nombre === 'README.md');
 
@@ -106,7 +134,7 @@ describe('todo lo que la documentación cita existe', () => {
     ]);
 
     const citados = new Set(
-      [...TODO.matchAll(/`(--[a-zA-Z0-9-]+)`/g)]
+      [...TEXTO_DE_INTERFAZ.matchAll(/`(--[a-zA-Z0-9-]+)`/g)]
         .map((m) => m[1])
         .filter((t) => !EXCEPCIONES.has(t))
     );
@@ -130,7 +158,7 @@ describe('todo lo que la documentación cita existe', () => {
     const EXTENSIONES = new Set(['md', 'js', 'css', 'sql', 'html', 'json', 'xlsx', 'pdf', 'env']);
 
     const citadas = new Set(
-      [...TODO.matchAll(/`\.([a-zA-Z][a-zA-Z0-9-]*)`/g)]
+      [...TEXTO_DE_INTERFAZ.matchAll(/`\.([a-zA-Z][a-zA-Z0-9-]*)`/g)]
         .map((m) => m[1])
         .filter((c) => !EXTENSIONES.has(c))
     );

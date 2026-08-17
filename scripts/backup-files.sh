@@ -36,6 +36,29 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [archivos] $*" | tee -a "$LOG_FILE"
 mkdir -p "$ESPEJO_DIR"
 cd "$PROJECT_DIR" || { log "ERROR: no existe $PROJECT_DIR"; exit 1; }
 
+# ── Se lee el .env, igual que backup-db.sh ───────────────────────────────────
+# ESTO FALTABA, Y EL EFECTO ERA GRAVE.
+#
+# RCLONE_REMOTE se define en el .env del proyecto. backup-db.sh lo lee; este
+# script no lo hacia, asi que la variable llegaba SIEMPRE vacia y el bloque de
+# subida de mas abajo se salteaba entero.
+#
+# Consecuencia: la base de datos viajaba a Drive todas las noches y los archivos
+# —los PDF de proforma y los documentos de licitacion, casi 500 MB— se quedaban
+# solo en el disco del servidor. Justo la mitad que NO se puede regenerar: una
+# base se vuelve a volcar, un PDF que subio alguien no vuelve.
+#
+# Y era invisible: el `if` de abajo no tenia `else`, asi que no se registraba
+# ningun aviso. El log decia "Respaldo de archivos completo" y era cierto — el
+# espejo local estaba hecho— pero nada indicaba que no habia salido del servidor.
+#
+# El `|| true` deja que el script siga si no hay .env: el espejo local es util
+# igual, y frenar por no poder subir seria peor que subir a medias.
+if [ -f .env ]; then
+  set -a; source .env; set +a
+  RCLONE_REMOTE="${RCLONE_REMOTE:-}"
+fi
+
 docker ps --format '{{.Names}}' | grep -qx "$APP_CONTAINER" || {
   log "ERROR: el contenedor '$APP_CONTAINER' no está corriendo"; exit 1;
 }
@@ -69,6 +92,18 @@ if [ -n "$RCLONE_REMOTE" ] && command -v rclone >/dev/null 2>&1; then
   else
     log "AVISO: falló la sincronización remota; el espejo local quedó actualizado."
   fi
+# ── Los dos silencios que este script tenia ──────────────────────────────────
+# Antes este `if` no tenia ninguna rama alternativa: si no habia destino remoto,
+# o si rclone no estaba instalado, el script no decia NADA y terminaba con
+# "Respaldo de archivos completo" — que era cierto a medias y sonaba a que todo
+# estaba cubierto.
+#
+# El respaldo de la base ya avisaba en ese caso; este no. Mismo problema, y era
+# el unico de los dos que uno no podia notar leyendo el log.
+elif [ -z "$RCLONE_REMOTE" ]; then
+  log "AVISO: sin RCLONE_REMOTE — los archivos quedan SOLO en este disco."
+else
+  log "AVISO: RCLONE_REMOTE está configurado pero rclone no está instalado."
 fi
 
 log "Respaldo de archivos completo."
