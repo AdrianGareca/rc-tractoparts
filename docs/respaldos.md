@@ -3,9 +3,39 @@
 Cómo se respalda RC Tractoparts, cómo se restaura, y cómo se deja funcionando
 solo. Está escrito para seguirlo de arriba abajo pegando los comandos.
 
-**Estado al 13 de agosto de 2026:** los scripts existen y funcionan, pero la
-automatización nunca se instaló. El último respaldo era del 30 de julio. Este
-documento cierra eso.
+## Estado
+
+**Al 17 de agosto de 2026 el sistema está completo y funcionando:**
+
+| | |
+|---|---|
+| Respaldo de la base | diario, 03:00 |
+| Respaldo de archivos | diario, 03:30 |
+| Verificación de restauración | domingos, 04:00 |
+| Copia fuera del servidor | Google Drive, cifrada |
+| Credenciales | propias, permiso `drive.file` |
+
+La primera verificación automática corrió el domingo 16 de agosto: restauró el
+respaldo en una base temporal y confirmó las 20 tablas. Eso es lo que separa
+«tener archivos» de «poder recuperar».
+
+### Lo que se encontró al ponerlo en marcha
+
+Dos cosas que el procedimiento original daba por buenas y no lo eran. Quedan
+anotadas porque las dos habrían fallado en silencio:
+
+**1. `backup-files.sh` no leía el `.env`.** `backup-db.sh` sí, así que la base
+viajaba a Drive todas las noches y los archivos —casi 500 MB de PDF de proforma
+y documentos de licitación— se quedaban solo en el disco del servidor. Justo la
+mitad que NO se puede regenerar. Y era invisible: el bloque de subida se salteaba
+sin registrar ningún aviso, y el log terminaba diciendo «Respaldo de archivos
+completo», que era cierto a medias porque el espejo local sí estaba hecho.
+Corregido: los dos scripts leen el `.env` y los dos avisan si no hay destino.
+
+**2. El `client_id` compartido de rclone se retira durante 2026.** Lo avisa
+rclone 1.75 al configurar; la versión 1.60 que trae Ubuntu no dice nada. Usarlo
+habría hecho que los respaldos dejaran de subir en algún momento de este año,
+sin aviso. Por eso la Parte 4 crea credenciales propias.
 
 ---
 
@@ -167,115 +197,80 @@ automática cuenta como actividad, pero no está de más abrirla de vez en cuand
 
 ---
 
-## Parte 3 — Instalar rclone en el servidor
+## Parte 3 — Crear credenciales propias de Google
 
-`rclone` es la herramienta que copia a Google Drive.
+**No uses el `client_id` compartido de rclone.** Se retira durante 2026: los
+respaldos dejarían de subir en algún momento del año, sin avisar. La versión de
+rclone que trae Ubuntu (1.60) ni siquiera lo menciona.
 
-```bash
-apt update && apt install -y rclone
-rclone version
-```
+Todo esto en el navegador, con la sesión de la cuenta de respaldos.
 
-**Qué hace:** instala rclone desde los repositorios de Ubuntu. La versión de
-Ubuntu 24.04 alcanza de sobra para lo que necesitamos.
+1. Entrá a **https://console.cloud.google.com/** y aceptá los términos.
+2. Creá un proyecto: `Respaldos RC Tractoparts`.
+3. **Habilitá la API.** ☰ → *APIs & Services* → *Library* → buscá
+   `Google Drive API` → **Enable**. Sin esto rclone se autentica pero no puede
+   escribir, y el error no menciona la API por ningún lado.
+4. **Configurá el consentimiento.** ☰ → *Google Auth Platform* → **Get started**.
+   - *App name*: `Respaldos RC Tractoparts`
+   - *User support email* y *contacto*: la cuenta de respaldos
+   - *Audience*: **External**
+5. **Publicalo.** En *Audience*, botón **Publish app**. Tiene que quedar en
+   **In production**.
 
-**Cómo sabés que salió bien:** `rclone version` imprime algo como `rclone v1.60.1`.
+   Si queda en *Testing*, Google caduca el permiso **cada 7 días** y los
+   respaldos dejan de subir todas las semanas.
+6. **Creá el cliente.** *Clients* → **Create client** → *Application type*:
+   **Desktop app** → nombre `rclone` → **Create**.
+
+Copiá el **Client ID** y el **Client secret** al gestor de contraseñas. El
+secret no se puede volver a ver después de cerrar esa ventana.
 
 ---
 
-## Parte 4 — Autorizar Google Drive
+## Parte 4 — Configurar rclone
 
-Acá está la única parte incómoda. Google pide autorizar desde un navegador, y el
-servidor no tiene ninguno. Se resuelve en dos tiempos: se obtiene el permiso en
-tu Windows y se le pasa al servidor.
+**Se hace entero en una máquina con navegador (Windows), y después se copia el
+archivo al servidor.** Es más simple que autorizar en el servidor, y evita tener
+que mover el token a mano — que es donde es fácil que se filtre.
 
-### 4.1 — En tu Windows
-
-Instalá rclone:
+Instalá rclone en Windows y **reiniciá la terminal**:
 
 ```powershell
 winget install Rclone.Rclone
 ```
 
-Cerrá y volvé a abrir PowerShell para que tome el comando nuevo. Después:
+Después:
 
 ```powershell
-rclone authorize "drive"
-```
-
-**Qué hace:** abre tu navegador. Iniciá sesión con
-`backupsrctractoparts@gmail.com` —cuidado de no usar tu cuenta personal— y
-aceptá los permisos.
-
-Cuando termine, PowerShell imprime un bloque largo entre llaves, algo así:
-
-```
-{"access_token":"ya29.a0Af...","token_type":"Bearer","refresh_token":"1//0e...","expiry":"2026-08-13T20:15:00.000000000-04:00"}
-```
-
-**Copiá ese bloque entero**, desde la primera `{` hasta la última `}`. Es lo que
-le vas a pegar al servidor en el paso siguiente.
-
-> Ese texto es la llave de la cuenta. No lo pegues en un chat, un correo ni un
-> documento compartido. Va del portapapeles a la terminal del servidor y nada
-> más.
-
-### 4.2 — En el servidor
-
-```bash
 rclone config
 ```
 
-Es un cuestionario. Estas son las respuestas, en orden:
+### El remoto de Drive
 
 | Pregunta | Respuesta |
 |---|---|
-| `e/n/d/r/c/s/q>` | `n` (New remote) |
+| `n/s/q>` | `n` |
 | `name>` | `gdrive` |
 | `Storage>` | `drive` |
-| `client_id>` | *(Enter, vacío)* |
-| `client_secret>` | *(Enter, vacío)* |
-| `scope>` | `1` (Full access) |
-| `service_account_file>` | *(Enter, vacío)* |
+| `client_id>` | el Client ID de la Parte 3 |
+| `client_secret>` | el Client secret |
+| `scope>` | `3` |
+| `service_account_file>` | *(Enter)* |
 | `Edit advanced config?` | `n` |
-| `Use web browser to automatically authenticate?` | **`n`** ← importante |
-| `config_token>` | **pegá acá el bloque `{...}` del paso 4.1** |
+| `Use auto config?` | `y` |
 | `Configure this as a Shared Drive?` | `n` |
-| `y/e/d>` | `y` (Yes this is OK) |
-| `e/n/d/r/c/s/q>` | `q` (Quit) |
+| `y/e/d>` | `y` |
 
-**Sobre el `scope 1` (acceso completo):** normalmente conviene el permiso mínimo,
-pero acá la cuenta es exclusiva para respaldos y no guarda nada más. El acceso
-completo sobre una cuenta dedicada es un riesgo acotado, y simplifica bastante
-la configuración.
+**Por qué `scope` 3 (`drive.file`):** rclone solo ve y toca los archivos que él
+mismo creó. Es exactamente lo que hace un respaldo, acota el daño si la cuenta
+se compromete por otro lado, y Google no lo considera un permiso «sensible» —
+así que publicar la app no requiere ningún trámite de verificación.
 
-**Probá que funciona:**
+Se abre el navegador solo. Iniciá sesión con la cuenta de respaldos y aceptá.
 
-```bash
-rclone lsd gdrive:
-```
+### El cifrado, encadenado sobre el anterior
 
-Si no da error, está conectado. (Puede no listar nada: la cuenta está vacía.)
-
----
-
-## Parte 5 — El cifrado
-
-Adentro de esos respaldos está la base completa: todos tus clientes, sus NIT, sus
-teléfonos, cada cotización con sus precios. Si esa cuenta de Gmail se ve
-comprometida, se lleva todo eso en texto plano.
-
-`rclone crypt` cifra los archivos **antes** de subirlos. Google guarda bloques
-ilegibles.
-
-**Qué protege y qué no, dicho claro:** protege contra que alguien entre a la
-cuenta de Google o contra que alguien en Google mire. **No** protege contra que
-alguien entre al servidor — porque el servidor necesita poder escribir, y por lo
-tanto tiene la llave.
-
-```bash
-rclone config
-```
+**Sin salir del menú**, en el mismo `rclone config`:
 
 | Pregunta | Respuesta |
 |---|---|
@@ -283,86 +278,110 @@ rclone config
 | `name>` | `respaldos` |
 | `Storage>` | `crypt` |
 | `remote>` | `gdrive:rc-tractoparts` |
-| `filename_encryption>` | `1` (standard) |
-| `directory_name_encryption>` | `1` (true) |
-| `Password or pass phrase` → `y/g/n>` | `g` (generar) |
-| `Password strength (bits)>` | `128` |
-| `Use this password?` | `y` |
-| `Password or pass phrase for salt` → `y/g/n>` | `g` |
-| `Password strength (bits)>` | `128` |
-| `Use this password?` | `y` |
+| `filename_encryption>` | **Enter** (default `standard`) |
+| `directory_name_encryption>` | **Enter** (default `true`) |
+| `y/g>` | **`y`** — escribí la tuya |
+| `Enter the password:` | pegala *(no se ve nada, es normal)* |
+| `Confirm the password:` | otra vez |
+| `y/g/n>` (salt) | **`y`** |
+| `Enter the password:` | la segunda, distinta |
+| `Confirm the password:` | otra vez |
 | `Edit advanced config?` | `n` |
 | `y/e/d>` | `y` |
 | `e/n/d/r/c/s/q>` | `q` |
 
+**Elegí `y` y no `g`.** Con `y` rclone pide la contraseña en modo oculto y no
+aparece en pantalla; con `g` la imprime, y una contraseña impresa en una terminal
+termina en capturas, en registros y en conversaciones. Generá las dos en el
+gestor de contraseñas antes de empezar y pegalas a ciegas.
+
+En `filename_encryption` apretá **Enter** en lugar de escribir el número: un
+valor mal tipeado se guarda como texto literal y el remoto falla al usarlo.
+
 ### Esto es lo más importante de todo el documento
 
-rclone te muestra las **dos contraseñas generadas una sola vez, en pantalla**.
+Esas dos contraseñas son las que descifran los respaldos. Guardalas en el gestor
+de contraseñas junto a la clave de la cuenta.
 
-**Copialas y guardalas fuera del servidor.** En el gestor de contraseñas, junto a
-la clave de la cuenta de Gmail.
+Si las perdés **y** perdés el servidor, los respaldos quedan ilegibles para
+siempre. No hay recuperación: ese es exactamente el punto del cifrado.
 
-Si perdés esas dos contraseñas **y** perdés el servidor, los respaldos quedan
-ilegibles para siempre. No hay recuperación posible: ese es exactamente el punto
-del cifrado.
+---
 
-Guardá también una copia de la configuración, que contiene las llaves:
+## Parte 5 — Pasar la configuración al servidor
 
-```bash
-cat /root/.config/rclone/rclone.conf
+En Windows:
+
+```powershell
+ssh root@EL_SERVIDOR "mkdir -p /root/.config/rclone"
+scp "$env:APPDATAcloneclone.conf" root@EL_SERVIDOR:/root/.config/rclone/rclone.conf
 ```
 
-Ese archivo, en el gestor de contraseñas. **No lo subas a Google Drive** — sería
-guardar la llave adentro de la caja fuerte que abre.
+En el servidor:
+
+```bash
+chmod 600 /root/.config/rclone/rclone.conf
+rclone listremotes
+rclone lsd gdrive:
+echo prueba > /tmp/prueba.txt
+rclone copy /tmp/prueba.txt respaldos:
+rclone ls respaldos:
+```
+
+`chmod 600` deja el archivo legible solo por root: adentro están las llaves de
+Drive y del cifrado.
+
+El último comando tiene que devolver `prueba.txt`. Esa es **la prueba de la
+cadena entera**: cifró, subió a Drive con credenciales propias, y lo volvió a
+leer descifrado.
+
+Guardá también una copia de `rclone.conf` en el gestor de contraseñas. Si mañana
+hay que rearmar el servidor desde cero, con ese archivo se recupera todo.
+**No lo subas a Drive** — sería guardar la llave adentro de la caja fuerte.
 
 ---
 
 ## Parte 6 — Conectarlo a los respaldos
 
-El script ya está preparado: solo hay que decirle a dónde subir.
-
 ```bash
 echo "" >> /root/rc-tractoparts/.env
 echo "# Destino remoto de los respaldos (rclone). Ver docs/respaldos.md" >> /root/rc-tractoparts/.env
 echo "RCLONE_REMOTE=respaldos:rc-tractoparts" >> /root/rc-tractoparts/.env
-```
-
-**Qué hace:** agrega tres líneas al final del `.env`. La primera es una línea en
-blanco, la segunda un comentario, y la tercera la variable. No modifica ninguna
-línea existente.
-
-**Verificá:**
-
-```bash
 tail -3 /root/rc-tractoparts/.env
 ```
 
-**Probalo de verdad:**
+Probalo de verdad:
 
 ```bash
 /root/rc-tractoparts/scripts/backup-db.sh
+rclone delete respaldos:prueba.txt
+nohup /root/rc-tractoparts/scripts/backup-files.sh >/dev/null 2>&1 &
+tail -f /var/backups/rc-tractoparts/backup.log
 ```
 
-Ahora el log tiene que decir `Copiado a respaldos:rc-tractoparts` en lugar del
-aviso de siempre.
+El respaldo de archivos son unos 500 MB la primera vez y tarda un par de
+minutos; por eso va en segundo plano con `nohup`, así una caída del SSH no lo
+corta. `Ctrl+C` sale del seguimiento sin detener la subida.
 
-**Confirmá que llegó:**
+**Las dos líneas que confirman que salió del servidor:**
+
+```
+[...] Copiado a respaldos:rc-tractoparts
+[...] [archivos] Sincronizado con respaldos:rc-tractoparts/archivos
+```
+
+**Si falta la segunda, los archivos NO subieron.** Ese fue el bug que apareció
+al poner esto en marcha, y no daba error de ninguna clase.
+
+Y el recuento final:
 
 ```bash
-rclone ls respaldos:rc-tractoparts
+rclone ls respaldos:rc-tractoparts/archivos | wc -l
+rclone size respaldos:rc-tractoparts
 ```
 
-Tiene que listar el `.sql.gz`. Y si entrás a Google Drive desde el navegador vas
-a ver nombres ilegibles — eso significa que el cifrado está funcionando.
-
-**Y los archivos:**
-
-```bash
-/root/rc-tractoparts/scripts/backup-files.sh
-```
-
-La primera subida son 428 MB y puede tardar varios minutos. Las siguientes solo
-mandan lo que cambió.
+En Drive vas a ver nombres ilegibles. Eso es el cifrado funcionando: Google
+guarda los bytes pero no puede leer ni cómo se llaman los archivos.
 
 ---
 

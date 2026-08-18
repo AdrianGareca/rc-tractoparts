@@ -332,13 +332,28 @@ const LicitacionController = {
 
       const { nombre, id_cliente, descripcion, presupuesto_referencial, moneda, fecha_limite } = req.body;
 
+      // ── Un campo que NO vino se deja como estaba ────────────────────────────
+      // La diferencia es entre `undefined` (no lo mandaron: no lo toques) y
+      // `null` (lo mandaron vacio: borralo). Antes los dos terminaban en null y
+      // una actualizacion parcial borraba la descripcion, el presupuesto y la
+      // fecha limite, y ademas devolvia la moneda a BOB.
+      //
+      // Se compara con `!== undefined` y no con `||` a proposito: un presupuesto
+      // de 0 y una descripcion vacia son valores legitimos que `||` descarta.
+      const sinTocar = (recibido, actual) => (recibido !== undefined ? recibido : actual);
+
       const updated = await LicitacionModel.update(id, {
-        nombre:                  String(nombre).trim(),
-        id_cliente:              parseInt(id_cliente, 10),
-        descripcion:             descripcion ? String(descripcion).trim() : null,
-        presupuesto_referencial: presupuesto_referencial ?? null,
-        moneda:                  moneda || 'BOB',
-        fecha_limite:            fecha_limite || null,
+        // Estos dos son obligatorios en el esquema: siempre vienen.
+        nombre:     String(nombre).trim(),
+        id_cliente: parseInt(id_cliente, 10),
+
+        descripcion: descripcion !== undefined
+          ? (descripcion ? String(descripcion).trim() : null)
+          : licitacion.descripcion,
+
+        presupuesto_referencial: sinTocar(presupuesto_referencial, licitacion.presupuesto_referencial),
+        moneda:                  sinTocar(moneda, licitacion.moneda),
+        fecha_limite:            sinTocar(fecha_limite, licitacion.fecha_limite),
       });
 
       if (!updated) {

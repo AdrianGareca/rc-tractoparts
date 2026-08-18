@@ -89,7 +89,47 @@ const createLicitacionSchema = z.object({
 // updateLicitacionSchema — PUT /api/licitaciones/:id
 // Mismo contrato de cabecera; el responsable no se reasigna por esta vía.
 // ---------------------------------------------------------------------------
-const updateLicitacionSchema = z.object(licitacionShape);
+// Mismo contrato que crear, MENOS en los campos que traen valor por defecto o
+// que convierten «no vino» en «vaciar». Al editar, un campo ausente significa
+// «dejalo como esta» — nunca «poneme el valor por defecto».
+//
+// ES EL MISMO BUG QUE YA PASO EN COTIZACIONES.
+// Zod completa los .default() cuando el campo NO viene, y validate() reemplaza
+// req.body con la salida — asi que el controlador recibia SIEMPRE un valor y no
+// podia distinguir los dos casos. Una licitacion presupuestada en dolares,
+// editada sin tocar la moneda, volvia en bolivianos. Y la fecha limite —el
+// cierre del concurso— se borraba sola.
+//
+// El default es CORRECTO al crear: una licitacion nueva sin moneda debe quedar
+// en BOB. Lo que estaba mal era aplicarlo tambien al editar.
+//
+// Cubierto por tests/unit/editarNoPisaCampos.test.js, que ademas prohibe la
+// forma entera para que no aparezca una tercera vez.
+const updateLicitacionSchema = z.object(licitacionShape).extend({
+  // Sin .default(): ausente queda ausente.
+  moneda: z
+    .string()
+    .toUpperCase()
+    .refine((v) => VALID_CURRENCIES.includes(v), {
+      message: `moneda debe ser una de: ${VALID_CURRENCIES.join(', ')}.`,
+    })
+    .optional(),
+
+  // El .optional() va AFUERA del preprocess. Adentro, un `undefined` se
+  // convertia en null —o sea, en «borra la fecha limite»—; afuera, la clave
+  // ausente simplemente no llega al controlador.
+  //
+  // La cadena vacia SI sigue significando borrar: es lo que manda el formulario
+  // cuando alguien vacia el campo a proposito.
+  fecha_limite: z
+    .preprocess(
+      (v) => (v === '' ? null : v),
+      z.string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha debe tener formato YYYY-MM-DD.')
+        .nullable()
+    )
+    .optional(),
+});
 
 // ---------------------------------------------------------------------------
 // updateLicitacionStatusSchema — PUT /api/licitaciones/:id/estado
