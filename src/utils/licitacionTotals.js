@@ -17,6 +17,9 @@
 
 'use strict';
 
+// El redondeo monetario compartido, uno solo para todo el sistema.
+const { redondearCentavos } = require('./quotationTotals');
+
 /**
  * Suma los gastos que están en `moneda` e informa si quedó alguno afuera.
  *
@@ -39,7 +42,18 @@ function sumGastosEnMoneda(gastos = [], moneda = 'BOB') {
     }
   }
 
-  return { total: parseFloat(total.toFixed(2)), tieneOtraMoneda };
+  // Se redondea con la funcion compartida y NO con toFixed.
+  //
+  // toFixed no es una funcion de redondeo monetario: trabaja sobre el binario y
+  // no sobre el decimal que uno escribio, asi que (49.995).toFixed(2) da 49.99.
+  // Acá casi nunca se nota —los montos vienen de la base ya con dos decimales y
+  // el residuo de la suma es de un orden mucho menor que medio centavo— pero
+  // tener DOS redondeos de dinero distintos en el mismo sistema es exactamente
+  // como volvio este bug las otras veces.
+  //
+  // Una sola cuenta: la de src/utils/quotationTotals.js, que es la que decide
+  // los subtotales de la proforma y la vista previa del vendedor.
+  return { total: redondearCentavos(total), tieneOtraMoneda };
 }
 
 module.exports = { sumGastosEnMoneda };

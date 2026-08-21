@@ -9,6 +9,9 @@
 'use strict';
 
 const { z } = require('zod');
+// El redondeo monetario compartido: la MISMA cuenta que decide los subtotales
+// de la proforma y lo que ve el vendedor en la vista previa.
+const { redondearCentavos } = require('../utils/quotationTotals');
 
 const VALID_STATES = [
   'En preparacion',
@@ -170,10 +173,27 @@ const createGastoSchema = z.object({
     .min(1,   'El concepto no puede estar vacío.')
     .max(200, 'El concepto no puede exceder 200 caracteres.'),
 
+  // El numero que se valida es el numero que se guarda: la columna es
+  // DECIMAL(15,2) y sin esto quien cargaba 1234.567 veia guardado 1234.57
+  // mientras la bitacora registraba 1234.567 — el registro de auditoria y el
+  // dato real decian cosas distintas sobre el mismo gasto.
+  //
+  // Es la tercera vez que aparece esta forma: ya paso con precio_unitario y con
+  // descuento_manual. Se usa el redondeo monetario compartido, el mismo que
+  // decide los subtotales de la proforma, para que el medio centavo vaya para
+  // arriba igual en todo el sistema.
+  //
+  // EL ORDEN IMPORTA: el .transform() va ANTES de los limites. Al reves, un
+  // monto de 0.001 pasaria el .positive() y recien despues se convertiria en
+  // cero — que es justo lo que la regla prohibe.
   monto: z
     .number({ required_error: 'El monto es obligatorio.', invalid_type_error: 'El monto debe ser un número.' })
-    .positive('El monto debe ser mayor a 0.')
-    .max(9999999999999.99, 'El monto es demasiado grande.'),
+    .transform(redondearCentavos)
+    .pipe(
+      z.number()
+        .positive('El monto debe ser mayor a 0.')
+        .max(9999999999999.99, 'El monto es demasiado grande.')
+    ),
 
   moneda: z
     .string()
