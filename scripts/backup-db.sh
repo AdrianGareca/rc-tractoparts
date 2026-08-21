@@ -31,9 +31,10 @@ PROJECT_DIR="${PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 # se los lleve por delante.
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/rc-tractoparts}"
 
-# Cuántos días conservar. 14 días con la base de esta escala son unos pocos
-# cientos de MB: barato frente a perder una semana de cotizaciones.
-RETENTION_DAYS="${RETENTION_DAYS:-14}"
+# Cuántos días conservar EN DISCO LOCAL. Política de la empresa: 7 días.
+# El respaldo remoto (Drive) no tiene este límite — ver bloque de rotación
+# más abajo, que solo borra localmente lo que ya se confirmó copiado afuera.
+RETENTION_DAYS="${RETENTION_DAYS:-7}"
 
 # Nombre del contenedor de MySQL (docker-compose.yml → container_name).
 DB_CONTAINER="${DB_CONTAINER:-rc_tractoparts_db}"
@@ -132,6 +133,7 @@ if [ -n "$RCLONE_REMOTE" ]; then
   if command -v rclone >/dev/null 2>&1; then
     if rclone copy "$ARCHIVO" "$RCLONE_REMOTE" --log-file="$LOG_FILE" --log-level INFO; then
       log "Copiado a $RCLONE_REMOTE"
+      touch "${ARCHIVO}.subido"
     else
       # No se aborta: el respaldo local existe y es mejor que nada.
       log "AVISO: falló la copia remota. El respaldo local quedó guardado."
@@ -140,13 +142,33 @@ if [ -n "$RCLONE_REMOTE" ]; then
     log "AVISO: RCLONE_REMOTE está configurado pero rclone no está instalado."
   fi
 else
+  # Sin remoto configurado: local-only es una eleccion deliberada (ya avisada
+  # arriba), asi que la rotacion normal de mas abajo debe poder actuar igual.
   log "AVISO: sin RCLONE_REMOTE — el respaldo queda SOLO en este disco."
+  touch "${ARCHIVO}.subido"
 fi
 
 # ── Rotación ─────────────────────────────────────────────────────────────────
 # Se borra DESPUÉS de confirmar que el nuevo respaldo es válido, nunca antes.
-BORRADOS=$(find "$BACKUP_DIR" -name "${DB_NAME}_*.sql.gz" -type f -mtime "+$RETENTION_DAYS" -print -delete | wc -l)
-[ "$BORRADOS" -gt 0 ] && log "Rotación: $BORRADOS respaldo(s) de más de $RETENTION_DAYS días eliminados."
+#
+# Solo se borra localmente lo que tiene su marca ".subido" (copia remota
+# confirmada esa misma noche). Si `rclone` falla varias noches seguidas sin que
+# nadie note el AVISO en el log, el respaldo local correspondiente NO se borra
+# aunque tenga mas de RETENTION_DAYS — mejor un disco que crece un poco de mas
+# que perder la unica copia de un respaldo que nunca salio del servidor.
+BORRADOS=0
+RETENIDOS_SIN_CONFIRMAR=0
+while IFS= read -r -d '' F; do
+  if [ -f "${F}.subido" ]; then
+    rm -f "$F" "${F}.subido"
+    BORRADOS=$((BORRADOS + 1))
+  else
+    RETENIDOS_SIN_CONFIRMAR=$((RETENIDOS_SIN_CONFIRMAR + 1))
+  fi
+done < <(find "$BACKUP_DIR" -maxdepth 1 -name "${DB_NAME}_*.sql.gz" -type f -mtime "+$RETENTION_DAYS" -print0)
+
+[ "$BORRADOS" -gt 0 ] && log "Rotación: $BORRADOS respaldo(s) de más de $RETENTION_DAYS días eliminados (copia remota confirmada)."
+[ "$RETENIDOS_SIN_CONFIRMAR" -gt 0 ] && log "AVISO: $RETENIDOS_SIN_CONFIRMAR respaldo(s) de más de $RETENTION_DAYS días RETENIDOS porque nunca se confirmó su copia remota — revisar rclone."
 
 TOTAL=$(find "$BACKUP_DIR" -name "${DB_NAME}_*.sql.gz" -type f | wc -l)
 log "Listo. $TOTAL respaldo(s) en $BACKUP_DIR ($(du -sh "$BACKUP_DIR" | cut -f1))."
