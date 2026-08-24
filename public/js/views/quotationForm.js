@@ -28,6 +28,7 @@
 
 import api          from '../services/apiClient.js';
 import { showToast } from '../services/apiClient.js';
+import AuthSession   from '../services/authSession.js';
 
 import { escText } from './quotationForm/helpers.js';
 import {
@@ -43,6 +44,7 @@ import { wireFileUpload } from './quotationForm/fileUpload.js';
 import { DraftLockController } from './quotationForm/draftLock.js';
 import { submitQuotation } from './quotationForm/submitPayload.js';
 import { populateHeaderForEdit, populateLicitaciones } from './quotationForm/editHydration.js';
+import { saveDraft, loadDraft, clearDraft, restoreHeaderFields } from './quotationForm/autosaveDraft.js';
 
 // NOTE: sumSubtotals / clampDiscount / computeTotal / validateDetalle viven en
 // public/js/shared/quotationTotals.js — la ÚNICA fuente de verdad, compartida
@@ -73,6 +75,9 @@ class FormMediator {
 
   #prefill = null;  // Optional { id_cliente, cliente_nombre, id_licitacion, licitacion_label } for a pre-linked create
 
+  #userId          = null; // Dueño del borrador local — nunca se cruza entre usuarios de la misma compu
+  #autosaveTimer   = null; // setInterval del autoguardado — solo corre en modo creación
+
   constructor(container, quotation = null, prefill = null) {
     this.#container = container;
     this.#subject   = new LineItemsSubject();
@@ -80,6 +85,7 @@ class FormMediator {
     this.#editId    = quotation?.id ?? null;
     this.#prefill   = prefill;
     this.#draftLock = new DraftLockController(container);
+    this.#userId    = AuthSession.getUserId();
   }
 
   // ── Public mount entry point ───────────────────────────────────────────────
@@ -152,6 +158,9 @@ class FormMediator {
         };
         this._appendRow(this.#subject.addItemData(mapped), itemsBody, mapped);
       });
+    } else if (this._offerDraftRecovery(itemsBody)) {
+      // Ítems y cabecera ya quedaron restaurados desde el borrador local —
+      // ver _offerDraftRecovery.
     } else {
       this._appendRow(this.#subject.addItem(), itemsBody);
     }
@@ -232,6 +241,65 @@ class FormMediator {
     // never allocates a new serial. Fire-and-forget: the realtime layer is
     // a UX enhancement, never a hard dependency of the form.
     this._initDraftLock();
+
+    // Autoguardado local — solo en creación (ver autosaveDraft.js). Escribe
+    // sólo cuando algo cambió desde el último guardado (#dirty), así una
+    // cotización que nadie toca no gasta ciclos de localStorage.
+    if (!this.#editId) {
+      this.#autosaveTimer = setInterval(() => {
+        if (this.#dirty) {
+          saveDraft(this.#userId, this.#container, this.#subject.getItems());
+        }
+      }, 4000);
+    }
+  }
+
+  // ── Private: recuperación de borrador local (ver quotationForm/autosaveDraft.js) ──
+
+  /**
+   * Si hay un borrador guardado para este usuario, pregunta si quiere
+   * recuperarlo. Si acepta, restaura cabecera + ítems y devuelve true (el
+   * llamador NO debe sembrar la fila en blanco). Si no hay borrador, o lo
+   * descarta, devuelve false.
+   *
+   * window.confirm() es deliberado acá: es el único punto del formulario que
+   * corre ANTES de que el usuario haya tocado nada, así que un diálogo
+   * bloqueante no interrumpe ningún flujo — y evita construir una UI de
+   * confirmación nueva para una decisión de una sola vez por sesión.
+   *
+   * @param {HTMLElement} itemsBody
+   * @returns {boolean}
+   */
+  _offerDraftRecovery(itemsBody) {
+    const draft = loadDraft(this.#userId);
+    if (!draft) return false;
+
+    const cantidad = draft.items?.length ?? 0;
+    const cuando = draft.guardado_en
+      ? new Date(draft.guardado_en).toLocaleString('es-BO', { dateStyle: 'short', timeStyle: 'short' })
+      : 'antes';
+    const quiere = window.confirm(
+      `Tienes un borrador sin terminar de una cotización (${cantidad} ítem${cantidad === 1 ? '' : 's'}), ` +
+      `guardado automáticamente el ${cuando}.\n\n` +
+      `Aceptar = recuperarlo. Cancelar = descartarlo y empezar en blanco.`
+    );
+
+    if (!quiere) {
+      clearDraft(this.#userId);
+      return false;
+    }
+
+    restoreHeaderFields(this.#container, draft);
+    const items = draft.items ?? [];
+    if (items.length === 0) {
+      this._appendRow(this.#subject.addItem(), itemsBody);
+    } else {
+      items.forEach((item) => {
+        this._appendRow(this.#subject.addItemData(item), itemsBody, item);
+      });
+    }
+    this.#dirty = true; // un borrador recuperado ya cuenta como "sin guardar"
+    return true;
   }
 
   // ── Private: realtime draft-lock (global "next number" reservation) ───────
@@ -252,6 +320,7 @@ class FormMediator {
   /** Public teardown — called when the host container (modal) closes by ANY path. */
   destroy() {
     this._releaseDraftLock();
+    if (this.#autosaveTimer) clearInterval(this.#autosaveTimer);
   }
 
   /** True once the user has entered/changed anything — used to gate the close-confirmation. */
@@ -393,7 +462,14 @@ class FormMediator {
       items:         this.#subject.getItems(),
       uploadedExcel: this.#uploadedExcel,
       onSuccess,
-      onSaved:       () => this._releaseDraftLock(),
+      onSaved: () => {
+        this._releaseDraftLock();
+        // La cotización ya quedó guardada en el servidor — el borrador local
+        // queda obsoleto. clearDraft en modo edición es un no-op inofensivo
+        // (nunca hubo un borrador con esa llave).
+        clearDraft(this.#userId);
+        if (this.#autosaveTimer) clearInterval(this.#autosaveTimer);
+      },
     });
   }
 }
