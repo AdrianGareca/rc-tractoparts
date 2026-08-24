@@ -217,6 +217,12 @@
   font-size: .8rem;
 }
 
+.line-items-actions {
+  display: flex;
+  gap: .6rem;
+  flex-wrap: wrap;
+}
+
 /* ===== 20. TOTALS PANEL ===== */
 .totals-panel {
   background: var(--bg-raised);

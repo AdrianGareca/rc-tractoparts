@@ -45,6 +45,7 @@ import { DraftLockController } from './quotationForm/draftLock.js';
 import { submitQuotation } from './quotationForm/submitPayload.js';
 import { populateHeaderForEdit, populateLicitaciones } from './quotationForm/editHydration.js';
 import { saveDraft, loadDraft, clearDraft, restoreHeaderFields } from './quotationForm/autosaveDraft.js';
+import { openExcelPasteModal } from './quotationForm/excelPaste.js';
 
 // NOTE: sumSubtotals / clampDiscount / computeTotal / validateDetalle viven en
 // public/js/shared/quotationTotals.js — la ÚNICA fuente de verdad, compartida
@@ -205,6 +206,13 @@ class FormMediator {
       newRow?.querySelector('.item-input')?.focus();
     });
 
+    // Wire "Pegar desde Excel" — carga muchos ítems de una sola vez pegando
+    // un rango copiado de la planilla que el vendedor ya arma antes de pasar
+    // la cotización a la app. Ver quotationForm/excelPaste.js.
+    this.#container.querySelector('#btn-pegar-excel')?.addEventListener('click', () => {
+      this._openExcelPasteModal(itemsBody);
+    });
+
     // Wire drag-and-drop / file input
     this._wireFileUpload();
 
@@ -300,6 +308,40 @@ class FormMediator {
     }
     this.#dirty = true; // un borrador recuperado ya cuenta como "sin guardar"
     return true;
+  }
+
+  // ── Private: pegado masivo de ítems desde Excel ───────────────────────────
+  // El parser y el modal viven en quotationForm/excelPaste.js (función pura +
+  // wiring de UI, sin acceso al Subject — acá solo se integran los resultados).
+
+  /**
+   * Si el formulario todavía tiene solo la fila en blanco inicial, la
+   * reemplaza; si ya hay ítems cargados a mano, los pegados se agregan
+   * después de los existentes.
+   */
+  _openExcelPasteModal(itemsBody) {
+    openExcelPasteModal({
+      onImport: (items, advertencias) => {
+        const actuales = this.#subject.getItems();
+        const soloFilaVacia = actuales.length === 1 && !actuales[0].descripcion_item;
+        if (soloFilaVacia) {
+          this.#subject.removeItem(0);
+          itemsBody.innerHTML = '';
+        }
+
+        items.forEach((item) => {
+          this._appendRow(this.#subject.addItemData(item), itemsBody, item);
+        });
+        this.#dirty = true;
+
+        let mensaje = `Se importaron ${items.length} ítem${items.length === 1 ? '' : 's'}.`;
+        if (advertencias.length > 0) {
+          mensaje += ` ${advertencias.length} advertencia${advertencias.length === 1 ? '' : 's'} — revisa unidad/cantidad/precio en algunas filas (detalle en la consola).`;
+          console.warn('[Pegar desde Excel] Advertencias:', advertencias);
+        }
+        showToast(mensaje, advertencias.length > 0 ? 'info' : 'success', 5000);
+      },
+    });
   }
 
   // ── Private: realtime draft-lock (global "next number" reservation) ───────

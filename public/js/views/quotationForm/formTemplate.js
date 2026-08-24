@@ -130,9 +130,14 @@ function seccionItems() {
             <tbody id="items-body"></tbody>
           </table>
         </div>
-        <button type="button" id="btn-add-item" class="btn btn-ghost btn-sm btn-add-item">
-          + Agregar ítem
-        </button>
+        <div class="line-items-actions">
+          <button type="button" id="btn-add-item" class="btn btn-ghost btn-sm btn-add-item">
+            + Agregar ítem
+          </button>
+          <button type="button" id="btn-pegar-excel" class="btn btn-outline btn-sm">
+            Pegar desde Excel
+          </button>
+        </div>
       </div>
 `;
 }
