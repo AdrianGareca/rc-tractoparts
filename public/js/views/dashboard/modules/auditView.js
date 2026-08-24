@@ -73,6 +73,7 @@ const ACCION_META = {
   CREAR_ORIGEN_CLIENTE:{ label: 'Origen de Cliente Creado',  badge: 'badge-audit-create' },
   GENERAR_REPORTE_PDF: { label: 'Reporte Generado',          badge: 'badge-audit-file' },
   ACTUALIZAR_COMENTARIO_ADMIN: { label: 'Comentario Administrativo Editado', badge: 'badge-audit-edit' },
+  ACTUALIZAR_SEGUIMIENTO_VENTA: { label: 'Seguimiento Comercial Actualizado', badge: 'badge-audit-edit' },
 
   CREAR_LICITACION:              { label: 'Licitación Creada',             badge: 'badge-audit-create' },
   EDITAR_LICITACION:             { label: 'Licitación Editada',            badge: 'badge-audit-edit' },

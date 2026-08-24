@@ -330,6 +330,23 @@ CREATE TABLE cotizaciones (
     COMMENT '1 = mostrar columna CÓDIGO en el PDF generado; 0 = ocultar (útil cuando no hay códigos de parte)',
   id_licitacion      INT UNSIGNED  DEFAULT NULL
     COMMENT 'FK->licitaciones(id) — vincula la cotización a una licitación paraguas. NULL = cotización normal (suelta). ON DELETE SET NULL: borrar la licitación NO destruye la cotización, solo la desvincula.',
+  -- Seguimiento comercial (independiente del "estado" de aprobación interno de
+  -- arriba). "estado" es el workflow de aprobación (Pendiente→Confirmada/etc.);
+  -- esto es el pipeline de venta con el cliente, y se puede editar sin
+  -- importar en qué estado de aprobación esté la cotización, incluso Archivada.
+  estado_venta       ENUM(
+                       'Interesado',
+                       'En negociacion',
+                       'Confirmado',
+                       'No le interesa',
+                       'Venta concretada',
+                       'Otro'
+                     ) DEFAULT NULL
+    COMMENT 'Seguimiento comercial del vendedor. NULL = sin seguimiento registrado aún.',
+  estado_venta_detalle      VARCHAR(255) DEFAULT NULL
+    COMMENT 'Texto libre obligatorio cuando estado_venta = Otro.',
+  fecha_proximo_seguimiento DATE DEFAULT NULL
+    COMMENT 'Fecha en la que se debe volver a contactar al cliente.',
   creado_en          DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   actualizado_en     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
@@ -338,6 +355,8 @@ CREATE TABLE cotizaciones (
   KEY idx_cot_fecha_emision (fecha_emision),
   KEY idx_cot_creado_en     (creado_en),
   KEY idx_cot_licitacion    (id_licitacion),
+  KEY idx_cot_estado_venta  (estado_venta),
+  KEY idx_cot_prox_seguimiento (fecha_proximo_seguimiento),
   CONSTRAINT fk_cot_cliente
     FOREIGN KEY (id_cliente)   REFERENCES clientes (id) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT fk_cot_ejecutivo

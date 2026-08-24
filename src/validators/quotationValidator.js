@@ -498,9 +498,54 @@ const approveQuotationSchema = z.object({
     .nullable(),
 });
 
+// ---------------------------------------------------------------------------
+// updateSeguimientoVentaSchema — PATCH /api/cotizaciones/:id/seguimiento
+//
+// Independent of `estado` (the approval workflow) — editable regardless of
+// the quotation's current state. Every field is optional/nullable (never
+// .default(): this is an edit endpoint, and a field the caller omits must
+// stay untouched by the controller, not get silently overwritten — see
+// tests/unit/editarNoPisaCampos.test.js and the comment on the identical
+// licitacion bug in licitacionValidator.js).
+// ---------------------------------------------------------------------------
+const SALES_FOLLOWUP_STATES = [
+  'Interesado', 'En negociacion', 'Confirmado', 'No le interesa', 'Venta concretada', 'Otro',
+];
+
+const updateSeguimientoVentaSchema = z.object({
+  estado_venta: z
+    .string()
+    .refine((v) => SALES_FOLLOWUP_STATES.includes(v), {
+      message: `estado_venta must be one of: [${SALES_FOLLOWUP_STATES.join(', ')}].`,
+    })
+    .optional()
+    .nullable(),
+
+  estado_venta_detalle: z
+    .string()
+    .trim()
+    .max(255, 'estado_venta_detalle must not exceed 255 characters.')
+    .optional()
+    .nullable(),
+
+  fecha_proximo_seguimiento: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha_proximo_seguimiento must be in YYYY-MM-DD format.')
+    .optional()
+    .nullable(),
+}).refine(
+  (data) => data.estado_venta !== 'Otro' || (data.estado_venta_detalle && data.estado_venta_detalle.trim().length > 0),
+  {
+    message: "estado_venta_detalle is required (non-empty) when estado_venta is 'Otro'.",
+    path: ['estado_venta_detalle'],
+  }
+);
+
 module.exports = {
   createQuotationSchema,
   updateQuotationSchema,
   updateStatusSchema,
   approveQuotationSchema,
+  updateSeguimientoVentaSchema,
+  SALES_FOLLOWUP_STATES,
 };

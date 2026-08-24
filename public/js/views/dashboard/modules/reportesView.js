@@ -583,15 +583,62 @@ async function loadReportesData(panel, desde, hasta, ejecutivoId = '', moneda = 
 }
 
 // ---------------------------------------------------------------------------
+// _buildSeguimientoVentaCard
+// Pipeline de venta con el cliente (independiente del Estado de aprobación
+// interno) — cuenta cotizaciones por estado_venta dentro del período elegido.
+// @returns {string} — HTML string for the <div class="card"> block
+// ---------------------------------------------------------------------------
+function _buildSeguimientoVentaCard(seg, periodo, alcance) {
+  return `
+      <div class="card mb-2">
+        <div class="card-header">
+          <h3>Seguimiento Comercial — ${escHtml(periodo)}${alcance}</h3>
+          <span class="text-muted text-sm">Pipeline de venta con el cliente, no el flujo de aprobación interno</span>
+        </div>
+        <div class="stats-grid stats-grid-en-tarjeta">
+          <div class="stat-card stat-accent-blue">
+            <div class="stat-card-value">${seg.interesado}</div>
+            <div class="stat-card-label">Interesado</div>
+          </div>
+          <div class="stat-card stat-accent-amber">
+            <div class="stat-card-value">${seg.en_negociacion}</div>
+            <div class="stat-card-label">En negociación</div>
+          </div>
+          <div class="stat-card stat-accent-green">
+            <div class="stat-card-value">${seg.confirmado}</div>
+            <div class="stat-card-label">Confirmado</div>
+          </div>
+          <div class="stat-card stat-accent-red">
+            <div class="stat-card-value">${seg.no_le_interesa}</div>
+            <div class="stat-card-label">No le interesa</div>
+          </div>
+          <div class="stat-card stat-accent-green">
+            <div class="stat-card-value">${seg.venta_concretada}</div>
+            <div class="stat-card-label">Venta concretada</div>
+          </div>
+          <div class="stat-card stat-accent-violet">
+            <div class="stat-card-value">${seg.otro}</div>
+            <div class="stat-card-label">Otro</div>
+          </div>
+          <div class="stat-card stat-accent-gray">
+            <div class="stat-card-value">${seg.sin_seguimiento}</div>
+            <div class="stat-card-label">Sin seguimiento</div>
+          </div>
+        </div>
+      </div>`;
+}
+
+// ---------------------------------------------------------------------------
 // buildReportesDataHTML — builds the full analytics HTML (stats grid + monthly
 // executive breakdown + BI tables) from the two API responses.
 // ---------------------------------------------------------------------------
 function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecutivoId = '') {
     // ── Progreso data ─────────────────────────────────────────────────────
     const {
-      volumen       = {},
-      conversion    = {},
-      por_ejecutivo = [],
+      volumen           = {},
+      conversion        = {},
+      seguimiento_venta = {},
+      por_ejecutivo     = [],
     } = progresoRes.data ?? {};
     const periodo = progresoRes.periodo ?? '—';
 
@@ -610,6 +657,17 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
     const aceptadas  = conversion.total_aceptadas  ?? 0;
     const rechazadas = conversion.total_rechazadas ?? 0;
     const ratioColor = parseFloat(ratioPct) >= 50 ? 'var(--clr-green)' : 'var(--clr-red)';
+
+    // ── Seguimiento comercial (independiente del Estado de aprobación) ─────
+    const seg = {
+      interesado:      seguimiento_venta.interesado      ?? 0,
+      en_negociacion:   seguimiento_venta.en_negociacion   ?? 0,
+      confirmado:       seguimiento_venta.confirmado       ?? 0,
+      no_le_interesa:   seguimiento_venta.no_le_interesa   ?? 0,
+      venta_concretada: seguimiento_venta.venta_concretada ?? 0,
+      otro:             seguimiento_venta.otro             ?? 0,
+      sin_seguimiento:  seguimiento_venta.sin_seguimiento  ?? 0,
+    };
 
     // ── Advanced BI data ──────────────────────────────────────────────────
     const rol = advancedRes.rol ?? 'Jefe';
@@ -659,6 +717,9 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
           </div>
         </div>
       </div>
+
+      <!-- ── Seguimiento comercial — independiente del Estado de aprobación ── -->
+      ${_buildSeguimientoVentaCard(seg, periodo, alcance)}
 
       <!-- ── Per-executive breakdown for the selected range ── -->
       <div class="card mb-2">

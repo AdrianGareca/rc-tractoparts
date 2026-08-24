@@ -20,8 +20,16 @@
 // distinto de impedir la acción.
 // =============================================================================
 
-import { escHtml } from '../helpers.js';
+import { escHtml, fmtDate } from '../helpers.js';
 import { REOPEN_SOURCE_STATES } from '../../../shared/quotationTransitions.js';
+import AuthSession from '../../../services/authSession.js';
+
+// Debe reflejar EXACTAMENTE src/validators/quotationValidator.js
+// SALES_FOLLOWUP_STATES — un desvío hace que el backend rechace con 422 (el
+// mismo problema que ya paso una vez con los roles, ver rolesUnaSolaLista.test.js).
+const SALES_FOLLOWUP_STATES = [
+  'Interesado', 'En negociacion', 'Confirmado', 'No le interesa', 'Venta concretada',
+];
 
 
 /**
@@ -202,11 +210,74 @@ function adminCommentBlockHtml(q, { adminMode, jefeMode }) {
 }
 
 /**
- * Arma los tres bloques de marcado a partir de los permisos.
+ * El seguimiento comercial (pipeline de venta con el cliente) — independiente
+ * del `estado` de aprobación interno de arriba. Editable para Jefe y
+ * Administracion (cualquier cotización) y para el Ejecutivo dueño de ESTA
+ * cotización — es quien realmente habla con el cliente. Mismo criterio de
+ * dueño que el backend aplica en PATCH /:id/seguimiento.
+ * En cualquier otro caso (un ejecutivo mirando una cotización ajena) se
+ * muestra de solo lectura, y solo si hay un valor guardado — así no se ofrece
+ * un botón que el servidor va a rechazar con 403.
+ */
+function seguimientoVentaBlockHtml(q, { canEdit }) {
+  if (canEdit) {
+    const esOtro = q.estado_venta === 'Otro';
+    return `
+    <div class="approval-actions seguimiento-venta-panel">
+      <h4 class="approval-actions-title">Seguimiento comercial</h4>
+      <div class="form-group mb-1">
+        <label class="form-label" for="seguimiento-estado-input">Estado de venta</label>
+        <select class="form-control" id="seguimiento-estado-input">
+          <option value="">Sin seguimiento</option>
+          ${SALES_FOLLOWUP_STATES.map((s) => `<option value="${escHtml(s)}" ${q.estado_venta === s ? 'selected' : ''}>${escHtml(s)}</option>`).join('')}
+          <option value="Otro" ${esOtro ? 'selected' : ''}>Otro (especificar)</option>
+        </select>
+      </div>
+      <div class="form-group mb-1 ${esOtro ? '' : 'hidden'}" id="seguimiento-detalle-group">
+        <label class="form-label" for="seguimiento-detalle-input">Especificar</label>
+        <input class="form-control" type="text" id="seguimiento-detalle-input" maxlength="255"
+               value="${escHtml(q.estado_venta_detalle ?? '')}"
+               placeholder="Ej: esperando presupuesto del cliente" />
+      </div>
+      <div class="form-group mb-1">
+        <label class="form-label" for="seguimiento-fecha-btn">Fecha de próximo seguimiento</label>
+        <!-- Botón, no <input type="date">: el picker nativo no se puede marcar
+             por dentro. El calendario propio (shared/calendarPicker.js) sí
+             puede pintar qué días ya tienen otro seguimiento agendado. -->
+        <input type="hidden" id="seguimiento-fecha-input"
+               value="${q.fecha_proximo_seguimiento ? String(q.fecha_proximo_seguimiento).slice(0, 10) : ''}" />
+        <button type="button" class="form-control text-left" id="seguimiento-fecha-btn">
+          ${q.fecha_proximo_seguimiento ? fmtDate(q.fecha_proximo_seguimiento) : 'Sin fecha — elegir'}
+        </button>
+      </div>
+      <span class="field-error" id="seguimiento-venta-err"></span>
+      <div class="proforma-acciones-fila">
+        <button class="btn btn-ghost btn-sm" id="btn-save-seguimiento">
+          Guardar seguimiento
+        </button>
+      </div>
+    </div>`;
+  }
+
+  // Solo lectura: nada que mostrar si nunca se registró seguimiento.
+  if (!q.estado_venta) return '';
+
+  const etiqueta = q.estado_venta === 'Otro' ? (q.estado_venta_detalle || 'Otro') : q.estado_venta;
+  return `
+    <div class="form-group seguimiento-venta">
+      <span class="form-label text-orange">Seguimiento comercial</span>
+      <p class="proforma-description mt-025">
+        ${escHtml(etiqueta)}${q.fecha_proximo_seguimiento ? ` · Próximo seguimiento: ${fmtDate(q.fecha_proximo_seguimiento)}` : ''}
+      </p>
+    </div>`;
+}
+
+/**
+ * Arma los cuatro bloques de marcado a partir de los permisos.
  *
  * @param {Object}  q     — la cotización completa
  * @param {Object}  modo  — { jefeMode, adminMode, delegateMode }
- * @returns {{ jefeButtons, adminButtons, delegateButtons, adminCommentBlock }}
+ * @returns {{ jefeButtons, adminButtons, delegateButtons, adminCommentBlock, seguimientoVentaBlock }}
  */
 export function buildProformaActions(q, { jefeMode, adminMode, delegateMode }) {
   const permisos = calcularPermisos(q, { jefeMode, delegateMode });
@@ -219,5 +290,9 @@ export function buildProformaActions(q, { jefeMode, adminMode, delegateMode }) {
     // porque la plantilla la interpola, y sacarla obligaría a tocarla.
     delegateButtons:   '',
     adminCommentBlock: adminCommentBlockHtml(q, { adminMode, jefeMode }),
+    seguimientoVentaBlock: seguimientoVentaBlockHtml(q, {
+      canEdit: jefeMode || adminMode ||
+        (AuthSession.getRole() === 'Ejecutivo' && AuthSession.getUserId() === q.id_ejecutivo),
+    }),
   };
 }

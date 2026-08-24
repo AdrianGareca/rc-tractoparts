@@ -47,6 +47,7 @@ const {
   updateQuotationSchema,
   updateStatusSchema,
   approveQuotationSchema,
+  updateSeguimientoVentaSchema,
 } = require('../validators/quotationValidator');
 
 const router = express.Router();
@@ -271,6 +272,15 @@ router.post(
   '/notificaciones/leer',
   ...allRoles,
   QuotationController.markNotificacionesLeidas
+);
+
+// GET /api/cotizaciones/seguimientos-ocupados?id_ejecutivo=N
+// Fixed-path route — must stay above the /:id catchall. Ownership enforced in
+// the controller for Ejecutivo callers (own calendar only).
+router.get(
+  '/seguimientos-ocupados',
+  ...writeRoles,
+  QuotationController.getSeguimientosOcupados
 );
 
 // =============================================================================
@@ -1042,6 +1052,72 @@ router.patch(
   '/:id/comentario-admin',
   ...adminOnly,
   QuotationController.patchComentarioAdmin
+);
+
+/**
+ * @swagger
+ * /api/cotizaciones/{id}/seguimiento:
+ *   patch:
+ *     summary: Actualizar el seguimiento comercial de una cotización
+ *     description: |
+ *       Actualiza el estado de venta (Interesado/En negociación/Confirmado/No le
+ *       interesa/Venta concretada/Otro), su detalle libre, y/o la fecha de próximo
+ *       seguimiento. Independiente del `estado` de aprobación interno: editable
+ *       sin importar el estado actual, incluso Archivada o Rechazada. Cada campo
+ *       es opcional — enviar solo los que se quieren cambiar. El Ejecutivo solo
+ *       puede editar sus PROPIAS cotizaciones; Jefe, Administracion y SysAdmin
+ *       pueden editar cualquiera.
+ *     tags: [Cotizaciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID de la cotización
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               estado_venta:
+ *                 type: string
+ *                 enum: [Interesado, "En negociacion", Confirmado, "No le interesa", "Venta concretada", Otro]
+ *               estado_venta_detalle:
+ *                 type: string
+ *                 description: Requerido y no vacío cuando estado_venta = Otro
+ *               fecha_proximo_seguimiento:
+ *                 type: string
+ *                 format: date
+ *     responses:
+ *       200:
+ *         description: Seguimiento actualizado correctamente.
+ *       400:
+ *         description: ID inválido.
+ *       401:
+ *         $ref: '#/components/responses/NoAutorizado'
+ *       403:
+ *         $ref: '#/components/responses/SinPermiso'
+ *       404:
+ *         description: Cotización no encontrada.
+ *       422:
+ *         description: Datos inválidos (ej. estado_venta = Otro sin estado_venta_detalle).
+ *       500:
+ *         $ref: '#/components/responses/ErrorInterno'
+ */
+// PATCH /api/cotizaciones/:id/seguimiento
+// Ejecutivo (own quotations only) / Jefe / Administracion / SysAdmin (any):
+// commercial follow-up, independent of `estado`. Ownership enforced in the
+// controller for Ejecutivo callers.
+router.patch(
+  '/:id/seguimiento',
+  ...writeRoles,
+  validate(updateSeguimientoVentaSchema),
+  QuotationController.patchSeguimientoVenta
 );
 
 // =============================================================================

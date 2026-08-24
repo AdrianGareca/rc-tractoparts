@@ -149,9 +149,68 @@ async function markNotificacionesLeidas(id_ejecutivo) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// findSeguimientosDelDia — Cotizaciones cuyo fecha_proximo_seguimiento es HOY,
+// para el ejecutivo dueño. Computado en vivo (como findNotificacionesPendientes)
+// contra la fecha actual del servidor — no hace falta un job/cron: cada vez que
+// el ejecutivo abre la app un día distinto, la consulta ya devuelve otra cosa.
+// ---------------------------------------------------------------------------
+async function findSeguimientosDelDia(id_ejecutivo) {
+  const sql = `
+      SELECT
+        c.id                        AS id_cotizacion,
+        c.numero_correlativo,
+        cl.razon_social             AS cliente_nombre,
+        c.estado_venta,
+        c.estado_venta_detalle,
+        c.fecha_proximo_seguimiento AS fecha_solicitud
+      FROM cotizaciones c
+      INNER JOIN clientes cl ON cl.id = c.id_cliente
+      WHERE c.id_ejecutivo = ?
+        AND c.fecha_proximo_seguimiento = CURDATE()
+      ORDER BY c.numero_correlativo ASC
+    `;
+
+  const [rows] = await pool.execute(sql, [parseInt(id_ejecutivo, 10)]);
+
+  // `observacion` es lo que notificationsView.js ya sabe imprimir (mismo campo
+  // que usan correcciones/aprobaciones) — así el frontend no necesita un caso
+  // especial para el tipo 'seguimiento'.
+  return rows.map((r) => ({
+    ...r,
+    observacion: r.estado_venta === 'Otro'
+      ? (r.estado_venta_detalle || 'Otro')
+      : (r.estado_venta || 'Sin estado de venta registrado'),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// findFechasSeguimientoOcupadas — Fechas (YYYY-MM-DD) que YA tienen un
+// seguimiento agendado para este ejecutivo. Alimenta el calendario del campo
+// "Fecha de próximo seguimiento": marca esos días, pero NO los bloquea —
+// agendar dos cotizaciones el mismo día es válido.
+// ---------------------------------------------------------------------------
+async function findFechasSeguimientoOcupadas(id_ejecutivo) {
+  const [rows] = await pool.execute(
+    `SELECT DISTINCT fecha_proximo_seguimiento AS fecha
+       FROM cotizaciones
+      WHERE id_ejecutivo = ?
+        AND fecha_proximo_seguimiento IS NOT NULL`,
+    [parseInt(id_ejecutivo, 10)]
+  );
+  // DATE columns come back as JS Date objects (mysql2 default) — normalize to
+  // 'YYYY-MM-DD' so the frontend can compare directly against <input> values.
+  return rows.map((r) => {
+    const f = r.fecha;
+    return f instanceof Date ? f.toISOString().slice(0, 10) : String(f).slice(0, 10);
+  });
+}
+
 module.exports = {
   findNotificacionesPendientes,
   insertNotificacion,
   findNotificacionesEjecutivo,
   markNotificacionesLeidas,
+  findSeguimientosDelDia,
+  findFechasSeguimientoOcupadas,
 };

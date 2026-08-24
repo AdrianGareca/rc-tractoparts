@@ -253,6 +253,27 @@ async function updateComentarioAdmin(id, comment) {
   return result.affectedRows > 0;
 }
 
+// ---------------------------------------------------------------------------
+// updateSeguimientoVenta — Persist the commercial follow-up fields.
+// Independent of `estado` (the approval workflow): editable regardless of the
+// quotation's current approval state, including Archivada/Rechazada.
+// @param {number} id
+// @param {Object} datos
+// @param {string|null} datos.estado_venta               - one of the ENUM values or null
+// @param {string|null} datos.estado_venta_detalle        - free text (required when 'Otro')
+// @param {string|null} datos.fecha_proximo_seguimiento   - 'YYYY-MM-DD' or null
+// @returns {boolean}  - true if the row was updated
+// ---------------------------------------------------------------------------
+async function updateSeguimientoVenta(id, { estado_venta, estado_venta_detalle, fecha_proximo_seguimiento }) {
+  const [result] = await pool.execute(
+    `UPDATE cotizaciones
+        SET estado_venta = ?, estado_venta_detalle = ?, fecha_proximo_seguimiento = ?
+      WHERE id = ?`,
+    [estado_venta ?? null, estado_venta_detalle ?? null, fecha_proximo_seguimiento ?? null, id]
+  );
+  return result.affectedRows > 0;
+}
+
 module.exports = {
   create,
   createDetalles,
@@ -261,4 +282,5 @@ module.exports = {
   updatePdfPath,
   updateExcelPath,
   updateComentarioAdmin,
+  updateSeguimientoVenta,
 };

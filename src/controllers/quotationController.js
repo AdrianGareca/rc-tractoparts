@@ -553,6 +553,126 @@ const QuotationController = {
       return res.status(500).json({ success: false, message: 'Failed to update admin comment.' });
     }
   },
+
+  // ---------------------------------------------------------------------------
+  // patchSeguimientoVenta — PATCH /api/cotizaciones/:id/seguimiento
+  //                        (Roles: Ejecutivo [own quotations only], Jefe,
+  //                                Administracion, SysAdmin [any quotation])
+  //
+  // Commercial follow-up tracking — independent of `estado` (the approval
+  // workflow). Editable regardless of the quotation's current state, including
+  // Archivada/Rechazada, since sales follow-up can outlive the internal
+  // approval decision (e.g. re-engaging a client whose quote was archived).
+  //
+  // The Ejecutivo is who actually talks to the client, so they can update
+  // their OWN quotations' follow-up; Jefe/Administracion/SysAdmin can update
+  // any (same ownership rule as the PUT /:id edit endpoint).
+  //
+  // Every field is optional so a caller can update just one of the three
+  // (e.g. only the next-follow-up date) without resending the others —
+  // validate() already guarantees no field silently defaults to a value the
+  // caller never sent (see the comment on updateSeguimientoVentaSchema).
+  //
+  // Request body: { estado_venta?, estado_venta_detalle?, fecha_proximo_seguimiento? }
+  // ---------------------------------------------------------------------------
+  async patchSeguimientoVenta(req, res) {
+    const { id, error: idError } = parseId(req.params.id, 'cotización');
+    const clientIp = req.ip || req.socket?.remoteAddress || null;
+
+    if (idError) return res.status(idError.status).json(idError.body);
+
+    // Defense-in-depth: controller asserts the role even though route
+    // middleware (writeRoles) already guards it.
+    if (!['Ejecutivo', 'Administracion', 'Jefe', 'SysAdmin'].includes(req.user.rol)) {
+      return res.status(403).json({
+        success: false,
+        message: `Access denied. Your role is '${req.user.rol}'.`,
+      });
+    }
+
+    const { estado_venta, estado_venta_detalle, fecha_proximo_seguimiento } = req.body;
+
+    try {
+      const quotation = await QuotationModel.findById(id);
+      if (!quotation) {
+        return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
+      }
+
+      // Ownership check: an Ejecutivo may only update the follow-up on their
+      // OWN quotations. Jefe/Administracion/SysAdmin can update any.
+      if (req.user.rol === 'Ejecutivo' && quotation.id_ejecutivo !== req.user.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. Ejecutivos can only update the sales follow-up on their own quotations.',
+        });
+      }
+
+      // Partial-update semantics: a field the caller never sent must keep its
+      // current DB value, not get coerced to null — the same bug family as
+      // the Zod .default() issue (see updateSeguimientoVentaSchema), just one
+      // layer down. 'in' checks presence in the (already-validated) body so a
+      // field sent explicitly as null (to CLEAR it) is still honored.
+      const datos = {
+        estado_venta:              'estado_venta' in req.body              ? (estado_venta ?? null)              : quotation.estado_venta,
+        estado_venta_detalle:      'estado_venta_detalle' in req.body      ? (estado_venta_detalle ?? null)       : quotation.estado_venta_detalle,
+        fecha_proximo_seguimiento: 'fecha_proximo_seguimiento' in req.body ? (fecha_proximo_seguimiento ?? null)  : quotation.fecha_proximo_seguimiento,
+      };
+      await QuotationModel.updateSeguimientoVenta(id, datos);
+
+      await logEvent({
+        id_usuario:     req.user.id,
+        nombre_usuario: req.user.nombre_usuario,
+        accion:         AuditActions.ACTUALIZAR_SEGUIMIENTO_VENTA,
+        entidad:        'cotizaciones',
+        id_entidad:     id,
+        detalle:        datos,
+        ip_origen:      clientIp,
+        resultado:      'exito',
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Seguimiento comercial actualizado correctamente.',
+        data:    { id, ...datos },
+      });
+    } catch (error) {
+      console.error('[QuotationController.patchSeguimientoVenta] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to update sales follow-up.' });
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // getSeguimientosOcupados — GET /api/cotizaciones/seguimientos-ocupados?id_ejecutivo=N
+  //
+  // Fechas (YYYY-MM-DD) que ya tienen un seguimiento agendado para el
+  // ejecutivo dado. Alimenta el calendario del campo "Fecha de próximo
+  // seguimiento" — marca esos días, pero NO los bloquea.
+  //
+  // Un Ejecutivo solo puede pedir SU PROPIO calendario (mismo criterio que
+  // patchSeguimientoVenta); Jefe/Administracion/SysAdmin pueden pedir el de
+  // cualquier ejecutivo — lo necesitan al editar una cotización ajena.
+  // ---------------------------------------------------------------------------
+  async getSeguimientosOcupados(req, res) {
+    const idParam = parseInt(req.query.id_ejecutivo, 10);
+    if (!Number.isInteger(idParam) || idParam <= 0) {
+      return res.status(422).json({ success: false, message: "Query param 'id_ejecutivo' must be a positive integer." });
+    }
+
+    if (req.user.rol === 'Ejecutivo' && idParam !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Ejecutivos can only view their own follow-up calendar.',
+      });
+    }
+
+    try {
+      const fechas = await QuotationModel.findFechasSeguimientoOcupadas(idParam);
+      return res.status(200).json({ success: true, data: fechas });
+    } catch (error) {
+      console.error('[QuotationController.getSeguimientosOcupados] Error:', error.message);
+      return res.status(500).json({ success: false, message: 'Failed to retrieve the follow-up calendar.' });
+    }
+  },
 };
 
 // ===========================================================================

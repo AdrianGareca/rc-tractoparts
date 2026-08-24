@@ -92,7 +92,7 @@ describe('los paneles piden la cantidad de columnas de SU tabla', () => {
   const RAIZ = path.resolve(__dirname, '../../public/js/views/dashboard');
 
   const PANELES = [
-    ['modules/allQuotationsTab.js', 8],
+    ['modules/allQuotationsTab.js', 10],
     ['modules/auditView.js',        7],
     ['modules/clientsView.js',      6],
     ['modules/licitacionesView.js', 7],

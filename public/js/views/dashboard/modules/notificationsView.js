@@ -69,6 +69,7 @@ function _tipoStyle(tipo) {
   if (tipo === 'aprobacion')    return { borderColor: 'var(--clr-green)',  labelColor: 'var(--clr-green-soft)' };
   if (tipo === 'envio_cliente') return { borderColor: 'var(--clr-blue)',   labelColor: 'var(--clr-blue-soft)' };
   if (tipo === 'licitacion')    return { borderColor: 'var(--clr-teal)',   labelColor: 'var(--clr-teal-soft)' };
+  if (tipo === 'seguimiento')   return { borderColor: 'var(--clr-violet)', labelColor: 'var(--clr-violet-soft)' };
   return                               { borderColor: 'var(--clr-orange)', labelColor: 'var(--clr-orange-soft)' }; // correccion
 }
 
@@ -149,9 +150,10 @@ export async function refreshNotifBadge(UI) {
           //     table and are cleared by POST /notificaciones/leer.
           //   • correcciones → derived from the state history; self-clear when the
           //     quote is re-submitted (NOT cleared by the button).
-          const aprobaciones = rows.filter(r => r.tipo === 'aprobacion' || r.tipo === 'envio_cliente');
-          const licitaciones = rows.filter(r => r.tipo === 'licitacion');
-          const correcciones = rows.filter(r => r.tipo === 'correccion');
+          const aprobaciones  = rows.filter(r => r.tipo === 'aprobacion' || r.tipo === 'envio_cliente');
+          const licitaciones  = rows.filter(r => r.tipo === 'licitacion');
+          const correcciones  = rows.filter(r => r.tipo === 'correccion');
+          const seguimientos  = rows.filter(r => r.tipo === 'seguimiento');
           // All table-backed notifications the "marcar leídas" button clears.
           const marcables = aprobaciones.length + licitaciones.length;
 
@@ -162,6 +164,7 @@ export async function refreshNotifBadge(UI) {
                 ${items.map(_buildNotifItem).join('')}
               </ul>` : '';
 
+            const segSection   = sectionHtml('var(--clr-violet-soft)', 'Seguimientos programados para hoy', seguimientos);
             const aprobSection = sectionHtml('var(--clr-green-soft)', 'Aprobaciones y envíos recientes', aprobaciones);
             const licSection   = sectionHtml('var(--clr-teal-soft)', 'Licitaciones', licitaciones);
             const corrSection  = sectionHtml('var(--clr-orange-soft)', 'Proformas que requieren correcciones', correcciones);
@@ -178,6 +181,7 @@ export async function refreshNotifBadge(UI) {
               <p class="text-sm text-secondary mb-1">
                 Tienes <strong>${rows.length}</strong> notificación${rows.length > 1 ? 'es' : ''} pendiente${rows.length > 1 ? 's' : ''}.
               </p>
+              ${segSection}
               ${aprobSection}
               ${licSection}
               ${corrSection}
@@ -216,4 +220,45 @@ export function startNotifPolling(UI, intervalMs = 90_000) {
   // Fetch immediately, then on each interval tick
   refreshNotifBadge(UI);
   return setInterval(() => refreshNotifBadge(UI), intervalMs);
+}
+
+// ---------------------------------------------------------------------------
+// checkSeguimientosDelDia
+// Auto-abre una minipantalla con los seguimientos de HOY (tipo='seguimiento'),
+// UNA VEZ por día por navegador — si el ejecutivo la cierra, no vuelve a salir
+// sola hasta el día siguiente (pero sigue disponible en la campana normal).
+//
+// Se guarda en localStorage, no en el servidor: es una preferencia de "ya la vi
+// hoy en ESTE navegador", no un dato de negocio. Si localStorage no está
+// disponible (modo privado estricto, storage lleno), se degrada mostrando el
+// popup igual — es preferible repetirlo a no avisar nunca.
+//
+// @param {Object} UI      — el helper de modal singleton
+// @param {number} userId  — id del usuario actual, para que la marca sea por persona
+// ---------------------------------------------------------------------------
+export async function checkSeguimientosDelDia(UI, userId) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const flagKey = `rc_seguimientos_popup_${userId}_${hoy}`;
+
+  let yaMostrado = false;
+  try { yaMostrado = !!localStorage.getItem(flagKey); } catch { /* sin storage: no bloquea */ }
+  if (yaMostrado) return;
+
+  try {
+    const data = await api.get('/api/cotizaciones/notificaciones');
+    const seguimientos = (data.data ?? []).filter(r => r.tipo === 'seguimiento');
+    if (seguimientos.length === 0) return;
+
+    try { localStorage.setItem(flagKey, '1'); } catch { /* no fatal */ }
+
+    UI.openModal('Seguimientos de hoy', (body) => {
+      body.innerHTML = `
+        <p class="text-sm text-secondary mb-1">
+          Hoy corresponde revisar ${seguimientos.length > 1 ? 'estas cotizaciones' : 'esta cotización'} con el cliente:
+        </p>
+        <ul class="lista-limpia mb-1">
+          ${seguimientos.map(_buildNotifItem).join('')}
+        </ul>`;
+    });
+  } catch { /* non-fatal — un fallo acá no debe romper el dashboard */ }
 }

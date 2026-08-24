@@ -65,7 +65,7 @@ export function buildProformaHTML(q, id, viewMode) {
   // ./proformaActions.js. Son DECISIÓN (quién puede qué) y no presentación:
   // mezclados acá adentro, cambiar un permiso obligaba a leer trescientas
   // líneas de HTML para encontrar el if.
-  const { jefeButtons, adminButtons, delegateButtons, adminCommentBlock } =
+  const { jefeButtons, adminButtons, delegateButtons, adminCommentBlock, seguimientoVentaBlock } =
     buildProformaActions(q, { jefeMode, adminMode, delegateMode });
 
   return /* html */ `
@@ -208,6 +208,9 @@ export function buildProformaHTML(q, id, viewMode) {
 
       <!-- Admin comment — read-only in Jefe mode -->
       ${adminCommentBlock}
+
+      <!-- Commercial follow-up — editable for Jefe/Administracion, read-only elsewhere -->
+      ${seguimientoVentaBlock}
 
       <!-- PDF + Excel viewer buttons -->
       <div class="proforma-pdf-bar">

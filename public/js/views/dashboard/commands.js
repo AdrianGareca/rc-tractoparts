@@ -11,7 +11,8 @@
 //     ├─ CreateUserCommand          — POST   /api/usuarios
 //     ├─ UpdateUserCommand          — PUT    /api/usuarios/:id
 //     ├─ SetComentarioAdminCommand  — PATCH  /:id/comentario-admin
-//     └─ HoldWithCommentCommand     — PUT    /:id/estado (En espera + comentario_admin)
+//     ├─ HoldWithCommentCommand     — PUT    /:id/estado (En espera + comentario_admin)
+//     └─ SetSeguimientoVentaCommand — PATCH  /:id/seguimiento
 //
 // Extracted verbatim from dashboardView.js as part of the file-size cleanup
 // — no behavioral change.
@@ -104,6 +105,15 @@ export class HoldWithCommentCommand extends Command {
       observacion:     this.#comment,
       comentario_admin: this.#comment,  // persisted in dedicated column for Jefe to read
     });
+  }
+}
+
+/** PATCH /api/cotizaciones/:id/seguimiento — Save commercial follow-up (Jefe/Administracion) */
+export class SetSeguimientoVentaCommand extends Command {
+  #id; #datos;
+  constructor(id, datos) { super(); this.#id = id; this.#datos = datos; }
+  async execute() {
+    return api.patch(`/api/cotizaciones/${this.#id}/seguimiento`, this.#datos);
   }
 }
 

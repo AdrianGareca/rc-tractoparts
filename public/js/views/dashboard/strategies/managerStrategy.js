@@ -10,7 +10,7 @@
 
 import api, { showToast } from '../../../services/apiClient.js';
 import { escHtml, badgeHtml, fmtAmount, fmtDate, roleBadgeHtml } from '../helpers.js';
-import { wirePdfButton, wireExcelButton } from '../modules/timelineView.js';
+import { wirePdfButton, wireExcelButton, wireSeguimientoVenta } from '../modules/timelineView.js';
 import { renderReportes }      from '../modules/reportesView.js';
 import { mountClientsTab }     from '../modules/clientsView.js';
 import { mountAuditLogTab }    from '../modules/auditView.js';
@@ -177,6 +177,7 @@ export class ManagerStrategy extends DashboardStrategy {
         body.innerHTML = buildProformaHTML(q, id, true);
         wirePdfButton(body, id, q.numero_correlativo, q.cliente_nombre);
         wireExcelButton(body, id, q.numero_correlativo, q.cliente_nombre);
+        wireSeguimientoVenta(body, id, q.id_ejecutivo);
 
         // Wire the 4 state-machine action buttons
         body.querySelector('#btn-solicitar-cambios')?.addEventListener('click', () => {
@@ -326,6 +327,7 @@ export class ManagerStrategy extends DashboardStrategy {
       const q    = data.data;
       UI.openModal(`Proforma ${correlativo ?? q.numero_correlativo}`, (body) => {
         body.innerHTML = buildProformaHTML(q, id, 'jefe');
+        wireSeguimientoVenta(body, id, q.id_ejecutivo, () => this.refresh());
         wirePdfButton(body, id, correlativo ?? q.numero_correlativo, q.cliente_nombre);
         wireExcelButton(body, id, correlativo ?? q.numero_correlativo, q.cliente_nombre);
         // Wire action buttons (same as approval detail)

@@ -31,7 +31,7 @@ import { getThemeMode, cycleTheme, themeButtonLabel } from '../services/theme.js
 
 // ── Dashboard sub-modules ─────────────────────────────────────────────────────
 import { ROLE_BADGE } from './dashboard/helpers.js';
-import { refreshNotifBadge, requestNotifPermission, startNotifPolling } from './dashboard/modules/notificationsView.js';
+import { refreshNotifBadge, requestNotifPermission, startNotifPolling, checkSeguimientosDelDia } from './dashboard/modules/notificationsView.js';
 import { UI } from './dashboard/modalUI.js';
 import { DISCARD_QUOTATION_MSG } from './dashboard/constants.js';
 import { ExecutiveStrategy } from './dashboard/strategies/executiveStrategy.js';
@@ -113,6 +113,8 @@ class DashboardController {
     if (role === 'Ejecutivo' || role === 'Proyectos') {
       requestNotifPermission();
       startNotifPolling(UI);
+      // Minipantalla de seguimientos de HOY — una vez por día, no en cada poll.
+      checkSeguimientosDelDia(UI, user.id);
     }
 
     // Render the main content via the selected Strategy

@@ -13,7 +13,7 @@ import AuthSession             from '../../../services/authSession.js';
 import api, { showToast }      from '../../../services/apiClient.js';
 import { mountQuotationForm }  from '../../quotationForm.js';
 import { STAT_COLOR, badgeHtml, fmtDate, escHtml, fmtAmount } from '../helpers.js';
-import { wirePdfButton, wireExcelButton, buildTimelineHtml }  from '../modules/timelineView.js';
+import { wirePdfButton, wireExcelButton, wireSeguimientoVenta, buildTimelineHtml }  from '../modules/timelineView.js';
 import { renderExecutiveMetrics } from '../modules/reportesView.js';
 import { mountClientsTab }        from '../modules/clientsView.js';
 import { mountLicitacionesTab }   from '../modules/licitacionesView.js';
@@ -571,6 +571,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
 
         wirePdfButton(body, id, q.numero_correlativo, q.cliente_nombre);
         wireExcelButton(body, id, q.numero_correlativo, q.cliente_nombre);
+        wireSeguimientoVenta(body, id, q.id_ejecutivo, () => this.refresh());
         body.insertAdjacentHTML('beforeend', buildTimelineHtml(history));
       });
     } catch (err) {

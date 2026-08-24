@@ -19,16 +19,18 @@ const QuotationModel = require('../../models/QuotationModel');
 const NOTIFIED_ROLES = ['Ejecutivo', 'Proyectos'];
 
 /**
- * Fusiona los dos streams en una sola lista ordenada por fecha descendente.
+ * Fusiona los tres streams en una sola lista ordenada por fecha descendente.
  * Función pura.
  *
- * Las correcciones se etiquetan acá porque salen del historial de estados y no
- * traen `tipo`; las de la tabla `notificaciones` ya vienen etiquetadas.
+ * Las correcciones y los seguimientos se etiquetan acá porque salen de
+ * consultas calculadas en vivo (historial de estados / fecha_proximo_seguimiento)
+ * y no traen `tipo`; las de la tabla `notificaciones` ya vienen etiquetadas.
  */
-function mergeNotificaciones(correcciones = [], aprobaciones = []) {
-  const taggedCorrecciones = correcciones.map(r => ({ ...r, tipo: 'correccion' }));
+function mergeNotificaciones(correcciones = [], aprobaciones = [], seguimientos = []) {
+  const taggedCorrecciones  = correcciones.map(r => ({ ...r, tipo: 'correccion' }));
+  const taggedSeguimientos  = seguimientos.map(r => ({ ...r, tipo: 'seguimiento' }));
 
-  return [...taggedCorrecciones, ...aprobaciones]
+  return [...taggedCorrecciones, ...taggedSeguimientos, ...aprobaciones]
     .sort((a, b) => new Date(b.fecha_solicitud) - new Date(a.fecha_solicitud));
 }
 
@@ -36,20 +38,25 @@ const QuotationNotificationController = {
 
   // ---------------------------------------------------------------------------
   // getNotificaciones — GET /api/cotizaciones/notificaciones  (Role: Ejecutivo)
-  // Returns two notification streams merged into a single response:
-  //   1. Correction notifications — quotations sent back to 'Pendiente'
+  // Returns three notification streams merged into a single response:
+  //   1. Correction notifications  — quotations sent back to 'Pendiente'
   //      (from cotizacion_historial_estados)
-  //   2. Approval notifications   — quotations approved / sent to client by Jefe
+  //   2. Approval notifications    — quotations approved / sent to client by Jefe
   //      (from the dedicated notificaciones table)
+  //   3. Seguimiento notifications — quotations whose fecha_proximo_seguimiento
+  //      is TODAY (computed live, same pattern as stream 1 — no cron needed:
+  //      it just reflects whatever CURDATE() is on each request)
   //
   // Each row carries a `tipo` field so the frontend can style them differently:
   //   tipo = 'correccion'    — from stream 1 (correction needed)
   //   tipo = 'aprobacion'    — Jefe approved to 'Aprobada internamente'
   //   tipo = 'envio_cliente' — Jefe sent to 'Enviada al cliente'
+  //   tipo = 'seguimiento'   — a scheduled client follow-up is due today
   //
   // Opening the modal triggers markNotificacionesLeidas so the badge resets
-  // for approval notifications (correction notifications clear naturally when
-  // the Ejecutivo re-submits the quote and it leaves 'Pendiente').
+  // for approval notifications (correction and seguimiento notifications clear
+  // naturally — the former when the Ejecutivo re-submits the quote, the latter
+  // when the date is no longer today).
   // ---------------------------------------------------------------------------
   async getNotificaciones(req, res) {
     try {
@@ -57,13 +64,14 @@ const QuotationNotificationController = {
         return res.status(200).json({ success: true, total: 0, data: [] });
       }
 
-      // Fetch both notification streams in parallel
-      const [correcciones, aprobaciones] = await Promise.all([
+      // Fetch all three notification streams in parallel
+      const [correcciones, aprobaciones, seguimientos] = await Promise.all([
         QuotationModel.findNotificacionesPendientes(req.user.id),
         QuotationModel.findNotificacionesEjecutivo(req.user.id),
+        QuotationModel.findSeguimientosDelDia(req.user.id),
       ]);
 
-      const combined = mergeNotificaciones(correcciones, aprobaciones);
+      const combined = mergeNotificaciones(correcciones, aprobaciones, seguimientos);
 
       return res.status(200).json({
         success: true,

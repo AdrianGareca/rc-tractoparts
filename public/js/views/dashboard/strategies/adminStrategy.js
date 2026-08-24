@@ -13,7 +13,7 @@
 
 import api, { showToast } from '../../../services/apiClient.js';
 import { escHtml, badgeHtml, fmtAmount, fmtDate, roleBadgeHtml } from '../helpers.js';
-import { wirePdfButton, wireExcelButton } from '../modules/timelineView.js';
+import { wirePdfButton, wireExcelButton, wireSeguimientoVenta } from '../modules/timelineView.js';
 import { renderReportes }      from '../modules/reportesView.js';
 import { mountClientsTab }     from '../modules/clientsView.js';
 import { mountAuditLogTab }    from '../modules/auditView.js';
@@ -177,6 +177,7 @@ export class AdminStrategy extends DashboardStrategy {
         body.innerHTML = buildProformaHTML(q, id, 'admin');
         wirePdfButton(body, id, q.numero_correlativo, q.cliente_nombre);
         wireExcelButton(body, id, q.numero_correlativo, q.cliente_nombre);
+        wireSeguimientoVenta(body, id, q.id_ejecutivo, () => this.refresh());
 
         // Wire "Save comment only" button
         body.querySelector('#btn-save-comment')?.addEventListener('click', () => {

@@ -12,6 +12,38 @@ const { pool } = require('../../config/db');
 const { ESTADOS_VENTA, ESTADOS_DECIDIDOS, literalesDe } = require('./constants');
 
 // ---------------------------------------------------------------------------
+// _getSeguimientoVentaResumen — commercial follow-up counts within the range.
+// Extracted out of getProgreso (which would otherwise cross the project's
+// 80-line-per-function ratchet — see tests/unit/funcionesLargas.test.js).
+// Independent of `estado` (the approval workflow).
+// ---------------------------------------------------------------------------
+async function _getSeguimientoVentaResumen(ejecPlain, scopedParams) {
+  const [rows] = await pool.execute(`
+      SELECT
+        SUM(CASE WHEN estado_venta = 'Interesado'        THEN 1 ELSE 0 END) AS interesado,
+        SUM(CASE WHEN estado_venta = 'En negociacion'     THEN 1 ELSE 0 END) AS en_negociacion,
+        SUM(CASE WHEN estado_venta = 'Confirmado'         THEN 1 ELSE 0 END) AS confirmado,
+        SUM(CASE WHEN estado_venta = 'No le interesa'     THEN 1 ELSE 0 END) AS no_le_interesa,
+        SUM(CASE WHEN estado_venta = 'Venta concretada'   THEN 1 ELSE 0 END) AS venta_concretada,
+        SUM(CASE WHEN estado_venta = 'Otro'               THEN 1 ELSE 0 END) AS otro,
+        SUM(CASE WHEN estado_venta IS NULL                THEN 1 ELSE 0 END) AS sin_seguimiento
+      FROM cotizaciones
+      WHERE fecha_emision BETWEEN ? AND ?
+        ${ejecPlain}
+    `, scopedParams);
+  const r = rows[0] || {};
+  return {
+    interesado:        parseInt(r.interesado        || 0, 10),
+    en_negociacion:     parseInt(r.en_negociacion     || 0, 10),
+    confirmado:         parseInt(r.confirmado         || 0, 10),
+    no_le_interesa:     parseInt(r.no_le_interesa     || 0, 10),
+    venta_concretada:   parseInt(r.venta_concretada   || 0, 10),
+    otro:               parseInt(r.otro               || 0, 10),
+    sin_seguimiento:    parseInt(r.sin_seguimiento    || 0, 10),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // getProgreso — Analytics for the Jefe / Administracion / SysAdmin dashboard,
 // scoped to a [fechaDesde, fechaHasta] date range (inclusive).
 // Returns three data sets in a single DB round-trip:
@@ -65,6 +97,10 @@ async function getProgreso(fechaDesde, fechaHasta, ejecutivoId = null) {
         ${ejecPlain}
     `, scopedParams);
 
+  // Seguimiento comercial dentro del rango — independiente de `estado`
+  // (workflow de aprobación). Ver _getSeguimientoVentaResumen arriba.
+  const seguimiento_venta = await _getSeguimientoVentaResumen(ejecPlain, scopedParams);
+
   // Per-executive breakdown within the selected range
   const [porEjecutivoRows] = await pool.execute(`
       SELECT
@@ -101,6 +137,7 @@ async function getProgreso(fechaDesde, fechaHasta, ejecutivoId = null) {
       total_rechazadas: rechazadas,
       ratio_pct:        total > 0 ? ((aceptadas / total) * 100).toFixed(1) : '0.0',
     },
+    seguimiento_venta,
     por_ejecutivo: porEjecutivoRows,
   };
 }

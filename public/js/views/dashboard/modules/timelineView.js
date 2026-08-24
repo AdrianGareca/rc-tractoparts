@@ -10,7 +10,9 @@
 // =============================================================================
 
 import api, { showToast } from '../../../services/apiClient.js';
-import { escHtml }        from '../helpers.js';
+import { escHtml, fmtDate } from '../helpers.js';
+import { CommandInvoker, SetSeguimientoVentaCommand } from '../commands.js';
+import { openCalendarPicker } from '../../../shared/calendarPicker.js';
 
 // ---------------------------------------------------------------------------
 // saveBlobAs — user-controlled file save with graceful degradation.
@@ -201,6 +203,88 @@ export function wireExcelButton(body, id, correlativo, clienteNombre) {
       btn.disabled = false;
       btn.textContent = 'Descargar Excel';
     }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// wireSeguimientoVenta
+// Attaches the "Guardar seguimiento" handler, the estado→"Otro" text-field
+// toggle, and the calendar date-picker to the commercial follow-up panel
+// rendered by proformaActions.seguimientoVentaBlockHtml. No-op when the save
+// button is absent (read-only render, or a role the backend wouldn't accept
+// the PATCH from — see canEdit in seguimientoVentaBlockHtml).
+//
+// @param {HTMLElement}   body        — Modal body containing the panel
+// @param {number|string} id          — Quotation ID for the endpoint URL
+// @param {number}        idEjecutivo — Owner of the quotation (whose calendar
+//                                      of already-scheduled follow-ups to show
+//                                      — NOT necessarily the viewing user: a
+//                                      Jefe/Administracion editing someone
+//                                      else's quotation sees THEIR calendar)
+// @param {Function}      [onSaved]   — Called after a successful save (e.g. to refresh a list)
+// ---------------------------------------------------------------------------
+export function wireSeguimientoVenta(body, id, idEjecutivo, onSaved) {
+  const btn = body.querySelector('#btn-save-seguimiento');
+  if (!btn) return;
+
+  const estadoSel    = body.querySelector('#seguimiento-estado-input');
+  const detalleGrp   = body.querySelector('#seguimiento-detalle-group');
+  const detalleInput = body.querySelector('#seguimiento-detalle-input');
+  const fechaInput   = body.querySelector('#seguimiento-fecha-input');
+  const fechaBtn     = body.querySelector('#seguimiento-fecha-btn');
+  const errEl        = body.querySelector('#seguimiento-venta-err');
+
+  // Muestra/oculta "Especificar" según si el select está en 'Otro'.
+  // classList, no .style.display: la clase .hidden usa !important en el CSS
+  // y .style.display nunca la puede pisar (ver tests/unit/visibilidadPorClase.test.js).
+  estadoSel?.addEventListener('change', () => {
+    detalleGrp?.classList.toggle('hidden', estadoSel.value !== 'Otro');
+  });
+
+  // El calendario propio: se piden los días ocupados recién al abrir (no al
+  // montar el panel), así una cotización que nunca se toca no gasta un pedido.
+  fechaBtn?.addEventListener('click', async () => {
+    let ocupadas = [];
+    try {
+      const resp = await api.get(`/api/cotizaciones/seguimientos-ocupados?id_ejecutivo=${idEjecutivo}`);
+      ocupadas = resp.data ?? [];
+    } catch { /* sin calendario de fondo, el selector igual funciona */ }
+
+    openCalendarPicker({
+      titulo:        'Fecha de próximo seguimiento',
+      valorActual:   fechaInput?.value || null,
+      fechasOcupadas: ocupadas,
+      onSelect: (fechaStr) => {
+        if (fechaInput) fechaInput.value = fechaStr;
+        if (fechaBtn)   fechaBtn.textContent = fmtDate(fechaStr);
+      },
+      onClear: () => {
+        if (fechaInput) fechaInput.value = '';
+        if (fechaBtn)   fechaBtn.textContent = 'Sin fecha — elegir';
+      },
+    });
+  });
+
+  btn.addEventListener('click', () => {
+    const estado_venta = estadoSel?.value || null;
+    const estado_venta_detalle = detalleInput?.value.trim() || null;
+    const fecha_proximo_seguimiento = fechaInput?.value || null;
+
+    if (errEl) errEl.textContent = '';
+    if (estado_venta === 'Otro' && !estado_venta_detalle) {
+      if (errEl) errEl.textContent = "Especifica el estado cuando eliges 'Otro'.";
+      return;
+    }
+
+    CommandInvoker.run(
+      new SetSeguimientoVentaCommand(id, { estado_venta, estado_venta_detalle, fecha_proximo_seguimiento }),
+      {
+        btn,
+        successMsg: 'Seguimiento comercial guardado.',
+        onSuccess:  () => onSaved?.(),
+        onError:    (err) => { if (errEl) errEl.textContent = err.data?.message || err.message; },
+      }
+    );
   });
 }
 

@@ -196,6 +196,16 @@
   margin-top: .35rem;
 }
 
+/* Acentos de tarjeta reutilizables: evitan un style="--stat-accent:...;" por
+   cada tarjeta nueva. Las tarjetas ya existentes lo siguen fijando inline
+   (no se tocaron), pero cualquier tarjeta nueva puede usar una clase. */
+.stat-accent-blue   { --stat-accent: var(--clr-blue); }
+.stat-accent-amber  { --stat-accent: var(--clr-amber); }
+.stat-accent-green  { --stat-accent: var(--clr-green); }
+.stat-accent-red    { --stat-accent: var(--clr-red); }
+.stat-accent-violet { --stat-accent: var(--clr-violet); }
+.stat-accent-gray   { --stat-accent: var(--clr-gray); }
+
 /* ===== 17. TOAST NOTIFICATIONS ===== */
 .toast-stack {
   position: fixed;
@@ -832,3 +842,84 @@
 /* Esqueleto de una tarjeta de indicador: un renglón de rótulo y una cifra. */
 .skeleton-bar-titulo { width: 55%; height: .65rem; }
 .skeleton-bar-cifra  { width: 75%; height: 1.4rem; margin-top: .6rem; }
+
+/* ===== CALENDARIO DE SEGUIMIENTOS (public/js/shared/calendarPicker.js) ===== */
+
+.cal-picker { min-width: 260px; }
+
+.cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: .5rem;
+}
+
+.cal-titulo-mes {
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: capitalize;
+}
+
+.cal-dias-semana,
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: .25rem;
+}
+
+.cal-celda {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.1rem;
+}
+
+.cal-dia-nombre {
+  font-size: .7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.cal-dia {
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: .85rem;
+  position: relative;
+}
+
+.cal-dia:hover { background: var(--bg-hover); }
+
+.cal-dia.cal-hoy { border-color: var(--clr-blue); }
+
+.cal-dia.cal-seleccionado {
+  background: var(--clr-violet);
+  color: var(--clr-white);
+}
+
+.cal-dia.cal-ocupado::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--clr-amber);
+}
+
+.cal-dia.cal-seleccionado.cal-ocupado::after { background: var(--clr-white); }
+
+.cal-leyenda { display: flex; align-items: center; gap: .4rem; }
+
+.cal-leyenda-punto {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--clr-amber);
+}

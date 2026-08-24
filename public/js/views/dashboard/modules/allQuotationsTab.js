@@ -74,7 +74,7 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
         <button class="btn btn-ghost btn-sm filter-action"   id="allq-clear">Limpiar</button>
       </div>
       <div class="card-toolbar" id="allq-pagination"></div>
-      <div id="allq-results">${tableSkeleton({ columnas: 8, etiqueta: 'Cargando cotizaciones' })}</div>
+      <div id="allq-results">${tableSkeleton({ columnas: 10, etiqueta: 'Cargando cotizaciones' })}</div>
     </div>`;
 
   const $ = (sel) => panel.querySelector(sel);
@@ -85,7 +85,7 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
   const seccion = createListSection({
     resultsEl:    $('#allq-results'),
     paginationEl: $('#allq-pagination'),
-    columnas:     8,
+    columnas:     10,
     etiqueta:     'Cargando cotizaciones',
     etiquetas:    ETIQUETAS_FECHA,
     onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },
@@ -152,7 +152,8 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
             <thead>
               <tr>
                 <th>Correlativo</th><th>Ejecutivo</th><th>Cliente</th>
-                <th>Monto</th><th>Estado</th><th>Fecha</th><th>Acciones</th>
+                <th>Monto</th><th>Estado</th><th>Seguim.</th><th>Próx. seguim.</th>
+                <th>Fecha</th><th>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -163,6 +164,8 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
                   <td>${escHtml(r.cliente_nombre ?? String(r.id_cliente))}</td>
                   <td>${fmtAmount(r.monto_total, r.moneda)}</td>
                   <td>${badgeHtml(r.estado)}</td>
+                  <td>${r.estado_venta ? badgeHtml(r.estado_venta) : '<span class="text-muted">—</span>'}</td>
+                  <td>${r.fecha_proximo_seguimiento ? fmtDate(r.fecha_proximo_seguimiento) : '<span class="text-muted">—</span>'}</td>
                   <td>${fmtDate(r.fecha_emision)}</td>
                   <td>
                     <button class="btn btn-ghost btn-sm" ${detailAttr}="${r.id}"
