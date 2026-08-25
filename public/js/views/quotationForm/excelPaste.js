@@ -62,11 +62,66 @@ const ALIAS_UNIDAD = {
   KIT: 'KIT', KITS: 'KIT', SET: 'KIT',
 };
 
-/** '6,800.00' / '6800' / ' 900 ' -> número. NaN si no se puede interpretar. */
-function parseNumero(s) {
-  if (s == null) return NaN;
-  const limpio = String(s).trim().replace(/[^0-9.,-]/g, '').replace(/,/g, '');
-  return limpio === '' ? NaN : parseFloat(limpio);
+// ---------------------------------------------------------------------------
+// parseNumero — interpreta un número escrito en CUALQUIERA de los dos
+// formatos que puede traer una celda de Excel, sin saber de antemano cuál usó
+// quien la escribió:
+//   formato coma-miles / punto-decimal:   6,800.00   ->  6800
+//   formato punto-miles / coma-decimal:   6.800,00   ->  6800  (boliviano)
+//   solo un separador, sin el otro:       1,5  ó  1.5   ->  1.5
+//                                          6.800 ó 6,800 ->  6800 (se asume
+//                                            agrupador de miles: un separador
+//                                            decimal real NUNCA se repite, y
+//                                            un precio con exactamente 3
+//                                            cifras después casi nunca es
+//                                            "3 decimales" — es miles)
+//
+// BUG QUE ESTO ARREGLA: la version anterior asumia SIEMPRE coma=miles y
+// punto=decimal, y borraba las comas sin convertirlas. Con un numero en
+// formato boliviano "6.800,00" quedaba "6.800.00" (dos puntos) y
+// parseFloat corta en el primer numero valido: devolvia 6.8, mil veces menos.
+// Con "1,5" (una coma decimal, sin miles) borraba la coma sin volverla punto
+// y devolvia 15, diez veces mas. Cubierto por tests/unit/excelPaste.test.js.
+// ---------------------------------------------------------------------------
+function esAgrupadorDeMiles(partes) {
+  // Un separador decimal aparece UNA sola vez. Si el mismo separador se repite
+  // ("1.234.567"), es agrupador seguro. Si aparece una sola vez y el resto
+  // tiene EXACTAMENTE 3 dígitos, se asume agrupador (grupo de miles estándar)
+  // salvo que no haya nada antes (".500" no es "quinientos mil", es 0.5).
+  return partes.length > 2 || (partes.length === 2 && partes[1].length === 3 && partes[0].length > 0);
+}
+
+export function parseNumero(valorCrudo) {
+  if (valorCrudo == null) return NaN;
+  let s = String(valorCrudo).trim().replace(/[^0-9.,-]/g, '');
+  if (s === '') return NaN;
+
+  const negativo = s.startsWith('-');
+  if (negativo) s = s.slice(1);
+
+  const tieneComa  = s.includes(',');
+  const tienePunto = s.includes('.');
+
+  let normalizado;
+  if (tieneComa && tienePunto) {
+    // Aparecen los dos: el que esté MÁS A LA DERECHA es el decimal real.
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+      normalizado = s.replace(/\./g, '').replace(',', '.'); // 6.800,00
+    } else {
+      normalizado = s.replace(/,/g, '');                     // 6,800.00
+    }
+  } else if (tieneComa) {
+    const partes = s.split(',');
+    normalizado = esAgrupadorDeMiles(partes) ? partes.join('') : s.replace(',', '.');
+  } else if (tienePunto) {
+    const partes = s.split('.');
+    normalizado = esAgrupadorDeMiles(partes) ? partes.join('') : s;
+  } else {
+    normalizado = s;
+  }
+
+  const n = parseFloat(normalizado);
+  return Number.isFinite(n) ? (negativo ? -n : n) : NaN;
 }
 
 // Posiciones por defecto cuando NO hay fila de encabezado (se infiere por la
