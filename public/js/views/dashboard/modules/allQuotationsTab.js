@@ -33,12 +33,9 @@ const ALL_QUOTATION_STATES = [
   'Enviada al cliente', 'Confirmada', 'Rechazada', 'Archivada',
 ];
 
-export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail }) {
-  // Closure state — persists while this tab stays mounted.
-  const state = { page: 1, limit: 50 };
-
-  // ── 1. Paint the static shell (filter bar + results container) ONCE ─────────
-  panel.innerHTML = `
+/** Filtros + contenedor de resultados. Función PURA. */
+function buildShellHtml() {
+  return `
     <div class="card">
       <div class="card-header flex-wrap gap-2">
         <h3>Todas las cotizaciones</h3>
@@ -76,6 +73,35 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
       <div class="card-toolbar" id="allq-pagination"></div>
       <div id="allq-results">${tableSkeleton({ columnas: 10, etiqueta: 'Cargando cotizaciones' })}</div>
     </div>`;
+}
+
+/** Una fila de la tabla. Pura. */
+function buildRowHtml(r, detailAttr) {
+  return `
+                <tr>
+                  <td class="fw-600">${escHtml(r.numero_correlativo)}</td>
+                  <td>${escHtml(r.ejecutivo_nombre ?? '—')}</td>
+                  <td>${escHtml(r.cliente_nombre ?? String(r.id_cliente))}</td>
+                  <td>${fmtAmount(r.monto_total, r.moneda)}</td>
+                  <td>${badgeHtml(r.estado)}</td>
+                  <td>${r.estado_venta ? badgeHtml(r.estado_venta) : '<span class="text-muted">—</span>'}</td>
+                  <td>${r.fecha_proximo_seguimiento ? fmtDate(r.fecha_proximo_seguimiento) : '<span class="text-muted">—</span>'}</td>
+                  <td>${fmtDate(r.fecha_emision)}</td>
+                  <td>
+                    <button class="btn btn-ghost btn-sm" ${detailAttr}="${r.id}"
+                            data-correlativo="${escHtml(r.numero_correlativo)}">
+                      Ver Detalle
+                    </button>
+                  </td>
+                </tr>`;
+}
+
+export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail }) {
+  // Closure state — persists while this tab stays mounted.
+  const state = { page: 1, limit: 50 };
+
+  // ── 1. Paint the static shell (filter bar + results container) ONCE ─────────
+  panel.innerHTML = buildShellHtml();
 
   const $ = (sel) => panel.querySelector(sel);
 
@@ -157,23 +183,7 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
               </tr>
             </thead>
             <tbody>
-              ${rows.map((r) => `
-                <tr>
-                  <td class="fw-600">${escHtml(r.numero_correlativo)}</td>
-                  <td>${escHtml(r.ejecutivo_nombre ?? '—')}</td>
-                  <td>${escHtml(r.cliente_nombre ?? String(r.id_cliente))}</td>
-                  <td>${fmtAmount(r.monto_total, r.moneda)}</td>
-                  <td>${badgeHtml(r.estado)}</td>
-                  <td>${r.estado_venta ? badgeHtml(r.estado_venta) : '<span class="text-muted">—</span>'}</td>
-                  <td>${r.fecha_proximo_seguimiento ? fmtDate(r.fecha_proximo_seguimiento) : '<span class="text-muted">—</span>'}</td>
-                  <td>${fmtDate(r.fecha_emision)}</td>
-                  <td>
-                    <button class="btn btn-ghost btn-sm" ${detailAttr}="${r.id}"
-                            data-correlativo="${escHtml(r.numero_correlativo)}">
-                      Ver Detalle
-                    </button>
-                  </td>
-                </tr>`).join('')}
+              ${rows.map((r) => buildRowHtml(r, detailAttr)).join('')}
             </tbody>
           </table>
         </div>`);

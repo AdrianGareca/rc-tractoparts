@@ -30,6 +30,169 @@ function fmtMoney(n, moneda = 'BOB') {
   return moneda === 'USD' ? `$ ${s}` : `Bs. ${s}`;
 }
 
+// ── Cableado de eventos del sub-modal, agrupado por bloque de funcionalidad ──
+// Cada uno recibe el overlay y lo que necesita de openLicitacionDetail (id,
+// lic, close, load, openDetail) — nada de estado propio, así que reabrir el
+// detalle simplemente vuelve a llamarlos con datos frescos.
+
+/** Descargar / eliminar documentos adjuntos. */
+function wireDocumentActions(overlay, { id, close, openDetail }) {
+  overlay.querySelectorAll('[data-doc-download]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const docId   = btn.dataset.docDownload;
+      const docName = btn.dataset.docName;
+      const original = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '…';
+      try {
+        const response = await api.get(`/api/licitaciones/${id}/documentos/${docId}`);
+        const blob = await response.blob();
+        const outcome = await saveBlobAs(blob, docName, { description: 'Documento', accept: {} });
+        if (outcome === 'saved')      showToast('Documento guardado en la ubicación elegida.', 'success', 2500);
+        else if (outcome === 'downloaded') showToast('Documento descargado a tu carpeta de Descargas.', 'info', 3500);
+      } catch (err) {
+        showToast(err.data?.message || err.message || 'No se pudo descargar el documento.', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    });
+  });
+
+  overlay.querySelectorAll('[data-doc-delete]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const docId   = btn.dataset.docDelete;
+      const docName = btn.dataset.docName;
+      if (!confirm(`¿Eliminar el documento "${docName}"? Esta acción no se puede deshacer.`)) return;
+      try {
+        await api.delete(`/api/licitaciones/${id}/documentos/${docId}`);
+        showToast('Documento eliminado.', 'success');
+        close();
+        openDetail(id);
+      } catch (err) {
+        showToast(err.data?.message || err.message || 'No se pudo eliminar el documento.', 'error');
+      }
+    });
+  });
+}
+
+/** Expediente PDF de la licitación + proforma PDF de cada cotización vinculada. */
+function wirePdfActions(overlay, { id, lic }) {
+  overlay.querySelector('#licd-pdf')?.addEventListener('click', async () => {
+    const btn = overlay.querySelector('#licd-pdf');
+    const original = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Generando…';
+    try {
+      const response = await api.get(`/api/licitaciones/${id}/pdf`);
+      const blob = await response.blob();
+      const outcome = await saveBlobAs(blob, `Expediente_${lic.codigo}.pdf`, {
+        description: 'Documento PDF', accept: { 'application/pdf': ['.pdf'] },
+      });
+      if (outcome === 'saved')      showToast('Expediente guardado.', 'success', 2500);
+      else if (outcome === 'downloaded') showToast('Expediente descargado a tu carpeta de Descargas.', 'info', 3500);
+    } catch (err) {
+      showToast(err.data?.message || err.message || 'No se pudo generar el PDF.', 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = original;
+    }
+  });
+
+  overlay.querySelectorAll('[data-cot-pdf]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const cotId = btn.dataset.cotPdf;
+      const cotName = btn.dataset.cotName || `cotizacion-${cotId}`;
+      const original = btn.textContent;
+      btn.disabled = true; btn.textContent = '…';
+      try {
+        const response = await api.get(`/api/cotizaciones/${cotId}/pdf`);
+        const blob = await response.blob();
+        const safe = String(cotName).replace(/[^\w\-]/g, '_');
+        const outcome = await saveBlobAs(blob, `${safe}.pdf`, {
+          description: 'Documento PDF', accept: { 'application/pdf': ['.pdf'] },
+        });
+        if (outcome === 'saved')      showToast('Proforma guardada.', 'success', 2500);
+        else if (outcome === 'downloaded') showToast('Proforma descargada a tu carpeta de Descargas.', 'info', 3500);
+      } catch (err) {
+        showToast(err.data?.message || err.message || 'No se pudo abrir la proforma.', 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = original;
+      }
+    });
+  });
+}
+
+/** Agregar / eliminar gastos (post-adjudicación). */
+function wireGastoActions(overlay, { id, lic, close, openDetail }) {
+  overlay.querySelector('#licd-gasto-add')?.addEventListener('click', async () => {
+    const errEl = overlay.querySelector('#licd-gasto-err');
+    if (errEl) errEl.textContent = '';
+    const concepto = overlay.querySelector('#licd-gasto-concepto')?.value.trim();
+    const montoRaw = overlay.querySelector('#licd-gasto-monto')?.value;
+    const monto = parseFloat(montoRaw);
+
+    if (!concepto) { if (errEl) errEl.textContent = 'Indicá el concepto del gasto.'; return; }
+    if (isNaN(monto) || monto <= 0) { if (errEl) errEl.textContent = 'El monto debe ser mayor a 0.'; return; }
+
+    const btn = overlay.querySelector('#licd-gasto-add');
+    btn.disabled = true;
+    try {
+      await api.post(`/api/licitaciones/${id}/gastos`, { concepto, monto, moneda: lic.moneda || 'BOB' });
+      showToast('Gasto registrado.', 'success');
+      close();
+      openDetail(id); // reabre el detalle con el gasto y el resultado recalculado
+    } catch (err) {
+      if (errEl) errEl.textContent = err.data?.message || err.message || 'No se pudo registrar el gasto.';
+      btn.disabled = false;
+    }
+  });
+
+  overlay.querySelectorAll('[data-gasto-delete]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const gastoId = btn.dataset.gastoDelete;
+      const concepto = btn.dataset.gastoConcepto || 'este gasto';
+      if (!confirm(`¿Eliminar el gasto "${concepto}"?`)) return;
+      try {
+        await api.delete(`/api/licitaciones/${id}/gastos/${gastoId}`);
+        showToast('Gasto eliminado.', 'success');
+        close();
+        openDetail(id);
+      } catch (err) {
+        showToast(err.data?.message || err.message || 'No se pudo eliminar el gasto.', 'error');
+      }
+    });
+  });
+}
+
+/** Botones de transición de estado. */
+function wireTransitionButtons(overlay, { id, close, load }) {
+  overlay.querySelectorAll('[data-lic-transition]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const nuevoEstado = btn.dataset.licTransition;
+      const obsInput = overlay.querySelector('#licd-observacion');
+      let observacion = obsInput ? obsInput.value.trim() : '';
+
+      if (nuevoEstado === 'No adjudicada' && !observacion) {
+        const errEl = overlay.querySelector('#licd-trans-err');
+        if (errEl) errEl.textContent = 'Debe indicar el motivo para marcar "No adjudicada".';
+        obsInput?.focus();
+        return;
+      }
+
+      btn.disabled = true;
+      try {
+        await api.put(`/api/licitaciones/${id}/estado`, { nuevo_estado: nuevoEstado, observacion: observacion || null });
+        showToast(`Licitación → "${nuevoEstado}".`, 'success');
+        close();
+        load();
+      } catch (err) {
+        const errEl = overlay.querySelector('#licd-trans-err');
+        if (errEl) errEl.textContent = err.data?.message || err.message || 'No se pudo cambiar el estado.';
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
 // ── Detail sub-modal ───────────────────────────────────────────────────────
 /**
  * Abre el sub-modal de detalle de una licitacion.
@@ -104,182 +267,23 @@ export async function openLicitacionDetail(id, { onChanged, onCreateCotizacion =
     if (typeof onCreateCotizacion === 'function') { close(); onCreateCotizacion(lic); }
   });
 
-  // ── Documentos: descargar (todos los roles con acceso al detalle) ────────
   // La subida de documentos se hace desde "Nueva/Editar Licitación"
   // (licitacionModal.js) — aquí solo se listan, descargan y eliminan.
-  overlay.querySelectorAll('[data-doc-download]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const docId   = btn.dataset.docDownload;
-      const docName = btn.dataset.docName;
-      const original = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = '…';
-      try {
-        const response = await api.get(`/api/licitaciones/${id}/documentos/${docId}`);
-        const blob = await response.blob();
-        const outcome = await saveBlobAs(blob, docName, { description: 'Documento', accept: {} });
-        if (outcome === 'saved')      showToast('Documento guardado en la ubicación elegida.', 'success', 2500);
-        else if (outcome === 'downloaded') showToast('Documento descargado a tu carpeta de Descargas.', 'info', 3500);
-      } catch (err) {
-        showToast(err.data?.message || err.message || 'No se pudo descargar el documento.', 'error');
-      } finally {
-        btn.disabled = false;
-        btn.textContent = original;
-      }
-    });
-  });
-
-  // ── Documentos: eliminar (responsable/Jefe/SysAdmin) ──────────────────────
-  overlay.querySelectorAll('[data-doc-delete]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const docId   = btn.dataset.docDelete;
-      const docName = btn.dataset.docName;
-      if (!confirm(`¿Eliminar el documento "${docName}"? Esta acción no se puede deshacer.`)) return;
-      try {
-        await api.delete(`/api/licitaciones/${id}/documentos/${docId}`);
-        showToast('Documento eliminado.', 'success');
-        close();
-        openDetail(id);
-      } catch (err) {
-        showToast(err.data?.message || err.message || 'No se pudo eliminar el documento.', 'error');
-      }
-    });
-  });
-
-  // ── Expediente PDF de la licitación ──────────────────────────────────────
-  overlay.querySelector('#licd-pdf')?.addEventListener('click', async () => {
-    const btn = overlay.querySelector('#licd-pdf');
-    const original = btn.textContent;
-    btn.disabled = true; btn.textContent = 'Generando…';
-    try {
-      const response = await api.get(`/api/licitaciones/${id}/pdf`);
-      const blob = await response.blob();
-      const outcome = await saveBlobAs(blob, `Expediente_${lic.codigo}.pdf`, {
-        description: 'Documento PDF', accept: { 'application/pdf': ['.pdf'] },
-      });
-      if (outcome === 'saved')      showToast('Expediente guardado.', 'success', 2500);
-      else if (outcome === 'downloaded') showToast('Expediente descargado a tu carpeta de Descargas.', 'info', 3500);
-    } catch (err) {
-      showToast(err.data?.message || err.message || 'No se pudo generar el PDF.', 'error');
-    } finally {
-      btn.disabled = false; btn.textContent = original;
-    }
-  });
-
-  // ── Ver proforma (PDF) de una cotización vinculada ───────────────────────
-  overlay.querySelectorAll('[data-cot-pdf]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const cotId = btn.dataset.cotPdf;
-      const cotName = btn.dataset.cotName || `cotizacion-${cotId}`;
-      const original = btn.textContent;
-      btn.disabled = true; btn.textContent = '…';
-      try {
-        const response = await api.get(`/api/cotizaciones/${cotId}/pdf`);
-        const blob = await response.blob();
-        const safe = String(cotName).replace(/[^\w\-]/g, '_');
-        const outcome = await saveBlobAs(blob, `${safe}.pdf`, {
-          description: 'Documento PDF', accept: { 'application/pdf': ['.pdf'] },
-        });
-        if (outcome === 'saved')      showToast('Proforma guardada.', 'success', 2500);
-        else if (outcome === 'downloaded') showToast('Proforma descargada a tu carpeta de Descargas.', 'info', 3500);
-      } catch (err) {
-        showToast(err.data?.message || err.message || 'No se pudo abrir la proforma.', 'error');
-      } finally {
-        btn.disabled = false; btn.textContent = original;
-      }
-    });
-  });
-
-  // ── Gastos: agregar (Admin / responsable Proyectos / Jefe / SysAdmin) ────
-  overlay.querySelector('#licd-gasto-add')?.addEventListener('click', async () => {
-    const errEl = overlay.querySelector('#licd-gasto-err');
-    if (errEl) errEl.textContent = '';
-    const concepto = overlay.querySelector('#licd-gasto-concepto')?.value.trim();
-    const montoRaw = overlay.querySelector('#licd-gasto-monto')?.value;
-    const monto = parseFloat(montoRaw);
-
-    if (!concepto) { if (errEl) errEl.textContent = 'Indicá el concepto del gasto.'; return; }
-    if (isNaN(monto) || monto <= 0) { if (errEl) errEl.textContent = 'El monto debe ser mayor a 0.'; return; }
-
-    const btn = overlay.querySelector('#licd-gasto-add');
-    btn.disabled = true;
-    try {
-      await api.post(`/api/licitaciones/${id}/gastos`, { concepto, monto, moneda: lic.moneda || 'BOB' });
-      showToast('Gasto registrado.', 'success');
-      close();
-      openDetail(id); // reabre el detalle con el gasto y el resultado recalculado
-    } catch (err) {
-      if (errEl) errEl.textContent = err.data?.message || err.message || 'No se pudo registrar el gasto.';
-      btn.disabled = false;
-    }
-  });
-
-  // ── Gastos: eliminar ──────────────────────────────────────────────────────
-  overlay.querySelectorAll('[data-gasto-delete]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const gastoId = btn.dataset.gastoDelete;
-      const concepto = btn.dataset.gastoConcepto || 'este gasto';
-      if (!confirm(`¿Eliminar el gasto "${concepto}"?`)) return;
-      try {
-        await api.delete(`/api/licitaciones/${id}/gastos/${gastoId}`);
-        showToast('Gasto eliminado.', 'success');
-        close();
-        openDetail(id);
-      } catch (err) {
-        showToast(err.data?.message || err.message || 'No se pudo eliminar el gasto.', 'error');
-      }
-    });
-  });
-
-  // Transition buttons
-  overlay.querySelectorAll('[data-lic-transition]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      const nuevoEstado = btn.dataset.licTransition;
-      const obsInput = overlay.querySelector('#licd-observacion');
-      let observacion = obsInput ? obsInput.value.trim() : '';
-
-      if (nuevoEstado === 'No adjudicada' && !observacion) {
-        const errEl = overlay.querySelector('#licd-trans-err');
-        if (errEl) errEl.textContent = 'Debe indicar el motivo para marcar "No adjudicada".';
-        obsInput?.focus();
-        return;
-      }
-
-      btn.disabled = true;
-      try {
-        await api.put(`/api/licitaciones/${id}/estado`, { nuevo_estado: nuevoEstado, observacion: observacion || null });
-        showToast(`Licitación → "${nuevoEstado}".`, 'success');
-        close();
-        load();
-      } catch (err) {
-        const errEl = overlay.querySelector('#licd-trans-err');
-        if (errEl) errEl.textContent = err.data?.message || err.message || 'No se pudo cambiar el estado.';
-        btn.disabled = false;
-      }
-    });
-  });
+  wireDocumentActions(overlay, { id, close, openDetail });
+  wirePdfActions(overlay, { id, lic });
+  wireGastoActions(overlay, { id, lic, close, openDetail });
+  wireTransitionButtons(overlay, { id, close, load });
 }
 
-// `onCreateCotizacion` entra por parámetro: era una closure de mountLicitacionesTab
-// y sólo la pasa el panel del ejecutivo delegado.
-function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = null } = {}) {
-  // Snapshot de la sesión leído una vez: las funciones de permissions.js son
-  // puras y reciben el usuario en vez de consultar AuthSession por dentro.
-  const user = currentUser();
-  const trans = allowedTransitions(lic, user);
-  const actorType = resolveActorType(lic, user);
-  const canEdit = EDITABLE_STATES.includes(lic.estado) && (actorType === 'responsable' || actorType === 'jefe');
-  // A diferencia de canEdit, la gestión de documentos NO se restringe por
-  // estado — Proyectos/Jefe/SysAdmin pueden adjuntar en cualquier momento.
-  const canManageDocs = actorType === 'responsable' || actorType === 'jefe';
-
-  // Budget comparison
+/** Comparación presupuesto vs. comprometido. Pura. */
+function buildBudgetHtml(lic) {
   const comprometido = Number(lic.total_comprometido ?? 0);
-  let budgetHtml = '';
-  if (lic.presupuesto_referencial != null) {
-    const presupuesto = Number(lic.presupuesto_referencial);
-    const dentro = comprometido <= presupuesto;
-    budgetHtml = `
+  if (lic.presupuesto_referencial == null) {
+    return `<div class="text-muted text-sm mt-1">Sin presupuesto referencial definido.</div>`;
+  }
+  const presupuesto = Number(lic.presupuesto_referencial);
+  const dentro = comprometido <= presupuesto;
+  return `
       <div style="margin-top:.5rem;padding:.6rem .8rem;border-radius:8px;
            background:${dentro ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)'};">
         <strong>${dentro ? 'Dentro de presupuesto' : 'Fuera de presupuesto'}</strong><br>
@@ -289,27 +293,18 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
           ? `<br><span class="text-sm text-amber">Hay cotizaciones vinculadas en otra moneda que no se incluyen en esta comparación (el presupuesto está en ${escHtml(lic.moneda || 'BOB')}).</span>`
           : ''}
       </div>`;
-  } else {
-    budgetHtml = `<div class="text-muted text-sm mt-1">Sin presupuesto referencial definido.</div>`;
-  }
+}
 
-  // Linked cotizaciones table. El vínculo NO se crea desde acá: lo arma el
-  // ejecutivo comercial delegado (can_approve_quotations) desde su propio
-  // panel — por eso, si todavía no hay ninguna, se explica cómo se genera
-  // en vez de dejar el estado vacío sin contexto.
+/**
+ * Tabla de cotizaciones vinculadas. El vínculo NO se crea desde acá: lo arma
+ * el ejecutivo comercial delegado (can_approve_quotations) desde su propio
+ * panel — por eso, si todavía no hay ninguna, se explica cómo se genera en
+ * vez de dejar el estado vacío sin contexto. Pura.
+ */
+function buildCotizacionesVinculadasHtml(lic) {
   const cots = lic.cotizaciones ?? [];
-  let noCotsHint = 'No se vinculó ninguna cotización a esta licitación.';
-  if (cots.length === 0 && lic.estado === 'En preparacion') {
-    noCotsHint = 'Pasá esta licitación a "Cotizando" para que el ejecutivo comercial delegado ' +
-      '(el que tiene el poder de aprobar cotizaciones) la vea en su panel de Licitaciones y pueda crear la cotización vinculada.';
-  } else if (cots.length === 0 && ['Cotizando', 'En evaluacion'].includes(lic.estado)) {
-    noCotsHint = 'El ejecutivo comercial delegado la crea desde su propio panel de Licitaciones ' +
-      '("Crear cotización vinculada"), o cualquier ejecutivo puede vincularla eligiendo esta licitación ' +
-      'en el campo "Licitación asociada" al crear o editar una cotización normal.';
-  }
-  const cotsHtml = cots.length === 0
-    ? `<p class="text-muted text-sm">${escHtml(noCotsHint)}</p>`
-    : `<div class="table-wrapper"><table class="data-table">
+  if (cots.length > 0) {
+    return `<div class="table-wrapper"><table class="data-table">
          <thead><tr><th>Correlativo</th><th>Estado</th><th>Monto</th><th>Ejecutivo</th><th>Proforma</th></tr></thead>
          <tbody>${cots.map((c) => `
            <tr>
@@ -320,19 +315,32 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
              <td><button class="btn btn-ghost btn-sm" data-cot-pdf="${c.id}" data-cot-name="${escHtml(c.numero_correlativo)}">Ver</button></td>
            </tr>`).join('')}
          </tbody></table></div>`;
+  }
+  let noCotsHint = 'No se vinculó ninguna cotización a esta licitación.';
+  if (lic.estado === 'En preparacion') {
+    noCotsHint = 'Pasá esta licitación a "Cotizando" para que el ejecutivo comercial delegado ' +
+      '(el que tiene el poder de aprobar cotizaciones) la vea en su panel de Licitaciones y pueda crear la cotización vinculada.';
+  } else if (['Cotizando', 'En evaluacion'].includes(lic.estado)) {
+    noCotsHint = 'El ejecutivo comercial delegado la crea desde su propio panel de Licitaciones ' +
+      '("Crear cotización vinculada"), o cualquier ejecutivo puede vincularla eligiendo esta licitación ' +
+      'en el campo "Licitación asociada" al crear o editar una cotización normal.';
+  }
+  return `<p class="text-muted text-sm">${escHtml(noCotsHint)}</p>`;
+}
 
-  // ── Resultado (ganancia/pérdida) y gastos — solo post-adjudicación ─────────
-  const isAdjudicada = GASTO_STATES.includes(lic.estado);
-  const canGastos    = canManageGastos(lic, user);
+/**
+ * Resultado (ganancia/pérdida) + sección de gastos — solo post-adjudicación.
+ * Devuelve las dos piezas por separado porque van en lugares distintos del
+ * layout (el resultado junto al presupuesto, los gastos más abajo). Pura.
+ */
+function buildResultadoYGastosHtml(lic, canGastos) {
+  if (!GASTO_STATES.includes(lic.estado)) return { resultadoHtml: '', gastosSectionHtml: '' };
 
-  let resultadoHtml = '';
-  let gastosSectionHtml = '';
-  if (isAdjudicada) {
-    const ingreso   = Number(lic.total_comprometido ?? 0);
-    const gastosT   = Number(lic.total_gastos ?? 0);
-    const resultado = Number(lic.resultado ?? (ingreso - gastosT));
-    const ganancia  = resultado >= 0;
-    resultadoHtml = `
+  const ingreso   = Number(lic.total_comprometido ?? 0);
+  const gastosT   = Number(lic.total_gastos ?? 0);
+  const resultado = Number(lic.resultado ?? (ingreso - gastosT));
+  const ganancia  = resultado >= 0;
+  const resultadoHtml = `
       <div style="margin-top:.5rem;padding:.6rem .8rem;border-radius:8px;
            background:${ganancia ? 'rgba(16,185,129,.14)' : 'rgba(239,68,68,.14)'};">
         <strong class="resultado-cifra">${ganancia ? 'Ganancia' : 'Pérdida'}: ${fmtMoney(Math.abs(resultado), lic.moneda)}</strong><br>
@@ -343,10 +351,10 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
           : ''}
       </div>`;
 
-    const gastos = lic.gastos ?? [];
-    const gastosList = gastos.length === 0
-      ? `<p class="text-muted text-sm">Aún no hay gastos registrados.${canGastos ? ' Agregá el primero abajo.' : ''}</p>`
-      : `<div class="table-wrapper"><table class="data-table">
+  const gastos = lic.gastos ?? [];
+  const gastosList = gastos.length === 0
+    ? `<p class="text-muted text-sm">Aún no hay gastos registrados.${canGastos ? ' Agregá el primero abajo.' : ''}</p>`
+    : `<div class="table-wrapper"><table class="data-table">
            <thead><tr><th>Concepto</th><th>Monto</th><th>Registró</th><th>Fecha</th>${canGastos ? '<th></th>' : ''}</tr></thead>
            <tbody>${gastos.map((g) => `
              <tr>
@@ -358,7 +366,7 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
              </tr>`).join('')}
            </tbody></table></div>`;
 
-    const addForm = canGastos ? `
+  const addForm = canGastos ? `
       <div class="acciones-fila items-end">
         <div class="form-group fg-doble-min160">
           <label class="form-label text-sm" for="licd-gasto-concepto">Concepto</label>
@@ -372,18 +380,24 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
       </div>
       <div class="form-error" id="licd-gasto-err"></div>` : '';
 
-    gastosSectionHtml = `
+  const gastosSectionHtml = `
       <h5 class="sub-seccion-title">Gastos (${gastos.length})</h5>
       ${gastosList}
       ${addForm}`;
-  }
 
-  // Documentos adjuntos: cualquiera con acceso al detalle puede ver/descargar;
-  // solo el responsable (o Jefe/SysAdmin) puede eliminarlos. La subida se hace
-  // desde "Nueva/Editar Licitación" (licitacionModal.js), no desde aquí.
-  const docsListHtml = documentos.length === 0
-    ? `<p class="text-muted text-sm">Aún no hay documentos adjuntos.${canManageDocs ? ' Usá "Adjuntar" para subir el primero.' : ''}</p>`
-    : `<ul class="lista-limpia">
+  return { resultadoHtml, gastosSectionHtml };
+}
+
+/**
+ * Documentos adjuntos: cualquiera con acceso al detalle puede ver/descargar;
+ * solo el responsable (o Jefe/SysAdmin) puede eliminarlos. La subida se hace
+ * desde "Nueva/Editar Licitación" (licitacionModal.js), no desde aquí. Pura.
+ */
+function buildDocumentosHtml(documentos, canManageDocs) {
+  if (documentos.length === 0) {
+    return `<p class="text-muted text-sm">Aún no hay documentos adjuntos.${canManageDocs ? ' Usá "Adjuntar" para subir el primero.' : ''}</p>`;
+  }
+  return `<ul class="lista-limpia">
          ${documentos.map((d) => `
            <li class="lista-item">
              <span>${docIcon(d.nombre_original)}</span>
@@ -400,17 +414,43 @@ function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = 
              ${canManageDocs ? `<button class="btn btn-danger btn-sm" data-doc-delete="${d.id}" data-doc-name="${escHtml(d.nombre_original)}">Eliminar</button>` : ''}
            </li>`).join('')}
        </ul>`;
+}
 
-  const transButtons = trans.length > 0
-    ? `<div class="acciones-fila">
+/** Botones de transición + observación (obligatoria solo para "No adjudicada"). Pura. */
+function buildTransButtonsHtml(trans) {
+  if (trans.length === 0) {
+    return '<p class="text-muted text-sm mt-1">No tienes transiciones disponibles para esta licitación en su estado actual.</p>';
+  }
+  return `<div class="acciones-fila">
          ${trans.map((t) => `<button class="btn btn-sm ${t === 'No adjudicada' || t === 'Archivada' ? 'btn-ghost' : 'btn-primary'}" data-lic-transition="${escHtml(t)}">→ ${escHtml(t)}</button>`).join('')}
        </div>
        <div class="form-group mt-1">
          <label class="form-label text-sm" for="licd-observacion">Observación (obligatoria para "No adjudicada")</label>
          <textarea class="form-control" id="licd-observacion" rows="2" maxlength="2000" placeholder="Nota de la transición…"></textarea>
        </div>
-       <div class="form-error" id="licd-trans-err"></div>`
-    : '<p class="text-muted text-sm mt-1">No tienes transiciones disponibles para esta licitación en su estado actual.</p>';
+       <div class="form-error" id="licd-trans-err"></div>`;
+}
+
+// `onCreateCotizacion` entra por parámetro: era una closure de mountLicitacionesTab
+// y sólo la pasa el panel del ejecutivo delegado.
+function renderDetailHtml(lic, history, documentos = [], { onCreateCotizacion = null } = {}) {
+  // Snapshot de la sesión leído una vez: las funciones de permissions.js son
+  // puras y reciben el usuario en vez de consultar AuthSession por dentro.
+  const user = currentUser();
+  const trans = allowedTransitions(lic, user);
+  const actorType = resolveActorType(lic, user);
+  const canEdit = EDITABLE_STATES.includes(lic.estado) && (actorType === 'responsable' || actorType === 'jefe');
+  // A diferencia de canEdit, la gestión de documentos NO se restringe por
+  // estado — Proyectos/Jefe/SysAdmin pueden adjuntar en cualquier momento.
+  const canManageDocs = actorType === 'responsable' || actorType === 'jefe';
+
+  const budgetHtml = buildBudgetHtml(lic);
+  const cots = lic.cotizaciones ?? [];
+  const cotsHtml = buildCotizacionesVinculadasHtml(lic);
+  const canGastos = canManageGastos(lic, user);
+  const { resultadoHtml, gastosSectionHtml } = buildResultadoYGastosHtml(lic, canGastos);
+  const docsListHtml = buildDocumentosHtml(documentos, canManageDocs);
+  const transButtons = buildTransButtonsHtml(trans);
 
   return `
     <div class="sub-modal sub-modal-wide">

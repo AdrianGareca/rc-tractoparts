@@ -129,27 +129,13 @@ const VISTAS = {
 };
 
 /**
- * @param {HTMLElement} panel
- * @param {Object} [opts]
- * @param {number} [opts.idEjecutivo] fija el reporte a un ejecutivo (su propia vista)
- * @returns {Promise<Function>} destroy
+ * El shell estático del panel — filtros, pestañas de vista, y el contenedor
+ * de resultados. Función PURA: no toca el DOM, solo arma el string.
+ * Separada de mountClienteItemReport para que esa no cargue con el markup
+ * completo además de la carga de datos y el cableado de eventos.
  */
-export async function mountClienteItemReport(panel, opts = {}) {
-  const state = {
-    vista: 'item',                 // la que contesta la pregunta de compras
-    page: 1,
-    limit: 50,                     // 50 y no 25: con pocas filas por pagina, los
-                                   // items de una misma cotizacion quedaban
-                                   // repartidos y parecia que faltaban.
-    desde: '', hasta: '', estado: '', q: '', ejecutivo: '',
-    // La fecha manda: la gente busca por cuando, no por cuanto. La cantidad
-    // queda a un clic y desempata dentro del mismo dia (ver el modelo).
-    sortBy: 'fecha', sortOrder: 'DESC',
-  };
-
-  let ultimasFilas = [];
-
-  panel.innerHTML = `
+function buildShellHtml(opts) {
+  return `
     <div class="card">
       <div class="card-header flex-wrap gap-2">
         <h3>Consumo por ítem</h3>
@@ -203,6 +189,49 @@ export async function mountClienteItemReport(panel, opts = {}) {
       <div class="card-toolbar" id="ci-pagination"></div>
       <div id="ci-results">${tableSkeleton({ columnas: 7, etiqueta: 'Cargando consumo' })}</div>
     </div>`;
+}
+
+/** Encabezados de la tabla activa, con la flecha de orden en la columna que corresponda. Pura. */
+function buildEncabezadosHtml(vista, sortBy, sortOrder) {
+  return vista.columnas.map((c) => {
+    if (!c.clave) return `<th${c.derecha ? ' class="text-right"' : ''}>${c.texto}</th>`;
+    const activo = sortBy === c.clave;
+    const flecha = activo ? (sortOrder === 'ASC' ? ' ▲' : ' ▼') : '';
+    return `<th data-sort="${c.clave}"${c.derecha ? ' class="text-right th-ordenable"' : ''}
+               >${c.texto}${flecha}</th>`;
+  }).join('');
+}
+
+/** El texto que explica qué está contando el número que se ve. Pura. */
+function buildNotaTexto(vista, estado) {
+  const alcance = estado
+    ? `Contando solo cotizaciones en estado "${estado}".`
+    : 'Contando TODAS las cotizaciones, incluidas las rechazadas: es lo que los clientes pidieron cotizar, no lo que compraron. Filtrá por "Confirmada" para ver ventas cerradas.';
+  return `${vista.ayuda} ${alcance}`;
+}
+
+/**
+ * @param {HTMLElement} panel
+ * @param {Object} [opts]
+ * @param {number} [opts.idEjecutivo] fija el reporte a un ejecutivo (su propia vista)
+ * @returns {Promise<Function>} destroy
+ */
+export async function mountClienteItemReport(panel, opts = {}) {
+  const state = {
+    vista: 'item',                 // la que contesta la pregunta de compras
+    page: 1,
+    limit: 50,                     // 50 y no 25: con pocas filas por pagina, los
+                                   // items de una misma cotizacion quedaban
+                                   // repartidos y parecia que faltaban.
+    desde: '', hasta: '', estado: '', q: '', ejecutivo: '',
+    // La fecha manda: la gente busca por cuando, no por cuanto. La cantidad
+    // queda a un clic y desempata dentro del mismo dia (ver el modelo).
+    sortBy: 'fecha', sortOrder: 'DESC',
+  };
+
+  let ultimasFilas = [];
+
+  panel.innerHTML = buildShellHtml(opts);
 
   const $ = (sel) => panel.querySelector(sel);
 
@@ -241,29 +270,11 @@ export async function mountClienteItemReport(panel, opts = {}) {
     if (elegido && sel.querySelector(`option[value="${elegido}"]`)) sel.value = elegido;
   }
 
-  function actualizarNota() {
-    const el = $('#ci-nota');
-    if (!el) return;
-    const alcance = state.estado
-      ? `Contando solo cotizaciones en estado "${state.estado}".`
-      : 'Contando TODAS las cotizaciones, incluidas las rechazadas: es lo que los clientes pidieron cotizar, no lo que compraron. Filtrá por "Confirmada" para ver ventas cerradas.';
-    el.textContent = `${VISTAS[state.vista].ayuda} ${alcance}`;
-  }
-
-  function encabezados() {
-    return VISTAS[state.vista].columnas.map((c) => {
-      if (!c.clave) return `<th${c.derecha ? ' class="text-right"' : ''}>${c.texto}</th>`;
-      const activo = state.sortBy === c.clave;
-      const flecha = activo ? (state.sortOrder === 'ASC' ? ' ▲' : ' ▼') : '';
-      return `<th data-sort="${c.clave}"${c.derecha ? ' class="text-right th-ordenable"' : ''}
-                 >${c.texto}${flecha}</th>`;
-    }).join('');
-  }
-
   async function load() {
     const vista   = VISTAS[state.vista];
     seccion.loading(vista.columnas.length);
-    actualizarNota();
+    const notaEl = $('#ci-nota');
+    if (notaEl) notaEl.textContent = buildNotaTexto(vista, state.estado);
 
     const params = new URLSearchParams({
       agrupar: state.vista,
@@ -298,7 +309,7 @@ export async function mountClienteItemReport(panel, opts = {}) {
       seccion.content(`
         <div class="table-wrapper">
           <table class="data-table">
-            <thead><tr>${encabezados()}</tr></thead>
+            <thead><tr>${buildEncabezadosHtml(vista, state.sortBy, state.sortOrder)}</tr></thead>
             <tbody>${filas.map((f) => `<tr>${vista.fila(f)}</tr>`).join('')}</tbody>
           </table>
         </div>`);

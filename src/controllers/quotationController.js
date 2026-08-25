@@ -31,6 +31,108 @@ const QuotationNotificationController = require('./quotation/quotationNotificati
 // Helpers compartidos: transaccion con reintento y regeneracion del PDF
 const { withDeadlockRetry }      = require('./quotation/transactionHelpers');
 const { regenerateQuotationPdf } = require('./quotation/pdfRegeneration');
+
+// ---------------------------------------------------------------------------
+// calcularTotalCotizacion — Recalcula monto_total en el servidor a partir de
+// los items (el valor que manda el cliente se ignora cuando hay detalles).
+// Extraida de createQuotation para que esa funcion no cargue con la cuenta
+// ademas de la transaccion y el post-commit. Pura.
+//
+// IMPORTANTE: cada subtotal de linea se redondea a 2 decimales ANTES de
+// sumar, espejando exactamente lo que QuotationModel.createDetalles guarda
+// por fila. Redondear una sola vez al final de la suma cruda puede
+// desincronizarse por uno o mas centavos con SUM(detalle.subtotal) en montos
+// fraccionarios, lo que desalinea los reportes (basados en
+// cotizaciones.monto_total) del PDF (basado en las filas de detalle guardadas).
+// ---------------------------------------------------------------------------
+function calcularTotalCotizacion(detalles, descuento_manual, monto_total) {
+  if (detalles.length > 0) {
+    const subtotalFromItems = calcularMontoTotal(
+      detalles.map((item) => ({
+        cantidad:        parseFloat(item.cantidad),
+        precio_unitario: parseFloat(item.precio_unitario),
+      }))
+    );
+    const discount = descuento_manual != null ? parseFloat(descuento_manual) : 0;
+    return parseFloat(Math.max(0, subtotalFromItems - discount).toFixed(2));
+  }
+  // No line items — accept an explicit header-level total (e.g. free-text quote)
+  return monto_total != null ? parseFloat(monto_total) : null;
+}
+
+// ---------------------------------------------------------------------------
+// runPostCommitTasks — Todo lo que pasa DESPUES de que la transaccion de
+// createQuotation ya cerro: la cotizacion YA existe (correlativo consumido,
+// cabecera y detalles escritos). Nada de esto puede hacer fallar la
+// respuesta 201 — ver el comentario largo que se movio junto con el codigo.
+//
+// El reintento es el que rompe los datos, y el reintento lo provoca el
+// mensaje de error: antes, un fallo aca (conexion caida, timeout del pool)
+// salia como 500 "Failed to create quotation", el usuario reenviaba el
+// formulario, y se creaba una SEGUNDA cotizacion con otro correlativo.
+//
+// @returns {Object|null} la cotizacion recien creada (null si el findById post-commit falló)
+// ---------------------------------------------------------------------------
+async function runPostCommitTasks({ quotationId, numeroCorrelativo, id_cliente, calculatedTotal, req, clientIp }) {
+  // Safety net: clear the draft lock for this serial if it is still present.
+  // Normally the client releases its own reservation via the
+  // 'cotizacion:draft:leave' socket event right before/after the POST
+  // resolves, but a dropped socket message must never leave a phantom
+  // "being drafted" warning stuck on everyone else's screen.
+  try {
+    const stillLocked = await QuotationLockModel.releaseByNumeroCorrelativo(numeroCorrelativo);
+    if (stillLocked) broadcastDraftReleased();
+  } catch (lockErr) {
+    console.warn('[QuotationController.createQuotation] Draft lock cleanup failed (non-fatal):', lockErr.message);
+  }
+
+  let createdQuotation = null;
+  try {
+    createdQuotation = await QuotationModel.findById(quotationId);
+
+    // PDF automatico — no fatal: la cotizacion queda guardada igual.
+    // purge:false porque es un registro nuevo: no hay archivo anterior.
+    await regenerateQuotationPdf(createdQuotation, {
+      purge: false,
+      label: `QuotationController.createQuotation ${numeroCorrelativo}`,
+    });
+  } catch (postErr) {
+    console.warn(
+      '[QuotationController.createQuotation] Post-commit enrichment failed (non-fatal):',
+      postErr.message
+    );
+  }
+
+  // Initial history record ('Pendiente' is the DB-valid initial state)
+  // Non-fatal: audit logging failures must never mask a successfully committed quotation.
+  try {
+    await QuotationModel.logStateHistory({
+      id_cotizacion:  quotationId,
+      estado_anterior: null,
+      estado_nuevo:   'Pendiente',
+      id_usuario:     req.user.id,
+      nombre_usuario: req.user.nombre_usuario,
+      rol_usuario:    req.user.rol,
+      observacion:    'Quotation created.',
+      ip_origen:      clientIp,
+    });
+
+    await logEvent({
+      id_usuario:     req.user.id,
+      nombre_usuario: req.user.nombre_usuario,
+      accion:         AuditActions.CREAR_COTIZACION,
+      entidad:        'cotizaciones',
+      id_entidad:     quotationId,
+      detalle:        { numero_correlativo: numeroCorrelativo, id_cliente, monto_total: calculatedTotal },
+      ip_origen:      clientIp,
+      resultado:      'exito',
+    });
+  } catch (auditErr) {
+    console.warn('[QuotationController.createQuotation] Audit logging failed (non-fatal):', auditErr.message);
+  }
+
+  return createdQuotation;
+}
 // Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
 // con el mensaje en dos idiomas distintos.
 const { parseId } = require('../utils/parseId');
@@ -113,33 +215,9 @@ const QuotationController = {
     }
 
     // Recalculate monto_total server-side from line items so the stored
-    // header total always matches the sum of the actual detail rows.
-    // The client-supplied value is ignored when detalles are present.
-    // A manual cash discount (descuento_manual) is then subtracted from
-    // the subtotal to produce the stored total — preserving auditability.
-    //
-    // IMPORTANT: each line's subtotal must be rounded to 2 decimals BEFORE
-    // summing, mirroring exactly what QuotationModel.createDetalles stores
-    // per row (subtotal = round(cantidad * precio_unitario)). Rounding only
-    // once at the end of the raw sum can diverge from SUM(detalle.subtotal)
-    // by a cent or more on fractional prices, which desyncs the reports
-    // (built from cotizaciones.monto_total) from the PDF (built from the
-    // stored detail rows). This is pure JS math — safe to compute once,
-    // outside the retry loop below.
-    let calculatedTotal = null;
-    if (detalles.length > 0) {
-      const subtotalFromItems = calcularMontoTotal(
-        detalles.map((item) => ({
-          cantidad:        parseFloat(item.cantidad),
-          precio_unitario: parseFloat(item.precio_unitario),
-        }))
-      );
-      const discount = descuento_manual != null ? parseFloat(descuento_manual) : 0;
-      calculatedTotal = parseFloat(Math.max(0, subtotalFromItems - discount).toFixed(2));
-    } else if (monto_total != null) {
-      // No line items — accept an explicit header-level total (e.g. free-text quote)
-      calculatedTotal = parseFloat(monto_total);
-    }
+    // header total always matches the sum of the actual detail rows — see
+    // calcularTotalCotizacion for why the rounding order matters here.
+    const calculatedTotal = calcularTotalCotizacion(detalles, descuento_manual, monto_total);
 
     // ── Transacción atómica, con reintento ante deadlocks de InnoDB ───────────
     // El bucle de reintento y el manejo de la conexión viven en
@@ -186,76 +264,13 @@ const QuotationController = {
         }
       }, { label: 'QuotationController.createQuotation' });
 
-      // Safety net: clear the draft lock for this serial if it is still
-      // present. Normally the client releases its own reservation via the
-      // 'cotizacion:draft:leave' socket event right before/after this POST
-      // resolves, but a dropped socket message must never leave a phantom
-      // "being drafted" warning stuck on everyone else's screen.
-      try {
-        const stillLocked = await QuotationLockModel.releaseByNumeroCorrelativo(numeroCorrelativo);
-        if (stillLocked) broadcastDraftReleased();
-      } catch (lockErr) {
-        console.warn('[QuotationController.createQuotation] Draft lock cleanup failed (non-fatal):', lockErr.message);
-      }
-
-      // ── DESPUES DEL COMMIT: NADA DE ESTO PUEDE HACER FALLAR LA RESPUESTA ────
-      // La cotizacion YA existe: el correlativo se consumio, la cabecera y los
-      // detalles estan escritos, y la transaccion cerro.
-      //
-      // Antes, el findById de aca abajo estaba desnudo dentro del try general.
-      // Si fallaba —conexion caida, timeout del pool— la excepcion salia por el
-      // catch, escribia en bitacora `resultado: 'fallo'` y devolvia 500
-      // «Failed to create quotation». El usuario lo leia como que no se guardo,
-      // reenviaba el formulario, y se creaba una SEGUNDA cotizacion con otro
-      // correlativo: dos registros para el mismo pedido, dos correlativos
-      // consumidos, y una bitacora afirmando que el primero fallo.
-      //
-      // El reintento es el que rompe los datos, y el reintento lo provoca el
-      // mensaje de error. Por eso a partir de aca todo es mejora, no requisito.
-      let createdQuotation = null;
-      try {
-        createdQuotation = await QuotationModel.findById(quotationId);
-
-        // PDF automatico — no fatal: la cotizacion queda guardada igual.
-        // purge:false porque es un registro nuevo: no hay archivo anterior.
-        await regenerateQuotationPdf(createdQuotation, {
-          purge: false,
-          label: `QuotationController.createQuotation ${numeroCorrelativo}`,
-        });
-      } catch (postErr) {
-        console.warn(
-          '[QuotationController.createQuotation] Post-commit enrichment failed (non-fatal):',
-          postErr.message
-        );
-      }
-
-      // Initial history record ('Pendiente' is the DB-valid initial state)
-      // Non-fatal: audit logging failures must never mask a successfully committed quotation.
-      try {
-        await QuotationModel.logStateHistory({
-          id_cotizacion:  quotationId,
-          estado_anterior: null,
-          estado_nuevo:   'Pendiente',
-          id_usuario:     req.user.id,
-          nombre_usuario: req.user.nombre_usuario,
-          rol_usuario:    req.user.rol,
-          observacion:    'Quotation created.',
-          ip_origen:      clientIp,
-        });
-
-        await logEvent({
-          id_usuario:     req.user.id,
-          nombre_usuario: req.user.nombre_usuario,
-          accion:         AuditActions.CREAR_COTIZACION,
-          entidad:        'cotizaciones',
-          id_entidad:     quotationId,
-          detalle:        { numero_correlativo: numeroCorrelativo, id_cliente, monto_total: calculatedTotal },
-          ip_origen:      clientIp,
-          resultado:      'exito',
-        });
-      } catch (auditErr) {
-        console.warn('[QuotationController.createQuotation] Audit logging failed (non-fatal):', auditErr.message);
-      }
+      // Todo lo que sigue corre DESPUES del commit — la cotizacion YA existe,
+      // así que nada de esto puede hacer fallar la respuesta 201. Ver el
+      // comentario largo en runPostCommitTasks sobre por qué un 500 tardío
+      // aquí terminaba creando cotizaciones duplicadas.
+      const createdQuotation = await runPostCommitTasks({
+        quotationId, numeroCorrelativo, id_cliente, calculatedTotal, req, clientIp,
+      });
 
       return res.status(201).json({
         success:          true,

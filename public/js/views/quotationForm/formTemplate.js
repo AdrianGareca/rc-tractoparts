@@ -207,25 +207,9 @@ function seccionPago() {
 `;
 }
 
-export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
-  // Shared "(Opcional)" label marker — appended to every non-mandatory field
-  // so users know at a glance which inputs can be left blank.
-  const OPT = '<span class="label-opcional">(Opcional)</span>';
-
-
-
-  const corrPreview = nextCorrelativo
-    ? `<div class="correlativo-preview">
-         <span class="correlativo-preview-label">Próximo Nº:</span>
-         <span>${escText(nextCorrelativo)}</span>
-       </div>`
-    : '';
-
-  return /* html */ `
-    <form id="quotation-form" novalidate>
-      <div class="form-alert alert-warning" id="qf-lock-banner" role="alert"></div>
-      ${corrPreview}
-
+/** Cliente, fecha de emisión, licitación asociada, descripción y moneda/entidad/tipo/validez. */
+function seccionEncabezado() {
+  return `
       <!-- Header fields -->
       <div class="form-row">
         <!-- CLIENT SELECTOR: replaces the old number input -->
@@ -314,6 +298,29 @@ export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
           <input class="form-control" type="text" id="observaciones" placeholder="Opcional" />
         </div>
       </div>
+`;
+}
+
+export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
+  // Shared "(Opcional)" label marker — appended to every non-mandatory field
+  // so users know at a glance which inputs can be left blank.
+  const OPT = '<span class="label-opcional">(Opcional)</span>';
+
+
+
+  const corrPreview = nextCorrelativo
+    ? `<div class="correlativo-preview">
+         <span class="correlativo-preview-label">Próximo Nº:</span>
+         <span>${escText(nextCorrelativo)}</span>
+       </div>`
+    : '';
+
+  return /* html */ `
+    <form id="quotation-form" novalidate>
+      <div class="form-alert alert-warning" id="qf-lock-banner" role="alert"></div>
+      ${corrPreview}
+
+      ${seccionEncabezado()}
 
       ${seccionSolicitante(OPT)}
       ${seccionEquipo(OPT)}

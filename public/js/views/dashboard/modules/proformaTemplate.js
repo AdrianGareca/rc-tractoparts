@@ -12,6 +12,163 @@
 import { badgeHtml, fmtDate, escHtml } from '../helpers.js';
 import { buildProformaActions } from './proformaActions.js';
 
+/** Escapa, o un guión si el campo opcional viene vacío. */
+function v(x) {
+  return (x != null && String(x).trim() !== '') ? escHtml(String(x)) : '—';
+}
+
+/** Barra de estado + cliente + ejecutivo + fechas + moneda. Pura. */
+function buildMetaBarHtml(q) {
+  return `
+      <div class="proforma-meta-bar">
+        <div class="proforma-meta-item">
+          <span class="form-label">Estado</span>
+          <p>${badgeHtml(q.estado)}</p>
+        </div>
+        <div class="proforma-meta-item">
+          <span class="form-label">Cliente</span>
+          <p class="fw-600">${escHtml(q.cliente_nombre ?? q.id_cliente)}</p>
+          ${q.cliente_nit ? `<small class="text-muted">NIT: ${escHtml(q.cliente_nit)}</small>` : ''}
+        </div>
+        <div class="proforma-meta-item">
+          <span class="form-label">Ejecutivo</span>
+          <p>${escHtml(q.ejecutivo_nombre ?? '—')}</p>
+        </div>
+        <div class="proforma-meta-item">
+          <span class="form-label">Fecha de emisión</span>
+          <p>${fmtDate(q.fecha_emision)}</p>
+        </div>
+        <div class="proforma-meta-item">
+          <span class="form-label">Fecha de validez</span>
+          <p>${fmtDate(q.fecha_validez)}</p>
+        </div>
+        <div class="proforma-meta-item">
+          <span class="form-label">Moneda</span>
+          <p>${q.moneda}</p>
+        </div>
+      </div>`;
+}
+
+/** DATOS DEL SOLICITANTE — espeja la grilla del PDF. Pura. */
+function buildSolicitanteHtml(q) {
+  return `
+      <div class="form-group mb-2">
+        <span class="form-label proforma-bloque-label">Datos del solicitante</span>
+        <div class="proforma-meta-bar mt-04">
+          <div class="proforma-meta-item">
+            <span class="form-label">Nombre</span>
+            <p>${v(q.nombre_sol)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Nº Solicitud / OC</span>
+            <p>${v(q.nro_solicitud)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Área</span>
+            <p>${v(q.area_sol)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Celular</span>
+            <p>${v(q.celular_sol)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Correo</span>
+            <p>${v(q.correo_sol)}</p>
+          </div>
+        </div>
+      </div>`;
+}
+
+/** DATOS DEL EQUIPO — espeja la grilla del PDF. Pura. */
+function buildEquipoHtml(q) {
+  return `
+      <div class="form-group mb-2">
+        <span class="form-label proforma-bloque-label">Datos del equipo</span>
+        <div class="proforma-meta-bar mt-04">
+          <div class="proforma-meta-item">
+            <span class="form-label">Marca</span>
+            <p>${v(q.equipo_marca)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Tipo</span>
+            <p>${v(q.equipo_tipo)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Modelo</span>
+            <p>${v(q.equipo_modelo)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Serie</span>
+            <p>${v(q.equipo_serie)}</p>
+          </div>
+          <div class="proforma-meta-item">
+            <span class="form-label">Motor</span>
+            <p>${v(q.equipo_motor)}</p>
+          </div>
+        </div>
+      </div>`;
+}
+
+/** Tabla de ítems (ya renderizados por el llamador) + encabezado. Pura. */
+function buildItemsTableHtml(detallesRows, showCodigos, moneda) {
+  return `
+      <div class="table-wrapper proforma-items-wrapper mb-2">
+        <table class="data-table proforma-items-table">
+          <thead>
+            <tr>
+              <th>Descripción del ítem</th>
+              ${showCodigos ? '<th>Cód. parte</th>' : ''}
+              <th>Marca</th>
+              <th class="text-right">Cantidad</th>
+              <th class="text-right">Precio Unit. (${moneda})</th>
+              <th class="text-right">Subtotal (${moneda})</th>
+            </tr>
+          </thead>
+          <tbody>${detallesRows}</tbody>
+        </table>
+      </div>`;
+}
+
+/** Subtotal, descuento manual y total (precios ya incluyen impuestos — sin fila de IVA). Pura. */
+function buildTotalsHtml(moneda, subtotal, descuento, total) {
+  return `
+      <div class="proforma-totals">
+        <div class="proforma-total-row">
+          <span>Subtotal</span>
+          <span class="fw-600">${moneda} ${subtotal.toFixed(2)}</span>
+        </div>
+        ${descuento > 0 ? `
+        <div class="proforma-total-row">
+          <span>Descuento</span>
+          <span class="proforma-descuento">− ${moneda} ${descuento.toFixed(2)}</span>
+        </div>` : ''}
+        <div class="proforma-total-row proforma-grand-total">
+          <span>TOTAL</span>
+          <span class="fw-600">${moneda} ${total.toFixed(2)}</span>
+        </div>
+      </div>`;
+}
+
+/** Botones de ver PDF / descargar Excel adjuntos. Pura. */
+function buildPdfBarHtml(q) {
+  return `
+      <div class="proforma-pdf-bar">
+        ${q.pdf_ruta ? `
+        <button class="btn btn-outline btn-sm" id="btn-ver-pdf" type="button">
+          Ver PDF Adjunto
+        </button>` : `
+        <span class="text-muted text-sm">Sin documento PDF adjunto.</span>`}
+        ${q.excel_ruta ? `
+        <button
+          type="button"
+          id="btn-ver-excel"
+          class="btn btn-sm btn-excel"
+        >
+          Descargar Excel
+        </button>` : ''}
+      </div>`;
+}
+
 //   @param {Object}  q         — full quotation data (from findById, includes detalles[])
 //   @param {number}  id        — quotation ID (for PDF link)
 //   @param {boolean|string} viewMode
@@ -34,9 +191,6 @@ export function buildProformaHTML(q, id, viewMode) {
   // (descuento_manual), mirroring the server-side monto_total math and the PDF.
   const descuento = q.descuento_manual != null ? (parseFloat(q.descuento_manual) || 0) : 0;
   const total     = Math.max(0, subtotal - descuento);
-
-  // Escape-or-dash helper for optional metadata fields
-  const v = (x) => (x != null && String(x).trim() !== '') ? escHtml(String(x)) : '—';
 
   // Mirror the PDF's CÓDIGO-column toggle so the on-screen preview and the
   // printed proforma always show the same column set (TINYINT 1/0, boolean,
@@ -71,34 +225,7 @@ export function buildProformaHTML(q, id, viewMode) {
   return /* html */ `
     <div class="proforma-detail">
 
-      <!-- Status + metadata bar -->
-      <div class="proforma-meta-bar">
-        <div class="proforma-meta-item">
-          <span class="form-label">Estado</span>
-          <p>${badgeHtml(q.estado)}</p>
-        </div>
-        <div class="proforma-meta-item">
-          <span class="form-label">Cliente</span>
-          <p class="fw-600">${escHtml(q.cliente_nombre ?? q.id_cliente)}</p>
-          ${q.cliente_nit ? `<small class="text-muted">NIT: ${escHtml(q.cliente_nit)}</small>` : ''}
-        </div>
-        <div class="proforma-meta-item">
-          <span class="form-label">Ejecutivo</span>
-          <p>${escHtml(q.ejecutivo_nombre ?? '—')}</p>
-        </div>
-        <div class="proforma-meta-item">
-          <span class="form-label">Fecha de emisión</span>
-          <p>${fmtDate(q.fecha_emision)}</p>
-        </div>
-        <div class="proforma-meta-item">
-          <span class="form-label">Fecha de validez</span>
-          <p>${fmtDate(q.fecha_validez)}</p>
-        </div>
-        <div class="proforma-meta-item">
-          <span class="form-label">Moneda</span>
-          <p>${q.moneda}</p>
-        </div>
-      </div>
+      ${buildMetaBarHtml(q)}
 
       <!-- Description -->
       <div class="form-group mb-2">
@@ -106,93 +233,10 @@ export function buildProformaHTML(q, id, viewMode) {
         <p class="proforma-description">${escHtml(q.descripcion)}</p>
       </div>
 
-      <!-- Solicitor data (DATOS DEL SOLICITANTE — mirrors the PDF grid) -->
-      <div class="form-group mb-2">
-        <span class="form-label proforma-bloque-label">Datos del solicitante</span>
-        <div class="proforma-meta-bar mt-04">
-          <div class="proforma-meta-item">
-            <span class="form-label">Nombre</span>
-            <p>${v(q.nombre_sol)}</p>
-          </div>
-          <div class="proforma-meta-item">
-            <span class="form-label">Nº Solicitud / OC</span>
-            <p>${v(q.nro_solicitud)}</p>
-          </div>
-          <div class="proforma-meta-item">
-            <span class="form-label">Área</span>
-            <p>${v(q.area_sol)}</p>
-          </div>
-          <div class="proforma-meta-item">
-            <span class="form-label">Celular</span>
-            <p>${v(q.celular_sol)}</p>
-          </div>
-          <div class="proforma-meta-item">
-            <span class="form-label">Correo</span>
-            <p>${v(q.correo_sol)}</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Equipment data (DATOS DEL EQUIPO — mirrors the PDF grid) -->
-      <div class="form-group mb-2">
-        <span class="form-label proforma-bloque-label">Datos del equipo</span>
-        <div class="proforma-meta-bar mt-04">
-          <div class="proforma-meta-item">
-            <span class="form-label">Marca</span>
-            <p>${v(q.equipo_marca)}</p>
-          </div>
-          <div class="proforma-meta-item">
-            <span class="form-label">Tipo</span>
-            <p>${v(q.equipo_tipo)}</p>
-          </div>
-          <div class="proforma-meta-item">
-            <span class="form-label">Modelo</span>
-            <p>${v(q.equipo_modelo)}</p>
-          </div>
-          <div class="proforma-meta-item">
-            <span class="form-label">Serie</span>
-            <p>${v(q.equipo_serie)}</p>
-          </div>
-          <div class="proforma-meta-item">
-            <span class="form-label">Motor</span>
-            <p>${v(q.equipo_motor)}</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Line items table -->
-      <div class="table-wrapper proforma-items-wrapper mb-2">
-        <table class="data-table proforma-items-table">
-          <thead>
-            <tr>
-              <th>Descripción del ítem</th>
-              ${showCodigos ? '<th>Cód. parte</th>' : ''}
-              <th>Marca</th>
-              <th class="text-right">Cantidad</th>
-              <th class="text-right">Precio Unit. (${q.moneda})</th>
-              <th class="text-right">Subtotal (${q.moneda})</th>
-            </tr>
-          </thead>
-          <tbody>${detallesRows}</tbody>
-        </table>
-      </div>
-
-      <!-- Totals panel (prices are tax-inclusive — no IVA row) -->
-      <div class="proforma-totals">
-        <div class="proforma-total-row">
-          <span>Subtotal</span>
-          <span class="fw-600">${q.moneda} ${subtotal.toFixed(2)}</span>
-        </div>
-        ${descuento > 0 ? `
-        <div class="proforma-total-row">
-          <span>Descuento</span>
-          <span class="proforma-descuento">− ${q.moneda} ${descuento.toFixed(2)}</span>
-        </div>` : ''}
-        <div class="proforma-total-row proforma-grand-total">
-          <span>TOTAL</span>
-          <span class="fw-600">${q.moneda} ${total.toFixed(2)}</span>
-        </div>
-      </div>
+      ${buildSolicitanteHtml(q)}
+      ${buildEquipoHtml(q)}
+      ${buildItemsTableHtml(detallesRows, showCodigos, q.moneda)}
+      ${buildTotalsHtml(q.moneda, subtotal, descuento, total)}
 
       ${q.obs_aprobacion ? `
       <div class="form-group mt-2">
@@ -212,22 +256,7 @@ export function buildProformaHTML(q, id, viewMode) {
       <!-- Commercial follow-up — editable for Jefe/Administracion, read-only elsewhere -->
       ${seguimientoVentaBlock}
 
-      <!-- PDF + Excel viewer buttons -->
-      <div class="proforma-pdf-bar">
-        ${q.pdf_ruta ? `
-        <button class="btn btn-outline btn-sm" id="btn-ver-pdf" type="button">
-          Ver PDF Adjunto
-        </button>` : `
-        <span class="text-muted text-sm">Sin documento PDF adjunto.</span>`}
-        ${q.excel_ruta ? `
-        <button
-          type="button"
-          id="btn-ver-excel"
-          class="btn btn-sm btn-excel"
-        >
-          Descargar Excel
-        </button>` : ''}
-      </div>
+      ${buildPdfBarHtml(q)}
 
       ${jefeButtons}
       ${adminButtons}

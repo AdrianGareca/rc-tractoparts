@@ -225,15 +225,9 @@ function buildDetalleHtml(detalle) {
     </dl>`;
 }
 
-// ---------------------------------------------------------------------------
-// mountAuditLogTab
-// @param {HTMLElement} panel — tab panel to render into
-// ---------------------------------------------------------------------------
-export async function mountAuditLogTab(panel) {
-  const state = { page: 1, limit: 25 };
-
-  // ── 1. Paint the static shell (filter bar + results container) ONCE ─────────
-  panel.innerHTML = `
+/** Filtros + contenedor de resultados. Función PURA, sin datos del servidor. */
+function buildShellHtml() {
+  return `
     <div class="card">
       <div class="card-header flex-wrap gap-2">
         <h3>Registros de auditoría</h3>
@@ -278,6 +272,41 @@ export async function mountAuditLogTab(panel) {
       <div class="card-toolbar" id="audit-pagination"></div>
       <div id="audit-results">${tableSkeleton({ columnas: 7, etiqueta: 'Cargando registros de auditoría' })}</div>
     </div>`;
+}
+
+/** Una fila de la tabla + su fila de detalle plegable (si tiene detalle). Pura. */
+function buildRowHtml(r) {
+  const detalleHtml = buildDetalleHtml(r.detalle);
+  return `
+                <tr>
+                  <td class="text-sm">${fmtDateTime(r.creado_en)}</td>
+                  <td>${escHtml(r.nombre_usuario ?? '—')}</td>
+                  <td>${accionBadgeHtml(r.accion)}</td>
+                  <td class="text-sm">${escHtml(ENTIDAD_LABELS[r.entidad] ?? r.entidad ?? '—')}</td>
+                  <td class="text-sm">${r.id_entidad ?? '—'}</td>
+                  <td>${resultadoBadgeHtml(r.resultado)}</td>
+                  <td class="text-muted text-xs mono">${escHtml(r.ip_origen ?? '—')}</td>
+                  <td>${detalleHtml
+                    ? `<button class="btn btn-ghost btn-sm" data-audit-detail="${r.id}">Detalle</button>`
+                    : ''}</td>
+                </tr>
+                ${detalleHtml ? `
+                <tr class="audit-detail-row hidden" id="audit-detail-${r.id}">
+                  <td colspan="8" class="audit-detail-cell">
+                    ${detalleHtml}
+                  </td>
+                </tr>` : ''}`;
+}
+
+// ---------------------------------------------------------------------------
+// mountAuditLogTab
+// @param {HTMLElement} panel — tab panel to render into
+// ---------------------------------------------------------------------------
+export async function mountAuditLogTab(panel) {
+  const state = { page: 1, limit: 25 };
+
+  // ── 1. Paint the static shell (filter bar + results container) ONCE ─────────
+  panel.innerHTML = buildShellHtml();
 
   const $ = (sel) => panel.querySelector(sel);
 
@@ -367,28 +396,7 @@ export async function mountAuditLogTab(panel) {
               </tr>
             </thead>
             <tbody>
-              ${rows.map((r) => {
-                const detalleHtml = buildDetalleHtml(r.detalle);
-                return `
-                <tr>
-                  <td class="text-sm">${fmtDateTime(r.creado_en)}</td>
-                  <td>${escHtml(r.nombre_usuario ?? '—')}</td>
-                  <td>${accionBadgeHtml(r.accion)}</td>
-                  <td class="text-sm">${escHtml(ENTIDAD_LABELS[r.entidad] ?? r.entidad ?? '—')}</td>
-                  <td class="text-sm">${r.id_entidad ?? '—'}</td>
-                  <td>${resultadoBadgeHtml(r.resultado)}</td>
-                  <td class="text-muted text-xs mono">${escHtml(r.ip_origen ?? '—')}</td>
-                  <td>${detalleHtml
-                    ? `<button class="btn btn-ghost btn-sm" data-audit-detail="${r.id}">Detalle</button>`
-                    : ''}</td>
-                </tr>
-                ${detalleHtml ? `
-                <tr class="audit-detail-row hidden" id="audit-detail-${r.id}">
-                  <td colspan="8" class="audit-detail-cell">
-                    ${detalleHtml}
-                  </td>
-                </tr>` : ''}`;
-              }).join('')}
+              ${rows.map(buildRowHtml).join('')}
             </tbody>
           </table>
         </div>`);

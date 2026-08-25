@@ -79,20 +79,15 @@ function _periodoAnterior(desde, hasta) {
   return { desde: ymd(inicioPrevio), hasta: ymd(finPrevio) };
 }
 
-/**
- * @param {Object} opts
- * @param {number} opts.idEjecutivo
- * @param {string} [opts.desde]  YYYY-MM-DD
- * @param {string} [opts.hasta]  YYYY-MM-DD
- * @returns {Promise<Object>}
- */
-async function obtener({ idEjecutivo, desde = null, hasta = null, conComparacion = true }) {
-  const { clause, params } = _where({ idEjecutivo, desde, hasta });
+const marcadores = (n) => Array(n).fill('?').join(', ');
 
-  // ── Desglose por estado ──────────────────────────────────────────────────
-  // Una fila por estado, con el conteo y el monto separado por moneda. Es la
-  // vista "en que anda cada cotizacion mia" que se pidio explicitamente.
-  const [porEstado] = await pool.execute(`
+// Cada consulta es independiente (mismo WHERE, distinto agregado) — separadas
+// para que obtener() sea la orquestacion y no cargue con el texto SQL de las
+// siete a la vez. Todas reciben clause/params ya armados por _where().
+
+/** Una fila por estado, conteo y monto separado por moneda. */
+async function _fetchPorEstado(clause, params) {
+  const [rows] = await pool.execute(`
     SELECT
       c.estado,
       COUNT(*)                                                      AS cantidad,
@@ -103,16 +98,18 @@ async function obtener({ idEjecutivo, desde = null, hasta = null, conComparacion
     GROUP BY c.estado
     ORDER BY c.estado ASC
   `, params);
+  return rows;
+}
 
-  // ── Totales, conversion y tiempos ────────────────────────────────────────
-  // Todo en una sola pasada: son agregados sobre el mismo conjunto de filas y
-  // hacerlo en consultas separadas obligaria a repetir el WHERE tres veces.
-  //
-  // TIMESTAMPDIFF sobre creado_en → fecha_confirmacion mide el ciclo completo
-  // desde que el ejecutivo la cargo hasta que el cliente dijo que si. Solo
-  // promedia las que efectivamente cerraron: las abiertas no tienen "duracion"
-  // todavia y meterlas como cero hundiria el promedio.
-  const marcadores = (n) => Array(n).fill('?').join(', ');
+// Totales, conversion y tiempos en una sola pasada: son agregados sobre el
+// mismo conjunto de filas y hacerlo en consultas separadas obligaria a
+// repetir el WHERE tres veces.
+//
+// TIMESTAMPDIFF sobre creado_en → fecha_confirmacion mide el ciclo completo
+// desde que el ejecutivo la cargo hasta que el cliente dijo que si. Solo
+// promedia las que efectivamente cerraron: las abiertas no tienen "duracion"
+// todavia y meterlas como cero hundiria el promedio.
+async function _fetchResumen(clause, params) {
   const [[resumen]] = await pool.execute(`
     SELECT
       COUNT(*)                                                        AS total,
@@ -129,10 +126,12 @@ async function obtener({ idEjecutivo, desde = null, hasta = null, conComparacion
     ...ESTADOS_EN_LA_CANCHA, ...ESTADOS_CERRADOS, ...ESTADOS_CERRADOS,
     ...ESTADOS_CERRADOS, ...ESTADOS_CERRADOS, ...params,
   ]);
+  return resumen;
+}
 
-  // ── Evolucion mes a mes ──────────────────────────────────────────────────
-  // "Mis avances" es literalmente esto: cuantas cargue y cuantas cerre cada mes.
-  const [porMes] = await pool.execute(`
+/** "Mis avances" mes a mes: cuantas se cargaron y cuantas se cerraron. */
+async function _fetchPorMes(clause, params) {
+  const [rows] = await pool.execute(`
     SELECT
       DATE_FORMAT(c.fecha_emision, '%Y-%m')                        AS mes,
       COUNT(*)                                                     AS emitidas,
@@ -143,12 +142,14 @@ async function obtener({ idEjecutivo, desde = null, hasta = null, conComparacion
     ORDER BY mes DESC
     LIMIT 12
   `, [...ESTADOS_CERRADOS, ...params]);
+  return rows;
+}
 
-  // ── Cotizaciones esperando respuesta ─────────────────────────────────────
-  // Enviadas al cliente que todavia no se cerraron ni se rechazaron, con los
-  // dias que llevan esperando. Es la unica seccion ACCIONABLE del reporte: no
-  // dice como te fue, dice a quien llamar manana.
-  const [pendientes] = await pool.execute(`
+// Enviadas al cliente que todavia no se cerraron ni se rechazaron, con los
+// dias que llevan esperando. Es la unica seccion ACCIONABLE del reporte: no
+// dice como te fue, dice a quien llamar manana.
+async function _fetchPendientes(clause, params) {
+  const [rows] = await pool.execute(`
     SELECT
       c.numero_correlativo,
       cl.razon_social                                   AS cliente,
@@ -161,10 +162,12 @@ async function obtener({ idEjecutivo, desde = null, hasta = null, conComparacion
     ORDER BY dias_esperando DESC
     LIMIT 15
   `, params);
+  return rows;
+}
 
-  // ── Las que cerro en el periodo ──────────────────────────────────────────
-  // La evidencia concreta detras del porcentaje: que vendio, a quien y cuando.
-  const [confirmadas] = await pool.execute(`
+/** La evidencia concreta detras del porcentaje: que vendio, a quien y cuando. */
+async function _fetchConfirmadas(clause, params) {
+  const [rows] = await pool.execute(`
     SELECT
       c.numero_correlativo,
       cl.razon_social        AS cliente,
@@ -177,19 +180,21 @@ async function obtener({ idEjecutivo, desde = null, hasta = null, conComparacion
     ORDER BY c.fecha_confirmacion DESC
     LIMIT 20
   `, [...params, ...ESTADOS_CERRADOS]);
+  return rows;
+}
 
-  // ── Los repuestos que mas cotiza ─────────────────────────────────────────
-  // Que vende ESTE ejecutivo. El codigo se unifica entre el catalogo y el
-  // escrito a mano, igual que en el reporte de consumo: sin eso, el mismo
-  // repuesto sale partido en dos filas segun como lo cargo.
-  //
-  // La subconsulta NO es adorno: MySQL corre con sql_mode=only_full_group_by y
-  // exige que cada columna no agregada este LITERALMENTE en el GROUP BY.
-  // Agrupar por el alias de un COALESCE y a la vez seleccionar sus columnas de
-  // origen lo rechaza. Resolviendo el codigo abajo, arriba se agrupa por
-  // columnas simples y la condicion se cumple sola. (Mismo motivo y misma forma
-  // que en clienteItemReport.js.)
-  const [topItems] = await pool.execute(`
+// Que vende ESTE ejecutivo. El codigo se unifica entre el catalogo y el
+// escrito a mano, igual que en el reporte de consumo: sin eso, el mismo
+// repuesto sale partido en dos filas segun como lo cargo.
+//
+// La subconsulta NO es adorno: MySQL corre con sql_mode=only_full_group_by y
+// exige que cada columna no agregada este LITERALMENTE en el GROUP BY.
+// Agrupar por el alias de un COALESCE y a la vez seleccionar sus columnas de
+// origen lo rechaza. Resolviendo el codigo abajo, arriba se agrupa por
+// columnas simples y la condicion se cumple sola. (Mismo motivo y misma forma
+// que en clienteItemReport.js.)
+async function _fetchTopItems(clause, params) {
+  const [rows] = await pool.execute(`
     SELECT
       l.codigo,
       SUBSTRING_INDEX(GROUP_CONCAT(l.descripcion_item ORDER BY CHAR_LENGTH(l.descripcion_item) DESC SEPARATOR '||'), '||', 1) AS descripcion,
@@ -215,6 +220,25 @@ async function obtener({ idEjecutivo, desde = null, hasta = null, conComparacion
     ORDER BY cantidad DESC
     LIMIT 15
   `, params);
+  return rows;
+}
+
+/**
+ * @param {Object} opts
+ * @param {number} opts.idEjecutivo
+ * @param {string} [opts.desde]  YYYY-MM-DD
+ * @param {string} [opts.hasta]  YYYY-MM-DD
+ * @returns {Promise<Object>}
+ */
+async function obtener({ idEjecutivo, desde = null, hasta = null, conComparacion = true }) {
+  const { clause, params } = _where({ idEjecutivo, desde, hasta });
+
+  const porEstado    = await _fetchPorEstado(clause, params);
+  const resumen      = await _fetchResumen(clause, params);
+  const porMes       = await _fetchPorMes(clause, params);
+  const pendientes   = await _fetchPendientes(clause, params);
+  const confirmadas  = await _fetchConfirmadas(clause, params);
+  const topItems     = await _fetchTopItems(clause, params);
 
   // ── Comparacion con el periodo anterior ──────────────────────────────────
   // Un 57 % de conversion no se sabe si es bueno hasta verlo contra el mes

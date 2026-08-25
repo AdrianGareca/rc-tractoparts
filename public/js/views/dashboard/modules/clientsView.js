@@ -25,11 +25,9 @@ import { createListSection } from '../../../shared/listSection.js';
 // mountClientsTab
 // @param {HTMLElement} panel — tab panel (or modal body) to render into
 // ---------------------------------------------------------------------------
-export async function mountClientsTab(panel) {
-  const state = { page: 1, limit: 20, q: '' };
-
-  // ── 1. Paint the static shell ONCE ───────────────────────────────────────
-  panel.innerHTML = `
+/** Buscador + contenedor de resultados. Función PURA. */
+function buildShellHtml() {
+  return `
     <div class="card">
       <div class="card-header flex-wrap gap-2">
         <h3>Gestión de clientes</h3>
@@ -49,6 +47,38 @@ export async function mountClientsTab(panel) {
       <div class="card-toolbar" id="clients-pagination"></div>
       <div id="clients-results">${tableSkeleton({ columnas: 6, etiqueta: 'Cargando clientes' })}</div>
     </div>`;
+}
+
+/** Una fila de la tabla. Pura. */
+function buildRowHtml(c) {
+  return `
+                <tr>
+                  <td class="fw-600">${escHtml(c.razon_social)}</td>
+                  <td>${c.nit      ? escHtml(c.nit)      : '—'}</td>
+                  <td>${c.contacto ? escHtml(c.contacto) : '—'}</td>
+                  <td>${c.email    ? escHtml(c.email)    : '—'}</td>
+                  <td>${c.telefono ? escHtml(c.telefono) : '—'}</td>
+                  <td>
+                    <span class="badge ${c.activo ? 'badge-active' : 'badge-inactive'}">
+                      ${c.activo ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </td>
+                  <td>
+                    <div class="table-actions">
+                      <button class="btn btn-ghost btn-sm" data-client-edit="${c.id}">Editar</button>
+                      ${c.activo
+                        ? `<button class="btn btn-danger btn-sm" data-client-deact="${c.id}">Desactivar</button>`
+                        : `<button class="btn btn-success btn-sm" data-client-act="${c.id}">Activar</button>`}
+                    </div>
+                  </td>
+                </tr>`;
+}
+
+export async function mountClientsTab(panel) {
+  const state = { page: 1, limit: 20, q: '' };
+
+  // ── 1. Paint the static shell ONCE ───────────────────────────────────────
+  panel.innerHTML = buildShellHtml();
 
   const $ = (sel) => panel.querySelector(sel);
 
@@ -103,27 +133,7 @@ export async function mountClientsTab(panel) {
               </tr>
             </thead>
             <tbody>
-              ${rows.map((c) => `
-                <tr>
-                  <td class="fw-600">${escHtml(c.razon_social)}</td>
-                  <td>${c.nit      ? escHtml(c.nit)      : '—'}</td>
-                  <td>${c.contacto ? escHtml(c.contacto) : '—'}</td>
-                  <td>${c.email    ? escHtml(c.email)    : '—'}</td>
-                  <td>${c.telefono ? escHtml(c.telefono) : '—'}</td>
-                  <td>
-                    <span class="badge ${c.activo ? 'badge-active' : 'badge-inactive'}">
-                      ${c.activo ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
-                  <td>
-                    <div class="table-actions">
-                      <button class="btn btn-ghost btn-sm" data-client-edit="${c.id}">Editar</button>
-                      ${c.activo
-                        ? `<button class="btn btn-danger btn-sm" data-client-deact="${c.id}">Desactivar</button>`
-                        : `<button class="btn btn-success btn-sm" data-client-act="${c.id}">Activar</button>`}
-                    </div>
-                  </td>
-                </tr>`).join('')}
+              ${rows.map(buildRowHtml).join('')}
             </tbody>
           </table>
         </div>`);
