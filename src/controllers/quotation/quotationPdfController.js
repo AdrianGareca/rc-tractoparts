@@ -47,6 +47,34 @@ function buildPdfDownloadName(quotation, id) {
   return `${correlativo}_${estado}`;
 }
 
+// ---------------------------------------------------------------------------
+// _rejectIfNotOwner — shared ownership guard for uploadPdf/uploadFiles.
+//
+// Both routes are Ejecutivo-only (see quotationRoutes.js), but role alone
+// isn't enough: without comparing quotation.id_ejecutivo to the caller, ANY
+// Ejecutivo could overwrite the PDF/Excel on ANY other Ejecutivo's quotation
+// just by knowing its numeric id — same ownership rule already enforced on
+// PUT /:id (updateQuotation). Found via stress-testing on 2026-08-25.
+//
+// Cleans up whichever files multer already wrote to disk before rejecting,
+// so a blocked cross-user upload never leaves an orphan behind.
+//
+// @param {Array<{path:string}|null>} filesToCleanup - req.file / req.files.*[0], nulls allowed
+// @returns {Promise<boolean>} true if access was denied (res already sent — caller must return)
+// ---------------------------------------------------------------------------
+async function _rejectIfNotOwner(res, quotation, req, filesToCleanup) {
+  if (quotation.id_ejecutivo === req.user.id) return false;
+
+  for (const f of filesToCleanup) {
+    if (f?.path) await fs.promises.unlink(path.resolve(process.cwd(), f.path)).catch(() => {});
+  }
+  res.status(403).json({
+    success: false,
+    message: 'Access denied. You can only upload files to quotations that you own.',
+  });
+  return true;
+}
+
 const QuotationPdfController = {
 
   // ---------------------------------------------------------------------------
@@ -100,6 +128,8 @@ const QuotationPdfController = {
         await fs.promises.unlink(uploadedAbsPath).catch(() => {});
         return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
       }
+
+      if (await _rejectIfNotOwner(res, quotation, req, [req.file])) return;
 
       // Use forward slashes regardless of OS so the stored DB path is
       // portable and consistent when displayed or queried cross-platform.
@@ -333,6 +363,8 @@ const QuotationPdfController = {
         if (xlsFile)  await unlink(path.resolve(process.cwd(), xlsFile.path));
         return res.status(404).json({ success: false, message: `Quotation with ID ${id} was not found.` });
       }
+
+      if (await _rejectIfNotOwner(res, quotation, req, [pdfFile, xlsFile])) return;
 
       const uploadBase = (process.env.UPLOAD_DIR || 'uploads/cotizaciones').replace(/\\/g, '/');
       const excelBase  = 'storage/excels';
