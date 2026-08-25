@@ -31,6 +31,76 @@ const Effects = require('./stateTransitionEffects');
 // con el mensaje en dos idiomas distintos.
 const { parseId } = require('../../utils/parseId');
 
+// ---------------------------------------------------------------------------
+// _validateApproveRequest — las cuatro verificaciones de entrada de
+// approveQuotation, antes de tocar la base: presencia y tipo de `aprobado`,
+// la justificacion obligatoria al rechazar, y la asercion de rol (defensa en
+// profundidad ademas del middleware de ruta). Devuelve { status, body } para
+// cortar con esa respuesta, o null si esta todo bien — mismo contrato que
+// las funciones de ./stateTransitionGuards.js.
+// ---------------------------------------------------------------------------
+function _validateApproveRequest(req) {
+  const { aprobado, observaciones } = req.body;
+
+  if (aprobado === undefined || aprobado === null) {
+    return { status: 422, body: {
+      success: false,
+      message: "Field 'aprobado' is required. Send true to approve or false to reject.",
+    } };
+  }
+
+  if (typeof aprobado !== 'boolean') {
+    return { status: 422, body: {
+      success: false,
+      message: "Field 'aprobado' must be a boolean (true or false), not a string.",
+    } };
+  }
+
+  // Rejection without justification is not permitted (Section 4.3 — business rule)
+  if (aprobado === false && (!observaciones || !String(observaciones).trim())) {
+    return { status: 422, body: {
+      success: false,
+      message: "Field 'observaciones' is required and must not be empty when rejecting a quotation. " +
+               "The Ejecutivo must understand why the quotation was rejected.",
+    } };
+  }
+
+  if (!['Jefe', 'SysAdmin'].includes(req.user.rol)) {
+    return { status: 403, body: {
+      success: false,
+      message: `Access denied. Only 'Jefe' or 'SysAdmin' roles can approve or reject quotations. ` +
+               `Your role is '${req.user.rol}'.`,
+    } };
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// _sendApprovalNotification — avisa al Ejecutivo dueño que su cotizacion fue
+// aprobada. Solo en aprobacion: el rechazo no genera notificacion, el
+// Ejecutivo se entera por el flujo de solicitud de correccion. No fatal: un
+// fallo acá no debe deshacer la aprobación ya confirmada.
+// ---------------------------------------------------------------------------
+async function _sendApprovalNotification({ aprobado, postApprovalQuotation, id }) {
+  if (!(aprobado && postApprovalQuotation)) return;
+
+  try {
+    const mensaje = `La cotización #${postApprovalQuotation.numero_correlativo} ` +
+      `para ${postApprovalQuotation.cliente_nombre ?? String(postApprovalQuotation.id_cliente)} ` +
+      `ha sido aprobada por el Jefe. Ya puedes enviarla.`;
+
+    await QuotationModel.insertNotificacion({
+      id_usuario:    postApprovalQuotation.id_ejecutivo,
+      id_cotizacion: id,
+      tipo:          'aprobacion',
+      mensaje,
+    });
+  } catch (notifErr) {
+    console.warn('[QuotationStateController.approveQuotation] Notification insert failed (non-fatal):', notifErr.message);
+  }
+}
+
 const QuotationStateController = {
 
   // ---------------------------------------------------------------------------
@@ -220,39 +290,10 @@ const QuotationStateController = {
     // ── Basic validation ──────────────────────────────────────────────────────
     if (idError) return res.status(idError.status).json(idError.body);
 
+    const reqError = _validateApproveRequest(req);
+    if (reqError) return res.status(reqError.status).json(reqError.body);
+
     const { aprobado, observaciones } = req.body;
-
-    if (aprobado === undefined || aprobado === null) {
-      return res.status(422).json({
-        success: false,
-        message: "Field 'aprobado' is required. Send true to approve or false to reject.",
-      });
-    }
-
-    if (typeof aprobado !== 'boolean') {
-      return res.status(422).json({
-        success: false,
-        message: "Field 'aprobado' must be a boolean (true or false), not a string.",
-      });
-    }
-
-    // Rejection without justification is not permitted (Section 4.3 — business rule)
-    if (aprobado === false && (!observaciones || !String(observaciones).trim())) {
-      return res.status(422).json({
-        success: false,
-        message: "Field 'observaciones' is required and must not be empty when rejecting a quotation. " +
-                 "The Ejecutivo must understand why the quotation was rejected.",
-      });
-    }
-
-    // ── Controller-level high-privilege assertion (defense-in-depth after middleware) ──
-    if (!['Jefe', 'SysAdmin'].includes(req.user.rol)) {
-      return res.status(403).json({
-        success: false,
-        message: `Access denied. Only 'Jefe' or 'SysAdmin' roles can approve or reject quotations. ` +
-                 `Your role is '${req.user.rol}'.`,
-      });
-    }
 
     try {
       const quotation = await QuotationModel.findById(id);
@@ -353,25 +394,9 @@ const QuotationStateController = {
         label: `QuotationStateController.approveQuotation (${aprobado ? 'approval' : 'rejection'})`,
       });
 
-      // ── Approval notification — target the Ejecutivo who owns this quote ────
       // Fires only on approval (aprobado === true). Rejection does not generate
       // a notification row; the Ejecutivo learns via the correction-request flow.
-      if (aprobado && postApprovalQuotation) {
-        try {
-          const mensaje = `La cotización #${postApprovalQuotation.numero_correlativo} ` +
-            `para ${postApprovalQuotation.cliente_nombre ?? String(postApprovalQuotation.id_cliente)} ` +
-            `ha sido aprobada por el Jefe. Ya puedes enviarla.`;
-
-          await QuotationModel.insertNotificacion({
-            id_usuario:    postApprovalQuotation.id_ejecutivo,
-            id_cotizacion: id,
-            tipo:          'aprobacion',
-            mensaje,
-          });
-        } catch (notifErr) {
-          console.warn('[QuotationStateController.approveQuotation] Notification insert failed (non-fatal):', notifErr.message);
-        }
-      }
+      await _sendApprovalNotification({ aprobado, postApprovalQuotation, id });
 
       return res.status(200).json({
         success: true,
