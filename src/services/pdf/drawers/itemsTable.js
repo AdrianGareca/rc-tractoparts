@@ -79,6 +79,127 @@ function _calcRowHeight(doc, text, descW, fs = 7.5) {
 }
 
 // ---------------------------------------------------------------------------
+// _drawRowCells — pinta el CONTENIDO de una fila ya ubicada (ITEM#, CÓDIGO,
+// CÓD.ALT., DESCRIPCIÓN + marca, CANT., UNI, P.UNIT., P.TOTAL, T.ENTREGA) más
+// los separadores verticales. Extraida de drawItemsTable: el fondo alternado,
+// el separador inferior y el salto de página son del LOOP que recorre todos
+// los ítems, esto es solo el contenido de UNA fila — no toca `y` del llamador,
+// solo lee la posición que ya se decidió.
+// ---------------------------------------------------------------------------
+function _drawRowCells(doc, item, idx, y, rowH, layout, quotation) {
+  const ty = y + (rowH - 7.5) / 2;  // Vertical centre for single-line cells
+
+  // ITEM #
+  doc
+    .font('Helvetica')
+    .fontSize(7)
+    .fillColor(C.MID_GRAY)
+    .text(String(idx + 1), layout.x.item + 2, ty,
+      { width: layout.w.item - 4, align: 'center', lineBreak: false });
+
+  // CÓDIGO (codigo_parte preferred; fallback to producto_codigo) — rendered
+  // only when the CÓDIGO column is visible for this quotation.
+  if (layout.showCodigo) {
+    const codigo = item.codigo_parte || item.producto_codigo || '—';
+    doc
+      .font('Helvetica')
+      .fontSize(7)
+      .fillColor(C.DARK_GRAY)
+      .text(codigo, layout.x.codigo + 2, ty,
+        { width: layout.w.codigo - 4, align: 'center', lineBreak: false });
+  }
+
+  // CÓDIGO ALTERNATIVO — rendered only when the CÓDIGO column is visible for
+  // this quotation (same mostrar_codigos toggle as CÓDIGO).
+  if (layout.showCodigo) {
+    doc
+      .font('Helvetica')
+      .fontSize(7)
+      .fillColor(C.MID_GRAY)
+      .text(item.codigo_alternativo || '—', layout.x.codAlt + 2, ty,
+        { width: layout.w.codAlt - 4, align: 'center', lineBreak: false });
+  }
+
+  // DESCRIPCIÓN — top-aligned, wraps; brand name as a muted italic subtitle
+  doc
+    .font('Helvetica')
+    .fontSize(7.5)
+    .fillColor(C.DARK_GRAY)
+    .text(String(item.descripcion_item || '—'), layout.x.desc + 4, y + 5,
+      { width: layout.w.desc - 8, lineBreak: true });
+
+  // Inline brand label — rendered as clean italic text, no box/rect
+  if (item.marca_nombre) {
+    const descH = doc.heightOfString(String(item.descripcion_item || ''), { width: layout.w.desc - 8 });
+    const brandLabelY = y + 5 + descH + 1;
+    doc
+      .font('Helvetica-Oblique')
+      .fontSize(6)
+      .fillColor(C.MID_GRAY)
+      .text(item.marca_nombre.toUpperCase(), layout.x.desc + 4, brandLabelY,
+        { width: layout.w.desc - 8, lineBreak: false });
+  }
+
+  // CANT. — right-aligned, es-BO format
+  const qtyVal = parseFloat(item.cantidad);
+  const qtyStr = Number.isInteger(qtyVal)
+    ? String(qtyVal)
+    : fmtNum(qtyVal);
+  doc
+    .font('Helvetica')
+    .fontSize(7.5)
+    .fillColor(C.DARK_GRAY)
+    .text(qtyStr, layout.x.cant + 2, ty,
+      { width: layout.w.cant - 4, align: 'right', lineBreak: false });
+
+  // UNI
+  doc
+    .font('Helvetica')
+    .fontSize(7)
+    .fillColor(C.MID_GRAY)
+    .text(item.unidad || 'UND', layout.x.uni + 1, ty,
+      { width: layout.w.uni - 2, align: 'center', lineBreak: false });
+
+  // PRECIO UNITARIO — right-aligned, es-BO
+  doc
+    .font('Helvetica')
+    .fontSize(7.5)
+    .fillColor(C.DARK_GRAY)
+    .text(fmtPrice(item.precio_unitario, quotation.moneda), layout.x.pUnit + 2, ty,
+      { width: layout.w.pUnit - 4, align: 'right', lineBreak: false });
+
+  // PRECIO TOTAL — bold, right-aligned, es-BO
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(7.5)
+    .fillColor(C.DARK_GRAY)
+    .text(fmtPrice(item.subtotal, quotation.moneda), layout.x.pTotal + 2, ty,
+      { width: layout.w.pTotal - 4, align: 'right', lineBreak: false });
+
+  // TIEMPO DE ENTREGA — not yet stored per line; renders placeholder
+  doc
+    .font('Helvetica')
+    .fontSize(7)
+    .fillColor(C.MID_GRAY)
+    .text(item.tiempo_entrega || '—', layout.x.entrega + 2, ty,
+      { width: layout.w.entrega - 4, align: 'center', lineBreak: false });
+
+  // Vertical column dividers for this row — one at the left edge of every
+  // column except ITEM, following the visible column set.
+  ['desc', 'cant', 'uni', 'pUnit', 'pTotal', 'entrega']
+    .concat(layout.showCodigo ? ['codigo', 'codAlt'] : [])
+    .forEach((key) => {
+      const dx = layout.x[key];
+      doc
+        .moveTo(dx, y)
+        .lineTo(dx, y + rowH)
+        .lineWidth(0.25)
+        .strokeColor(C.BORDER_GRAY)
+        .stroke();
+    });
+}
+
+// ---------------------------------------------------------------------------
 // drawItemsTable
 // 9-column line-items grid.  Row height adapts to description wrapping.
 // Inserts a page break (repeating header) when remaining space is tight.
@@ -165,116 +286,7 @@ function drawItemsTable(doc, quotation, startY) {
       .strokeColor(C.BORDER_GRAY)
       .stroke();
 
-    const ty = y + (rowH - 7.5) / 2;  // Vertical centre for single-line cells
-
-    // ITEM #
-    doc
-      .font('Helvetica')
-      .fontSize(7)
-      .fillColor(C.MID_GRAY)
-      .text(String(idx + 1), layout.x.item + 2, ty,
-        { width: layout.w.item - 4, align: 'center', lineBreak: false });
-
-    // CÓDIGO (codigo_parte preferred; fallback to producto_codigo) — rendered
-    // only when the CÓDIGO column is visible for this quotation.
-    if (layout.showCodigo) {
-      const codigo = item.codigo_parte || item.producto_codigo || '—';
-      doc
-        .font('Helvetica')
-        .fontSize(7)
-        .fillColor(C.DARK_GRAY)
-        .text(codigo, layout.x.codigo + 2, ty,
-          { width: layout.w.codigo - 4, align: 'center', lineBreak: false });
-    }
-
-    // CÓDIGO ALTERNATIVO — rendered only when the CÓDIGO column is visible for
-    // this quotation (same mostrar_codigos toggle as CÓDIGO).
-    if (layout.showCodigo) {
-      doc
-        .font('Helvetica')
-        .fontSize(7)
-        .fillColor(C.MID_GRAY)
-        .text(item.codigo_alternativo || '—', layout.x.codAlt + 2, ty,
-          { width: layout.w.codAlt - 4, align: 'center', lineBreak: false });
-    }
-
-    // DESCRIPCIÓN — top-aligned, wraps; brand name as a muted italic subtitle
-    doc
-      .font('Helvetica')
-      .fontSize(7.5)
-      .fillColor(C.DARK_GRAY)
-      .text(String(item.descripcion_item || '—'), layout.x.desc + 4, y + 5,
-        { width: layout.w.desc - 8, lineBreak: true });
-
-    // Inline brand label — rendered as clean italic text, no box/rect
-    if (item.marca_nombre) {
-      const descH = doc.heightOfString(String(item.descripcion_item || ''), { width: layout.w.desc - 8 });
-      const brandLabelY = y + 5 + descH + 1;
-      doc
-        .font('Helvetica-Oblique')
-        .fontSize(6)
-        .fillColor(C.MID_GRAY)
-        .text(item.marca_nombre.toUpperCase(), layout.x.desc + 4, brandLabelY,
-          { width: layout.w.desc - 8, lineBreak: false });
-    }
-
-    // CANT. — right-aligned, es-BO format
-    const qtyVal = parseFloat(item.cantidad);
-    const qtyStr = Number.isInteger(qtyVal)
-      ? String(qtyVal)
-      : fmtNum(qtyVal);
-    doc
-      .font('Helvetica')
-      .fontSize(7.5)
-      .fillColor(C.DARK_GRAY)
-      .text(qtyStr, layout.x.cant + 2, ty,
-        { width: layout.w.cant - 4, align: 'right', lineBreak: false });
-
-    // UNI
-    doc
-      .font('Helvetica')
-      .fontSize(7)
-      .fillColor(C.MID_GRAY)
-      .text(item.unidad || 'UND', layout.x.uni + 1, ty,
-        { width: layout.w.uni - 2, align: 'center', lineBreak: false });
-
-    // PRECIO UNITARIO — right-aligned, es-BO
-    doc
-      .font('Helvetica')
-      .fontSize(7.5)
-      .fillColor(C.DARK_GRAY)
-      .text(fmtPrice(item.precio_unitario, quotation.moneda), layout.x.pUnit + 2, ty,
-        { width: layout.w.pUnit - 4, align: 'right', lineBreak: false });
-
-    // PRECIO TOTAL — bold, right-aligned, es-BO
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(7.5)
-      .fillColor(C.DARK_GRAY)
-      .text(fmtPrice(item.subtotal, quotation.moneda), layout.x.pTotal + 2, ty,
-        { width: layout.w.pTotal - 4, align: 'right', lineBreak: false });
-
-    // TIEMPO DE ENTREGA — not yet stored per line; renders placeholder
-    doc
-      .font('Helvetica')
-      .fontSize(7)
-      .fillColor(C.MID_GRAY)
-      .text(item.tiempo_entrega || '—', layout.x.entrega + 2, ty,
-        { width: layout.w.entrega - 4, align: 'center', lineBreak: false });
-
-    // Vertical column dividers for this row — one at the left edge of every
-    // column except ITEM, following the visible column set.
-    ['desc', 'cant', 'uni', 'pUnit', 'pTotal', 'entrega']
-      .concat(layout.showCodigo ? ['codigo', 'codAlt'] : [])
-      .forEach((key) => {
-        const dx = layout.x[key];
-        doc
-          .moveTo(dx, y)
-          .lineTo(dx, y + rowH)
-          .lineWidth(0.25)
-          .strokeColor(C.BORDER_GRAY)
-          .stroke();
-      });
+    _drawRowCells(doc, item, idx, y, rowH, layout, quotation);
 
     y += rowH;
   });
