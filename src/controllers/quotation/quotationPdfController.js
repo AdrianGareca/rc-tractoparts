@@ -75,6 +75,22 @@ async function _rejectIfNotOwner(res, quotation, req, filesToCleanup) {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// _unlinkOldFile — borra el archivo previamente vinculado tras reemplazarlo.
+//
+// El "invariante de un solo PDF/Excel por cotización" sólo se aplicaba en la
+// base (updatePdfPath/updateExcelPath son UPDATE puros) — el archivo viejo se
+// quedaba en disco para siempre. Encontrado en la ronda de estrés del
+// 2026-08-25.
+//
+// @param {string|null} oldRelativePath - quotation.pdf_ruta / excel_ruta ANTES del reemplazo
+// @param {string}      newRelativePath - la ruta recién guardada (no se borra si coinciden)
+// ---------------------------------------------------------------------------
+async function _unlinkOldFile(oldRelativePath, newRelativePath) {
+  if (!oldRelativePath || oldRelativePath === newRelativePath) return;
+  await fs.promises.unlink(path.resolve(process.cwd(), oldRelativePath)).catch(() => {});
+}
+
 const QuotationPdfController = {
 
   // ---------------------------------------------------------------------------
@@ -146,6 +162,11 @@ const QuotationPdfController = {
       ].join('/');
 
       await QuotationModel.updatePdfPath(id, relativePath);
+
+      // Borrar el PDF anterior del disco recién DESPUÉS de que el nuevo quedó
+      // registrado — si el UPDATE fallara, el archivo viejo sigue siendo el
+      // vigente y no hay que perderlo.
+      await _unlinkOldFile(quotation.pdf_ruta, relativePath);
 
       await logEvent({
         id_usuario:     req.user.id,
@@ -388,12 +409,14 @@ const QuotationPdfController = {
       if (pdfFile) {
         pdfRelative = `${uploadBase}/${pdfFile.filename}`;
         await QuotationModel.updatePdfPath(id, pdfRelative);
+        await _unlinkOldFile(quotation.pdf_ruta, pdfRelative);
       }
 
       if (xlsFile) {
         // Excel files are stored in storage/excels/ — separate from PDF uploads
         xlsRelative = `${excelBase}/${xlsFile.filename}`;
         await QuotationModel.updateExcelPath(id, xlsRelative);
+        await _unlinkOldFile(quotation.excel_ruta, xlsRelative);
       }
 
       await logEvent({
