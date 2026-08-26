@@ -140,6 +140,10 @@ const { parseId } = require('../utils/parseId');
 // editar: estaba escrita dos veces, y el segundo comentario decía «Mirror
 // createQuotation» — la duplicación era consciente.
 const { verificarVinculoLicitacion } = require('./quotation/licitacionLinkGuard');
+// Mismo patron que la licitacion, para id_cliente: sin esto, un id_cliente
+// inexistente (o de un cliente desactivado) llegaba hasta el INSERT y volvia
+// como 500 generico via la violacion de clave foranea.
+const { verificarCliente } = require('./quotation/clienteLinkGuard');
 
 
 const QuotationController = {
@@ -196,6 +200,10 @@ const QuotationController = {
     // 500 genérico que produce una violación de FK.
     const errLic = await verificarVinculoLicitacion(id_licitacion, 'QuotationController.createQuotation');
     if (errLic) return res.status(errLic.status).json(errLic.body);
+
+    // Mismo criterio para el cliente — ver ./clienteLinkGuard.js.
+    const errCliente = await verificarCliente(id_cliente, 'QuotationController.createQuotation');
+    if (errCliente) return res.status(errCliente.status).json(errCliente.body);
 
     // ── Duplicate detection (RF06 — non-blocking) ─────────────────────────────
     let duplicateWarning = null;
@@ -357,6 +365,13 @@ const QuotationController = {
       // y el guardián lo deja pasar sin consultar nada.
       const errLic = await verificarVinculoLicitacion(req.body.id_licitacion, 'QuotationController.updateQuotation');
       if (errLic) return res.status(errLic.status).json(errLic.body);
+
+      // Mismo criterio para el cliente — ver ./clienteLinkGuard.js. A
+      // diferencia de la licitación, id_cliente es obligatorio en el body
+      // (createQuotationSchema lo exige), así que siempre hay un valor que
+      // validar acá — no hace falta el caso "null = desatar".
+      const errCliente = await verificarCliente(id_cliente, 'QuotationController.updateQuotation');
+      if (errCliente) return res.status(errCliente.status).json(errCliente.body);
 
       // Recalculate the header total server-side from the line items so the
       // stored total always matches the actual detail rows (client value ignored).
