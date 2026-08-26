@@ -17,6 +17,7 @@
 'use strict';
 
 const { z } = require('zod');
+const { esFechaCalendarioValida } = require('./fechaCalendario');
 
 // ---------------------------------------------------------------------------
 // Valid business values (mirrors the ENUM in the cotizaciones table exactly)
@@ -203,11 +204,16 @@ const quotationShape = {
 
   fecha_emision: z
     .string({ required_error: 'fecha_emision is required.' })
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha_emision must be in YYYY-MM-DD format.'),
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha_emision must be in YYYY-MM-DD format.')
+    // El regex de arriba sólo valida el FORMATO — "2026-02-30" lo pasa igual
+    // y MySQL lo rechaza con una excepción sin capturar (500). Ver
+    // fechaCalendario.js.
+    .refine(esFechaCalendarioValida, 'fecha_emision is not a real calendar date.'),
 
   fecha_validez: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha_validez must be in YYYY-MM-DD format.')
+    .refine(esFechaCalendarioValida, 'fecha_validez is not a real calendar date.')
     .optional()
     .nullable(),
 
@@ -531,6 +537,7 @@ const updateSeguimientoVentaSchema = z.object({
   fecha_proximo_seguimiento: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha_proximo_seguimiento must be in YYYY-MM-DD format.')
+    .refine(esFechaCalendarioValida, 'fecha_proximo_seguimiento is not a real calendar date.')
     .optional()
     .nullable(),
 }).refine(

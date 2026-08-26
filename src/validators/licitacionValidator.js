@@ -12,6 +12,10 @@ const { z } = require('zod');
 // El redondeo monetario compartido: la MISMA cuenta que decide los subtotales
 // de la proforma y lo que ve el vendedor en la vista previa.
 const { redondearCentavos } = require('../utils/quotationTotals');
+// Mismo motivo que en quotationValidator.js: el regex de abajo sólo valida el
+// FORMATO — "2026-02-30" lo pasa igual y MySQL lo rechaza con una excepción
+// sin capturar (500). Ver fechaCalendario.js.
+const { esFechaCalendarioValida } = require('./fechaCalendario');
 
 const VALID_STATES = [
   'En preparacion',
@@ -30,6 +34,7 @@ const optionalDate = z.preprocess(
   (v) => (v === '' || v === undefined ? null : v),
   z.string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha debe tener formato YYYY-MM-DD.')
+    .refine(esFechaCalendarioValida, 'La fecha no es una fecha de calendario real.')
     .nullable()
 );
 
@@ -129,6 +134,7 @@ const updateLicitacionSchema = z.object(licitacionShape).extend({
       (v) => (v === '' ? null : v),
       z.string()
         .regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha debe tener formato YYYY-MM-DD.')
+        .refine(esFechaCalendarioValida, 'La fecha no es una fecha de calendario real.')
         .nullable()
     )
     .optional(),
