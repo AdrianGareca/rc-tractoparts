@@ -148,7 +148,23 @@ export function parseExcelPaste(texto) {
 
   for (const celdas of filas) {
     // Fila de encabezado: arma el mapeo de columnas y no se importa como ítem.
-    if (!mapaColumnas && celdas.some((c) => normalizar(c).startsWith('DESCRIPCION'))) {
+    //
+    // EL MATCH TIENE QUE SER EXACTO, NO "empieza con"
+    // Antes bastaba con que UNA celda empezara con "DESCRIPCION" para tomar
+    // toda la fila como encabezado. Un ítem legítimo sin fila de encabezado
+    // pegada, con una descripción como "Descripcion general del kit
+    // hidraulico", disparaba lo mismo — esa fila se descartaba en silencio, Y
+    // como ninguna de sus celdas matcheaba un alias real, mapaColumnas
+    // quedaba en `{}`: TODAS las filas siguientes también se leían vacías y
+    // se descartaban, no sólo esa una. Encontrado en la ronda de estrés del
+    // 2026-08-25.
+    //
+    // Exigir que la celda sea EXACTAMENTE "DESCRIPCION" o "DESCRIPCION DEL
+    // ITEM" (los dos encabezados reales de ALIAS_COLUMNA) evita el falso
+    // positivo — una oración real casi nunca es igual, palabra por palabra, a
+    // uno de esos dos encabezados — y de paso garantiza que mapaColumnas
+    // nunca quede sin la columna de descripción resuelta.
+    if (!mapaColumnas && celdas.some((c) => ALIAS_COLUMNA[normalizar(c)] === 'descripcion_item')) {
       mapaColumnas = {};
       celdas.forEach((c, i) => {
         const campo = ALIAS_COLUMNA[normalizar(c)];

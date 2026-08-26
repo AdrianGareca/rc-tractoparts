@@ -159,6 +159,41 @@ describe('parseExcelPaste — unidades', () => {
   });
 });
 
+describe('parseExcelPaste — una descripción real no se confunde con el encabezado', () => {
+  // BUG REAL: antes bastaba con que una celda EMPEZARA con "DESCRIPCION" para
+  // tratar toda la fila como encabezado. Un ítem legítimo sin fila de
+  // encabezado pegada, cuya descripción arranca así, disparaba lo mismo — y
+  // como ninguna celda de esa fila matcheaba un alias real, el mapeo de
+  // columnas quedaba vacío y TODAS las filas siguientes también se
+  // descartaban (no sólo esa una).
+  test('un ítem sin encabezado cuya descripción empieza con "Descripcion" se importa igual', () => {
+    const texto = [
+      'COD1\tALT1\tDescripcion general del kit hidraulico\t5\tPZA\t100\t500',
+      'COD2\tALT2\tOtro repuesto cualquiera\t2\tUND\t50\t100',
+    ].join('\n');
+
+    const { items, advertencias } = parseExcelPaste(texto);
+
+    expect(items).toHaveLength(2);
+    expect(items[0].descripcion_item).toBe('Descripcion general del kit hidraulico');
+    expect(items[0].cantidad).toBe(5);
+    expect(items[1].descripcion_item).toBe('Otro repuesto cualquiera');
+    expect(advertencias).toEqual([]);
+  });
+
+  test('una fila de encabezado real todavía se reconoce (match exacto)', () => {
+    const texto = [
+      'CODIGO\tALTERNATIVO\tDESCRIPCION\tCANT.\tUNI\tPRECIO UNITARIO',
+      'COD1\tALT1\tItem normal\t3\tPZA\t10',
+    ].join('\n');
+
+    const { items } = parseExcelPaste(texto);
+
+    expect(items).toHaveLength(1);
+    expect(items[0].descripcion_item).toBe('Item normal');
+  });
+});
+
 describe('parseExcelPaste — casos borde', () => {
   test('texto vacío no rompe, devuelve listas vacías', () => {
     expect(parseExcelPaste('')).toEqual({ items: [], advertencias: [] });
