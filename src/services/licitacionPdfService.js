@@ -78,6 +78,15 @@ function fmtMoney(amount, moneda = 'BOB') {
 // binario: en node:20-alpine sin ICU completo salía en formato inglés.
 const fmtDate = formatDate;
 
+// Mismos umbrales que fmtFileSize en public/js/views/dashboard/helpers.js —
+// que el tamaño se lea igual en la pantalla y en el PDF que se descarga de ahí.
+function fmtFileSize(bytes) {
+  if (bytes == null) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 // ── layout primitives ────────────────────────────────────────────────────────
 function ensureSpace(doc, y, needed) {
   if (y + needed > PH - MARGIN - 24) { doc.addPage(); return MARGIN + 6; }
@@ -282,6 +291,23 @@ function renderExpediente(doc, lic) {
     { t: 'Registró', k: 'nombre_usuario', w: 22 },
     { t: 'Fecha',    w: 18, r: (r) => fmtDate(r.creado_en) },
   ], lic.gastos, 'Sin gastos registrados.');
+  y += 8;
+
+  // ── 5. Documentos adjuntos ───────────────────────────────────────────────
+  // El expediente no mencionaba en absoluto los documentos subidos a la
+  // licitación (contratos, pliegos, actas escaneadas) — quien lo imprimía o
+  // archivaba no tenía forma de saber, sin entrar a la pantalla, que existían.
+  // Sólo se lista el nombre/tipo/tamaño/quién lo subió: el archivo en sí no se
+  // incrusta (se descarga aparte, desde la pantalla de la licitación).
+  // Encontrado en la ronda de estrés del 2026-08-25.
+  y = sectionTitle(doc, y, `Documentos adjuntos (${(lic.documentos || []).length})`);
+  y = table(doc, y, [
+    { t: 'Nombre',    k: 'nombre_original', w: 44 },
+    { t: 'Tipo',      w: 14, align: 'center', r: (r) => path.extname(r.nombre_original || '').replace('.', '').toUpperCase() || '—' },
+    { t: 'Tamaño',    w: 16, align: 'right', r: (r) => fmtFileSize(r.tamano_bytes) },
+    { t: 'Subido por', k: 'nombre_usuario', w: 26 },
+    { t: 'Fecha',     w: 18, r: (r) => fmtDate(r.creado_en) },
+  ], lic.documentos, 'Sin documentos adjuntos.');
 
   // ── Footer on every page ─────────────────────────────────────────────────
   const range = doc.bufferedPageRange();

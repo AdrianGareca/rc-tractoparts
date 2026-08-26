@@ -19,6 +19,7 @@
 
 const { pool }                   = require('../config/db');
 const LicitacionModel            = require('../models/LicitacionModel');
+const LicitacionDocumentModel    = require('../models/LicitacionDocumentModel');
 const QuotationModel             = require('../models/QuotationModel');
 const UserModel                  = require('../models/UserModel');
 const { logEvent, AuditActions } = require('../utils/auditLog');
@@ -46,6 +47,12 @@ const LicitacionController = {
       if (!licitacion) {
         return res.status(404).json({ success: false, message: `No se encontró la licitación con ID ${id}.` });
       }
+
+      // findById no trae los documentos adjuntos (son de otra tabla, y el
+      // resto de sus llamadores no los necesitan) — se agregan acá para que
+      // el expediente los liste. Antes el PDF no mencionaba ni la cantidad de
+      // documentos subidos, aunque hubiera varios.
+      licitacion.documentos = await LicitacionDocumentModel.findByLicitacion(id);
 
       const safeName = String(licitacion.codigo || `LIC-${id}`).replace(/[^\w\-]/g, '_');
       res.setHeader('Content-Type', 'application/pdf');
