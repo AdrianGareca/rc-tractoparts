@@ -84,7 +84,14 @@ const QuotationPdfController = {
     const { id, error: idError } = parseId(req.params.id, 'cotización');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (idError) return res.status(idError.status).json(idError.body);
+    if (idError) {
+      // Multer ya escribió el archivo en disco antes de llegar acá — sin esto
+      // queda huérfano. Mismo criterio que licitacionDocumentController.js.
+      if (req.file?.path) {
+        await fs.promises.unlink(path.resolve(process.cwd(), req.file.path)).catch(() => {});
+      }
+      return res.status(idError.status).json(idError.body);
+    }
 
     if (!req.file) {
       return res.status(422).json({
@@ -278,11 +285,20 @@ const QuotationPdfController = {
     const { id, error: idError } = parseId(req.params.id, 'cotización');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
-    if (idError) return res.status(idError.status).json(idError.body);
-
     const files   = req.files || {};
     const pdfFile = files.pdf?.[0]   ?? null;
     const xlsFile = files.excel?.[0] ?? null;
+
+    // Helper — safely delete a file from disk (errors are suppressed)
+    const unlink = (absPath) => fs.promises.unlink(absPath).catch(() => {});
+
+    if (idError) {
+      // Multer ya escribió los archivos en disco antes de llegar acá — sin
+      // esto quedan huérfanos. Mismo criterio que licitacionDocumentController.js.
+      if (pdfFile) await unlink(path.resolve(process.cwd(), pdfFile.path));
+      if (xlsFile) await unlink(path.resolve(process.cwd(), xlsFile.path));
+      return res.status(idError.status).json(idError.body);
+    }
 
     if (!pdfFile && !xlsFile) {
       return res.status(422).json({
@@ -290,9 +306,6 @@ const QuotationPdfController = {
         message: 'No files received. Include at least one field: "pdf" or "excel".',
       });
     }
-
-    // Helper — safely delete a file from disk (errors are suppressed)
-    const unlink = (absPath) => fs.promises.unlink(absPath).catch(() => {});
 
     // ── Magic-number verification ────────────────────────────────────────────
 
