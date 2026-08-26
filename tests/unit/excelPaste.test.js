@@ -71,6 +71,33 @@ describe('parseNumero — casos sin ambigüedad', () => {
   });
 });
 
+describe('parseNumero — notación científica', () => {
+  // BUG REAL: la limpieza de caracteres sólo dejaba dígitos/coma/punto/guion,
+  // así que la "e" desaparecía sin avisar y "1e10" quedaba pegado como "110"
+  // (mil veces menos de lo que decía la celda).
+  test.each([
+    ['1e10', 1e10],
+    ['1.5E+3', 1500],
+    ['-2.5e-2', -0.025],
+    ['1,5e3', 1500],   // coma decimal (formato boliviano) + notación científica
+  ])('%s -> %d', (entrada, esperado) => {
+    expect(parseNumero(entrada)).toBeCloseTo(esperado);
+  });
+});
+
+describe('parseNumero — más de un signo es basura, no un número raro', () => {
+  // BUG REAL: "--5" se leía como si el segundo guion no estuviera y devolvía
+  // 5 sin ningún aviso — un dato ambiguo (guion de más al pegar, o una resta
+  // sin terminar) se convertía en uno que parece perfectamente válido.
+  test.each(['--5', '-5-', '5-', '1-2'])('%s da NaN, no un número silencioso', (entrada) => {
+    expect(parseNumero(entrada)).toBeNaN();
+  });
+
+  test('un solo signo al principio sigue funcionando normal', () => {
+    expect(parseNumero('-5')).toBe(-5);
+  });
+});
+
 // ---------------------------------------------------------------------------
 describe('parseExcelPaste — con fila de encabezado', () => {
   const conEncabezado = [

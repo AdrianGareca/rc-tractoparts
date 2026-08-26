@@ -91,10 +91,36 @@ function esAgrupadorDeMiles(partes) {
   return partes.length > 2 || (partes.length === 2 && partes[1].length === 3 && partes[0].length > 0);
 }
 
+// Notación científica: "1.5E+10" o "1,5e-3" (con coma decimal, si la celda
+// vino en formato boliviano). Se reconoce ANTES de la limpieza de abajo — esa
+// limpieza sólo deja dígitos/coma/punto/guion, así que la "e" desaparecía sin
+// avisar y "1e10" quedaba pegado como "110" (mil veces menos de lo que decía
+// la celda). parseFloat entiende esta notación de forma nativa y correcta una
+// vez que la coma decimal, si la hay, se pasa a punto.
+const NOTACION_CIENTIFICA = /^-?\d+([.,]\d+)?[eE][+-]?\d+$/;
+
 export function parseNumero(valorCrudo) {
   if (valorCrudo == null) return NaN;
-  let s = String(valorCrudo).trim().replace(/[^0-9.,-]/g, '');
+  const crudo = String(valorCrudo).trim();
+  if (crudo === '') return NaN;
+
+  if (NOTACION_CIENTIFICA.test(crudo)) {
+    const n = parseFloat(crudo.replace(',', '.'));
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  let s = crudo.replace(/[^0-9.,-]/g, '');
   if (s === '') return NaN;
+
+  // Un número real lleva A LO SUMO un signo, y al principio. "--5" no es un
+  // formato raro de algún país — es basura (un guion de más al pegar, o una
+  // resta que no se completó) — y antes se leía como si el segundo signo no
+  // estuviera, devolviendo 5 sin ningún aviso. Lo mismo un signo que no está
+  // al principio ("5-"). En cualquiera de los dos casos, mejor NaN: cae en el
+  // mismo aviso de "cantidad/precio no reconocido" que ya existe más abajo,
+  // en vez de convertir silenciosamente un dato ambiguo en uno que parece válido.
+  const cantidadDeSignos = (s.match(/-/g) || []).length;
+  if (cantidadDeSignos > 1 || (cantidadDeSignos === 1 && !s.startsWith('-'))) return NaN;
 
   const negativo = s.startsWith('-');
   if (negativo) s = s.slice(1);
