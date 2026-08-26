@@ -266,8 +266,26 @@ function statBox(doc, x, y, w, label, value, color) {
   doc.moveTo(x, y + 16).lineTo(x + w, y + 16)
      .lineWidth(0.8).strokeColor(C.ORANGE).stroke();
 
-  doc.font('Helvetica-Bold').fontSize(13).fillColor(color || C.NAVY)
-     .text(value, x + 7, y + 22, { width: w - 14, lineBreak: false });
+  // Un monto de 8+ cifras (Bs. 100.000.000,00 o más) no entraba en el ancho
+  // de la tarjeta a fontSize 13. `lineBreak:false` no evita el envuelto acá:
+  // PDFKit igual wrappea en cuanto se le da un `width` explícito — el flag
+  // sólo evita que invente un ancho por default cuando no se le pasa uno.
+  // El número quedaba partido a la mitad en dos líneas apretadas dentro de
+  // la caja de 42pt. En vez de agrandar la caja (rompería la alineación con
+  // las otras cajas de la misma fila, que comparten el mismo alto), se achica
+  // la letra lo justo para que el número entre siempre en una sola línea.
+  // Encontrado en la ronda de estrés del 2026-08-25.
+  const valueWidth = w - 14;
+  let valueFontSize = 13;
+  doc.font('Helvetica-Bold').fontSize(valueFontSize);
+  const textWidth = doc.widthOfString(value);
+  if (textWidth > valueWidth) {
+    valueFontSize = Math.max(8, valueFontSize * (valueWidth / textWidth));
+    doc.fontSize(valueFontSize);
+  }
+
+  doc.fillColor(color || C.NAVY)
+     .text(value, x + 7, y + 22, { width: valueWidth, lineBreak: false });
 }
 
 // ---------------------------------------------------------------------------
