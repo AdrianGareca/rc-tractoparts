@@ -261,6 +261,14 @@ const QuotationPdfController = {
       const relativePath     = await pdfService.generateQuotationPdf(quotation);
       const generatedAbsPath = path.resolve(process.cwd(), relativePath);
 
+      // CRÍTICO — encontrado en la ronda de estrés del 2026-08-26: sin este
+      // guardado, CADA descarga con el archivo faltante generaba un PDF
+      // nuevo y lo dejaba huérfano en disco para siempre — sin límite ni
+      // rate-limit en esta ruta (a diferencia de las subidas). Guardar la
+      // ruta acá hace que la PRÓXIMA descarga entre por la Prioridad 1 de
+      // arriba y sirva este mismo archivo en vez de generar otro.
+      await QuotationModel.updatePdfPath(id, relativePath);
+
       await logEvent({
         id_usuario:     req.user.id,
         nombre_usuario: req.user.nombre_usuario,

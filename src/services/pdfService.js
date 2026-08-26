@@ -88,10 +88,19 @@ async function generateQuotationPdf(quotation) {
         .replace(/[^\w\-]/g, '_');
       const filename     = `${safeCorrelativo}-${Date.now()}.pdf`;
       const absolutePath = path.join(uploadDir, filename);
-      const relativePath = path.join(
-        process.env.UPLOAD_DIR || 'uploads/cotizaciones',
-        filename
-      );
+      // join('/') y NO path.join(): esta ruta se guarda en la base y se sirve
+      // por HTTP, así que tiene que ser igual en Windows y en Linux.
+      // path.join ponía barras invertidas en Windows (confirmado en la base
+      // real: 'uploads\\cotizaciones\\SC-...') — en un deploy Linux esa ruta
+      // se interpreta como un nombre de archivo literal con backslashes, y
+      // la descarga fallaría con 404. Mismo criterio que ya usan
+      // quotationRoutes.js (nombre en disco) y persistirDocumentos.js
+      // (documentos de licitación). Encontrado en la ronda de estrés del
+      // 2026-08-26.
+      const relativePath = [
+        (process.env.UPLOAD_DIR || 'uploads/cotizaciones').replace(/\\/g, '/'),
+        filename,
+      ].join('/');
 
       // 2. Initialise PDFKit document
       const doc = new PDFDocument({
