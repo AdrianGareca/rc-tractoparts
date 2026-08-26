@@ -8,6 +8,7 @@
 
 const bcrypt    = require('bcryptjs');
 const UserModel = require('../models/UserModel');
+const { ROLES }                  = require('../config/roles');
 const { logEvent, AuditActions } = require('../utils/auditLog');
 // Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
 // con el mensaje en dos idiomas distintos.
@@ -46,6 +47,44 @@ function _validarIdRol(idRol) {
     return {
       field:   'id_rol',
       message: `id_rol inválido: "${idRol}". Debe ser uno de: ${[...VALID_ROLE_IDS].join(', ')}.`,
+    };
+  }
+  return null;
+}
+
+// CRÍTICO — encontrado en la ronda de estrés del 2026-08-26: la ruta sólo
+// exigía Jefe/Administracion/SysAdmin por igual (userMgmtRoles en
+// userRoutes.js) y el controller nunca distinguía QUÉ id_rol se podía asignar
+// ni A QUIÉN se podía tocar. Con eso, cualquier Administracion o Jefe podía
+// crear una cuenta SysAdmin nueva (POST con id_rol:4), auto-promoverse a
+// SysAdmin (PUT sobre sí mismo), o editar/desactivar al SysAdmin real —
+// verificado en el servidor: Administracion creó una cuenta SysAdmin real
+// (201) y se auto-promovió (200), ambas con su propio token.
+//
+// SysAdmin es "autoridad absoluta sobre todo el sistema" (ver
+// config/roles.js) — sólo otro SysAdmin puede crear, promover a, degradar
+// desde, o desactivar una cuenta SysAdmin. El resto de las combinaciones de
+// roles para gestión de usuarios sigue exactamente igual que antes.
+const ID_ROL_SYSADMIN = ROLES.find((r) => r.nombre === 'SysAdmin').id;
+
+/**
+ * @param   {number}      idRolSolicitado — el id_rol que se quiere ASIGNAR (crear o cambiar a)
+ * @param   {string}      rolActor        — req.user.rol, quien hace el pedido
+ * @param   {number|null} idRolActual     — id_rol que YA tiene el usuario objetivo (null si es alta)
+ * @returns {{status:number, body:object}|null}
+ */
+function _validarPermisoSobreSysAdmin(idRolSolicitado, rolActor, idRolActual = null) {
+  const tocaSysAdmin =
+    idRolSolicitado === ID_ROL_SYSADMIN ||
+    idRolActual === ID_ROL_SYSADMIN;
+
+  if (tocaSysAdmin && rolActor !== 'SysAdmin') {
+    return {
+      status: 403,
+      body: {
+        success: false,
+        message: 'Access denied. Only a SysAdmin can create, modify, or deactivate a SysAdmin account.',
+      },
     };
   }
   return null;
@@ -120,6 +159,9 @@ const UserController = {
       return res.status(422).json({ success: false, message: 'Validation failed.', errors });
     }
 
+    const errSysAdmin = _validarPermisoSobreSysAdmin(parseInt(id_rol, 10), req.user.rol);
+    if (errSysAdmin) return res.status(errSysAdmin.status).json(errSysAdmin.body);
+
     try {
       // Hash the password with the configured cost factor
       const bcryptRounds  = parseInt(process.env.BCRYPT_ROUNDS, 10) || 12;
@@ -191,6 +233,17 @@ const UserController = {
         const rolError = _validarIdRol(req.body.id_rol);
         if (rolError) return res.status(422).json({ success: false, message: 'Validation failed.', errors: [rolError] });
       }
+
+      // Cubre las dos direcciones: promover A SysAdmin (id_rol solicitado) y
+      // tocar una cuenta que YA ES SysAdmin (id_rol actual) — un Jefe no debe
+      // poder, por ejemplo, cambiarle sólo el nombre al SysAdmin real tampoco,
+      // ya que esa misma ruta es la que degradaría su rol si se lo pidiera.
+      const errSysAdmin = _validarPermisoSobreSysAdmin(
+        req.body.id_rol != null ? parseInt(req.body.id_rol, 10) : null,
+        req.user.rol,
+        existing.id_rol
+      );
+      if (errSysAdmin) return res.status(errSysAdmin.status).json(errSysAdmin.body);
 
       const updateData = {};
 
@@ -284,6 +337,9 @@ const UserController = {
           message: 'You cannot deactivate your own account.',
         });
       }
+
+      const errSysAdmin = _validarPermisoSobreSysAdmin(null, req.user.rol, existing.id_rol);
+      if (errSysAdmin) return res.status(errSysAdmin.status).json(errSysAdmin.body);
 
       await UserModel.update(id, { activo: 0 });
 
