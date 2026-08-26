@@ -7,7 +7,7 @@
 // These tests pin the escaping.
 // =============================================================================
 
-import { badgeHtml, roleBadgeHtml, licitacionBadgeHtml } from '../../public/js/views/dashboard/helpers.js';
+import { badgeHtml, roleBadgeHtml, licitacionBadgeHtml, seguimientoVentaBadgeHtml } from '../../public/js/views/dashboard/helpers.js';
 
 describe('badge helpers escape their text content', () => {
   test('badgeHtml escapes an unknown/hostile estado', () => {
@@ -29,5 +29,47 @@ describe('badge helpers escape their text content', () => {
 
   test('consistent with licitacionBadgeHtml (which already escaped)', () => {
     expect(licitacionBadgeHtml('<b>x</b>')).toContain('&lt;b&gt;');
+  });
+});
+
+describe('seguimientoVentaBadgeHtml — el badge del seguimiento comercial', () => {
+  // BUG REAL: la columna "Seguim." de "Todas las cotizaciones" usaba
+  // badgeHtml() a secas — la función pensada para el ESTADO DE APROBACIÓN
+  // ('Pendiente', 'Confirmada'...) — que no reconoce ninguno de estos
+  // valores y pintaba a todos con el gris genérico "badge-borrador".
+  test('cada estado de venta tiene su propio color, ninguno cae al genérico', () => {
+    const clases = [
+      'Interesado', 'En negociacion', 'Confirmado', 'No le interesa', 'Venta concretada',
+    ].map((estado_venta) => seguimientoVentaBadgeHtml({ estado_venta, estado_venta_detalle: null }));
+
+    for (const html of clases) expect(html).not.toContain('badge-borrador');
+    // Y no se repiten entre sí — cada estado se distingue visualmente del resto.
+    expect(new Set(clases).size).toBe(clases.length);
+  });
+
+  test('sin seguimiento registrado, muestra un guion en vez de un badge vacío', () => {
+    expect(seguimientoVentaBadgeHtml({ estado_venta: null, estado_venta_detalle: null }))
+      .toBe('<span class="text-muted">—</span>');
+  });
+
+  test('"Otro" muestra el detalle, no la palabra "Otro"', () => {
+    const html = seguimientoVentaBadgeHtml({
+      estado_venta: 'Otro', estado_venta_detalle: 'Esperando aprobación de gerencia',
+    });
+    expect(html).toContain('Esperando aprobación de gerencia');
+    expect(html).not.toContain('>Otro<');
+  });
+
+  test('"Otro" sin detalle cae a la palabra "Otro"', () => {
+    const html = seguimientoVentaBadgeHtml({ estado_venta: 'Otro', estado_venta_detalle: null });
+    expect(html).toContain('>Otro<');
+  });
+
+  test('escapa un detalle hostil', () => {
+    const html = seguimientoVentaBadgeHtml({
+      estado_venta: 'Otro', estado_venta_detalle: '<img src=x onerror=alert(1)>',
+    });
+    expect(html).not.toContain('<img');
+    expect(html).toContain('&lt;img');
   });
 });

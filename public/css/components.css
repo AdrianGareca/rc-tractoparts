@@ -62,6 +62,15 @@
 .badge-lic-noadjudicada { background: var(--badge-bg-red);    color: var(--clr-red-soft); }
 .badge-lic-archivada    { background: var(--badge-bg-slate);  color: var(--text-secondary); }
 
+/* Seguimiento comercial (estado_venta) — pipeline de venta con el cliente,
+   independiente del estado de aprobación interno de arriba. */
+.badge-seg-interesado   { background: var(--badge-bg-blue);   color: var(--clr-blue-soft); }
+.badge-seg-negociacion  { background: var(--badge-bg-amber);  color: var(--clr-amber-soft); }
+.badge-seg-confirmado   { background: var(--badge-bg-indigo); color: var(--clr-indigo-soft); }
+.badge-seg-no-interesa  { background: var(--badge-bg-red);    color: var(--clr-red-soft); }
+.badge-seg-concretada   { background: var(--badge-bg-green);  color: var(--clr-green); }
+.badge-seg-otro         { background: var(--badge-bg-gray);   color: var(--clr-gray-soft); }
+
 /* Audit log — acción category badges (semantic color by action family) */
 .badge-audit-auth       { background: var(--badge-bg-violet);   color: var(--clr-violet-soft); }  /* LOGIN/LOGOUT — violet */
 .badge-audit-auth-fail  { background: var(--badge-bg-red);    color: var(--clr-red-soft); }  /* LOGIN_FAILED — red */

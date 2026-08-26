@@ -60,6 +60,38 @@ export function badgeHtml(estado) {
   return `<span class="badge ${cls}">${escHtml(estado)}</span>`;
 }
 
+// Seguimiento comercial (estado_venta) — pipeline de venta con el cliente,
+// independiente del estado de aprobación de arriba. Debe reflejar EXACTAMENTE
+// SALES_FOLLOWUP_STATES en proformaActions.js / src/validators/quotationValidator.js
+// (mismo criterio que rolesUnaSolaLista.test.js: un desvío entre listas se
+// nota recién cuando alguien elige la opción que falta).
+export const SEGUIMIENTO_VENTA_BADGE = {
+  'Interesado':       'badge-seg-interesado',
+  'En negociacion':   'badge-seg-negociacion',
+  'Confirmado':       'badge-seg-confirmado',
+  'No le interesa':   'badge-seg-no-interesa',
+  'Venta concretada': 'badge-seg-concretada',
+  'Otro':             'badge-seg-otro',
+};
+
+/**
+ * Badge del seguimiento comercial para una fila de cotización, o '—' si nunca
+ * se registró uno. Antes esta columna (en "Todas las cotizaciones") usaba
+ * badgeHtml() a secas — la función pensada para el estado de APROBACIÓN
+ * ('Pendiente', 'Confirmada'...), que no reconoce ninguno de estos valores y
+ * los pintaba a todos con el gris genérico de "badge-borrador", sin importar
+ * el estado real.
+ *
+ * @param   {{estado_venta:string|null, estado_venta_detalle:string|null}} q
+ * @returns {string}
+ */
+export function seguimientoVentaBadgeHtml(q) {
+  if (!q.estado_venta) return '<span class="text-muted">—</span>';
+  const cls     = SEGUIMIENTO_VENTA_BADGE[q.estado_venta] ?? 'badge-seg-otro';
+  const etiqueta = q.estado_venta === 'Otro' ? (q.estado_venta_detalle || 'Otro') : q.estado_venta;
+  return `<span class="badge ${cls}">${escHtml(etiqueta)}</span>`;
+}
+
 export function roleBadgeHtml(rol) {
   const cls = ROLE_BADGE[rol] ?? '';
   return `<span class="badge ${cls}">${escHtml(rol)}</span>`;

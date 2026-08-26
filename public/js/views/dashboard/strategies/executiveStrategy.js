@@ -12,7 +12,7 @@
 import AuthSession             from '../../../services/authSession.js';
 import api, { showToast }      from '../../../services/apiClient.js';
 import { mountQuotationForm }  from '../../quotationForm.js';
-import { STAT_COLOR, badgeHtml, fmtDate, escHtml, fmtAmount } from '../helpers.js';
+import { STAT_COLOR, badgeHtml, seguimientoVentaBadgeHtml, fmtDate, escHtml, fmtAmount } from '../helpers.js';
 import { wirePdfButton, wireExcelButton, wireSeguimientoVenta, buildTimelineHtml }  from '../modules/timelineView.js';
 import { renderExecutiveMetrics } from '../modules/reportesView.js';
 import { mountClientsTab }        from '../modules/clientsView.js';
@@ -124,7 +124,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     this.#seccion = createListSection({
       resultsEl:    document.getElementById('quotations-section'),
       paginationEl: document.getElementById('pagination-footer'),
-      columnas:     6,
+      columnas:     7,   // default de "mias" — _loadQuotations() pasa 8 en "equipo"
       etiqueta:     'Cargando cotizaciones',
       etiquetas:    ETIQUETAS_FECHA,
       onPageChange: ({ page, limit }) => {
@@ -338,7 +338,11 @@ export class ExecutiveStrategy extends DashboardStrategy {
     this.#loadAbortCtrl = new AbortController();
     const { signal } = this.#loadAbortCtrl;
 
-    this.#seccion?.loading();
+    // 7 columnas en "mias" (N°/Cliente/Fecha/Monto/Estado/Acciones/Seguimiento),
+    // 8 en "equipo" (suma Ejecutivo) — mismo motivo que documenta
+    // listSection.js: sin el override, el esqueleto de la solapa que falta
+    // queda con el ancho de la otra.
+    this.#seccion?.loading(this.#scope === 'equipo' ? 8 : 7);
 
     const estado = document.getElementById('filter-estado')?.value ?? '';
     const q      = document.getElementById('filter-q')?.value.trim() ?? '';
@@ -434,7 +438,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
               <th>N° correlativo</th><th>Cliente</th>
               ${isTeam ? '<th>Ejecutivo</th>' : ''}
               <th>Fecha</th><th>Monto</th>
-              <th>Estado</th><th>Acciones</th>
+              <th>Estado</th><th>Acciones</th><th>Seguimiento</th>
             </tr>
           </thead>
           <tbody>
@@ -453,6 +457,12 @@ export class ExecutiveStrategy extends DashboardStrategy {
                       ? `<button class="btn btn-ghost btn-sm" data-action="status" data-id="${r.id}" data-estado="${escHtml(r.estado)}">Estado</button>`
                       : ''}
                   </div>
+                </td>
+                <td>
+                  ${seguimientoVentaBadgeHtml(r)}
+                  ${r.fecha_proximo_seguimiento
+                    ? `<div class="text-muted text-sm mt-025">${fmtDate(r.fecha_proximo_seguimiento)}</div>`
+                    : ''}
                 </td>
               </tr>
             `).join('')}

@@ -20,7 +20,7 @@
 // =============================================================================
 
 import api from '../../../services/apiClient.js';
-import { escHtml, badgeHtml, fmtDate, fmtAmount } from '../helpers.js';
+import { escHtml, badgeHtml, seguimientoVentaBadgeHtml, fmtDate, fmtAmount } from '../helpers.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
 import { ETIQUETAS_FECHA } from '../../../shared/pagination.js';
 import { createListSection } from '../../../shared/listSection.js';
@@ -84,7 +84,7 @@ function buildRowHtml(r, detailAttr) {
                   <td>${escHtml(r.cliente_nombre ?? String(r.id_cliente))}</td>
                   <td>${fmtAmount(r.monto_total, r.moneda)}</td>
                   <td>${badgeHtml(r.estado)}</td>
-                  <td>${r.estado_venta ? badgeHtml(r.estado_venta) : '<span class="text-muted">—</span>'}</td>
+                  <td>${seguimientoVentaBadgeHtml(r)}</td>
                   <td>${r.fecha_proximo_seguimiento ? fmtDate(r.fecha_proximo_seguimiento) : '<span class="text-muted">—</span>'}</td>
                   <td>${fmtDate(r.fecha_emision)}</td>
                   <td>

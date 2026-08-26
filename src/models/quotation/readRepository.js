@@ -196,6 +196,7 @@ async function findAll(filters = {}, pagination = {}, sort = {}) {
         ap.nombre_completo   AS aprobador_nombre,
         c.fecha_aprobacion,
         c.estado_venta,
+        c.estado_venta_detalle,
         c.fecha_proximo_seguimiento,
         c.creado_en,
         c.actualizado_en
