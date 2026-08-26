@@ -155,13 +155,16 @@ function verificarExistenciaYEstado(quotation, id, nuevoEstado) {
 // 4. El permiso de rol
 // ---------------------------------------------------------------------------
 /**
- * Devuelve el error Y la lista de transiciones, porque quien llama la necesita
- * en los DOS caminos: para acompañar el 403, y también para acompañar el 200.
+ * Valida la transición puntual (estadoActual → nuevoEstado) para este rol.
  *
- * Este es el único guardián que devuelve algo cuando aprueba. La primera
- * versión devolvía sólo `null` en el caso bueno, y la respuesta de éxito
- * —cincuenta líneas más abajo— se quedó sin el dato y tiraba 500. Lo agarró la
- * prueba de integración de la llave del jefe.
+ * La lista de transiciones que trae el 403 describe el estado VIEJO — que es
+ * justo lo que sirve ahí: "esto es lo que SÍ podías hacer desde donde estás".
+ * NO uses `allowedTransitions` del caso `valid:true` para la respuesta de
+ * éxito: sigue describiendo el estado viejo, no el que acaba de quedar tras
+ * la transición. Para eso está `getAllowedTransitions()` en stateMachine.js,
+ * que el controlador llama aparte una vez confirmada la escritura. Mezclar
+ * los dos fue exactamente el bug de `allowed_transitions` con estado
+ * desactualizado que se encontró en la ronda de estrés del 2026-08-25.
  *
  * @returns {{ error: {status,body}|null, allowedTransitions: string[] }}
  */

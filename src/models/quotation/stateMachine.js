@@ -12,6 +12,7 @@ const { pool } = require('../../config/db');
 const {
   ROLE_TRANSITIONS,
   APPROVAL_SOURCE_STATES,
+  REOPEN_SOURCE_STATES,
   REOPEN_TARGET_STATE,
   REOPEN_ROLES,
   isReopening,
@@ -155,6 +156,52 @@ function validateTransitionByRole(estadoActual, nuevoEstado, rol, canApproveQuot
   // Transición válida. Se devuelve igual la lista completa para que la pantalla
   // pueda redibujar el menú sin volver a preguntarle al servidor.
   return { valid: true, allowedTransitions: allowedFromState };
+}
+
+// ---------------------------------------------------------------------------
+// getAllowedTransitions — a qué estados puede mover ESTE rol una cotización
+// que está HOY en `estado`. Mismo cálculo que hace validateTransitionByRole
+// para armar su `allowedTransitions` (matriz + recorte de la llave del jefe +
+// bono de la delegación de aprobación), pero como función de (estado, rol) —
+// sin necesitar un destino propuesto para validar.
+//
+// POR QUÉ HACE FALTA UNA FUNCIÓN APARTE
+// validateTransitionByRole valida UNA transición puntual (origen → destino) y
+// ese destino condiciona sus dos casos especiales: el filtro de reapertura
+// sólo se aplica cuando el destino ES 'Pendiente', y el bono de delegación
+// sólo se agrega cuando el destino ES 'Aprobada internamente'. No hay forma
+// de pedirle "dame la lista completa desde este estado" sin ya saber a dónde
+// se quiere ir.
+//
+// El controlador de cambio de estado necesitaba exactamente eso para la
+// respuesta 200: la transición YA ocurrió, y `allowed_transitions` tiene que
+// describir qué se puede hacer AHORA, desde el estado nuevo — no reciclar la
+// lista que se calculó para el estado viejo antes de moverlo. Encontrado en
+// la ronda de estrés del 2026-08-25.
+//
+// @returns {string[]}
+// ---------------------------------------------------------------------------
+function getAllowedTransitions(estado, rol, canApproveQuotations = false) {
+  const effectiveRol = (rol === 'Ejecutivo' && canApproveQuotations === true) ? 'Jefe' : rol;
+  const roleMatrix    = ROLE_TRANSITIONS[effectiveRol];
+  if (!roleMatrix) return [];
+
+  let allowed = roleMatrix[estado] || [];
+
+  // Mismo recorte que la llave del jefe: reabrir no se delega, así que un
+  // ejecutivo delegado (que opera con la matriz de Jefe) no debe ver
+  // 'Pendiente' como opción para reabrir un estado cerrado.
+  if (REOPEN_SOURCE_STATES.includes(estado) && !REOPEN_ROLES.includes(rol)) {
+    allowed = allowed.filter((s) => s !== REOPEN_TARGET_STATE);
+  }
+
+  const delegacionAplica =
+    APPROVAL_SOURCE_STATES.includes(estado) &&
+    (rol === 'Jefe' || rol === 'SysAdmin' || canApproveQuotations === true);
+
+  return delegacionAplica
+    ? Array.from(new Set([...allowed, 'Aprobada internamente']))
+    : allowed;
 }
 
 // ---------------------------------------------------------------------------
@@ -454,6 +501,7 @@ async function findStateHistory(quotationId) {
 
 module.exports = {
   validateTransitionByRole,
+  getAllowedTransitions,
   validateForReview,
   updateStatus,
   approve,

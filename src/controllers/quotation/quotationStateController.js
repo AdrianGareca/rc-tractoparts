@@ -151,11 +151,12 @@ const QuotationStateController = {
         userRol, nuevo_estado, req.user.id
       );
 
-      // 4. El permiso de rol contra la matriz de transiciones. Devuelve la lista
-      //    de destinos válidos en los DOS casos: acompaña al 403 para que la
-      //    pantalla corrija sus opciones, y al 200 de más abajo para que pueda
-      //    redibujar el menú sin volver a preguntar.
-      const { error: errRol, allowedTransitions } = Guards.verificarPermisoDeRol(
+      // 4. El permiso de rol contra la matriz de transiciones. La lista de
+      //    destinos válidos que trae para el 403 describe el estado VIEJO —
+      //    útil ahí porque es justo lo que no se pudo hacer desde él. Para el
+      //    200 de más abajo hace falta la del estado NUEVO, que se recalcula
+      //    aparte con getAllowedTransitions() una vez confirmada la escritura.
+      const { error: errRol } = Guards.verificarPermisoDeRol(
         estadoActual, nuevo_estado, userRol, canApproveDelegated
       );
       if (errRol) return res.status(errRol.status).json(errRol.body);
@@ -239,9 +240,13 @@ const QuotationStateController = {
         message: `Quotation state updated: '${estadoActual}' → '${nuevo_estado}'.`,
         data:    {
           id,
-          estado_anterior:     estadoActual,
+          estado_anterior: estadoActual,
           nuevo_estado,
-          allowed_transitions: allowedTransitions,
+          // Recalculada sobre el estado NUEVO, no la que devolvió el guardián
+          // de permiso más arriba (esa describe el estado VIEJO — servía para
+          // validar la transición que se acaba de hacer, no la próxima).
+          // Encontrado en la ronda de estrés del 2026-08-25.
+          allowed_transitions: QuotationModel.getAllowedTransitions(nuevo_estado, userRol, canApproveDelegated),
         },
       });
     } catch (error) {
