@@ -270,7 +270,11 @@ function renderExpediente(doc, lic) {
   doc.fillColor(ganancia ? C.GREEN : C.RED).font('Helvetica-Bold').fontSize(13)
     .text(`${ganancia ? 'GANANCIA' : 'PÉRDIDA'}: ${fmtMoney(Math.abs(resultado), moneda)}`, MARGIN + 16, y + 6);
   doc.fillColor(C.MID).font('Helvetica').fontSize(8)
-    .text(`Ingreso ${fmtMoney(ingreso, moneda)}  −  Gastos ${fmtMoney(gastosT, moneda)}`, MARGIN + 16, y + 22);
+    // Guion ASCII, no el signo menos Unicode (U+2212): Helvetica/WinAnsi (la
+    // fuente base del PDF) no lo tiene, y salía como un glifo roto. Mismo
+    // problema de fondo que un emoji — un carácter fuera de WinAnsi.
+    // Encontrado en la ronda de estrés del 2026-08-25.
+    .text(`Ingreso ${fmtMoney(ingreso, moneda)}  -  Gastos ${fmtMoney(gastosT, moneda)}`, MARGIN + 16, y + 22);
   y += 44;
 
   // ── 3. Cotizaciones vinculadas ───────────────────────────────────────────
