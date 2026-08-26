@@ -23,7 +23,7 @@
 'use strict';
 
 const path = require('path');
-const { buildUploadFilename, sanitizeIdSegment } = require('../../src/utils/uploadFilename');
+const { buildUploadFilename, sanitizeIdSegment, arreglarNombreOriginal } = require('../../src/utils/uploadFilename');
 
 /** ¿El archivo termina dentro del directorio de destino? */
 function quedaDentro(destino, filename) {
@@ -118,6 +118,32 @@ describe('buildUploadFilename — el caso normal sigue igual', () => {
     const b = buildUploadFilename({ prefix: 'COT', id: '1', originalname: 'x.pdf' });
 
     expect(a).not.toBe(b);
+  });
+});
+
+describe('arreglarNombreOriginal — deshace el mojibake de Busboy', () => {
+  // Busboy decodifica el nombre del multipart como Latin1 por default. Un
+  // cliente que manda el nombre en UTF-8 (la mayoría) produce mojibake: acá se
+  // simula exactamente eso — se toman los bytes UTF-8 del nombre real y se
+  // interpretan como Latin1, tal como llegarían a file.originalname.
+  const simularMojibake = (nombreReal) => Buffer.from(nombreReal, 'utf8').toString('latin1');
+
+  test.each([
+    'informe_año_2026.pdf',
+    'cotización final.pdf',
+    '报告.pdf',
+    '📄 documento.pdf',
+  ])('recupera el nombre real de %s', (nombreReal) => {
+    expect(arreglarNombreOriginal(simularMojibake(nombreReal))).toBe(nombreReal);
+  });
+
+  test('un nombre puramente ASCII queda igual', () => {
+    expect(arreglarNombreOriginal('contrato.pdf')).toBe('contrato.pdf');
+  });
+
+  test('ausente no revienta', () => {
+    expect(arreglarNombreOriginal(undefined)).toBe('');
+    expect(arreglarNombreOriginal(null)).toBe('');
   });
 });
 

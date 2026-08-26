@@ -27,7 +27,7 @@ const express   = require('express');
 const multer    = require('multer');
 const path      = require('path');
 const fs        = require('fs');
-const { buildUploadFilename } = require('../utils/uploadFilename');
+const { buildUploadFilename, arreglarNombreOriginal } = require('../utils/uploadFilename');
 const rateLimit = require('express-rate-limit');
 
 const LicitacionController         = require('../controllers/licitacionController');
@@ -80,6 +80,12 @@ const licDocStorage = multer.diskStorage({
 });
 
 function licDocFileFilter(_req, file, cb) {
+  // Corrige el mojibake de Busboy ACÁ, antes de que nada más use el nombre:
+  // la extensión de abajo, el nombre en disco (buildUploadFilename) y el
+  // nombre_original que persistirDocumentos.js guarda en la base — todos
+  // leen file.originalname, así que arreglarlo una sola vez alcanza.
+  file.originalname = arreglarNombreOriginal(file.originalname);
+
   const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
   if (ALLOWED_DOC_EXTENSIONS.has(ext)) {
     cb(null, true);

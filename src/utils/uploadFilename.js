@@ -70,4 +70,31 @@ function buildUploadFilename({ prefix = 'FILE', id, originalname = '' } = {}) {
   return `${safePrefix}-${safeId}-${unique}${ext}`;
 }
 
-module.exports = { buildUploadFilename, sanitizeIdSegment, sanitizeExtension };
+/**
+ * Corrige el mojibake que deja Busboy en `file.originalname` cuando el nombre
+ * tiene tildes, ñ, caracteres chinos o emoji.
+ *
+ * POR QUÉ HACE FALTA
+ * El multipart/form-data no tiene un campo de charset para el nombre de
+ * archivo del Content-Disposition, y Busboy decodifica esos bytes como
+ * Latin1 por default. Los clientes modernos (navegadores, `form-data` de
+ * Node) mandan el nombre en UTF-8 tal cual, sin escapar — así que Busboy
+ * decodifica bytes UTF-8 como si fueran Latin1 y el resultado es mojibake
+ * ("鲁" llega como una serie de símbolos sueltos). El contenido del archivo
+ * nunca se toca, solo el nombre para mostrar.
+ *
+ * Reinterpretar esos mismos caracteres como bytes Latin1 y volver a
+ * decodificarlos como UTF-8 deshace exactamente ese error. Para un nombre
+ * puramente ASCII (el caso más común) el resultado es idéntico al original,
+ * así que aplicarlo siempre es seguro.
+ *
+ * Encontrado en la ronda de estrés del 2026-08-25.
+ *
+ * @param   {string} originalname — tal como lo entrega Busboy/Multer
+ * @returns {string}
+ */
+function arreglarNombreOriginal(originalname) {
+  return Buffer.from(String(originalname ?? ''), 'latin1').toString('utf8');
+}
+
+module.exports = { buildUploadFilename, sanitizeIdSegment, sanitizeExtension, arreglarNombreOriginal };
