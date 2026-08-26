@@ -85,15 +85,19 @@ async function authenticate(req, res, next) {
     });
   }
 
-  // 2. Isolate the token string after "Bearer "
-  let token = authHeader.split(' ')[1];
+  // 2. Isolate the token string after "Bearer ". slice(7) and NOT
+  //    split(' ')[1]: the guard right below needs the token WHOLE (it may
+  //    itself start with "Bearer ") to detect the double-prefix case —
+  //    split(' ')[1] would cut it at the first space and the guard could
+  //    never see more than the literal word "Bearer". Found in the stress
+  //    round on 2026-08-25: the guard existed but could never fire.
+  let token = authHeader.slice(7).trim();
 
   // Defensive guard: Swagger UI with scheme:'bearer' prepends "Bearer " automatically.
   // If the user pasted the full "Bearer <jwt>" string into the Swagger UI field,
-  // the header arrives as "Bearer Bearer <jwt>" and split(' ')[1] would be the
-  // literal string "Bearer" instead of the JWT.  Strip the redundant prefix here
+  // the header arrives as "Bearer Bearer <jwt>". Strip the redundant prefix here
   // so both paste styles (raw token / prefixed token) work correctly.
-  if (token && token.toLowerCase().startsWith('bearer ')) {
+  if (token.toLowerCase().startsWith('bearer ')) {
     token = token.slice(7).trim();
   }
 
