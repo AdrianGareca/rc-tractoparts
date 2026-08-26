@@ -30,6 +30,27 @@ function resolveDelegationFlag(reqUserRol, rawValue) {
   return rawValue ? 1 : 0;
 }
 
+// Los 5 roles son fijos y los referencia el código (ver sql/init.sql: "IDs
+// are fixed and referenced by application code") — no hace falta consultar la
+// tabla `roles` para validarlos.
+const VALID_ROLE_IDS = new Set([1, 2, 3, 4, 5]);
+
+// _validarIdRol — controla que id_rol sea uno de los 5 conocidos ANTES de
+// llegar al INSERT/UPDATE. Sin esto, un id_rol inválido (negativo,
+// absurdamente grande, o no numérico) rompe la restricción de clave foránea
+// en la base y sale como un HTTP 500 genérico en vez de un 422 claro.
+// Encontrado en la ronda de estrés del 2026-08-25.
+function _validarIdRol(idRol) {
+  const parsed = parseInt(idRol, 10);
+  if (!VALID_ROLE_IDS.has(parsed)) {
+    return {
+      field:   'id_rol',
+      message: `id_rol inválido: "${idRol}". Debe ser uno de: ${[...VALID_ROLE_IDS].join(', ')}.`,
+    };
+  }
+  return null;
+}
+
 const UserController = {
 
   // ---------------------------------------------------------------------------
@@ -88,7 +109,12 @@ const UserController = {
     if (!nombre_completo) errors.push({ field: 'nombre_completo', message: 'Full name is required.' });
     if (!nombre_usuario)  errors.push({ field: 'nombre_usuario',  message: 'Username is required.' });
     if (!password)        errors.push({ field: 'password',        message: 'Password is required.' });
-    if (!id_rol)          errors.push({ field: 'id_rol',          message: 'Role ID is required.' });
+    if (!id_rol) {
+      errors.push({ field: 'id_rol', message: 'Role ID is required.' });
+    } else {
+      const rolError = _validarIdRol(id_rol);
+      if (rolError) errors.push(rolError);
+    }
 
     if (errors.length > 0) {
       return res.status(422).json({ success: false, message: 'Validation failed.', errors });
@@ -159,6 +185,11 @@ const UserController = {
 
       if (!existing) {
         return res.status(404).json({ success: false, message: `User with ID ${id} not found.` });
+      }
+
+      if (req.body.id_rol != null) {
+        const rolError = _validarIdRol(req.body.id_rol);
+        if (rolError) return res.status(422).json({ success: false, message: 'Validation failed.', errors: [rolError] });
       }
 
       const updateData = {};
