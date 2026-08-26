@@ -683,7 +683,17 @@ const QuotationController = {
   // cualquier ejecutivo — lo necesitan al editar una cotización ajena.
   // ---------------------------------------------------------------------------
   async getSeguimientosOcupados(req, res) {
-    const idParam = parseInt(req.query.id_ejecutivo, 10);
+    // Sin id_ejecutivo en la URL, se asume el propio calendario del que pide
+    // — es el caso de uso más común (un Ejecutivo abriendo SU calendario) y
+    // antes obligaba a mandar el propio id como si fuera un dato externo que
+    // el cliente tuviera que saber, en vez de resolverlo del token.
+    // Jefe/Administracion/SysAdmin sin id_ejecutivo también caen a su propio
+    // id — no tienen "calendario propio" en este flujo, pero es preferible a
+    // un 422 cuando el caso de uso real (Ejecutivo) queda resuelto.
+    const idParam = req.query.id_ejecutivo != null
+      ? parseInt(req.query.id_ejecutivo, 10)
+      : req.user.id;
+
     if (!Number.isInteger(idParam) || idParam <= 0) {
       return res.status(422).json({ success: false, message: "Query param 'id_ejecutivo' must be a positive integer." });
     }
