@@ -15,7 +15,13 @@ const router = express.Router();
 // All these roles can search and register clients. 'Proyectos' is included so
 // the tenders executive can pick/create the convocante (entidad convocante) of a
 // licitación, reusing the same client CRUD.
-const allRoles = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'Proyectos'])];
+//
+// 'SysAdmin' faltaba acá — encontrado en la ronda de estrés del 2026-08-26:
+// el SysAdmin real recibía 403 en los cinco verbos de este módulo, pese a
+// que config/roles.js lo describe como "autoridad absoluta sobre todo el
+// sistema". Mismo patrón de drift de nombres/listas de rol que ya está
+// documentado como recurrente en el proyecto.
+const allRoles = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'Proyectos', 'SysAdmin'])];
 
 /**
  * @swagger
