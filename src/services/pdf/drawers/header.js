@@ -24,7 +24,6 @@ function drawHeader(doc, quotation) {
   const LOGO_W  = 155;
   const LOGO_H  = 72;
   const BOX_W   = 185;
-  const BOX_H   = 116;         // info-box height (top-right metadata block; 5 data rows)
   const BOX_X   = PW - MARGIN - BOX_W;
 
   // ── Left: corporate logo (real image with text fallback) ──────────────────
@@ -68,10 +67,12 @@ function drawHeader(doc, quotation) {
 
   // ── Issuing-entity block — printed in the blank band directly under the logo ─
   // Bounding box (collision-safe): x ∈ [MARGIN, BOX_X − gap], y ∈ [logo bottom,
-  // brand-strip line]. The logo bottom sits at y0 + LOGO_H = 108 pt and the
-  // brand-strip divider begins at y0 + BOX_H + 8 = 142 pt, so all text below is
-  // rendered between y ≈ 110 and y ≈ 136 — never overlapping the logo (above),
-  // the info box (right of BOX_X) or the brand strip (below).
+  // brand-strip line]. The logo bottom sits at y0 + LOGO_H = 108 pt; the
+  // brand-strip divider begins at y0 + BOX_H + 8, which is AT LEAST 142 pt
+  // (BOX_H only grows from its base 116 pt if EJECUTIVO's name wraps — see
+  // below), so all text below is rendered between y ≈ 110 and y ≈ 136 —
+  // never overlapping the logo (above), the info box (right of BOX_X), or
+  // the brand strip (below, and only ever farther down than this base case).
   const entidad   = normalizeEntidad(quotation.entidad_emisora);
   const emisorX   = MARGIN;
   const emisorW   = BOX_X - MARGIN - 10;      // ≈ 328 pt — stops short of the info box
@@ -101,6 +102,45 @@ function drawHeader(doc, quotation) {
       emisorX, emisorY, { width: emisorW, lineBreak: false });
 
   // ── Right: quotation info box ─────────────────────────────────────────────
+  const infoRows = [
+    ['Nº COTIZACIÓN', quotation.numero_correlativo || '—'],
+    ['PEDIDO',        (quotation.tipo_pedido || 'EMAIL').toUpperCase()],
+    // Store raw DB estado so the STATUS color palette can be resolved in the
+    // render loop; the display string is uppercased there before painting.
+    ['ESTADO',        quotation.estado || '—'],
+    ['FECHA',         formatDate(quotation.fecha_emision)],
+  ];
+
+  // FECHA CONFIRM. = sale-closure date. Rendered ONLY when the sale is actually
+  // closed (estado 'Confirmada', or its legacy alias 'Aceptada') AND the closure
+  // timestamp exists. Any other state omits the row entirely — the box height
+  // auto-adjusts via rowHeights below. 'Aceptada' tolerated for pre-migration records.
+  if ((quotation.estado === 'Confirmada' || quotation.estado === 'Aceptada') && quotation.fecha_confirmacion) {
+    infoRows.push(['FECHA CONFIRM.', formatDate(quotation.fecha_confirmacion)]);
+  }
+
+  // Ejecutivo de ventas that created the quotation (usuarios.nombre_completo,
+  // aliased as ejecutivo_nombre by QuotationModel.findById).
+  infoRows.push(['EJECUTIVO', quotation.ejecutivo_nombre || '—']);
+
+  const LABELW    = 78;
+  const VALUE_W   = BOX_W - LABELW - 10;
+  const MIN_ROW_H = 18;
+
+  // Alto de cada fila, medido ANTES de dibujar la caja: un ejecutivo_nombre
+  // largo (usuarios.nombre_completo, VARCHAR(100), sin límite de longitud al
+  // crear el usuario) no entraba en una línea a fontSize 7.5 y se derramaba
+  // sobre la franja de marcas de abajo — `lineBreak:false` no lo evita en
+  // esta versión de PDFKit (ver rc-tractoparts-recurring-bug-patterns,
+  // patrón #4: sólo evita que se invente un ancho por default, no bloquea el
+  // wrap). Mismo patrón ya usado en itemsTable.js/infoGrid.js. Encontrado en
+  // la ronda de estrés del 2026-08-26.
+  doc.font('Helvetica-Bold').fontSize(7.5);
+  const rowHeights = infoRows.map(([, val]) =>
+    Math.max(MIN_ROW_H, doc.heightOfString(String(val), { width: VALUE_W }) + 6)
+  );
+  const BOX_H = 18 + rowHeights.reduce((a, b) => a + b, 0);
+
   doc
     .rect(BOX_X, y0, BOX_W, BOX_H)
     .lineWidth(0.8)
@@ -115,32 +155,10 @@ function drawHeader(doc, quotation) {
     .text('DATOS DE COTIZACIÓN', BOX_X + 4, y0 + 5,
       { width: BOX_W - 8, align: 'center', lineBreak: false });
 
-  const infoRows = [
-    ['Nº COTIZACIÓN', quotation.numero_correlativo || '—'],
-    ['PEDIDO',        (quotation.tipo_pedido || 'EMAIL').toUpperCase()],
-    // Store raw DB estado so the STATUS color palette can be resolved in the
-    // render loop; the display string is uppercased there before painting.
-    ['ESTADO',        quotation.estado || '—'],
-    ['FECHA',         formatDate(quotation.fecha_emision)],
-  ];
-
-  // FECHA CONFIRM. = sale-closure date. Rendered ONLY when the sale is actually
-  // closed (estado 'Confirmada', or its legacy alias 'Aceptada') AND the closure
-  // timestamp exists. Any other state omits the row entirely — the box height
-  // auto-adjusts via rowH below. 'Aceptada' tolerated for pre-migration records.
-  if ((quotation.estado === 'Confirmada' || quotation.estado === 'Aceptada') && quotation.fecha_confirmacion) {
-    infoRows.push(['FECHA CONFIRM.', formatDate(quotation.fecha_confirmacion)]);
-  }
-
-  // Ejecutivo de ventas that created the quotation (usuarios.nombre_completo,
-  // aliased as ejecutivo_nombre by QuotationModel.findById).
-  infoRows.push(['EJECUTIVO', quotation.ejecutivo_nombre || '—']);
-
-  const LABELW = 78;
-  const rowH   = Math.floor((BOX_H - 18) / infoRows.length);  // ≈ 18 pt
-  let   ry     = y0 + 20;
+  let ry = y0 + 20;
 
   infoRows.forEach(([lbl, val], i) => {
+    const rowH = rowHeights[i];
     if (i % 2 === 1) {
       doc.rect(BOX_X + 1, ry, BOX_W - 2, rowH).fill(C.LIGHT_GRAY);
     }
@@ -148,7 +166,7 @@ function drawHeader(doc, quotation) {
       .font('Helvetica-Bold')
       .fontSize(6.5)
       .fillColor(C.MID_GRAY)
-      .text(lbl, BOX_X + 6, ry + (rowH - 7) / 2,
+      .text(lbl, BOX_X + 6, ry + (MIN_ROW_H - 7) / 2,
         { width: LABELW, lineBreak: false });
     // For the ESTADO row, resolve the dynamic color from the STATUS palette
     // and uppercase the value for display; all other rows use DARK_GRAY as-is.
@@ -158,8 +176,11 @@ function drawHeader(doc, quotation) {
       .font('Helvetica-Bold')
       .fontSize(7.5)
       .fillColor(valColor)
-      .text(valText, BOX_X + LABELW + 4, ry + (rowH - 7.5) / 2,
-        { width: BOX_W - LABELW - 10, lineBreak: false });
+      // Sin lineBreak:false: un valor que no entra ahora envuelve dentro de
+      // su propio ancho en vez de salirse de la caja — rowHeights[i] ya se
+      // calculó para que la(s) línea(s) de más entren.
+      .text(valText, BOX_X + LABELW + 4, ry + (MIN_ROW_H - 7.5) / 2,
+        { width: VALUE_W });
     // Row bottom divider
     doc
       .moveTo(BOX_X, ry + rowH)
