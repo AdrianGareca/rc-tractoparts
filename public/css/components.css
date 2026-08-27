@@ -745,7 +745,13 @@
 .mono { font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; }
 
 /* Encabezado de columna que ordena la tabla al hacer clic. */
-.th-ordenable { cursor: pointer; user-select: none; }
+.th-ordenable {
+  cursor: pointer;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
 
 /* ── BARRA COMPARATIVA (misMetricas) ────────────────────────────────────────
    Emitidas contra cerradas, mes a mes. Dos barras superpuestas: la de atrás
