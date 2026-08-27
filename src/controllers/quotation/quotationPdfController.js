@@ -23,6 +23,9 @@ const pdfService                 = require('../../services/pdfService');
 // Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
 // con el mensaje en dos idiomas distintos.
 const { parseId } = require('../../utils/parseId');
+// Lock de fila + reintento ante deadlock, para que dos subidas casi
+// simultáneas al mismo archivo no se pisen entre sí (ver swapFilePath).
+const { withDeadlockRetry } = require('./transactionHelpers');
 
 // ---------------------------------------------------------------------------
 // buildPdfDownloadName
@@ -161,12 +164,20 @@ const QuotationPdfController = {
         req.file.filename,
       ].join('/');
 
-      await QuotationModel.updatePdfPath(id, relativePath);
+      // Lock de fila + swap atómico: NO se usa quotation.pdf_ruta (leído
+      // arriba, antes del lock) para decidir qué borrar — esa lectura puede
+      // haber quedado vieja si otra subida a esta misma cotización terminó
+      // en el medio. swapFilePath relee bajo lock y devuelve lo que había
+      // JUSTO ANTES de este UPDATE, que es siempre lo correcto a borrar.
+      const oldPath = await withDeadlockRetry(
+        (connection) => QuotationModel.swapFilePath(connection, id, 'pdf_ruta', relativePath),
+        { label: 'QuotationPdfController.uploadPdf' }
+      );
 
       // Borrar el PDF anterior del disco recién DESPUÉS de que el nuevo quedó
       // registrado — si el UPDATE fallara, el archivo viejo sigue siendo el
       // vigente y no hay que perderlo.
-      await _unlinkOldFile(quotation.pdf_ruta, relativePath);
+      await _unlinkOldFile(oldPath, relativePath);
 
       await logEvent({
         id_usuario:     req.user.id,
@@ -414,18 +425,27 @@ const QuotationPdfController = {
       let pdfRelative = null;
       let xlsRelative = null;
 
-      if (pdfFile) {
-        pdfRelative = `${uploadBase}/${pdfFile.filename}`;
-        await QuotationModel.updatePdfPath(id, pdfRelative);
-        await _unlinkOldFile(quotation.pdf_ruta, pdfRelative);
-      }
+      if (pdfFile) pdfRelative = `${uploadBase}/${pdfFile.filename}`;
+      // Excel files are stored in storage/excels/ — separate from PDF uploads
+      if (xlsFile) xlsRelative = `${excelBase}/${xlsFile.filename}`;
 
-      if (xlsFile) {
-        // Excel files are stored in storage/excels/ — separate from PDF uploads
-        xlsRelative = `${excelBase}/${xlsFile.filename}`;
-        await QuotationModel.updateExcelPath(id, xlsRelative);
-        await _unlinkOldFile(quotation.excel_ruta, xlsRelative);
-      }
+      // Lock de fila + swap atómico para los dos, en la MISMA transacción:
+      // no se usa quotation.pdf_ruta/excel_ruta (leídos arriba, antes del
+      // lock) para decidir qué borrar — esa lectura puede haber quedado
+      // vieja si otra subida a esta misma cotización terminó en el medio.
+      // swapFilePath relee bajo lock y devuelve lo que había JUSTO ANTES de
+      // este UPDATE. Ver el comentario completo en writeRepository.js.
+      const { oldPdfPath, oldXlsPath } = await withDeadlockRetry(async (connection) => {
+        const resultado = {};
+        if (pdfFile) resultado.oldPdfPath = await QuotationModel.swapFilePath(connection, id, 'pdf_ruta', pdfRelative);
+        if (xlsFile) resultado.oldXlsPath = await QuotationModel.swapFilePath(connection, id, 'excel_ruta', xlsRelative);
+        return resultado;
+      }, { label: 'QuotationPdfController.uploadFiles' });
+
+      // Borrar los archivos anteriores recién DESPUÉS de que los nuevos
+      // quedaron registrados — mismo criterio que uploadPdf.
+      if (pdfFile) await _unlinkOldFile(oldPdfPath, pdfRelative);
+      if (xlsFile) await _unlinkOldFile(oldXlsPath, xlsRelative);
 
       await logEvent({
         id_usuario:     req.user.id,

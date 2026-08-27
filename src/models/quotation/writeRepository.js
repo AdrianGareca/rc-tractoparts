@@ -238,6 +238,56 @@ async function updateExcelPath(id, excelRuta) {
   return result.affectedRows > 0;
 }
 
+// Únicas columnas que swapFilePath puede tocar — el nombre de columna se
+// interpola directo en el SQL (no hay forma parametrizada de nombrar una
+// columna), así que se limita a estas dos por las dudas de que algún
+// refactor futuro le pase otra cosa.
+const SWAPPABLE_FILE_COLUMNS = new Set(['pdf_ruta', 'excel_ruta']);
+
+// ---------------------------------------------------------------------------
+// swapFilePath — lee la ruta ACTUAL de `column` bajo un lock de fila y la
+// pisa con `newPath`, todo dentro de la transacción de quien llama. Devuelve
+// la ruta que había ANTES del swap, para que el archivo viejo se borre.
+//
+// POR QUÉ HACE FALTA UN LOCK
+// Dos subidas casi simultáneas a la MISMA cotización, sin esto, leen la
+// columna ANTES de que la otra escriba su UPDATE: las dos ven el mismo valor
+// viejo, las dos van a borrar ESE archivo, y el archivo que dejó la petición
+// que "perdió la carrera" (su valor quedó pisado por el UPDATE de la otra)
+// nunca se referencia ni se borra — queda huérfano para siempre. Confirmado
+// con 5 subidas simultáneas a la misma cotización: 5×200, un solo archivo
+// referenciado en la base, 4 huérfanos en disco.
+//
+// SELECT ... FOR UPDATE serializa a las dos peticiones: la segunda no lee
+// hasta que la primera confirmó su commit, así que ve el valor que la
+// primera ACABA de escribir (no el original) y borra el archivo correcto.
+// Encontrado en la ronda de estrés del 2026-08-26.
+//
+// @param   {import('mysql2/promise').PoolConnection} connection — ya con una tx abierta (ver withDeadlockRetry)
+// @param   {number} id
+// @param   {'pdf_ruta'|'excel_ruta'} column
+// @param   {string} newPath
+// @returns {Promise<string|null>} la ruta que había antes del swap
+// ---------------------------------------------------------------------------
+async function swapFilePath(connection, id, column, newPath) {
+  if (!SWAPPABLE_FILE_COLUMNS.has(column)) {
+    throw new Error(`swapFilePath: columna no permitida "${column}".`);
+  }
+
+  const [rows] = await connection.execute(
+    `SELECT ${column} AS ruta FROM cotizaciones WHERE id = ? FOR UPDATE`,
+    [id]
+  );
+  const oldPath = rows[0]?.ruta ?? null;
+
+  await connection.execute(
+    `UPDATE cotizaciones SET ${column} = ? WHERE id = ?`,
+    [newPath, id]
+  );
+
+  return oldPath;
+}
+
 // ---------------------------------------------------------------------------
 // updateComentarioAdmin — Persist the Administracion supervisor review comment.
 // Called both standalone (PATCH endpoint) and together with a state transition.
@@ -281,6 +331,7 @@ module.exports = {
   replaceDetalles,
   updatePdfPath,
   updateExcelPath,
+  swapFilePath,
   updateComentarioAdmin,
   updateSeguimientoVenta,
 };
