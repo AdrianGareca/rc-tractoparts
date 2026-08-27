@@ -24,7 +24,7 @@ const userMgmtRoles = [authenticate, authorize(['Jefe', 'Administracion', 'SysAd
  * @swagger
  * tags:
  *   name: Usuarios
- *   description: Gestión de usuarios del sistema (Jefe, Administracion y SysAdmin pueden ver/crear/editar; solo Jefe y SysAdmin pueden desactivar)
+ *   description: Gestión de usuarios del sistema (Jefe, Administracion y SysAdmin pueden ver/crear/editar/desactivar por igual — userMgmtRoles es el mismo array en las cinco rutas; sólo un SysAdmin puede crear, modificar o desactivar OTRA cuenta SysAdmin)
  */
 
 /**
