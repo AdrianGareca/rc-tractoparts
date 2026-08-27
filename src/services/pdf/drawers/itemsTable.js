@@ -70,11 +70,31 @@ function drawTableHeaderRow(doc, y, layout) {
 }
 
 // ---------------------------------------------------------------------------
-// _calcRowHeight — dynamic row height from description text wrapping
-// ---------------------------------------------------------------------------
-function _calcRowHeight(doc, text, descW, fs = 7.5) {
+// _calcRowHeight — dynamic row height a partir del texto que más envuelva.
+//
+// ANTES sólo medía descripcion_item. CÓDIGO (hasta 50 caracteres),
+// CÓD. ALT. (hasta 100) y T. ENTREGA (hasta 100, por ítem) se dibujan con
+// `lineBreak:false` en columnas angostas (48/52/~89 pt) — y ese flag no evita
+// el ajuste de línea en esta versión de PDFKit cuando hay un `width`
+// explícito (ver rc-tractoparts-recurring-bug-patterns, patrón #4). Un
+// código alternativo de ~75 caracteres (bien dentro del límite) ya envuelve
+// varias líneas y se derramaba sobre la fila siguiente porque el alto de fila
+// se calculaba sin mirarlo. Encontrado en la ronda de estrés del 2026-08-26.
+function _calcRowHeight(doc, item, layout, fs = 7.5) {
   doc.fontSize(fs);
-  const h = doc.heightOfString(String(text || ''), { width: descW - 8 });
+  const descH = doc.heightOfString(String(item.descripcion_item || ''), { width: layout.w.desc - 8 });
+
+  doc.fontSize(7);
+  const codigo    = item.codigo_parte || item.producto_codigo || '—';
+  const codigoH   = layout.showCodigo
+    ? doc.heightOfString(String(codigo), { width: layout.w.codigo - 4 })
+    : 0;
+  const codAltH   = layout.showCodigo
+    ? doc.heightOfString(String(item.codigo_alternativo || '—'), { width: layout.w.codAlt - 4 })
+    : 0;
+  const entregaH  = doc.heightOfString(String(item.tiempo_entrega || '—'), { width: layout.w.entrega - 4 });
+
+  const h = Math.max(descH, codigoH, codAltH, entregaH);
   return Math.max(ROW_MIN_H, h + ROW_PADDING);
 }
 
@@ -88,6 +108,7 @@ function _calcRowHeight(doc, text, descW, fs = 7.5) {
 // ---------------------------------------------------------------------------
 function _drawRowCells(doc, item, idx, y, rowH, layout, quotation) {
   const ty = y + (rowH - 7.5) / 2;  // Vertical centre for single-line cells
+  const ty2 = y + 5;                // Top offset — para celdas que pueden envolver a varias líneas
 
   // ITEM #
   doc
@@ -99,14 +120,21 @@ function _drawRowCells(doc, item, idx, y, rowH, layout, quotation) {
 
   // CÓDIGO (codigo_parte preferred; fallback to producto_codigo) — rendered
   // only when the CÓDIGO column is visible for this quotation.
+  //
+  // Alineado ARRIBA (ty2) y no centrado (ty): un código de hasta 50
+  // caracteres en una columna de 48pt puede envolver a varias líneas, y
+  // centrar asumiendo una sola línea (la fórmula de `ty`) hacía que el
+  // bloque completo empezara mitad de fila y se saliera por abajo. Mismo
+  // motivo para CÓD. ALT. y T. ENTREGA más abajo. Encontrado en la ronda de
+  // estrés del 2026-08-26 — ver _calcRowHeight().
   if (layout.showCodigo) {
     const codigo = item.codigo_parte || item.producto_codigo || '—';
     doc
       .font('Helvetica')
       .fontSize(7)
       .fillColor(C.DARK_GRAY)
-      .text(codigo, layout.x.codigo + 2, ty,
-        { width: layout.w.codigo - 4, align: 'center', lineBreak: false });
+      .text(codigo, layout.x.codigo + 2, ty2,
+        { width: layout.w.codigo - 4, align: 'center' });
   }
 
   // CÓDIGO ALTERNATIVO — rendered only when the CÓDIGO column is visible for
@@ -116,8 +144,8 @@ function _drawRowCells(doc, item, idx, y, rowH, layout, quotation) {
       .font('Helvetica')
       .fontSize(7)
       .fillColor(C.MID_GRAY)
-      .text(item.codigo_alternativo || '—', layout.x.codAlt + 2, ty,
-        { width: layout.w.codAlt - 4, align: 'center', lineBreak: false });
+      .text(item.codigo_alternativo || '—', layout.x.codAlt + 2, ty2,
+        { width: layout.w.codAlt - 4, align: 'center' });
   }
 
   // DESCRIPCIÓN — top-aligned, wraps; brand name as a muted italic subtitle
@@ -176,13 +204,14 @@ function _drawRowCells(doc, item, idx, y, rowH, layout, quotation) {
     .text(fmtPrice(item.subtotal, quotation.moneda), layout.x.pTotal + 2, ty,
       { width: layout.w.pTotal - 4, align: 'right', lineBreak: false });
 
-  // TIEMPO DE ENTREGA — not yet stored per line; renders placeholder
+  // TIEMPO DE ENTREGA — alineado arriba (ty2), no centrado: puede envolver
+  // (hasta 100 caracteres en ~89pt de ancho) — ver el comentario de CÓDIGO más arriba.
   doc
     .font('Helvetica')
     .fontSize(7)
     .fillColor(C.MID_GRAY)
-    .text(item.tiempo_entrega || '—', layout.x.entrega + 2, ty,
-      { width: layout.w.entrega - 4, align: 'center', lineBreak: false });
+    .text(item.tiempo_entrega || '—', layout.x.entrega + 2, ty2,
+      { width: layout.w.entrega - 4, align: 'center' });
 
   // Vertical column dividers for this row — one at the left edge of every
   // column except ITEM, following the visible column set.
@@ -248,10 +277,11 @@ function drawItemsTable(doc, quotation, startY) {
   }
 
   detalles.forEach((item, idx) => {
-    // Row height = wrapped description PLUS the italic brand subtitle drawn
-    // beneath it (6 pt line + gap); without the extra 8 pt the brand label
-    // bleeds past the row's bottom border into the next row.
-    let rowH = _calcRowHeight(doc, item.descripcion_item, layout.w.desc);
+    // Row height = el texto que más envuelva (descripción, código, código
+    // alternativo o tiempo de entrega) PLUS the italic brand subtitle drawn
+    // beneath the description (6 pt line + gap); without the extra 8 pt the
+    // brand label bleeds past the row's bottom border into the next row.
+    let rowH = _calcRowHeight(doc, item, layout);
     if (item.marca_nombre) rowH += 8;
 
     // Page break guard
