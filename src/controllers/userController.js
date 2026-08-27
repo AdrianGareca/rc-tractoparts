@@ -9,6 +9,7 @@
 const bcrypt    = require('bcryptjs');
 const UserModel = require('../models/UserModel');
 const { ROLES }                  = require('../config/roles');
+const { USERNAME_REGEX }         = require('../validators/authValidator');
 const { logEvent, AuditActions } = require('../utils/auditLog');
 // Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
 // con el mensaje en dos idiomas distintos.
@@ -163,7 +164,18 @@ const UserController = {
     // Validate required fields
     const errors = [];
     if (!nombre_completo) errors.push({ field: 'nombre_completo', message: 'Full name is required.' });
-    if (!nombre_usuario)  errors.push({ field: 'nombre_usuario',  message: 'Username is required.' });
+    if (!nombre_usuario) {
+      errors.push({ field: 'nombre_usuario', message: 'Username is required.' });
+    } else if (!USERNAME_REGEX.test(String(nombre_usuario).trim())) {
+      // Sin esto, un nombre_usuario con un punto (u otro carácter que el
+      // login rechaza) se creaba igual y la cuenta quedaba inutilizable: el
+      // login siempre devuelve el mismo 422 de formato, antes de comparar
+      // credenciales. Mismo regex que loginSchema en authValidator.js.
+      errors.push({
+        field:   'nombre_usuario',
+        message: 'Username may only contain letters, digits, underscores, or hyphens.',
+      });
+    }
     if (!password) {
       errors.push({ field: 'password', message: 'Password is required.' });
     } else {

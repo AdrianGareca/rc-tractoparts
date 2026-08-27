@@ -19,6 +19,13 @@
 
 const { z } = require('zod');
 
+// Compartido con userController.js (createUser): sin esto, nada impedía
+// registrar un nombre_usuario con un punto u otro carácter que esta misma
+// regex rechaza acá — la cuenta quedaba creada pero nunca podía loguearse
+// (login siempre devuelve el mismo 422 de formato, antes de llegar a
+// comparar credenciales). Encontrado en la ronda de estrés del 2026-08-26.
+const USERNAME_REGEX = /^[\w\-]+$/;
+
 // ---------------------------------------------------------------------------
 // loginSchema — POST /api/auth/login
 // ---------------------------------------------------------------------------
@@ -29,7 +36,7 @@ const loginSchema = z.object({
     .min(3,  'nombre_usuario must be at least 3 characters.')
     .max(50, 'nombre_usuario must not exceed 50 characters.')
     // Allow letters, digits, underscores, and hyphens only — blocks SQL metacharacters
-    .regex(/^[\w\-]+$/, 'nombre_usuario may only contain letters, digits, underscores, or hyphens.'),
+    .regex(USERNAME_REGEX, 'nombre_usuario may only contain letters, digits, underscores, or hyphens.'),
 
   password: z
     .string({ required_error: 'password is required.' })
@@ -37,4 +44,4 @@ const loginSchema = z.object({
     .max(128, 'password must not exceed 128 characters.'),
 });
 
-module.exports = { loginSchema };
+module.exports = { loginSchema, USERNAME_REGEX };
