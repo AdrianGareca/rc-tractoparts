@@ -296,7 +296,12 @@ const UserModel = {
   // @returns {boolean}   - true if any row was affected
   // ---------------------------------------------------------------------------
   async update(id, data) {
-    const allowedFields = ['nombre_completo', 'id_rol', 'activo', 'password_hash', 'can_approve_quotations'];
+    const allowedFields = [
+      'nombre_completo', 'id_rol', 'activo', 'password_hash', 'can_approve_quotations',
+      // Se limpian junto con password_hash cuando un admin resetea la
+      // contraseña de una cuenta bloqueada — ver userController.updateUser.
+      'intentos_fallidos', 'bloqueado_hasta',
+    ];
 
     // Build a dynamic SET clause for only the provided fields
     const setClauses = [];

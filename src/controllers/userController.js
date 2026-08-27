@@ -36,6 +36,23 @@ function resolveDelegationFlag(reqUserRol, rawValue) {
 // tabla `roles` para validarlos.
 const VALID_ROLE_IDS = new Set([1, 2, 3, 4, 5]);
 
+// Mismo mínimo que scripts/seed-users.js exige para las cuentas semilla
+// (SysAdmin/Jefe/Administracion) — no tenía sentido pedirle 10 caracteres a
+// esas tres cuentas y ninguno a las que se crean desde acá. Antes
+// createUser/updateUser sólo exigían que password no estuviera vacío:
+// "1" pasaba (201). Encontrado en la ronda de estrés del 2026-08-26.
+const MIN_PASSWORD_LENGTH = 10;
+
+function _validarPassword(password) {
+  if (String(password).length < MIN_PASSWORD_LENGTH) {
+    return {
+      field:   'password',
+      message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`,
+    };
+  }
+  return null;
+}
+
 // _validarIdRol — controla que id_rol sea uno de los 5 conocidos ANTES de
 // llegar al INSERT/UPDATE. Sin esto, un id_rol inválido (negativo,
 // absurdamente grande, o no numérico) rompe la restricción de clave foránea
@@ -147,7 +164,12 @@ const UserController = {
     const errors = [];
     if (!nombre_completo) errors.push({ field: 'nombre_completo', message: 'Full name is required.' });
     if (!nombre_usuario)  errors.push({ field: 'nombre_usuario',  message: 'Username is required.' });
-    if (!password)        errors.push({ field: 'password',        message: 'Password is required.' });
+    if (!password) {
+      errors.push({ field: 'password', message: 'Password is required.' });
+    } else {
+      const passError = _validarPassword(password);
+      if (passError) errors.push(passError);
+    }
     if (!id_rol) {
       errors.push({ field: 'id_rol', message: 'Role ID is required.' });
     } else {
@@ -260,8 +282,22 @@ const UserController = {
 
       // Password reset: hash the new password if provided
       if (req.body.password) {
+        const passError = _validarPassword(req.body.password);
+        if (passError) {
+          return res.status(422).json({ success: false, message: 'Validation failed.', errors: [passError] });
+        }
         const bcryptRounds = parseInt(process.env.BCRYPT_ROUNDS, 10) || 12;
         updateData.password_hash = await bcrypt.hash(req.body.password, bcryptRounds);
+
+        // Sin esto, resetear la contraseña de una cuenta bloqueada por
+        // intentos fallidos no la desbloqueaba: bloqueado_hasta seguía
+        // activo y el usuario recibía "Account temporarily locked" al
+        // intentar entrar con la contraseña NUEVA — la única vía de auxilio
+        // (no hay recuperación de contraseña propia) no funcionaba mientras
+        // durara el bloqueo. Encontrado en la ronda de estrés del
+        // 2026-08-26.
+        updateData.intentos_fallidos = 0;
+        updateData.bloqueado_hasta   = null;
       }
 
       if (Object.keys(updateData).length === 0) {
