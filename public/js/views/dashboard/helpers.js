@@ -87,9 +87,16 @@ export const SEGUIMIENTO_VENTA_BADGE = {
  */
 export function seguimientoVentaBadgeHtml(q) {
   if (!q.estado_venta) return '<span class="text-muted">—</span>';
-  const cls     = SEGUIMIENTO_VENTA_BADGE[q.estado_venta] ?? 'badge-seg-otro';
+  const cls      = SEGUIMIENTO_VENTA_BADGE[q.estado_venta] ?? 'badge-seg-otro';
   const etiqueta = q.estado_venta === 'Otro' ? (q.estado_venta_detalle || 'Otro') : q.estado_venta;
-  return `<span class="badge ${cls}">${escHtml(etiqueta)}</span>`;
+  // badge-truncado (components.css): el detalle libre de "Otro" lo escribe
+  // el vendedor a mano y no tiene límite real de largo — sin recortarlo,
+  // una frase larga ensanchaba TODA la columna "Seguim." de la tabla (no
+  // sólo esa fila: una celda ancha estira la columna entera), y las demás
+  // filas quedaban con un hueco enorme para no perder la alineación. El
+  // texto completo sigue disponible en title= al pasar el mouse por
+  // encima. Encontrado por Adrián el 2026-08-27 mirando la pantalla real.
+  return `<span class="badge ${cls} badge-truncado" title="${escHtml(etiqueta)}">${escHtml(etiqueta)}</span>`;
 }
 
 export function roleBadgeHtml(rol) {

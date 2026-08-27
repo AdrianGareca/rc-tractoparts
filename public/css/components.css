@@ -71,6 +71,24 @@
 .badge-seg-concretada   { background: var(--badge-bg-green);  color: var(--clr-green); }
 .badge-seg-otro         { background: var(--badge-bg-gray);   color: var(--clr-gray-soft); }
 
+/* El detalle libre de "Otro" (lo que escribe el vendedor a mano) no tiene
+   límite de largo real — sin esto, una frase larga ensanchaba TODA la
+   columna "Seguim." de la tabla (no sólo esa fila: una celda ancha estira
+   la columna entera en table-layout:auto), y filas de al lado quedaban con
+   muchísimo espacio vacío para no perder la alineación.
+   inline-block (no el inline-flex de .badge) porque text-overflow:ellipsis
+   necesita un box de línea, no un contenedor flex, para recortar de forma
+   consistente entre navegadores. El texto completo sigue disponible con el
+   title= que arma seguimientoVentaBadgeHtml() — se ve al pasar el mouse. */
+.badge-truncado {
+  display: inline-block;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 /* Audit log — acción category badges (semantic color by action family) */
 .badge-audit-auth       { background: var(--badge-bg-violet);   color: var(--clr-violet-soft); }  /* LOGIN/LOGOUT — violet */
 .badge-audit-auth-fail  { background: var(--badge-bg-red);    color: var(--clr-red-soft); }  /* LOGIN_FAILED — red */
