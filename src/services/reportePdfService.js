@@ -82,7 +82,6 @@ function drawHeader(doc, { title, periodo, rol, nombreUsuario }) {
   const LOGO_W = 140;
   const LOGO_H = 64;
   const BOX_W  = 230;
-  const BOX_H  = 64;
   const BOX_X  = PW - MARGIN - BOX_W;
 
   if (fs.existsSync(LOGO_PATH)) {
@@ -93,26 +92,43 @@ function drawHeader(doc, { title, periodo, rol, nombreUsuario }) {
        .text('RC TRACTOPARTS', MARGIN + 6, y0 + 26, { width: LOGO_W - 12, align: 'center', lineBreak: false });
   }
 
-  doc.rect(BOX_X, y0, BOX_W, BOX_H).lineWidth(0.8).fillAndStroke(C.WHITE, C.DARK_GRAY);
-  doc.rect(BOX_X, y0, BOX_W, 18).fill(C.NAVY);
-  doc.font('Helvetica-Bold').fontSize(7).fillColor(C.WHITE)
-     .text(title, BOX_X + 4, y0 + 5, { width: BOX_W - 8, align: 'center', lineBreak: false });
-
   const rows = [
     ['PERÍODO',       periodo],
     ['GENERADO POR',  `${nombreUsuario || '—'} (${rol})`],
     ['FECHA',         formatDateTime()],
   ];
+
+  const VALUE_W   = BOX_W - 80;
+  const MIN_ROW_H = 13;
+
+  // Alto de cada fila, medido ANTES de dibujar la caja: "GENERADO POR" arma
+  // el valor con nombre_usuario (VARCHAR(50), sin límite de longitud) + rol,
+  // y un nombre largo no entraba en una línea a este ancho — `lineBreak:false`
+  // no lo evita en esta versión de PDFKit (ver
+  // rc-tractoparts-recurring-bug-patterns, patrón #4). El alto de fila fijo
+  // (13pt) dejaba la continuación pisada con la fila FECHA de abajo.
+  // Encontrado en la ronda de estrés del 2026-08-26.
+  doc.font('Helvetica').fontSize(6.5);
+  const rowHeights = rows.map(([, val]) =>
+    Math.max(MIN_ROW_H, doc.heightOfString(String(val), { width: VALUE_W }) + 3)
+  );
+  const BOX_H = 24 + rowHeights.reduce((a, b) => a + b, 0);
+
+  doc.rect(BOX_X, y0, BOX_W, BOX_H).lineWidth(0.8).fillAndStroke(C.WHITE, C.DARK_GRAY);
+  doc.rect(BOX_X, y0, BOX_W, 18).fill(C.NAVY);
+  doc.font('Helvetica-Bold').fontSize(7).fillColor(C.WHITE)
+     .text(title, BOX_X + 4, y0 + 5, { width: BOX_W - 8, align: 'center', lineBreak: false });
+
   let ry = y0 + 24;
-  rows.forEach(([lbl, val]) => {
+  rows.forEach(([lbl, val], i) => {
     doc.font('Helvetica-Bold').fontSize(6).fillColor(C.MID_GRAY)
        .text(lbl, BOX_X + 6, ry, { width: 66, lineBreak: false });
     doc.font('Helvetica').fontSize(6.5).fillColor(C.DARK_GRAY)
-       .text(String(val), BOX_X + 74, ry, { width: BOX_W - 80, lineBreak: false });
-    ry += 13;
+       .text(String(val), BOX_X + 74, ry, { width: VALUE_W });
+    ry += rowHeights[i];
   });
 
-  const dividerY = y0 + LOGO_H + 12;
+  const dividerY = Math.max(y0 + LOGO_H, y0 + BOX_H) + 12;
   doc.strokeColor(C.NAVY).lineWidth(1.2)
      .moveTo(MARGIN, dividerY).lineTo(PW - MARGIN, dividerY).stroke();
 
