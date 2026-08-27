@@ -388,6 +388,31 @@ const QuotationController = {
       const discountUpdate = req.body.descuento_manual != null ? parseFloat(req.body.descuento_manual) : 0;
       const calculatedTotal = parseFloat(Math.max(0, subtotalFromItems - discountUpdate).toFixed(2));
 
+      // Cada campo opcional de abajo: si la clave no vino en el body, se
+      // conserva el valor que ya tenía la cotización — no se pisa con null.
+      // Sólo si la clave está PRESENTE se aplica lo que mandó el cliente,
+      // incluido un null explícito (que sí borra el campo a propósito).
+      //
+      // ANTES: cada uno de estos campos se pasaba como `req.body.X` a secas.
+      // Un PUT con el cuerpo mínimo que documenta Swagger (id_cliente,
+      // descripcion, fecha_emision, detalles) dejaba en null observaciones,
+      // tipo_pedido, tiempo_entrega, los datos del solicitante y del equipo,
+      // y descuento_manual/forma_pago — sin importar que la cotización ya
+      // tuviera esos datos cargados. Mismo patrón recurrente que el bug de
+      // Zod `.default()` en ediciones ya documentado para moneda/
+      // entidad_emisora (ver el comentario de abajo), sólo que un nivel más
+      // abajo: acá el schema ya dejaba pasar `undefined`, pero el controller
+      // nunca lo distinguía de "bórralo". Encontrado en la ronda de estrés
+      // del 2026-08-26.
+      const campo = (nombre) => (nombre in req.body ? req.body[nombre] : existing[nombre]);
+      // findById (readRepository.js) devuelve los cinco campos del
+      // solicitante con OTRO nombre de columna (nombre_sol, nro_solicitud,
+      // area_sol, celular_sol, correo_sol) — son los nombres que usa el resto
+      // de la pantalla. campo() por sí solo los leería como `undefined` en
+      // `existing` y los borraría igual, así que se resuelven aparte.
+      const campoSolicitante = (nombre, aliasEnExisting) =>
+        (nombre in req.body ? req.body[nombre] : existing[aliasEnExisting]);
+
       await withDeadlockRetry(async (connection) => {
         const headerUpdated = await QuotationModel.updateEditableHeader(connection, id, {
         id_cliente:               parseInt(id_cliente, 10),
@@ -399,24 +424,32 @@ const QuotationController = {
         // falta un tercer fallback — el que había usaba el nombre comercial legado
         // ('RC Tractoparts'), que no es ninguna de las dos opciones del formulario.
         entidad_emisora:          req.body.entidad_emisora || existing.entidad_emisora,
-        observaciones:            req.body.observaciones,
+        observaciones:            campo('observaciones'),
         fecha_emision,
-        fecha_validez:            req.body.fecha_validez,
-        tipo_pedido:              req.body.tipo_pedido,
-        tiempo_entrega:           req.body.tiempo_entrega,
-        solicitante_nombre:       req.body.solicitante_nombre,
-        solicitante_no_solicitud: req.body.solicitante_no_solicitud,
-        solicitante_area:         req.body.solicitante_area,
-        solicitante_celular:      req.body.solicitante_celular,
-        solicitante_correo:       req.body.solicitante_correo,
-        equipo_marca:             req.body.equipo_marca,
-        equipo_tipo:              req.body.equipo_tipo,
-        equipo_modelo:            req.body.equipo_modelo,
-        equipo_serie:             req.body.equipo_serie,
-        equipo_motor:             req.body.equipo_motor,
-        descuento_manual:         req.body.descuento_manual != null ? parseFloat(req.body.descuento_manual) : null,
-        forma_pago:               req.body.forma_pago               || null,
-        mostrar_codigos:          req.body.mostrar_codigos          != null ? req.body.mostrar_codigos : true,
+        fecha_validez:            campo('fecha_validez'),
+        tipo_pedido:              campo('tipo_pedido'),
+        tiempo_entrega:           campo('tiempo_entrega'),
+        solicitante_nombre:       campoSolicitante('solicitante_nombre', 'nombre_sol'),
+        solicitante_no_solicitud: campoSolicitante('solicitante_no_solicitud', 'nro_solicitud'),
+        solicitante_area:         campoSolicitante('solicitante_area', 'area_sol'),
+        solicitante_celular:      campoSolicitante('solicitante_celular', 'celular_sol'),
+        solicitante_correo:       campoSolicitante('solicitante_correo', 'correo_sol'),
+        equipo_marca:             campo('equipo_marca'),
+        equipo_tipo:              campo('equipo_tipo'),
+        equipo_modelo:            campo('equipo_modelo'),
+        equipo_serie:             campo('equipo_serie'),
+        equipo_motor:             campo('equipo_motor'),
+        descuento_manual:         'descuento_manual' in req.body
+          ? (req.body.descuento_manual != null ? parseFloat(req.body.descuento_manual) : null)
+          : existing.descuento_manual,
+        forma_pago:               campo('forma_pago'),
+        mostrar_codigos:          'mostrar_codigos' in req.body
+          ? (req.body.mostrar_codigos != null ? req.body.mostrar_codigos : true)
+          : existing.mostrar_codigos,
+        // id_licitacion NO usa campo(): a diferencia del resto, acá "ausente"
+        // y "null" son lo MISMO a propósito (desatar la licitación) — ver el
+        // comentario de updateEditableHeader en writeRepository.js. Omitir la
+        // columna cuando es null dejaba el vínculo viejo pegado para siempre.
         id_licitacion:            req.body.id_licitacion            != null ? parseInt(req.body.id_licitacion, 10) : null,
       });
 
