@@ -46,8 +46,9 @@ function docFalso() {
   const doc = {
     textos,
     _y: 0,
+    _fontSize: 7,
     font:        () => doc,
-    fontSize:    () => doc,
+    fontSize:    (n) => { doc._fontSize = n; return doc; },
     fillColor:   () => doc,
     strokeColor: () => doc,
     lineWidth:   () => doc,
@@ -61,6 +62,26 @@ function docFalso() {
     text: (contenido, x, y) => {
       textos.push({ contenido: String(contenido), x, y });
       return doc;
+    },
+    // Simulación de ajuste de línea, no una medida real: sólo necesita ser lo
+    // bastante fiel para que un texto corto quepa en una línea y uno largo
+    // envuelva a varias — como hace el _calcRowHeight() real que esto imita.
+    heightOfString: (contenido, opts = {}) => {
+      const width = opts.width ?? Infinity;
+      const charW = doc._fontSize * 0.5;
+      const palabras = String(contenido).split(' ');
+      let lineas = 1;
+      let anchoLinea = 0;
+      for (const palabra of palabras) {
+        const w = (palabra.length + 1) * charW;
+        if (anchoLinea + w > width && anchoLinea > 0) {
+          lineas += 1;
+          anchoLinea = w;
+        } else {
+          anchoLinea += w;
+        }
+      }
+      return lineas * (doc._fontSize * 1.3);
     },
     get y() { return doc._y; },
   };
@@ -153,6 +174,59 @@ describe('el importe en letras no se pisa con las condiciones', () => {
     if (choques.length > 0) {
       throw new Error('Textos superpuestos en el PDF:\n  ' + choques.join('\n  '));
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BUG REAL: "CONDICIONES DE LA OFERTA" avanzaba `ly += 12` fijo por fila sin
+// importar cuántas líneas ocupó el valor. Un tiempo_entrega largo (dentro del
+// límite normal del validador, no un caso extremo) envolvía a varias líneas y
+// la continuación se pisaba con la fila de abajo ("Forma de pago"). Encontrado
+// en la ronda de estrés del 2026-08-26.
+describe('un tiempo_entrega largo no se pisa con la fila de abajo', () => {
+  const COTIZACION_ENTREGA_LARGA = {
+    ...COTIZACION,
+    tiempo_entrega: 'Sujeto a disponibilidad de stock del proveedor en el exterior, '
+      + 'con un plazo estimado que puede variar según la fecha de importación y '
+      + 'los tiempos aduaneros vigentes al momento del despacho',
+  };
+
+  test('ningún par de textos comparte exactamente la misma posición', () => {
+    const doc = docFalso();
+    drawTotalsAndConditions(doc, COTIZACION_ENTREGA_LARGA, START_Y);
+
+    const vistos = new Map();
+    const choques = [];
+    for (const t of doc.textos) {
+      const clave = `${Math.round(t.x)},${Math.round(t.y)}`;
+      if (vistos.has(clave)) {
+        choques.push(`«${vistos.get(clave)}» y «${t.contenido}» en ${clave}`);
+      }
+      vistos.set(clave, t.contenido);
+    }
+
+    if (choques.length > 0) {
+      throw new Error('Textos superpuestos en el PDF:\n  ' + choques.join('\n  '));
+    }
+  });
+
+  test('el salto a "Forma de pago:" crece con la cantidad de líneas, no queda fijo en 12pt', () => {
+    // La prueba que de verdad distingue el bug: el mock de heightOfString sólo
+    // anota DÓNDE EMPIEZA cada .text(), nunca cuántas líneas ocupa — así que
+    // "formaPago.y > entrega.y" pasaría igual con el código viejo (salto fijo
+    // de 12pt) o con el nuevo (salto según el contenido). Lo que hace falta
+    // comparar es CUÁNTO salta: con una descripción que envuelve a varias
+    // líneas, tiene que ser bastante más que el salto fijo de 12pt que usaba
+    // el código roto.
+    const doc = docFalso();
+    drawTotalsAndConditions(doc, COTIZACION_ENTREGA_LARGA, START_Y);
+
+    const entrega = doc.textos.find((t) => t.contenido === 'Tiempo de entrega:');
+    const formaPago = doc.textos.find((t) => t.contenido === 'Forma de pago:');
+
+    expect(entrega).toBeDefined();
+    expect(formaPago).toBeDefined();
+    expect(formaPago.y - entrega.y).toBeGreaterThan(24);
   });
 });
 

@@ -154,7 +154,16 @@ function dibujarCondicionesYBanco(doc, quotation, y, LEFT_W) {
     ['Validez de oferta:', validezStr],
   ];
 
+  // Alto de cada fila, medido ANTES de dibujar: un tiempo_entrega largo
+  // (hasta 100 caracteres, dentro del límite normal del validador — no hace
+  // falta un caso extremo) no entraba en una línea a este ancho y se
+  // derramaba sobre la fila de abajo. `lineBreak:false` no lo evita en esta
+  // versión de PDFKit (ver rc-tractoparts-recurring-bug-patterns, patrón
+  // #4). Encontrado en la ronda de estrés del 2026-08-26.
+  const CONDICION_VAL_W = LEFT_W - 88;
+  doc.font('Helvetica').fontSize(7);
   condiciones.forEach(([lbl, val]) => {
+    const rowH = Math.max(12, doc.heightOfString(String(val), { width: CONDICION_VAL_W }) + 4);
     doc
       .font('Helvetica-Bold')
       .fontSize(7)
@@ -164,9 +173,8 @@ function dibujarCondicionesYBanco(doc, quotation, y, LEFT_W) {
       .font('Helvetica')
       .fontSize(7)
       .fillColor(C.DARK_GRAY)
-      .text(val, MARGIN + 84, ly + 2,
-        { width: LEFT_W - 88, lineBreak: false });
-    ly += 12;
+      .text(val, MARGIN + 84, ly + 2, { width: CONDICION_VAL_W });
+    ly += rowH;
   });
 
   ly += 4;
