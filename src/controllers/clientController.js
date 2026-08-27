@@ -16,6 +16,45 @@ const { construirPaginacion } = require('../utils/paginacion');
 // Simple RFC 5322-compliant email pattern (no external dependency)
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// ---------------------------------------------------------------------------
+// _validarCamposCliente — reglas compartidas entre create() y update() (antes
+// duplicadas palabra por palabra en las dos, ver el comentario "mirrors
+// create" que quedaba en update). telefono (VARCHAR(30)) y contacto
+// (VARCHAR(100)) eran los dos únicos campos de esta tabla sin tope de
+// longitud acá — un valor más largo que la columna rompía la restricción de
+// MySQL sin capturar (HTTP 500 genérico en vez de un 422 claro). Encontrado
+// en la ronda de estrés del 2026-08-26.
+//
+// @returns {{status:number, body:object}|null} el primer error encontrado, o null
+// ---------------------------------------------------------------------------
+function _validarCamposCliente({ razon_social, nit, email, direccion, ciudad, telefono, contacto }) {
+  if (!razon_social || !String(razon_social).trim()) {
+    return { status: 422, body: { success: false, message: 'razon_social (Business Name) is required.' } };
+  }
+  if (String(razon_social).trim().length > 150) {
+    return { status: 422, body: { success: false, message: 'razon_social must not exceed 150 characters.' } };
+  }
+  if (nit && String(nit).trim().length > 20) {
+    return { status: 422, body: { success: false, message: 'nit must not exceed 20 characters.' } };
+  }
+  if (email && !EMAIL_REGEX.test(String(email).trim())) {
+    return { status: 422, body: { success: false, message: 'Invalid email format.' } };
+  }
+  if (direccion && String(direccion).trim().length > 200) {
+    return { status: 422, body: { success: false, message: 'direccion must not exceed 200 characters.' } };
+  }
+  if (ciudad && String(ciudad).trim().length > 100) {
+    return { status: 422, body: { success: false, message: 'ciudad must not exceed 100 characters.' } };
+  }
+  if (telefono && String(telefono).trim().length > 30) {
+    return { status: 422, body: { success: false, message: 'telefono must not exceed 30 characters.' } };
+  }
+  if (contacto && String(contacto).trim().length > 100) {
+    return { status: 422, body: { success: false, message: 'contacto must not exceed 100 characters.' } };
+  }
+  return null;
+}
+
 const ClientController = {
 
   // ---------------------------------------------------------------------------
@@ -103,47 +142,8 @@ const ClientController = {
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
     // ── Input validation ──────────────────────────────────────────────────────
-    if (!razon_social || !String(razon_social).trim()) {
-      return res.status(422).json({
-        success: false,
-        message: 'razon_social (Business Name) is required.',
-      });
-    }
-
-    if (String(razon_social).trim().length > 150) {
-      return res.status(422).json({
-        success: false,
-        message: 'razon_social must not exceed 150 characters.',
-      });
-    }
-
-    if (nit && String(nit).trim().length > 20) {
-      return res.status(422).json({
-        success: false,
-        message: 'nit must not exceed 20 characters.',
-      });
-    }
-
-    if (email && !EMAIL_REGEX.test(String(email).trim())) {
-      return res.status(422).json({
-        success: false,
-        message: 'Invalid email format.',
-      });
-    }
-
-    if (direccion && String(direccion).trim().length > 200) {
-      return res.status(422).json({
-        success: false,
-        message: 'direccion must not exceed 200 characters.',
-      });
-    }
-
-    if (ciudad && String(ciudad).trim().length > 100) {
-      return res.status(422).json({
-        success: false,
-        message: 'ciudad must not exceed 100 characters.',
-      });
-    }
+    const errValidacion = _validarCamposCliente({ razon_social, nit, email, direccion, ciudad, telefono, contacto });
+    if (errValidacion) return res.status(errValidacion.status).json(errValidacion.body);
 
     try {
       const id = await ClientModel.create({ razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente });
@@ -212,48 +212,9 @@ const ClientController = {
 
     const { razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente } = req.body;
 
-    // ── Input validation (mirrors create) ─────────────────────────────────────
-    if (!razon_social || !String(razon_social).trim()) {
-      return res.status(422).json({
-        success: false,
-        message: 'razon_social (Business Name) is required.',
-      });
-    }
-
-    if (String(razon_social).trim().length > 150) {
-      return res.status(422).json({
-        success: false,
-        message: 'razon_social must not exceed 150 characters.',
-      });
-    }
-
-    if (nit && String(nit).trim().length > 20) {
-      return res.status(422).json({
-        success: false,
-        message: 'nit must not exceed 20 characters.',
-      });
-    }
-
-    if (email && !EMAIL_REGEX.test(String(email).trim())) {
-      return res.status(422).json({
-        success: false,
-        message: 'Invalid email format.',
-      });
-    }
-
-    if (direccion && String(direccion).trim().length > 200) {
-      return res.status(422).json({
-        success: false,
-        message: 'direccion must not exceed 200 characters.',
-      });
-    }
-
-    if (ciudad && String(ciudad).trim().length > 100) {
-      return res.status(422).json({
-        success: false,
-        message: 'ciudad must not exceed 100 characters.',
-      });
-    }
+    // ── Input validation (mismas reglas que create) ───────────────────────────
+    const errValidacion = _validarCamposCliente({ razon_social, nit, email, direccion, ciudad, telefono, contacto });
+    if (errValidacion) return res.status(errValidacion.status).json(errValidacion.body);
 
     try {
       const existing = await ClientModel.findByIdAny(id);
