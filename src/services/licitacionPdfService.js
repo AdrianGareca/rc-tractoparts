@@ -30,7 +30,7 @@ const fs   = require('fs');
 const PDFDocument = require('pdfkit');
 // Mismo motivo que en reportePdfService: Intl depende del ICU del binario y
 // node:20-alpine puede no traerlo completo, haciendo caer todo a ingles.
-const { fmtNum, formatDate, formatDateTime } = require('./pdf/format');
+const { fmtNum, formatDate, formatDateTime, sanitizeUnsupportedGlyphs } = require('./pdf/format');
 // Mismo dibujante de la franja de marcas que usa la proforma: si manana cambia
 // una marca, cambia en los tres documentos a la vez.
 const { drawBrandStrip } = require('./pdf/drawers/brandStrip');
@@ -108,15 +108,21 @@ function sectionTitle(doc, y, text) {
 }
 
 // Key/value row inside a boxed area.
+//
+// sanitizeUnsupportedGlyphs una sola vez aquí cubre TODO texto libre que pasa
+// por kvRow (nombre, descripción, observaciones, responsable, convocante...)
+// sin tener que tocar cada llamador — ver el comentario en pdf/format.js
+// sobre ₩/₹ saliendo como © / ¹ sin aviso con las fuentes estándar de PDFKit.
 function kvRow(doc, y, label, value) {
   const labelW = 135;
   const valW   = CW - labelW - 24;
-  const vh = doc.font('Helvetica').fontSize(9).heightOfString(value == null || value === '' ? '—' : String(value), { width: valW });
+  const safeValue = value == null || value === '' ? '—' : sanitizeUnsupportedGlyphs(String(value));
+  const vh = doc.font('Helvetica').fontSize(9).heightOfString(safeValue, { width: valW });
   const rowH = Math.max(15, vh + 4);
   y = ensureSpace(doc, y, rowH);
   doc.font('Helvetica-Bold').fontSize(9).fillColor(C.MID).text(label, MARGIN + 12, y + 1, { width: labelW });
   doc.font('Helvetica').fontSize(9).fillColor(C.DARK)
-    .text(value == null || value === '' ? '—' : String(value), MARGIN + 12 + labelW, y + 1, { width: valW });
+    .text(safeValue, MARGIN + 12 + labelW, y + 1, { width: valW });
   return y + rowH;
 }
 
@@ -142,7 +148,11 @@ function table(doc, y, columns, rows, emptyText) {
 
   doc.font('Helvetica').fontSize(8.5);
   rows.forEach((r, idx) => {
-    const cells = columns.map((c) => (c.r ? c.r(r) : String(r[c.k] ?? '—')));
+    // sanitizeUnsupportedGlyphs una sola vez aquí cubre toda celda de texto
+    // libre (concepto de gasto, nombre de adjunto, ejecutivo, quien registró,
+    // etc.) sin tener que tocar cada columna — ver el comentario en
+    // pdf/format.js sobre ₩/₹ saliendo como © / ¹ sin aviso.
+    const cells = columns.map((c) => sanitizeUnsupportedGlyphs(c.r ? c.r(r) : String(r[c.k] ?? '—')));
     const rowH = Math.max(15, Math.max(...cells.map((t, i) => doc.heightOfString(t, { width: columns[i].w * scale - 10 }))) + 6);
     y = ensureSpace(doc, y, rowH);
     if (idx % 2 === 1) doc.rect(MARGIN, y, CW, rowH).fill(C.LIGHT);
@@ -155,6 +165,71 @@ function table(doc, y, columns, rows, emptyText) {
   // bottom border
   doc.moveTo(MARGIN, y).lineTo(PW - MARGIN, y).lineWidth(0.6).strokeColor(C.BORDER).stroke();
   return y + 4;
+}
+
+// Sección "2. Resumen económico": tarjetas de presupuesto/ingreso/gastos, la
+// nota de moneda excluida (cuando corresponde) y el banner de ganancia/pérdida.
+// Extraída de renderExpediente para no pasar el tope de funcionesLargas.test.js.
+function resumenEconomico(doc, y, lic, moneda) {
+  y = sectionTitle(doc, y, 'Resumen económico');
+  const ingreso   = Number(lic.total_comprometido ?? 0);
+  const gastosT   = Number(lic.total_gastos ?? 0);
+  const resultado = Number(lic.resultado ?? (ingreso - gastosT));
+  const ganancia  = resultado >= 0;
+
+  // small figures grid
+  y = ensureSpace(doc, y, 46);
+  const cardW = (CW - 16) / 3;
+  const cards = [
+    { label: 'Presupuesto ref.', value: lic.presupuesto_referencial != null ? fmtMoney(lic.presupuesto_referencial, moneda) : '—', color: C.NAVY },
+    { label: 'Ingreso (cotizado)', value: fmtMoney(ingreso, moneda), color: C.NAVY },
+    { label: 'Total gastos', value: fmtMoney(gastosT, moneda), color: C.ORANGE },
+  ];
+  cards.forEach((cd, i) => {
+    const cx = MARGIN + i * (cardW + 8);
+    doc.roundedRect(cx, y, cardW, 40, 3).fill(C.LIGHT);
+    doc.fillColor(C.MID).font('Helvetica-Bold').fontSize(7.5).text(cd.label.toUpperCase(), cx + 8, y + 7, { width: cardW - 16 });
+    doc.fillColor(cd.color).font('Helvetica-Bold').fontSize(12).text(cd.value, cx + 8, y + 20, { width: cardW - 16 });
+  });
+  y += 50;
+
+  // Nota de moneda excluida — LicitacionModel.findById ya calcula estas
+  // banderas cuando excluye del total cotizaciones/gastos en OTRA moneda que
+  // la de la licitación (para no sumar monedas distintas). Sin este aviso el
+  // expediente imprimía "$ 0,00" como si de verdad no hubiera ingreso o gasto
+  // comprometido, mientras la tabla de cotizaciones/gastos vinculados, un poco
+  // más abajo en la misma página, sí muestra el monto real en la otra moneda —
+  // el lector no tenía forma de saber que el cero no era realmente cero.
+  // No se convierte ni se suma nada: solo se avisa. Hallazgo de la ronda de
+  // estrés del 2026-08-27.
+  let notaMoneda = null;
+  if (lic.tiene_cotizaciones_otra_moneda && lic.tiene_gastos_otra_moneda) {
+    notaMoneda = 'cotizaciones y gastos';
+  } else if (lic.tiene_cotizaciones_otra_moneda) {
+    notaMoneda = 'cotizaciones';
+  } else if (lic.tiene_gastos_otra_moneda) {
+    notaMoneda = 'gastos';
+  }
+  if (notaMoneda) {
+    y = ensureSpace(doc, y, 14);
+    doc.font('Helvetica-Oblique').fontSize(7.5).fillColor(C.RED)
+      .text(`* No incluye ${notaMoneda} en otra moneda — ver detalle abajo.`, MARGIN, y, { width: CW });
+    y += 12;
+  }
+
+  // Resultado banner
+  y = ensureSpace(doc, y, 40);
+  doc.roundedRect(MARGIN, y, CW, 34, 4).fill(ganancia ? '#ECFDF5' : '#FEF2F2');
+  doc.roundedRect(MARGIN, y, 5, 34, 2).fill(ganancia ? C.GREEN : C.RED);
+  doc.fillColor(ganancia ? C.GREEN : C.RED).font('Helvetica-Bold').fontSize(13)
+    .text(`${ganancia ? 'GANANCIA' : 'PÉRDIDA'}: ${fmtMoney(Math.abs(resultado), moneda)}`, MARGIN + 16, y + 6);
+  doc.fillColor(C.MID).font('Helvetica').fontSize(8)
+    // Guion ASCII, no el signo menos Unicode (U+2212): Helvetica/WinAnsi (la
+    // fuente base del PDF) no lo tiene, y salía como un glifo roto. Mismo
+    // problema de fondo que un emoji — un carácter fuera de WinAnsi.
+    // Encontrado en la ronda de estrés del 2026-08-25.
+    .text(`Ingreso ${fmtMoney(ingreso, moneda)}  -  Gastos ${fmtMoney(gastosT, moneda)}`, MARGIN + 16, y + 22);
+  return y + 44;
 }
 
 // ── main render ──────────────────────────────────────────────────────────────
@@ -241,41 +316,7 @@ function renderExpediente(doc, lic) {
   y += 12;
 
   // ── 2. Resumen económico ─────────────────────────────────────────────────
-  y = sectionTitle(doc, y, 'Resumen económico');
-  const ingreso   = Number(lic.total_comprometido ?? 0);
-  const gastosT   = Number(lic.total_gastos ?? 0);
-  const resultado = Number(lic.resultado ?? (ingreso - gastosT));
-  const ganancia  = resultado >= 0;
-
-  // small figures grid
-  y = ensureSpace(doc, y, 46);
-  const cardW = (CW - 16) / 3;
-  const cards = [
-    { label: 'Presupuesto ref.', value: lic.presupuesto_referencial != null ? fmtMoney(lic.presupuesto_referencial, moneda) : '—', color: C.NAVY },
-    { label: 'Ingreso (cotizado)', value: fmtMoney(ingreso, moneda), color: C.NAVY },
-    { label: 'Total gastos', value: fmtMoney(gastosT, moneda), color: C.ORANGE },
-  ];
-  cards.forEach((cd, i) => {
-    const cx = MARGIN + i * (cardW + 8);
-    doc.roundedRect(cx, y, cardW, 40, 3).fill(C.LIGHT);
-    doc.fillColor(C.MID).font('Helvetica-Bold').fontSize(7.5).text(cd.label.toUpperCase(), cx + 8, y + 7, { width: cardW - 16 });
-    doc.fillColor(cd.color).font('Helvetica-Bold').fontSize(12).text(cd.value, cx + 8, y + 20, { width: cardW - 16 });
-  });
-  y += 50;
-
-  // Resultado banner
-  y = ensureSpace(doc, y, 40);
-  doc.roundedRect(MARGIN, y, CW, 34, 4).fill(ganancia ? '#ECFDF5' : '#FEF2F2');
-  doc.roundedRect(MARGIN, y, 5, 34, 2).fill(ganancia ? C.GREEN : C.RED);
-  doc.fillColor(ganancia ? C.GREEN : C.RED).font('Helvetica-Bold').fontSize(13)
-    .text(`${ganancia ? 'GANANCIA' : 'PÉRDIDA'}: ${fmtMoney(Math.abs(resultado), moneda)}`, MARGIN + 16, y + 6);
-  doc.fillColor(C.MID).font('Helvetica').fontSize(8)
-    // Guion ASCII, no el signo menos Unicode (U+2212): Helvetica/WinAnsi (la
-    // fuente base del PDF) no lo tiene, y salía como un glifo roto. Mismo
-    // problema de fondo que un emoji — un carácter fuera de WinAnsi.
-    // Encontrado en la ronda de estrés del 2026-08-25.
-    .text(`Ingreso ${fmtMoney(ingreso, moneda)}  -  Gastos ${fmtMoney(gastosT, moneda)}`, MARGIN + 16, y + 22);
-  y += 44;
+  y = resumenEconomico(doc, y, lic, moneda);
 
   // ── 3. Cotizaciones vinculadas ───────────────────────────────────────────
   y = sectionTitle(doc, y, `Cotizaciones vinculadas (${(lic.cotizaciones || []).length})`);

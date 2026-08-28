@@ -8,7 +8,7 @@
 'use strict';
 
 const { C, PW, PH, MARGIN, CW } = require('../constants');
-const { fmtPrice, formatDate } = require('../format');
+const { fmtPrice, formatDate, sanitizeUnsupportedGlyphs } = require('../format');
 const { numberToWordsES } = require('../numberToWords');
 // El redondeo monetario compartido: la MISMA cuenta que usa el servidor para
 // guardar los subtotales, y que el navegador para la vista previa en vivo.
@@ -75,9 +75,23 @@ function calcularImportes(quotation, detalles) {
 function dibujarLineaSon(doc, quotation, y, displayTotal) {
   const currencyLabel = quotation.moneda === 'BOB' ? 'BOLIVIANOS' : 'DOLARES AMERICANOS';
   const totalWords    = numberToWordsES(displayTotal);
+  const sonText        = `${totalWords} ${currencyLabel}`;
+  const SON_LABEL_H    = 20; // alto "de una linea" — el que tenia esta franja antes del fix
 
   // ── SON: line ─────────────────────────────────────────────────────────────
-  const SON_H = 20;
+  // Alto medido ANTES de dibujar el rectangulo de fondo: con un total de
+  // varios millones, numberToWordsES devuelve una frase larga que a este
+  // ancho (CW - 36) envuelve a mas de una linea. `lineBreak:false` no evita
+  // el ajuste de linea en esta version de PDFKit cuando hay un `width`
+  // explicito (mismo patron ya arreglado en header.js / itemsTable.js — ver
+  // rc-tractoparts-recurring-bug-patterns, patron #4). Antes la caja tenia un
+  // alto fijo (SON_H=20) y el importe en letras se salia de sus bordes.
+  // Hallazgo de la ronda de estres del 2026-08-27.
+  const sonTextW = CW - 36;
+  doc.font('Helvetica-Bold').fontSize(7.5);
+  const sonTextH = doc.heightOfString(sonText, { width: sonTextW });
+  const SON_H    = Math.max(SON_LABEL_H, sonTextH + 8);
+
   doc.rect(MARGIN, y, CW, SON_H).fill('#FFF3E0');
   doc
     .moveTo(MARGIN, y)
@@ -96,17 +110,18 @@ function dibujarLineaSon(doc, quotation, y, displayTotal) {
     .font('Helvetica-Bold')
     .fontSize(7.5)
     .fillColor(C.NAVY)
-    .text('SON:', MARGIN + 6, y + (SON_H - 7.5) / 2, { lineBreak: false });
+    .text('SON:', MARGIN + 6, y + (SON_LABEL_H - 7.5) / 2, { lineBreak: false });
   doc
     .font('Helvetica-Bold')
     .fontSize(7.5)
     .fillColor(C.DARK_GRAY)
-    .text(`${totalWords} ${currencyLabel}`,
-      MARGIN + 30, y + (SON_H - 7.5) / 2,
-      { width: CW - 36, lineBreak: false });
+    // Sin lineBreak:false: el importe en letras envuelve dentro de su propio
+    // ancho (sonTextW, el mismo que se midio arriba) en vez de salirse de la
+    // caja de fondo — SON_H ya se calculo para que las lineas de mas entren.
+    .text(sonText, MARGIN + 30, y + (SON_LABEL_H - 7.5) / 2, { width: sonTextW });
 
-  // Se DEVUELVE la y ya avanzada: el alto de la franja SON mas el aire que la
-  // separa del bloque de abajo.
+  // Se DEVUELVE la y ya avanzada: el alto REAL de la franja SON mas el aire
+  // que la separa del bloque de abajo.
   //
   // Esta linea se perdio al partir la funcion original y el efecto fue grave:
   // sin ella las dos columnas arrancaban en la MISMA y que la franja SON, y el
@@ -140,12 +155,14 @@ function dibujarCondicionesYBanco(doc, quotation, y, LEFT_W) {
   const validezStr = quotation.fecha_validez
     ? `HASTA EL ${formatDate(quotation.fecha_validez)}`
     : '15 DÍAS CALENDARIO';
-  // Use per-quotation tiempo_entrega if provided, else fall back to default
-  const entregaStr = quotation.tiempo_entrega || '25 DÍAS CALENDARIO';
+  // Use per-quotation tiempo_entrega if provided, else fall back to default.
+  // sanitizeUnsupportedGlyphs: campo libre editable por el usuario — ver el
+  // comentario en pdf/format.js sobre ₩/₹ saliendo como © / ¹ sin aviso.
+  const entregaStr = sanitizeUnsupportedGlyphs(quotation.tiempo_entrega) || '25 DÍAS CALENDARIO';
 
   // Forma de pago: use the per-quotation value (forma_pago) when supplied,
   // otherwise fall back to the historical default advance-payment condition.
-  const formaPagoStr = (quotation.forma_pago && String(quotation.forma_pago).trim())
+  const formaPagoStr = sanitizeUnsupportedGlyphs(quotation.forma_pago && String(quotation.forma_pago).trim())
     || '60% ANTICIPO Y SALDO CONTRA ENTREGA';
 
   const condiciones = [

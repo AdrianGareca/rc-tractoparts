@@ -8,7 +8,7 @@
 'use strict';
 
 const { C, PW, MARGIN, CW, buildItemLayout, TABLE_HEADER_H, ROW_MIN_H, ROW_PADDING, PAGE_BREAK_Y } = require('../constants');
-const { fmtNum, fmtPrice } = require('../format');
+const { fmtNum, fmtPrice, sanitizeUnsupportedGlyphs } = require('../format');
 const { drawLogoWatermark } = require('./watermark');
 const { drawFooter } = require('./footer');
 
@@ -80,21 +80,32 @@ function drawTableHeaderRow(doc, y, layout) {
 // código alternativo de ~75 caracteres (bien dentro del límite) ya envuelve
 // varias líneas y se derramaba sobre la fila siguiente porque el alto de fila
 // se calculaba sin mirarlo. Encontrado en la ronda de estrés del 2026-08-26.
-function _calcRowHeight(doc, item, layout, fs = 7.5) {
+function _calcRowHeight(doc, item, layout, quotation, fs = 7.5) {
   doc.fontSize(fs);
-  const descH = doc.heightOfString(String(item.descripcion_item || ''), { width: layout.w.desc - 8 });
+  const descH = doc.heightOfString(sanitizeUnsupportedGlyphs(item.descripcion_item || ''), { width: layout.w.desc - 8 });
+
+  // P.UNIT. / P.TOTAL — se dibujan al mismo tamaño (7.5) que DESCRIPCIÓN, en
+  // columnas angostas (~62pt) con `lineBreak:false`, y ese flag no evita el
+  // ajuste de línea en esta versión de PDFKit cuando hay un `width` explícito
+  // (mismo patrón que CÓDIGO/CÓD.ALT./T.ENTREGA más abajo). Un monto muy
+  // grande (miles de millones) puede envolver a una segunda línea y se
+  // derramaba sobre la fila siguiente porque el alto de fila no lo medía.
+  // Hallazgo de la ronda de estrés del 2026-08-27.
+  const moneda  = quotation ? quotation.moneda : undefined;
+  const pUnitH  = doc.heightOfString(fmtPrice(item.precio_unitario, moneda), { width: layout.w.pUnit - 4 });
+  const pTotalH = doc.heightOfString(fmtPrice(item.subtotal, moneda), { width: layout.w.pTotal - 4 });
 
   doc.fontSize(7);
   const codigo    = item.codigo_parte || item.producto_codigo || '—';
   const codigoH   = layout.showCodigo
-    ? doc.heightOfString(String(codigo), { width: layout.w.codigo - 4 })
+    ? doc.heightOfString(sanitizeUnsupportedGlyphs(codigo), { width: layout.w.codigo - 4 })
     : 0;
   const codAltH   = layout.showCodigo
-    ? doc.heightOfString(String(item.codigo_alternativo || '—'), { width: layout.w.codAlt - 4 })
+    ? doc.heightOfString(sanitizeUnsupportedGlyphs(item.codigo_alternativo || '—'), { width: layout.w.codAlt - 4 })
     : 0;
-  const entregaH  = doc.heightOfString(String(item.tiempo_entrega || '—'), { width: layout.w.entrega - 4 });
+  const entregaH  = doc.heightOfString(sanitizeUnsupportedGlyphs(item.tiempo_entrega || '—'), { width: layout.w.entrega - 4 });
 
-  const h = Math.max(descH, codigoH, codAltH, entregaH);
+  const h = Math.max(descH, codigoH, codAltH, entregaH, pUnitH, pTotalH);
   return Math.max(ROW_MIN_H, h + ROW_PADDING);
 }
 
@@ -133,7 +144,7 @@ function _drawRowCells(doc, item, idx, y, rowH, layout, quotation) {
       .font('Helvetica')
       .fontSize(7)
       .fillColor(C.DARK_GRAY)
-      .text(codigo, layout.x.codigo + 2, ty2,
+      .text(sanitizeUnsupportedGlyphs(codigo), layout.x.codigo + 2, ty2,
         { width: layout.w.codigo - 4, align: 'center' });
   }
 
@@ -144,27 +155,28 @@ function _drawRowCells(doc, item, idx, y, rowH, layout, quotation) {
       .font('Helvetica')
       .fontSize(7)
       .fillColor(C.MID_GRAY)
-      .text(item.codigo_alternativo || '—', layout.x.codAlt + 2, ty2,
+      .text(sanitizeUnsupportedGlyphs(item.codigo_alternativo || '—'), layout.x.codAlt + 2, ty2,
         { width: layout.w.codAlt - 4, align: 'center' });
   }
 
   // DESCRIPCIÓN — top-aligned, wraps; brand name as a muted italic subtitle
+  const descripcionSafe = sanitizeUnsupportedGlyphs(String(item.descripcion_item || '—'));
   doc
     .font('Helvetica')
     .fontSize(7.5)
     .fillColor(C.DARK_GRAY)
-    .text(String(item.descripcion_item || '—'), layout.x.desc + 4, y + 5,
+    .text(descripcionSafe, layout.x.desc + 4, y + 5,
       { width: layout.w.desc - 8, lineBreak: true });
 
   // Inline brand label — rendered as clean italic text, no box/rect
   if (item.marca_nombre) {
-    const descH = doc.heightOfString(String(item.descripcion_item || ''), { width: layout.w.desc - 8 });
+    const descH = doc.heightOfString(sanitizeUnsupportedGlyphs(String(item.descripcion_item || '')), { width: layout.w.desc - 8 });
     const brandLabelY = y + 5 + descH + 1;
     doc
       .font('Helvetica-Oblique')
       .fontSize(6)
       .fillColor(C.MID_GRAY)
-      .text(item.marca_nombre.toUpperCase(), layout.x.desc + 4, brandLabelY,
+      .text(sanitizeUnsupportedGlyphs(item.marca_nombre.toUpperCase()), layout.x.desc + 4, brandLabelY,
         { width: layout.w.desc - 8, lineBreak: false });
   }
 
@@ -210,7 +222,7 @@ function _drawRowCells(doc, item, idx, y, rowH, layout, quotation) {
     .font('Helvetica')
     .fontSize(7)
     .fillColor(C.MID_GRAY)
-    .text(item.tiempo_entrega || '—', layout.x.entrega + 2, ty2,
+    .text(sanitizeUnsupportedGlyphs(item.tiempo_entrega || '—'), layout.x.entrega + 2, ty2,
       { width: layout.w.entrega - 4, align: 'center' });
 
   // Vertical column dividers for this row — one at the left edge of every
@@ -281,7 +293,7 @@ function drawItemsTable(doc, quotation, startY) {
     // alternativo o tiempo de entrega) PLUS the italic brand subtitle drawn
     // beneath the description (6 pt line + gap); without the extra 8 pt the
     // brand label bleeds past the row's bottom border into the next row.
-    let rowH = _calcRowHeight(doc, item, layout);
+    let rowH = _calcRowHeight(doc, item, layout, quotation);
     if (item.marca_nombre) rowH += 8;
 
     // Page break guard

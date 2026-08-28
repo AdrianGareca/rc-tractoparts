@@ -123,6 +123,37 @@ async function generateQuotationPdf(quotation) {
       writeStream.on('finish', () => resolve(relativePath));
       writeStream.on('error',  (err) => reject(err));
 
+      // 3b. APROBADO stamp on every page AFTER the first one.
+      //
+      // ANTES: renderWatermark() se llamaba UNA sola vez (más abajo, con la Y
+      // real del cuerpo de la tabla en la página 1) y nunca más. En una
+      // cotización de varias páginas —tabla de ítems larga (itemsTable.js) o
+      // el bloque de totales/observaciones que no entra y salta de página
+      // (totals.js / observations.js)— el sello quedaba ausente en todas las
+      // páginas siguientes.
+      //
+      // 'pageAdded' es el evento estándar de PDFKit y se dispara desde
+      // doc.addPage() sin importar QUÉ drawer lo llamó, así que este único
+      // listener cubre los tres sitios de salto de página sin tener que tocar
+      // cada uno de ellos. PDFKit también emite 'pageAdded' para la PRIMERA
+      // página (autoFirstPage la crea dentro del constructor de PDFDocument),
+      // pero eso ocurre antes de que este listener pueda engancharse —así que
+      // esta rama en la práctica solo alcanza a la página 2 en adelante; la
+      // página 1 se sella aparte, más abajo, con la Y real del cuerpo de la
+      // tabla en vez de con el centro genérico de la página.
+      //
+      // Sin una tabla/bloque de referencia en la página nueva, se centra en el
+      // medio vertical de la página (tableBodyY sin especificar) — razonable
+      // para una página de continuación, que es en la práctica solo más tabla
+      // u otro bloque de contenido. El listener corre ANTES de que el drawer
+      // que llamó a addPage() pinte el logo de fondo y el pie de esa página
+      // nueva, así que el sello queda por debajo del logo en vez de por
+      // encima — ambos son capas casi invisibles (6% y 14% de opacidad) así
+      // que no se nota. Hallazgo de la ronda de estrés del 2026-08-27.
+      doc.on('pageAdded', () => {
+        renderWatermark(doc, quotation);
+      });
+
       // 4. Render layout sections top-to-bottom
       // Logo watermark is painted FIRST so every subsequent element sits on
       // top of it (PDFKit uses painter's order: last draw = topmost layer).
@@ -134,10 +165,13 @@ async function generateQuotationPdf(quotation) {
       y     = drawSubtitle(doc, y);
       y     = drawThreeColumnGrid(doc, quotation, y);
 
-      // Watermark is painted HERE — after the top sections (which stay clean)
-      // but before the items table rows so all line-item text renders on top
-      // (PDFKit draws in painter's order).  tableBodyY is passed so the stamp
-      // is centred dynamically within the items block, not at the page centre.
+      // Watermark for PAGE 1 is painted HERE — after the top sections (which
+      // stay clean) but before the items table rows so all line-item text
+      // renders on top (PDFKit draws in painter's order). tableBodyY is
+      // passed so the stamp is centred dynamically within the items block,
+      // not at the page centre. Pages 2+ (item overflow, or the totals/
+      // observations block spilling onto its own page) are stamped by the
+      // 'pageAdded' listener registered above — see its comment.
       renderWatermark(doc, quotation, y + 42);  // +42 accounts for table title + header row
 
       y     = drawItemsTable(doc, quotation, y);

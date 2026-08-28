@@ -50,10 +50,24 @@ function drawLogoWatermark(doc) {
 // Must be called AFTER drawing the header/grid sections (so those remain clean)
 // but BEFORE drawing the table rows (so text renders on top — painter's order).
 //
+// LLAMADO UNA VEZ POR PÁGINA, no solo en la página 1: pdfService.js llama a
+// esta función explícitamente para la página 1 (con la Y real del cuerpo de
+// la tabla, calculada después de dibujar header/subtítulo/grid) y además
+// engancha un listener a doc.on('pageAdded', ...) que la vuelve a llamar —
+// sin `tableBodyY`, centrando en el medio vertical de la página — por cada
+// página nueva que agregue CUALQUIER drawer (tabla de ítems larga, bloque de
+// totales u observaciones que no entran y saltan de página). Antes solo se
+// llamaba una vez con una posición fija calculada para toda la cotización, así
+// que en una proforma de varias páginas el sello quedaba mal ubicado y
+// ausente del resto. Hallazgo de la ronda de estrés del 2026-08-27.
+//
 // @param {PDFDocument} doc
 // @param {Object}      quotation
-// @param {number}      tableBodyY  — Top Y of the items table body; watermark is
-//                                    centred in the table area vertically.
+// @param {number}      [tableBodyY] — Top Y of the items table body en ESTA
+//                                    página; si se omite (páginas de
+//                                    continuación sin una tabla de referencia
+//                                    propia) se centra en el medio vertical
+//                                    de la página.
 // ---------------------------------------------------------------------------
 function renderWatermark(doc, quotation, tableBodyY) {
   const estado = (quotation.estado_nombre || quotation.estado || '').toUpperCase();

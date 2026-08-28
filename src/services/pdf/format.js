@@ -152,7 +152,37 @@ function formatMes(ym) {
   return `${MESES[Number(m[2]) - 1]} ${m[1]}`;
 }
 
+// ---------------------------------------------------------------------------
+// sanitizeUnsupportedGlyphs — evita el reemplazo SILENCIOSO de símbolos que
+// las fuentes estándar de PDFKit no saben dibujar.
+//
+// Este proyecto no embebe ninguna fuente TTF/OTF propia (los drawers de
+// src/services/pdf/ solo usan las 14 fuentes estándar de PDFKit — Helvetica y
+// afines —, con WinAnsiEncoding / Windows-1252). Dos símbolos de moneda que un
+// usuario puede tipear en un campo libre (descripción de ítem, forma de pago,
+// concepto de gasto, nombre de un adjunto, etc.) caen fuera de ese repertorio,
+// y en vez de fallar de forma visible PDFKit reinterpreta los BYTES BAJOS de
+// cada code point Unicode como si fueran Windows-1252:
+//   ₩ (U+20A9, won coreano)   → sale como © (0xA9)
+//   ₹ (U+20B9, rupia india)   → sale como ¹ (0xB9)
+// Un carácter VÁLIDO pero INCORRECTO y sin ningún aviso es peor que uno que se
+// note como sustitución. Mientras el proyecto no incorpore una fuente Unicode
+// más completa, se reemplazan por su código ISO como texto explícito — se
+// pierde el símbolo, pero el dato nunca sale silenciosamente mal.
+// Hallazgo de la ronda de estrés del 2026-08-27.
+// ---------------------------------------------------------------------------
+const UNSUPPORTED_GLYPHS = {
+  '₩': 'WON',   // ₩
+  '₹': 'INR',   // ₹
+};
+
+function sanitizeUnsupportedGlyphs(value) {
+  if (value == null) return value;
+  return String(value).replace(/[₩₹]/g, (ch) => UNSUPPORTED_GLYPHS[ch]);
+}
+
 module.exports = { fmtNum, fmtPrice, formatDate, hLine,
   formatDateTime,
   formatMes,
+  sanitizeUnsupportedGlyphs,
 };
