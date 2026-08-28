@@ -29,6 +29,114 @@ const licitacionPdfService       = require('../services/licitacionPdfService');
 const { parseId } = require('../utils/parseId');
 // El bloque `pagination`, compartido.
 const { construirPaginacion } = require('../utils/paginacion');
+// Filtros de listado (estado, id_responsable) — ver el comentario largo junto
+// a la función en licitacionValidator.js.
+const { validateListFilters } = require('../validators/licitacionValidator');
+// Mismo control que ya existía para cotizaciones: no atar una licitación a un
+// cliente inexistente o desactivado. Se reutiliza la MISMA función (misma
+// tabla, misma regla) en vez de duplicar la consulta acá.
+const { verificarCliente } = require('./quotation/clienteLinkGuard');
+
+// ---------------------------------------------------------------------------
+// ROLES_VALIDOS_RESPONSABLE — quién puede ser id_responsable de una licitación.
+//
+// LicitacionModel.resolveActorType() sólo reconoce como actor con permisos de
+// escritura a: Proyectos (cuando ES el responsable), o Jefe/SysAdmin (siempre,
+// independientemente de quién sea el responsable). Un id_responsable con
+// cualquier OTRO rol (Ejecutivo sin delegación, Administracion) no resuelve a
+// ningún actor type: la persona queda sin poder editar la cabecera (403 por
+// ownership en updateLicitacion) NI cambiar el estado (403 de
+// validateTransitionByRole) de una licitación de la que figura como dueña.
+//
+// Se permite Jefe/SysAdmin acá (y no sólo Proyectos) porque el comportamiento
+// existente ya deja que se autoasignen al crear sin indicar id_responsable
+// (ver el comentario en createLicitacion) — y para ellos nunca es un problema:
+// su actor type es 'jefe' sin importar si son o no el responsable formal.
+// ---------------------------------------------------------------------------
+const ROLES_VALIDOS_RESPONSABLE = ['Proyectos', 'Jefe', 'SysAdmin'];
+
+// ---------------------------------------------------------------------------
+// validarRolResponsable — 422 si el usuario referenciado no existe o su rol
+// no puede ser responsable de una licitación (ver ROLES_VALIDOS_RESPONSABLE).
+// Usado tanto en la creación como en la reasignación por edición.
+// ---------------------------------------------------------------------------
+async function validarRolResponsable(idResponsable) {
+  const usuario = await UserModel.findById(idResponsable);
+
+  if (!usuario) {
+    return {
+      status: 422,
+      body: { success: false, message: `El responsable #${idResponsable} indicado no existe.` },
+    };
+  }
+
+  if (!ROLES_VALIDOS_RESPONSABLE.includes(usuario.rol)) {
+    return {
+      status: 422,
+      body: {
+        success: false,
+        message: `El usuario #${idResponsable} (${usuario.nombre_completo}) tiene el rol '${usuario.rol}' ` +
+                 `y no puede ser responsable de una licitación. Roles válidos: [${ROLES_VALIDOS_RESPONSABLE.join(', ')}].`,
+      },
+    };
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// validarClienteYResponsableParaCrear — las dos comprobaciones de
+// createLicitacion, agrupadas en una función aparte para que el controller no
+// crezca: cliente convocante existente/activo + rol válido del responsable.
+// ---------------------------------------------------------------------------
+async function validarClienteYResponsableParaCrear(idCliente, responsableId) {
+  const errCliente = await verificarCliente(idCliente, 'LicitacionController.createLicitacion');
+  if (errCliente) return errCliente;
+
+  return validarRolResponsable(responsableId);
+}
+
+// ---------------------------------------------------------------------------
+// resolverClienteEnEdicion — decide el id_cliente a persistir en
+// updateLicitacion. Sólo revalida existencia/activo cuando el vínculo está
+// CAMBIANDO respecto del que la licitación ya tenía — una edición que no
+// toca el cliente no se traba porque éste se haya desactivado después de
+// asignado (mismo criterio que clienteLinkGuard.js aplica en cotizaciones).
+// @returns {Promise<{error}|{idCliente:number}>}
+// ---------------------------------------------------------------------------
+async function resolverClienteEnEdicion(idClienteBody, licitacion) {
+  const nuevoIdCliente = parseInt(idClienteBody, 10);
+  if (nuevoIdCliente === licitacion.id_cliente) return { idCliente: nuevoIdCliente };
+
+  const errCliente = await verificarCliente(idClienteBody, 'LicitacionController.updateLicitacion');
+  return errCliente ? { error: errCliente } : { idCliente: nuevoIdCliente };
+}
+
+// ---------------------------------------------------------------------------
+// resolverResponsableEnEdicion — reasignar el responsable de una licitación
+// es una acción restringida a Jefe/SysAdmin; el nuevo responsable se valida
+// con la misma regla de rol que en la creación (validarRolResponsable). Un
+// id_responsable ausente, o igual al que ya tenía, no cambia nada — no hace
+// falta ser Jefe/SysAdmin para reenviar la cabecera sin tocar el responsable.
+// @returns {Promise<{error}|{idResponsable:number}>}
+// ---------------------------------------------------------------------------
+async function resolverResponsableEnEdicion(idResponsableBody, licitacion, isPrivileged) {
+  if (idResponsableBody === undefined || idResponsableBody === licitacion.id_responsable) {
+    return { idResponsable: licitacion.id_responsable };
+  }
+
+  if (!isPrivileged) {
+    return {
+      error: {
+        status: 403,
+        body: { success: false, message: 'Solo Jefe/SysAdmin puede reasignar el responsable de la licitación.' },
+      },
+    };
+  }
+
+  const errResponsable = await validarRolResponsable(idResponsableBody);
+  return errResponsable ? { error: errResponsable } : { idResponsable: idResponsableBody };
+}
 
 const LicitacionController = {
 
@@ -115,6 +223,13 @@ const LicitacionController = {
       ? req.user.id
       : (id_responsable != null ? parseInt(id_responsable, 10) : req.user.id);
 
+    // Cliente convocante existente/activo + rol válido del responsable — ver
+    // validarClienteYResponsableParaCrear. Sin la segunda, un Jefe/SysAdmin
+    // que se equivoca de id deja a un Ejecutivo/Administracion como dueño de
+    // una licitación que nunca va a poder editar ni mover de estado.
+    const errValidacion = await validarClienteYResponsableParaCrear(id_cliente, responsableId);
+    if (errValidacion) return res.status(errValidacion.status).json(errValidacion.body);
+
     let connection;
     let codigo;
     let licitacionId;
@@ -169,10 +284,7 @@ const LicitacionController = {
       try {
         created = await LicitacionModel.findById(licitacionId);
       } catch (postErr) {
-        console.warn(
-          '[LicitacionController.createLicitacion] Post-commit read failed (non-fatal):',
-          postErr.message
-        );
+        console.warn('[LicitacionController.createLicitacion] Post-commit read failed (non-fatal):', postErr.message);
       }
 
       return res.status(201).json({
@@ -222,6 +334,19 @@ const LicitacionController = {
   // ---------------------------------------------------------------------------
   async getLicitaciones(req, res) {
     try {
+      // Filtros inválidos (estado inexistente, id_responsable no numérico) se
+      // rechazan ANTES de tocar la base: sin esto, buildWhereClause arma un
+      // WHERE que ninguna fila cumple y el endpoint responde 200 vacío,
+      // indistinguible de "sin resultados para un filtro válido".
+      const filterErrors = validateListFilters(req.query);
+      if (filterErrors) {
+        return res.status(422).json({
+          success: false,
+          message: 'Parámetros de filtro inválidos.',
+          errors:  filterErrors,
+        });
+      }
+
       const filters = {
         q:              req.query.q,
         estado:         req.query.estado,
@@ -337,7 +462,18 @@ const LicitacionController = {
         });
       }
 
-      const { nombre, id_cliente, descripcion, presupuesto_referencial, moneda, fecha_limite } = req.body;
+      const { nombre, id_cliente, descripcion, presupuesto_referencial, moneda, fecha_limite, id_responsable } = req.body;
+
+      // Cliente convocante (sólo revalidado si el vínculo cambia) + reasignar
+      // el responsable (restringido a Jefe/SysAdmin) — ver
+      // resolverClienteEnEdicion / resolverResponsableEnEdicion más arriba.
+      const clienteResuelto = await resolverClienteEnEdicion(id_cliente, licitacion);
+      if (clienteResuelto.error) return res.status(clienteResuelto.error.status).json(clienteResuelto.error.body);
+
+      const responsableResuelto = await resolverResponsableEnEdicion(id_responsable, licitacion, isPrivileged);
+      if (responsableResuelto.error) {
+        return res.status(responsableResuelto.error.status).json(responsableResuelto.error.body);
+      }
 
       // ── Un campo que NO vino se deja como estaba ────────────────────────────
       // La diferencia es entre `undefined` (no lo mandaron: no lo toques) y
@@ -352,7 +488,7 @@ const LicitacionController = {
       const updated = await LicitacionModel.update(id, {
         // Estos dos son obligatorios en el esquema: siempre vienen.
         nombre:     String(nombre).trim(),
-        id_cliente: parseInt(id_cliente, 10),
+        id_cliente: clienteResuelto.idCliente,
 
         descripcion: descripcion !== undefined
           ? (descripcion ? String(descripcion).trim() : null)
@@ -361,6 +497,7 @@ const LicitacionController = {
         presupuesto_referencial: sinTocar(presupuesto_referencial, licitacion.presupuesto_referencial),
         moneda:                  sinTocar(moneda, licitacion.moneda),
         fecha_limite:            sinTocar(fecha_limite, licitacion.fecha_limite),
+        id_responsable:          responsableResuelto.idResponsable,
       });
 
       if (!updated) {
@@ -390,7 +527,7 @@ const LicitacionController = {
       return res.status(200).json({ success: true, message: 'Licitación actualizada.', data: refreshed });
     } catch (error) {
       if (error.code === 'ER_NO_REFERENCED_ROW_2' || error.code === 'ER_NO_REFERENCED_ROW') {
-        return res.status(422).json({ success: false, message: 'El cliente convocante indicado no existe.' });
+        return res.status(422).json({ success: false, message: 'El cliente convocante o el responsable indicado no existe.' });
       }
       console.error('[LicitacionController.updateLicitacion] Error:', error.message);
       return res.status(500).json({ success: false, message: 'No se pudo actualizar la licitación.' });

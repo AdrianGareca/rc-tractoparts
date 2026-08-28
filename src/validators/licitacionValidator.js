@@ -95,7 +95,11 @@ const createLicitacionSchema = z.object({
 
 // ---------------------------------------------------------------------------
 // updateLicitacionSchema — PUT /api/licitaciones/:id
-// Mismo contrato de cabecera; el responsable no se reasigna por esta vía.
+// Mismo contrato de cabecera. id_responsable SÍ se puede reasignar por esta
+// vía (a diferencia del comentario histórico de abajo): el controller exige
+// que quien reasigna sea Jefe/SysAdmin y valida el rol del nuevo responsable
+// con la misma regla que en la creación (ver licitacionController.js).
+// id_responsable es .optional(): ausente = no tocar el responsable actual.
 // ---------------------------------------------------------------------------
 // Mismo contrato que crear, MENOS en los campos que traen valor por defecto o
 // que convierten «no vino» en «vaciar». Al editar, un campo ausente significa
@@ -137,6 +141,15 @@ const updateLicitacionSchema = z.object(licitacionShape).extend({
         .refine(esFechaCalendarioValida, 'La fecha no es una fecha de calendario real.')
         .nullable()
     )
+    .optional(),
+
+  // Reasignación de responsable — ausente = no tocar. El rol del usuario
+  // referenciado se valida en el controller (misma regla que al crear); acá
+  // sólo se exige la forma.
+  id_responsable: z
+    .number({ invalid_type_error: 'id_responsable debe ser un número.' })
+    .int('id_responsable debe ser entero.')
+    .positive('id_responsable debe ser un entero positivo.')
     .optional(),
 });
 
@@ -210,9 +223,49 @@ const createGastoSchema = z.object({
     .default('BOB'),
 });
 
+// ---------------------------------------------------------------------------
+// validateListFilters — GET /api/licitaciones (filtros de query).
+//
+// No pasa por el factory validate() de validate.js: ese sólo parsea req.body,
+// y estos filtros viven en req.query. Un filtro AUSENTE es válido (sin
+// filtrar); uno PRESENTE pero con un valor imposible (estado inexistente,
+// id_responsable no numérico) antes llegaba intacto hasta buildWhereClause,
+// que arma un WHERE que ninguna fila cumple — el endpoint respondía 200 con
+// `total: 0, data: []`, indistinguible de "no hay resultados para ese filtro
+// válido". Encontrado estresando la app el 2026-08-26.
+//
+// @param   {object} query — req.query, tal como llega
+// @returns {Array<{field:string, message:string}>|null} null si todo es válido
+// ---------------------------------------------------------------------------
+function validateListFilters(query = {}) {
+  const errors = [];
+
+  if (query.estado !== undefined && query.estado !== '' && !VALID_STATES.includes(query.estado)) {
+    errors.push({
+      field:   'estado',
+      message: `estado debe ser uno de: [${VALID_STATES.join(', ')}].`,
+    });
+  }
+
+  if (query.id_responsable !== undefined && query.id_responsable !== '') {
+    const raw = String(query.id_responsable).trim();
+    // /^\d+$/ en vez de parseInt a secas: parseInt('12abc', 10) da 12 y
+    // dejaría pasar basura con un prefijo numérico.
+    if (!/^\d+$/.test(raw) || parseInt(raw, 10) <= 0) {
+      errors.push({
+        field:   'id_responsable',
+        message: 'id_responsable debe ser un entero positivo.',
+      });
+    }
+  }
+
+  return errors.length > 0 ? errors : null;
+}
+
 module.exports = {
   createLicitacionSchema,
   updateLicitacionSchema,
   updateLicitacionStatusSchema,
   createGastoSchema,
+  validateListFilters,
 };

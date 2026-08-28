@@ -425,6 +425,11 @@ async function findById(id) {
 // estado ('En preparacion'/'Cotizando') se aplica en el controller (que lee el
 // estado primero); aquí se usa el guard adicional en el WHERE para blindar
 // contra condiciones de carrera.
+//
+// id_responsable se incluye porque el controller ahora permite reasignarlo
+// (Jefe/SysAdmin, validando el rol del nuevo responsable) — antes una
+// licitación asignada por error a alguien sin el rol correcto no tenía forma
+// de corregirse después de creada.
 // ---------------------------------------------------------------------------
 async function update(id, data) {
   const sql = `
@@ -434,7 +439,8 @@ async function update(id, data) {
       descripcion             = ?,
       presupuesto_referencial = ?,
       moneda                  = ?,
-      fecha_limite            = ?
+      fecha_limite            = ?,
+      id_responsable          = ?
     WHERE id = ? AND estado IN ('En preparacion', 'Cotizando')
   `;
 
@@ -445,6 +451,7 @@ async function update(id, data) {
     data.presupuesto_referencial ?? null,
     data.moneda                  || 'BOB',
     data.fecha_limite            || null,
+    data.id_responsable,
     id,
   ]);
 
