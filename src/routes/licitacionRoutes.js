@@ -96,7 +96,11 @@ function licDocFileFilter(_req, file, cb) {
   }
 }
 
-const maxDocBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024;
+// +1: mismo motivo que quotationRoutes.js — busboy dispara LIMIT_FILE_SIZE en
+// cuanto los bytes recibidos LLEGAN al límite configurado, no cuando lo
+// superan, así que un archivo de exactamente MAX_PDF_SIZE_MB MB se rechazaba
+// igual que uno más grande. Ver el comentario largo en quotationRoutes.js.
+const maxDocBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024 + 1;
 
 const uploadLicDocs = multer({
   storage:    licDocStorage,
@@ -646,6 +650,21 @@ router.get(
 // =============================================================================
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
+    // "Archivo demasiado grande" es un caso aparte: el manejador GLOBAL
+    // (src/app.js) responde 413 para el mismo error en la subida de PDF de
+    // cotizaciones. Este router interceptaba TODO multer.MulterError antes
+    // de que llegara ahí, así que el mismo problema (archivo demasiado
+    // grande) volvía 422 acá y 413 allá — un código de estado distinto para
+    // el mismo motivo de rechazo, según qué endpoint lo recibiera. El resto
+    // de los MulterError (tipo de archivo inválido, demasiados archivos,
+    // etc.) sigue siendo 422 como siempre. Encontrado en la ronda de estrés
+    // del 2026-08-26.
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        success: false,
+        message: `Error al subir el archivo: ${err.message}`,
+      });
+    }
     return res.status(422).json({
       success: false,
       message: `Error al subir el archivo: ${err.message}`,

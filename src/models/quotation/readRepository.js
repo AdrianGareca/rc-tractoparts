@@ -33,6 +33,7 @@ async function findById(id) {
         c.entidad_emisora,
         c.estado,
         c.pdf_ruta,
+        c.pdf_origen,
         c.excel_ruta,
         c.tipo_pedido,
         c.tiempo_entrega,

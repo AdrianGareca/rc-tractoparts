@@ -114,7 +114,23 @@ function pdfFileFilter(_req, file, cb) {
   }
 }
 
-const maxPdfBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024;
+// El límite documentado (MAX_PDF_SIZE_MB, en MB exactos) es el máximo
+// ACEPTADO — no uno menos. Sin el +1 de abajo, un archivo de exactamente
+// MAX_PDF_SIZE_MB*1024*1024 bytes se rechazaba igual que uno más grande.
+//
+// LA CAUSA: busboy (la librería que multer usa por debajo) dispara su
+// evento 'limit' — y por lo tanto LIMIT_FILE_SIZE — en cuanto los bytes
+// recibidos LLEGAN a `limits.fileSize`, no cuando lo SUPERAN
+// (node_modules/busboy/lib/types/multipart.js: `if (fileSize ===
+// fileSizeLimit) { ...emit('limit')... }`). Con `fileSize: maxPdfBytes`, un
+// archivo de exactamente ese tamaño hace que el contador de bytes llegue
+// justo a `fileSizeLimit` y se trunque, aunque ya se haya recibido el
+// archivo completo. Configurar el límite un byte más alto que el máximo
+// documentado hace que ese `===` sólo dispare en `maxPdfBytes + 1` bytes —
+// es decir, el primer tamaño que SÍ debe rechazarse — sin abrir la puerta a
+// nada por encima del límite documentado. Encontrado en la ronda de estrés
+// del 2026-08-26.
+const maxPdfBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024 + 1;
 
 // Dual-field upload: accepts 'pdf' (alias kept for backward compat) + 'excel'
 // The controller performs magic-number verification for each file after Multer writes them.
@@ -1127,7 +1143,22 @@ router.patch(
 // =============================================================================
 router.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
-    // e.g. LIMIT_FILE_SIZE, LIMIT_UNEXPECTED_FILE
+    // "File too large" es un caso aparte: este router tenía su PROPIO
+    // manejador de MulterError (declarado después de todas las rutas), así
+    // que interceptaba LIMIT_FILE_SIZE ANTES de que llegara al manejador
+    // GLOBAL de src/app.js, que sí responde 413 para ese mismo error. El
+    // resultado era el mismo código de estado inconsistente que tenía
+    // licitacionRoutes.js para sus propios documentos — arreglado ahí con el
+    // mismo criterio. El resto de los MulterError (tipo de archivo inválido,
+    // demasiados archivos) sigue siendo 422 como siempre. Encontrado en la
+    // ronda de estrés del 2026-08-26.
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        success: false,
+        message: `File upload error: ${err.message}`,
+      });
+    }
+    // e.g. LIMIT_UNEXPECTED_FILE
     return res.status(422).json({
       success: false,
       message: `File upload error: ${err.message}`,

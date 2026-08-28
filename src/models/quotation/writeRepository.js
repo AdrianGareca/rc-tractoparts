@@ -76,10 +76,88 @@ async function create(connection, data) {
 }
 
 // ---------------------------------------------------------------------------
+// _idsFaltantes — de la lista `ids` (ya sin null/duplicados), cuáles NO
+// existen en `tabla`. Una sola consulta con WHERE id IN (...) por tabla, no
+// una por ítem. `tabla` siempre es un literal fijo llamado desde este mismo
+// archivo ('productos' o 'marcas') — nunca entrada de usuario.
+// ---------------------------------------------------------------------------
+async function _idsFaltantes(connection, tabla, ids) {
+  if (ids.length === 0) return new Set();
+
+  const placeholders = ids.map(() => '?').join(', ');
+  const [rows] = await connection.execute(
+    `SELECT id FROM ${tabla} WHERE id IN (${placeholders})`,
+    ids
+  );
+  const existentes = new Set(rows.map((r) => r.id));
+  return new Set(ids.filter((id) => !existentes.has(id)));
+}
+
+// ---------------------------------------------------------------------------
+// _verificarReferenciasDetalles — antes del INSERT, confirma que cada
+// id_producto/marca_id que trae un ítem exista en su tabla respectiva.
+//
+// MISMO PATRÓN Y MISMA RAZÓN QUE clienteLinkGuard.js / licitacionLinkGuard.js
+// Sin este control, un id_producto o marca_id inexistente llega directo al
+// INSERT de cotizacion_detalles, viola su clave foránea, y sale como
+// excepción sin capturar: un 500 genérico que no le dice al usuario cuál de
+// los items (ni cuál campo) estaba mal. A diferencia de id_cliente/
+// id_licitacion, este chequeo faltaba acá. Encontrado en la ronda de estrés
+// del 2026-08-26.
+//
+// Una sola consulta por lote con WHERE id IN (...) para cada tabla — no una
+// consulta por ítem — y corre en la MISMA conexión/transacción que el
+// INSERT, así que ve el mismo estado consistente.
+//
+// @throws {Error} .code = 'INVALID_ITEM_REFERENCE', .status = 422, con un
+//                 mensaje que nombra el ítem (1-based, como lo ve la
+//                 pantalla) y el campo exacto — mismo estilo que los otros
+//                 guardianes.
+// ---------------------------------------------------------------------------
+async function _verificarReferenciasDetalles(connection, detalles) {
+  const idsProducto = [...new Set(
+    detalles.filter((d) => d.id_producto != null).map((d) => Number(d.id_producto))
+  )];
+  const idsMarca = [...new Set(
+    detalles.filter((d) => d.marca_id != null).map((d) => Number(d.marca_id))
+  )];
+
+  if (idsProducto.length === 0 && idsMarca.length === 0) return;
+
+  const [faltantesProducto, faltantesMarca] = await Promise.all([
+    _idsFaltantes(connection, 'productos', idsProducto),
+    _idsFaltantes(connection, 'marcas', idsMarca),
+  ]);
+
+  if (faltantesProducto.size === 0 && faltantesMarca.size === 0) return;
+
+  for (let i = 0; i < detalles.length; i++) {
+    const item = detalles[i];
+    if (item.id_producto != null && faltantesProducto.has(Number(item.id_producto))) {
+      throw Object.assign(
+        new Error(`Item #${i + 1}: el producto #${item.id_producto} (id_producto) no existe.`),
+        { code: 'INVALID_ITEM_REFERENCE', status: 422 }
+      );
+    }
+    if (item.marca_id != null && faltantesMarca.has(Number(item.marca_id))) {
+      throw Object.assign(
+        new Error(`Item #${i + 1}: la marca #${item.marca_id} (marca_id) no existe.`),
+        { code: 'INVALID_ITEM_REFERENCE', status: 422 }
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // createDetalles — Bulk INSERT line items inside a caller-managed transaction.
 // ---------------------------------------------------------------------------
 async function createDetalles(connection, id_cotizacion, detalles) {
   if (!detalles || detalles.length === 0) return;
+
+  // Se verifica ANTES del INSERT — ver _verificarReferenciasDetalles arriba.
+  // replaceDetalles llama a esta misma función después de su DELETE, así que
+  // el chequeo cubre updateQuotation también sin duplicar nada.
+  await _verificarReferenciasDetalles(connection, detalles);
 
   // 11 bound params per row
   const placeholders = detalles.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
@@ -213,11 +291,18 @@ async function replaceDetalles(connection, id_cotizacion, detalles) {
 }
 
 // ---------------------------------------------------------------------------
-// updatePdfPath — Persist the relative file path of the linked PDF.
+// updatePdfPath — Persist the relative file path of a SYSTEM-generated PDF
+// (PDFKit auto-generation / regeneration). Always stamps pdf_origen =
+// 'sistema': every caller of this function (pdfRegeneration.js and the
+// PDFKit emergency-fallback branch of downloadPdf) is, by construction, the
+// system writing its own generated file — a hand-uploaded PDF is persisted
+// through swapFilePath instead, which stamps 'manual'. Keeping the two
+// writers separate is what lets updateQuotation later tell them apart and
+// leave a manual upload untouched on edit.
 // ---------------------------------------------------------------------------
 async function updatePdfPath(id, pdfRuta) {
   const [result] = await pool.execute(
-    'UPDATE cotizaciones SET pdf_ruta = ? WHERE id = ?',
+    `UPDATE cotizaciones SET pdf_ruta = ?, pdf_origen = 'sistema' WHERE id = ?`,
     [pdfRuta, id]
   );
   return result.affectedRows > 0;
@@ -280,8 +365,16 @@ async function swapFilePath(connection, id, column, newPath) {
   );
   const oldPath = rows[0]?.ruta ?? null;
 
+  // Un archivo subido por esta vía (uploadPdf/uploadFiles) es, por
+  // definición, MANUAL — se marca junto con el swap del pdf_ruta, en el mismo
+  // UPDATE, para que updateQuotation sepa después que este PDF no es un
+  // regenerado por el sistema y lo deje intacto al editar (ver
+  // pdfRegeneration.js). excel_ruta no tiene columna de origen: el Excel ya
+  // sobrevive intacto a una edición sin necesitar esta distinción.
+  const extraSet = column === 'pdf_ruta' ? `, pdf_origen = 'manual'` : '';
+
   await connection.execute(
-    `UPDATE cotizaciones SET ${column} = ? WHERE id = ?`,
+    `UPDATE cotizaciones SET ${column} = ?${extraSet} WHERE id = ?`,
     [newPath, id]
   );
 

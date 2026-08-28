@@ -282,6 +282,8 @@ CREATE TABLE cotizaciones (
                        'Archivada'
                      ) NOT NULL DEFAULT 'Pendiente',
   pdf_ruta           VARCHAR(500)  DEFAULT NULL,
+  pdf_origen         ENUM('sistema', 'manual') NOT NULL DEFAULT 'sistema'
+    COMMENT '"sistema" = generado/regenerado automáticamente por PDFKit en cada edición o cambio de estado; "manual" = subido a mano vía POST /:id/upload o /:id/pdf. Un PDF "manual" nunca se purga ni se regenera automáticamente al editar la cotización — mismo trato que excel_ruta, que tampoco se toca en una edición.',
   excel_ruta         VARCHAR(500)  DEFAULT NULL
     COMMENT 'Relative path to the uploaded Excel spreadsheet; NULL when not yet generated',
   tipo_pedido        VARCHAR(50)   DEFAULT NULL

@@ -290,6 +290,15 @@ const QuotationController = {
         data:             createdQuotation ?? { id: quotationId, numero_correlativo: numeroCorrelativo },
       });
     } catch (error) {
+      // Un id_producto/marca_id inexistente en algún ítem — ver
+      // writeRepository.js#_verificarReferenciasDetalles. Es una entrada
+      // inválida del usuario, no una falla interna: mismo criterio que
+      // licitacionLinkGuard.js/clienteLinkGuard.js, que tampoco registran
+      // esto como un 'fallo' en la bitácora de auditoría.
+      if (error.code === 'INVALID_ITEM_REFERENCE') {
+        return res.status(error.status).json({ success: false, message: error.message });
+      }
+
       // El rollback y la devolución de la conexión ya los hizo withDeadlockRetry.
       await logEvent({
         id_usuario:     req.user?.id    || null,
@@ -362,15 +371,26 @@ const QuotationController = {
 
       // Misma verificación que en createQuotation, ahora compartida.
       // Un null explícito acá significa DESATAR la cotización de su licitación,
-      // y el guardián lo deja pasar sin consultar nada.
-      const errLic = await verificarVinculoLicitacion(req.body.id_licitacion, 'QuotationController.updateQuotation');
+      // y el guardián lo deja pasar sin consultar nada. Se pasa la licitación
+      // que la cotización YA tenía para que el guard no bloquee una edición
+      // que no está cambiando el vínculo, sólo porque esa licitación se
+      // archivó/perdió después (ver el comentario largo en licitacionLinkGuard.js).
+      const errLic = await verificarVinculoLicitacion(req.body.id_licitacion, 'QuotationController.updateQuotation', {
+        idLicitacionActual: existing.id_licitacion,
+      });
       if (errLic) return res.status(errLic.status).json(errLic.body);
 
       // Mismo criterio para el cliente — ver ./clienteLinkGuard.js. A
       // diferencia de la licitación, id_cliente es obligatorio en el body
       // (createQuotationSchema lo exige), así que siempre hay un valor que
-      // validar acá — no hace falta el caso "null = desatar".
-      const errCliente = await verificarCliente(id_cliente, 'QuotationController.updateQuotation');
+      // validar acá — no hace falta el caso "null = desatar". Se pasa el
+      // cliente que la cotización YA tenía para que el guard no bloquee una
+      // edición que no está cambiando el cliente, sólo porque éste se
+      // desactivó después de asignado (ver el comentario largo en
+      // clienteLinkGuard.js).
+      const errCliente = await verificarCliente(id_cliente, 'QuotationController.updateQuotation', {
+        idClienteActual: existing.id_cliente,
+      });
       if (errCliente) return res.status(errCliente.status).json(errCliente.body);
 
       // Recalculate the header total server-side from the line items so the
@@ -469,8 +489,13 @@ const QuotationController = {
       // ── Post-commit: refetch, regenerate PDF (single-PDF invariant), audit ──
       const updatedQuotation = await QuotationModel.findById(id);
 
+      // preserveManual:true — un PDF subido a mano (pdf_origen = 'manual') no
+      // se purga ni se regenera al editar; ver el comentario largo en
+      // pdfRegeneration.js. createQuotation/updateStatus/approveQuotation NO
+      // pasan esta opción a propósito.
       await regenerateQuotationPdf(updatedQuotation, {
         label: 'QuotationController.updateQuotation',
+        preserveManual: true,
       });
 
       try {
@@ -499,6 +524,11 @@ const QuotationController = {
           success: false,
           message: "Quotation state changed concurrently. It is no longer 'Pendiente'. Refresh and try again.",
         });
+      }
+      // Un id_producto/marca_id inexistente en algún ítem — ver
+      // writeRepository.js#_verificarReferenciasDetalles.
+      if (error.code === 'INVALID_ITEM_REFERENCE') {
+        return res.status(error.status).json({ success: false, message: error.message });
       }
       console.error('[QuotationController.updateQuotation] Error:', error.message);
       return res.status(500).json({ success: false, message: 'Failed to update quotation.' });
