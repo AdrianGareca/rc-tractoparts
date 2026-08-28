@@ -109,6 +109,13 @@ async function _fetchPorEstado(clause, params) {
 // desde que el ejecutivo la cargo hasta que el cliente dijo que si. Solo
 // promedia las que efectivamente cerraron: las abiertas no tienen "duracion"
 // todavia y meterlas como cero hundiria el promedio.
+// 'Archivada' se cuenta APARTE del resto: no es "en la cancha" (nunca tuvo
+// por que haber salido al cliente — se puede archivar directo desde
+// Pendiente) pero tampoco es "en proceso" (es un estado terminal, nadie va a
+// seguir trabajandola). Antes no tenia columna propia y `en_proceso` la
+// heredaba por descarte junto con Pendiente/En revision, así que una
+// cotizacion muerta y sin enviar se mostraba como "en preparación" en el PDF
+// individual — que es exactamente lo contrario de lo que dice ese estado.
 async function _fetchResumen(clause, params) {
   const [[resumen]] = await pool.execute(`
     SELECT
@@ -116,6 +123,7 @@ async function _fetchResumen(clause, params) {
       SUM(c.estado IN (${marcadores(ESTADOS_EN_LA_CANCHA.length)}))   AS en_la_cancha,
       SUM(c.estado IN (${marcadores(ESTADOS_CERRADOS.length)}))       AS cerradas,
       SUM(c.estado = 'Rechazada')                                     AS rechazadas,
+      SUM(c.estado = 'Archivada')                                     AS archivadas,
       AVG(CASE WHEN c.estado IN (${marcadores(ESTADOS_CERRADOS.length)}) AND c.fecha_confirmacion IS NOT NULL
                THEN TIMESTAMPDIFF(DAY, c.creado_en, c.fecha_confirmacion) END) AS dias_cierre,
       AVG(CASE WHEN c.moneda = 'USD' AND c.estado IN (${marcadores(ESTADOS_CERRADOS.length)}) THEN c.monto_total END) AS ticket_usd,
@@ -262,6 +270,7 @@ async function obtener({ idEjecutivo, desde = null, hasta = null, conComparacion
 
   const enLaCancha = Number(resumen.en_la_cancha || 0);
   const cerradas   = Number(resumen.cerradas || 0);
+  const archivadas = Number(resumen.archivadas || 0);
 
   return {
     // LA metrica. Null y no 0 cuando todavia no salio ninguna: "0% de
@@ -273,7 +282,13 @@ async function obtener({ idEjecutivo, desde = null, hasta = null, conComparacion
     en_la_cancha: enLaCancha,
     cerradas,
     rechazadas:   Number(resumen.rechazadas || 0),
-    en_proceso:   Number(resumen.total || 0) - enLaCancha,
+    archivadas,
+    // Solo lo genuinamente activo: Pendiente, En revision, En espera,
+    // Aprobada internamente. 'Archivada' se resta aparte — es un estado
+    // terminal (nunca tuvo por que haber salido al cliente) y contarla junto
+    // con lo que sigue en tramite le decia al ejecutivo que esa cotizacion
+    // "todavia esta en preparación", cuando en realidad esta muerta.
+    en_proceso:   Number(resumen.total || 0) - enLaCancha - archivadas,
 
     dias_cierre: resumen.dias_cierre != null ? Number(Number(resumen.dias_cierre).toFixed(1)) : null,
     ticket_usd:  resumen.ticket_usd  != null ? Number(Number(resumen.ticket_usd).toFixed(2))  : null,

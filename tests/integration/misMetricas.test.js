@@ -54,6 +54,14 @@ const EN_LA_CANCHA = 6;
 const CERRADAS     = 3;
 const TOTAL        = 8;
 
+// Aparte del escenario: dos Archivada, creadas directo desde Pendiente —
+// nunca llegaron a enviarse al cliente. Antes de la correccion, `en_proceso`
+// las sumaba junto con las Pendiente genuinas (total - en_la_cancha), asi que
+// el PDF individual las mostraba como "en preparación" cuando en realidad
+// estan muertas. Deben contarse en su propio campo `archivadas` y quedar
+// AFUERA de `en_proceso`.
+const ARCHIVADAS = 2;
+
 async function crear(estado, idEjecutivo, moneda = 'USD', monto = 100) {
   const correlativo = `MM-${Date.now() % 100000}-${creadas.length}`;
   // Las confirmadas llevan fecha_confirmacion 5 dias despues de creado_en para
@@ -106,6 +114,10 @@ beforeAll(async () => {
   // Una en bolivianos, para verificar que los montos no se sumen entre monedas.
   await crear('Confirmada', idEjec, 'BOB', 700);
 
+  // Dos Archivada: nunca salieron al cliente, y no deben contarse como "en
+  // proceso" (ver ARCHIVADAS arriba).
+  for (let i = 0; i < ARCHIVADAS; i++) await crear('Archivada', idEjec);
+
   // Y una del OTRO ejecutivo, que nunca debe aparecer en las metricas del primero.
   await crear('Confirmada', idOtro);
 
@@ -145,7 +157,9 @@ describe('MM — la conversion, que es LA metrica', () => {
     // Con el total como denominador daria bastante menos.
     const siFueraSobreElTotal = (d.cerradas / d.total) * 100;
     expect(d.conversion).toBeGreaterThan(siFueraSobreElTotal);
-    expect(d.en_proceso).toBe(2);      // las dos Pendiente
+    // Las DOS Pendiente, y nada mas: si las Archivada se colaran aca (el bug
+    // que corrige este archivo), este numero seria 4 y no 2.
+    expect(d.en_proceso).toBe(2);
   });
 
   // «0 % de conversion» y «todavia no enviaste nada» son cosas distintas.
@@ -162,6 +176,37 @@ describe('MM — la conversion, que es LA metrica', () => {
 });
 
 // =============================================================================
+// Hallazgo (BAJO): las Archivada que nunca salieron al cliente se contaban
+// como "en proceso" — el PDF individual las mostraba con el texto "en
+// preparación", que es lo opuesto de un estado terminal.
+// =============================================================================
+describe('MM — las Archivada no son "en proceso"', () => {
+
+  test('MM-19: las archivadas se cuentan en su propio campo', async () => {
+    const res = await pedir(tokenEjec);
+    expect(res.body.data.archivadas).toBe(ARCHIVADAS);
+  });
+
+  test('MM-20: no inflan "en proceso" ni "en la cancha"', async () => {
+    const res = await pedir(tokenEjec);
+    const d = res.body.data;
+
+    // Si el bug siguiera presente, en_proceso incluiria las 2 archivadas
+    // ademas de las 2 Pendiente genuinas, y daria 4 en vez de 2.
+    expect(d.en_proceso).toBe(2);
+    // Tampoco cuentan como "salieron al cliente": nunca llegaron a enviarse.
+    expect(d.en_la_cancha).toBe(EN_LA_CANCHA + 1);
+  });
+
+  test('MM-21: total = en_la_cancha + archivadas + en_proceso', async () => {
+    const res = await pedir(tokenEjec);
+    const d = res.body.data;
+
+    expect(d.en_la_cancha + d.archivadas + d.en_proceso).toBe(d.total);
+  });
+});
+
+// =============================================================================
 describe('MM — el desglose por estado', () => {
 
   test('MM-04: una fila por estado, con su conteo', async () => {
@@ -173,6 +218,7 @@ describe('MM — el desglose por estado', () => {
     expect(cantidadDe('Enviada al cliente')).toBe(1);
     expect(cantidadDe('Confirmada')).toBe(4);   // 3 en USD + 1 en BOB
     expect(cantidadDe('Rechazada')).toBe(2);
+    expect(cantidadDe('Archivada')).toBe(ARCHIVADAS);
   });
 
   test('MM-05: las cantidades del desglose suman el total', async () => {
@@ -242,8 +288,8 @@ describe('MM — alcance: cada uno ve lo suyo', () => {
 
   test('MM-12: no se cuelan las cotizaciones de otro ejecutivo', async () => {
     const res = await pedir(tokenEjec);
-    // El otro tiene 1 confirmada; si se colara, el total seria 10 y no 9.
-    expect(res.body.data.total).toBe(TOTAL + 1);
+    // El otro tiene 1 confirmada; si se colara, el total seria distinto.
+    expect(res.body.data.total).toBe(TOTAL + 1 + ARCHIVADAS);
   });
 
   // Si un Ejecutivo pudiera pasar id_ejecutivo, cualquiera veria el desempeno
@@ -253,7 +299,7 @@ describe('MM — alcance: cada uno ve lo suyo', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.id_ejecutivo).toBe(idEjec);      // se ignoro el parametro
-    expect(res.body.data.total).toBe(TOTAL + 1);     // siguen siendo las suyas
+    expect(res.body.data.total).toBe(TOTAL + 1 + ARCHIVADAS);   // siguen siendo las suyas
   });
 
   test('MM-14: un Jefe SI puede mirar las de un ejecutivo', async () => {
@@ -261,7 +307,7 @@ describe('MM — alcance: cada uno ve lo suyo', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.id_ejecutivo).toBe(idEjec);
-    expect(res.body.data.total).toBe(TOTAL + 1);
+    expect(res.body.data.total).toBe(TOTAL + 1 + ARCHIVADAS);
   });
 
   test('MM-15: sin id_ejecutivo, el Jefe ve las suyas (que son ninguna)', async () => {

@@ -394,6 +394,15 @@ const ReportesController = {
     const limit = Math.min(clienteItemReport.MAX_LIMIT,
       Math.max(1, parseInt(req.query.limit, 10) || clienteItemReport.DEFAULT_LIMIT));
 
+    // El desplegable de ejecutivos NO puede tratar igual a los dos roles.
+    // Un rol de gestion elige a quien mirar — ahi `filtros.id_ejecutivo` se
+    // descarta para no colapsar la lista a una sola persona (ver el
+    // comentario de `ejecutivos()`). Un rol no-gestion no elige nada: el
+    // id_ejecutivo que trae `filtros` es el alcance que `resolveEjecutivoScope`
+    // le forzo, y hay que respetarlo — si no, el roster completo se filtraba
+    // por esta puerta trasera aunque los DATOS ya estuvieran bien acotados.
+    const alcanceForzado = !MANAGER_ROLES.has(req.user.rol);
+
     try {
       // Datos y conteo en paralelo: la agrupacion es la misma y la segunda
       // consulta no depende de la primera.
@@ -404,7 +413,7 @@ const ReportesController = {
         // Para poblar el filtro. Va con los datos y no por /api/usuarios porque
         // ese endpoint es solo para roles de gestion: un Ejecutivo recibia 403
         // y el desplegable le quedaba vacio.
-        clienteItemReport.ejecutivos(filtros),
+        clienteItemReport.ejecutivos(filtros, alcanceForzado),
       ]);
 
       return res.status(200).json({

@@ -101,7 +101,12 @@ async function getProgreso(fechaDesde, fechaHasta, ejecutivoId = null) {
   // (workflow de aprobación). Ver _getSeguimientoVentaResumen arriba.
   const seguimiento_venta = await _getSeguimientoVentaResumen(ejecPlain, scopedParams);
 
-  // Per-executive breakdown within the selected range
+  // Per-executive breakdown within the selected range.
+  // volumen_usd/volumen_bob son PLATA VENDIDA, no plata cotizada: mismo criterio
+  // que top_clientes (ver constants.ESTADOS_VENTA). Antes sumaban el monto de
+  // CUALQUIER estado — Archivada, Rechazada, lo que fuera — y el volumen por
+  // ejecutivo no coincidia con lo que ese mismo ejecutivo aparecia vendiendo en
+  // el leaderboard o en top_clientes.
   const [porEjecutivoRows] = await pool.execute(`
       SELECT
         u.nombre_completo                                              AS ejecutivo,
@@ -110,8 +115,8 @@ async function getProgreso(fechaDesde, fechaHasta, ejecutivoId = null) {
         SUM(CASE WHEN c.estado = 'Rechazada' THEN 1 ELSE 0 END)      AS rechazadas,
         SUM(CASE WHEN c.estado = 'Pendiente' THEN 1 ELSE 0 END)      AS pendientes,
         SUM(CASE WHEN c.estado = 'En revision' THEN 1 ELSE 0 END)    AS en_revision,
-        SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END) AS volumen_usd,
-        SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END) AS volumen_bob
+        SUM(CASE WHEN c.moneda = 'USD' AND c.estado IN (${literalesDe(ESTADOS_VENTA)}) THEN c.monto_total ELSE 0 END) AS volumen_usd,
+        SUM(CASE WHEN c.moneda = 'BOB' AND c.estado IN (${literalesDe(ESTADOS_VENTA)}) THEN c.monto_total ELSE 0 END) AS volumen_bob
       FROM cotizaciones c
       INNER JOIN usuarios u ON u.id = c.id_ejecutivo
       WHERE c.fecha_emision BETWEEN ? AND ?
@@ -158,21 +163,20 @@ async function getProgreso(fechaDesde, fechaHasta, ejecutivoId = null) {
 //                                    null for Jefe / Administracion / SysAdmin.
 // @param {string|null} fechaDesde  — Optional 'YYYY-MM-DD' inclusive lower bound.
 // @param {string|null} fechaHasta  — Optional 'YYYY-MM-DD' inclusive upper bound.
-//                                    The range applies only when BOTH are set.
+//                                    Each bound applies independently — sending
+//                                    only one of the two still filters by it.
 // =============================================================================
 async function getAdvancedReports(ejecutivoId = null, fechaDesde = null, fechaHasta = null) {
   const isEjecutivo = ejecutivoId != null;
-  const hasRange    = fechaDesde != null && fechaHasta != null;
 
   // Build the shared dynamic filters (executive row-level isolation + an
   // optional [fechaDesde, fechaHasta] range) as reusable clause/param pairs.
-  // The date range is only applied when BOTH bounds are present, so the
-  // executive personal dashboard (no dates) keeps its all-time behaviour.
   const buildFilters = () => {
     const clauses = [];
     const params  = [];
-    if (isEjecutivo) { clauses.push('c.id_ejecutivo = ?');            params.push(ejecutivoId); }
-    if (hasRange)    { clauses.push('c.fecha_emision BETWEEN ? AND ?'); params.push(fechaDesde, fechaHasta); }
+    if (isEjecutivo)        { clauses.push('c.id_ejecutivo = ?');       params.push(ejecutivoId); }
+    if (fechaDesde != null) { clauses.push('c.fecha_emision >= ?');     params.push(fechaDesde); }
+    if (fechaHasta != null) { clauses.push('c.fecha_emision <= ?');     params.push(fechaHasta); }
     return { clauses, params };
   };
 
@@ -217,6 +221,11 @@ async function getAdvancedReports(ejecutivoId = null, fechaDesde = null, fechaHa
   // (returns a single-row personal summary rather than a company leaderboard).
   const lb      = buildFilters();
   const lbWhere = lb.clauses.length ? 'WHERE ' + lb.clauses.join(' AND ') : '';
+  // total_usd/total_bob son lo VENDIDO, no lo cotizado: mismo criterio que
+  // top_clientes (constants.ESTADOS_VENTA). Antes sumaban el monto sin mirar
+  // el estado, asi que una Archivada o una Rechazada inflaban el volumen del
+  // ejecutivo aunque esa plata nunca haya entrado. total_aprobadas sigue
+  // midiendo otra cosa (cuanto avanzo en el flujo interno) y no se toca.
   const leaderboardSql = `
         SELECT
           u.nombre_completo                                                AS ejecutivo,
@@ -225,8 +234,8 @@ async function getAdvancedReports(ejecutivoId = null, fechaDesde = null, fechaHa
                                      'Enviada al cliente',
                                      'Confirmada',
                                      'Aceptada')         THEN 1 ELSE 0 END) AS total_aprobadas,
-          SUM(CASE WHEN c.moneda = 'USD' THEN c.monto_total ELSE 0 END)   AS total_usd,
-          SUM(CASE WHEN c.moneda = 'BOB' THEN c.monto_total ELSE 0 END)   AS total_bob
+          SUM(CASE WHEN c.moneda = 'USD' AND c.estado IN (${literalesDe(ESTADOS_VENTA)}) THEN c.monto_total ELSE 0 END) AS total_usd,
+          SUM(CASE WHEN c.moneda = 'BOB' AND c.estado IN (${literalesDe(ESTADOS_VENTA)}) THEN c.monto_total ELSE 0 END) AS total_bob
         FROM cotizaciones c
         INNER JOIN usuarios u ON u.id = c.id_ejecutivo
         ${lbWhere}
@@ -259,8 +268,12 @@ async function getAdvancedReports(ejecutivoId = null, fechaDesde = null, fechaHa
   // stay period-scoped like the rest of the report.
   let clientesPorOrigen = [];
   if (!isEjecutivo) {
-    const origenDateClause = hasRange ? 'AND c.fecha_emision BETWEEN ? AND ?' : '';
-    const origenParams     = hasRange ? [fechaDesde, fechaHasta] : [];
+    // Cada limite es independiente, igual que en buildFilters de arriba.
+    const origenClauses = [];
+    const origenParams  = [];
+    if (fechaDesde != null) { origenClauses.push('AND c.fecha_emision >= ?'); origenParams.push(fechaDesde); }
+    if (fechaHasta != null) { origenClauses.push('AND c.fecha_emision <= ?'); origenParams.push(fechaHasta); }
+    const origenDateClause = origenClauses.join(' ');
     const origenSql = `
           SELECT
             COALESCE(oc.nombre, 'Sin clasificar')                         AS origen,

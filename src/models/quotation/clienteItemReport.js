@@ -353,12 +353,28 @@ async function count(filtros = {}, modo = 'detalle') {
 // que efectivamente tienen cotizaciones en el periodo filtrado. Si alguien no
 // cotizo nada este mes, elegirlo solo mostraria una tabla vacia.
 //
-// El filtro id_ejecutivo se IGNORA a proposito: si no, al elegir a alguien el
-// desplegable se colapsaria a esa sola persona y no habria forma de volver.
+// El filtro id_ejecutivo se IGNORA a proposito PARA UN ROL DE GESTION: si no,
+// al elegir a alguien el desplegable se colapsaria a esa sola persona y no
+// habria forma de volver.
+//
+// PERO ESO SOLO VALE PARA QUIEN ELIGE. Para un rol no-gestion (Ejecutivo,
+// Proyectos) el id_ejecutivo de `filtros` no es una eleccion: es el alcance
+// que `resolveEjecutivoScope` le FORZO en el controller, el mismo que ya
+// acota `find()` y `count()`. Ignorarlo tambien aca filtraba el roster
+// completo de la empresa por esta puerta trasera — un Ejecutivo no veia los
+// DATOS de sus companeros, pero si sus NOMBRES en el desplegable, que en una
+// empresa donde compiten por comision ya es informacion que no les toca.
+//
+// `alcanceForzado` es lo que distingue los dos casos: lo decide el
+// controller (sabe si el rol es de gestion), no este modulo.
 // ---------------------------------------------------------------------------
-async function ejecutivos(filtros = {}) {
+async function ejecutivos(filtros = {}, alcanceForzado = false) {
   const { id_ejecutivo, ...resto } = filtros;
-  const { clause, params } = _where(resto);
+  // Rol de gestion: se descarta el filtro, como siempre, para no colapsar el
+  // desplegable. Rol forzado: se mantiene, así que _where() lo aplica y el
+  // resultado queda acotado a un único id_ejecutivo — el propio.
+  const filtrosEfectivos = alcanceForzado ? filtros : resto;
+  const { clause, params } = _where(filtrosEfectivos);
 
   const sql = `
     SELECT DISTINCT l.id_ejecutivo AS id, l.ejecutivo_nombre AS nombre

@@ -573,6 +573,17 @@ describe('RCI2 — vista por item, para decidir el stock', () => {
 // a roles de gestion: un Ejecutivo abriendo el reporte recibia 403, un catch
 // vacio se lo tragaba, y el desplegable le quedaba con «Todos» y nada mas.
 // Ahora la lista viene con los datos del propio reporte.
+//
+// HALLAZGO (stress-test, MEDIO): el roster completo, filtrado
+// El descarte de `id_ejecutivo` para no colapsar el desplegable se aplicaba
+// INCONDICIONALMENTE, incluso a un rol no-gestion cuyo alcance viene FORZADO
+// por `resolveEjecutivoScope` (no es una eleccion, como en un Jefe). Un
+// Ejecutivo no veia los DATOS de sus companeros (eso ya lo protegia
+// `find`/`count`), pero si sus NOMBRES en este desplegable — en una empresa
+// donde compiten por comision, eso ya es informacion que no les toca.
+// Los tests RCI3-02/04/05, que antes afirmaban ese comportamiento con el
+// token de un Ejecutivo, ahora usan el del Jefe: son management-only.
+// RCI3-07/08 cubren el caso que el bug dejaba pasar.
 // =============================================================================
 describe('RCI3 — la lista de ejecutivos para el filtro', () => {
 
@@ -583,8 +594,8 @@ describe('RCI3 — la lista de ejecutivos para el filtro', () => {
     expect(Array.isArray(res.body.ejecutivos)).toBe(true);
   });
 
-  test('RCI3-02: trae a los dos que cargaron cotizaciones', async () => {
-    const res = await pedir('limit=5');
+  test('RCI3-02: un Jefe trae a los dos que cargaron cotizaciones', async () => {
+    const res = await pedirComoJefe('limit=5');
     const ids = res.body.ejecutivos.map((e) => e.id);
 
     expect(ids).toContain(idEjec);
@@ -599,17 +610,17 @@ describe('RCI3 — la lista de ejecutivos para el filtro', () => {
   });
 
   test('RCI3-04: sin repetidos, aunque tengan muchas cotizaciones', async () => {
-    const res = await pedir('limit=5');
+    const res = await pedirComoJefe('limit=5');
     const ids = res.body.ejecutivos.map((e) => e.id);
 
     expect(ids.length).toBe(new Set(ids).size);
   });
 
-  // Si el filtro de ejecutivo se aplicara tambien a esta lista, elegir a
-  // alguien colapsaria el desplegable a esa sola persona y no habria forma de
-  // volver a «Todos» sin recargar.
-  test('RCI3-05: elegir un ejecutivo NO reduce la lista a esa persona', async () => {
-    const res = await pedir(`id_ejecutivo=${idEjec}&limit=5`);
+  // Si el filtro de ejecutivo se aplicara tambien a esta lista para un Jefe,
+  // elegir a alguien colapsaria el desplegable a esa sola persona y no habria
+  // forma de volver a «Todos» sin recargar.
+  test('RCI3-05: un Jefe eligiendo un ejecutivo NO reduce la lista a esa persona', async () => {
+    const res = await pedirComoJefe(`id_ejecutivo=${idEjec}&limit=5`);
     const ids = res.body.ejecutivos.map((e) => e.id);
 
     expect(ids).toContain(idEjec);
@@ -619,11 +630,28 @@ describe('RCI3 — la lista de ejecutivos para el filtro', () => {
   // Los demas filtros SI aplican: no tiene sentido ofrecer a alguien que no
   // cotizo nada en el periodo elegido, porque solo mostraria una tabla vacia.
   test('RCI3-06: un rango de fechas vacio deja la lista vacia', async () => {
-    const res = await pedir('fecha_desde=2000-01-01&fecha_hasta=2000-12-31');
+    const res = await pedirComoJefe('fecha_desde=2000-01-01&fecha_hasta=2000-12-31');
     const ids = res.body.ejecutivos.map((e) => e.id);
 
     expect(ids).not.toContain(idEjec);
     expect(ids).not.toContain(idEjec2);
+  });
+
+  // ── El agujero que este hallazgo cierra ──────────────────────────────────
+  test('RCI3-07: un Ejecutivo ve unicamente su propio nombre en el desplegable', async () => {
+    const res = await pedir('limit=5');
+    const ids = res.body.ejecutivos.map((e) => e.id);
+
+    expect(ids).toEqual([idEjec]);
+  });
+
+  test('RCI3-08: intentar elegir a otro ejecutivo no lo agrega al desplegable', async () => {
+    // Ana (idEjec) intenta ver el nombre de su companero por id, igual que
+    // ALC-03 probo con los datos. El alcance forzado ignora el parametro.
+    const res = await pedir(`id_ejecutivo=${idEjec2}&limit=5`);
+    const ids = res.body.ejecutivos.map((e) => e.id);
+
+    expect(ids).toEqual([idEjec]);
   });
 });
 
