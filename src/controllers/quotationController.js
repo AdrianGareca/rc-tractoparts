@@ -612,6 +612,18 @@ const QuotationController = {
 
     const sanitized = String(comentario_admin).trim();
 
+    // Mismo tope que updateStatusSchema en quotationValidator.js (4000) —
+    // ese mismo campo (comentarios_admin en la base) también se puede setear
+    // junto con un cambio de estado, y AHÍ sí tenía un .max(4000) desde
+    // antes. Este endpoint standalone era el único de los dos caminos sin
+    // ningún límite explícito. Auditoría de seguridad 2026-08-28.
+    if (sanitized.length > 4000) {
+      return res.status(422).json({
+        success: false,
+        message: "Field 'comentario_admin' must not exceed 4000 characters.",
+      });
+    }
+
     try {
       const quotation = await QuotationModel.findById(id);
       if (!quotation) {

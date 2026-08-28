@@ -8,11 +8,32 @@
 'use strict';
 
 const express              = require('express');
+const rateLimit             = require('express-rate-limit');
 const ReportesController   = require('../controllers/reportesController');
 const { authenticate }     = require('../middlewares/authMiddleware');
 const authorize            = require('../middlewares/roleMiddleware');
 
 const router      = express.Router();
+
+// ---------------------------------------------------------------------------
+// Rate limiter para /pdf — a diferencia del resto de /reportes (agregaciones
+// SQL indexadas, rápidas), esto dispara una generación de PDF con PDFKit:
+// trabajo real de CPU en el proceso Node, no sólo una consulta. El limiter
+// global de app.js (1000 req/15min por IP sobre TODA la API) es la única
+// protección que tenía hasta ahora — mismo criterio y cadencia que
+// uploadLimiter en quotationRoutes.js. Auditoría de seguridad 2026-08-28.
+// ---------------------------------------------------------------------------
+const reportePdfLimiter = rateLimit({
+  windowMs:        15 * 60 * 1000,
+  max:             20,
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message: {
+    success: false,
+    message: 'Too many PDF report requests from this IP. Please wait 15 minutes.',
+  },
+  skip: () => process.env.NODE_ENV === 'test',
+});
 // Progreso dashboard: full management view — Jefe, Administracion and SysAdmin.
 const progresoAuth = [authenticate, authorize(['Jefe', 'Administracion', 'SysAdmin'])];
 // Advanced reports: managers see company-wide data; Ejecutivo sees own data only
@@ -117,7 +138,7 @@ router.get('/advanced', ...advancedAuth, ReportesController.getAdvancedReports);
  *       500:
  *         description: Error interno al generar el PDF.
  */
-router.get('/pdf', ...advancedAuth, ReportesController.getReportePdf);
+router.get('/pdf', ...advancedAuth, reportePdfLimiter, ReportesController.getReportePdf);
 
 /**
  * @swagger

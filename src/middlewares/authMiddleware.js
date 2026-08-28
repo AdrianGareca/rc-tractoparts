@@ -112,7 +112,8 @@ async function authenticate(req, res, next) {
   try {
     // 4. Verify the token signature and expiration with the application secret.
     //    jwt.verify throws JsonWebTokenError or TokenExpiredError on failure.
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    //    algorithms fijo explícito: defensa en profundidad (auditoría 2026-08-28).
+    const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
 
     // 4b. Reject single-purpose tokens (e.g. the 10-minute /api-docs access
     //     token minted by AuthController.getDocsToken). Those payloads carry

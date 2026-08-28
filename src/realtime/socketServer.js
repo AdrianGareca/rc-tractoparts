@@ -118,7 +118,8 @@ function initSocket(httpServer) {
 
     let payload;
     try {
-      payload = jwt.verify(token, process.env.JWT_SECRET);
+      // algorithms fijo explícito: defensa en profundidad (auditoría 2026-08-28).
+      payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     } catch {
       // Expired/invalid tokens are routine (not exceptional) — same silent
       // treatment as authMiddleware's outer catch.

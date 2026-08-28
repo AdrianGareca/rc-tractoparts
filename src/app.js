@@ -186,7 +186,11 @@ function requireDocsAccess(req, res, next) {
   if (!token) return deny(401, 'Este enlace requiere un token de acceso a la documentación.');
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    // algorithms fijo explícito: defensa en profundidad, aunque jsonwebtoken
+    // ya restringe por default a HS* cuando la clave es un string (no hay
+    // confusión de algoritmo posible sin una clave RSA/EC en el proyecto).
+    // Auditoría de seguridad 2026-08-28.
+    const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     if (payload.purpose !== 'api-docs') {
       return deny(403, 'Token no válido para este propósito.');
     }
@@ -308,6 +312,20 @@ app.use((err, req, res, next) => {
     return res.status(413).json({
       success: false,
       message: 'Request payload too large. Maximum allowed size is 5 MB.',
+    });
+  }
+
+  // Malformed JSON body — express.json() throws a raw SyntaxError from V8's
+  // JSON.parse (e.g. "Unexpected end of JSON input"), which lands with
+  // status 400 like any other application-controlled 4xx. Without this
+  // branch, the generic relay below would forward that parser-internal
+  // message verbatim — it's not application text, so it doesn't meet the
+  // "safe to surface" bar this handler documents for the 4xx relay.
+  // Auditoría de seguridad 2026-08-28.
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({
+      success: false,
+      message: 'Malformed request body. Expected valid JSON.',
     });
   }
 
