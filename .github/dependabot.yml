@@ -1,0 +1,29 @@
+# =============================================================================
+# .github/dependabot.yml
+# Chequeo automático de dependencias — GitHub abre un Pull Request solo
+# cuando encuentra una actualización disponible, sin que nadie tenga que
+# acordarse de correr `npm audit` a mano.
+#
+# Esto es la mitad "version updates" de Dependabot (configurable por archivo).
+# La otra mitad — "Dependabot alerts" y "secret scanning" — son toggles de
+# GitHub que viven en Settings → Security del repositorio, no en un archivo:
+# hay que activarlos ahí una sola vez.
+#
+# Auditoría de seguridad 2026-08-28.
+# =============================================================================
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    # No abrir 10 PRs sueltos por 10 paquetes de una librería relacionada —
+    # agrupa lo que sea seguro agrupar (minor/patch) en un solo PR semanal,
+    # más fácil de revisar y mergear de una vez.
+    groups:
+      dependencias-menores:
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
