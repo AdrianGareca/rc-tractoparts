@@ -209,6 +209,22 @@ const ClientModel = {
     );
     return result.affectedRows > 0;
   },
+
+  // ---------------------------------------------------------------------------
+  // origenExists — true si el id de origen de cliente existe en
+  // origenes_cliente (activo o no). Usado por el controller para devolver un
+  // 422 claro en vez del 500 crudo que deja pasar una violación de la FK
+  // clientes.id_origen_cliente al INSERT/UPDATE. Mismo patrón que
+  // clienteLinkGuard.js/licitacionLinkGuard.js para id_cliente/id_licitacion
+  // en cotizaciones. Encontrado en la ronda de estrés del 2026-08-27.
+  // ---------------------------------------------------------------------------
+  async origenExists(id) {
+    const [[row]] = await pool.execute(
+      'SELECT id FROM origenes_cliente WHERE id = ? LIMIT 1',
+      [parseInt(id, 10)]
+    );
+    return !!row;
+  },
 };
 
 module.exports = ClientModel;

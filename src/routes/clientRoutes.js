@@ -23,6 +23,17 @@ const router = express.Router();
 // documentado como recurrente en el proyecto.
 const allRoles = [authenticate, authorize(['Ejecutivo', 'Administracion', 'Jefe', 'Proyectos', 'SysAdmin'])];
 
+// MEDIO — encontrado en la ronda de estrés del 2026-08-27: desactivar (DELETE)
+// y reactivar un cliente (el PUT con activo:true) tenían el mismo permiso
+// amplio que buscar/crear/editar/listar. Cualquier Ejecutivo o Proyectos podía
+// desactivar o reactivar cualquier cliente del sistema. Se restringe sólo
+// ESE verbo — Proyectos/Ejecutivo conservan acceso normal al resto del CRUD.
+// (El PUT en sí sigue abierto a los 5 roles porque también sirve para
+// ediciones normales de datos; el guard de reactivación/desactivación vive
+// dentro de ClientController.update, que es el único lugar que sabe si el
+// body está cambiando `activo`.)
+const deactivateRoles = [authenticate, authorize(['Administracion', 'Jefe', 'SysAdmin'])];
+
 /**
  * @swagger
  * tags:
@@ -270,6 +281,6 @@ router.put('/:id', ...allRoles, ClientController.update);
  *       409:
  *         description: El cliente ya está inactivo.
  */
-router.delete('/:id', ...allRoles, ClientController.deactivate);
+router.delete('/:id', ...deactivateRoles, ClientController.deactivate);
 
 module.exports = router;

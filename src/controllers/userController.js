@@ -9,7 +9,7 @@
 const bcrypt    = require('bcryptjs');
 const UserModel = require('../models/UserModel');
 const { ROLES }                  = require('../config/roles');
-const { USERNAME_REGEX }         = require('../validators/authValidator');
+const { USERNAME_REGEX, USERNAME_MIN_LENGTH, USERNAME_MAX_LENGTH } = require('../validators/authValidator');
 const { logEvent, AuditActions } = require('../utils/auditLog');
 // Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
 // con el mensaje en dos idiomas distintos.
@@ -84,6 +84,61 @@ function _validarIdRol(idRol) {
 // desde, o desactivar una cuenta SysAdmin. El resto de las combinaciones de
 // roles para gestión de usuarios sigue exactamente igual que antes.
 const ID_ROL_SYSADMIN = ROLES.find((r) => r.nombre === 'SysAdmin').id;
+
+// ALTO — encontrado en la ronda de estrés del 2026-08-27: el chequeo de arriba
+// sólo cubría el salto hacia/desde SysAdmin. No había ninguna regla para
+// Administracion→Jefe, así que cualquier Administracion podía asignarse (o
+// asignarle a otra cuenta) el rol "Jefe" — que aprueba cotizaciones y gestiona
+// usuarios — con su propio token. "Jefe" es, junto con SysAdmin, uno de los
+// ROLES_CON_AUTORIDAD_TOTAL (config/roles.js); sólo alguien que ya tiene esa
+// autoridad (Jefe o SysAdmin) puede otorgarla.
+const ID_ROL_JEFE = ROLES.find((r) => r.nombre === 'Jefe').id;
+
+/**
+ * _validarPermisoSobreAscensoAJefe — sólo Jefe y SysAdmin pueden asignar el
+ * rol "Jefe" a una cuenta, sea en la creación o en una edición posterior.
+ *
+ * @param   {number} idRolSolicitado — el id_rol que se quiere ASIGNAR
+ * @param   {string} rolActor        — req.user.rol, quien hace el pedido
+ * @returns {{status:number, body:object}|null}
+ */
+function _validarPermisoSobreAscensoAJefe(idRolSolicitado, rolActor) {
+  if (idRolSolicitado === ID_ROL_JEFE && rolActor !== 'Jefe' && rolActor !== 'SysAdmin') {
+    return {
+      status: 403,
+      body: {
+        success: false,
+        message: 'Access denied. Only a Jefe or SysAdmin can assign the "Jefe" role to an account.',
+      },
+    };
+  }
+  return null;
+}
+
+/**
+ * _validarNoAutoEdicionDeRol — nadie puede cambiar su PROPIO id_rol, ni
+ * siquiera un Jefe o un SysAdmin. Sin esto, cualquier cuenta con acceso a
+ * PUT /api/usuarios/:id podía auto-promoverse editándose a sí misma (p. ej.
+ * Administracion→Jefe con su propio token, saltándose el chequeo de arriba
+ * porque ahí el actor y el objetivo son la misma persona). Si hace falta
+ * cambiar el rol propio, que lo haga OTRA cuenta.
+ *
+ * @param   {number} idUsuarioObjetivo — a quién se está editando (req.params.id)
+ * @param   {number} idUsuarioActor    — quien hace el pedido (req.user.id)
+ * @returns {{status:number, body:object}|null}
+ */
+function _validarNoAutoEdicionDeRol(idUsuarioObjetivo, idUsuarioActor) {
+  if (idUsuarioObjetivo === idUsuarioActor) {
+    return {
+      status: 403,
+      body: {
+        success: false,
+        message: 'Access denied. You cannot change your own role. Ask another account to do it.',
+      },
+    };
+  }
+  return null;
+}
 
 /**
  * @param   {number}      idRolSolicitado — el id_rol que se quiere ASIGNAR (crear o cambiar a)
@@ -166,15 +221,30 @@ const UserController = {
     if (!nombre_completo) errors.push({ field: 'nombre_completo', message: 'Full name is required.' });
     if (!nombre_usuario) {
       errors.push({ field: 'nombre_usuario', message: 'Username is required.' });
-    } else if (!USERNAME_REGEX.test(String(nombre_usuario).trim())) {
-      // Sin esto, un nombre_usuario con un punto (u otro carácter que el
-      // login rechaza) se creaba igual y la cuenta quedaba inutilizable: el
-      // login siempre devuelve el mismo 422 de formato, antes de comparar
-      // credenciales. Mismo regex que loginSchema en authValidator.js.
-      errors.push({
-        field:   'nombre_usuario',
-        message: 'Username may only contain letters, digits, underscores, or hyphens.',
-      });
+    } else {
+      const nombreUsuarioTrimmed = String(nombre_usuario).trim();
+
+      // ALTO — encontrado en la ronda de estrés del 2026-08-27: acá sólo se
+      // validaba el charset (USERNAME_REGEX), nunca el largo. loginSchema SÍ
+      // exige este mismo mínimo/máximo — un nombre de 1-2 caracteres se creaba
+      // igual y quedaba inutilizable (el login lo rechaza siempre), y uno de
+      // más de 50 rompía con un 500 al chocar contra el ancho de la columna.
+      // Mismas constantes que loginSchema, para que no se desincronicen.
+      if (nombreUsuarioTrimmed.length < USERNAME_MIN_LENGTH || nombreUsuarioTrimmed.length > USERNAME_MAX_LENGTH) {
+        errors.push({
+          field:   'nombre_usuario',
+          message: `Username must be between ${USERNAME_MIN_LENGTH} and ${USERNAME_MAX_LENGTH} characters long.`,
+        });
+      } else if (!USERNAME_REGEX.test(nombreUsuarioTrimmed)) {
+        // Sin esto, un nombre_usuario con un punto (u otro carácter que el
+        // login rechaza) se creaba igual y la cuenta quedaba inutilizable: el
+        // login siempre devuelve el mismo 422 de formato, antes de comparar
+        // credenciales. Mismo regex que loginSchema en authValidator.js.
+        errors.push({
+          field:   'nombre_usuario',
+          message: 'Username may only contain letters, digits, underscores, or hyphens.',
+        });
+      }
     }
     if (!password) {
       errors.push({ field: 'password', message: 'Password is required.' });
@@ -195,6 +265,12 @@ const UserController = {
 
     const errSysAdmin = _validarPermisoSobreSysAdmin(parseInt(id_rol, 10), req.user.rol);
     if (errSysAdmin) return res.status(errSysAdmin.status).json(errSysAdmin.body);
+
+    // Misma regla que en updateUser: crear una cuenta nueva con id_rol=Jefe es
+    // el mismo salto de autoridad que promover una existente, así que se
+    // valida acá también — no sólo en la edición.
+    const errJefe = _validarPermisoSobreAscensoAJefe(parseInt(id_rol, 10), req.user.rol);
+    if (errJefe) return res.status(errJefe.status).json(errJefe.body);
 
     try {
       // Hash the password with the configured cost factor
@@ -278,6 +354,20 @@ const UserController = {
         existing.id_rol
       );
       if (errSysAdmin) return res.status(errSysAdmin.status).json(errSysAdmin.body);
+
+      // CRÍTICO — encontrado en la ronda de estrés del 2026-08-27: el chequeo
+      // de arriba sólo restringe el salto hacia/desde SysAdmin. No había
+      // ninguna regla para que un usuario se edite A SÍ MISMO el id_rol, ni
+      // para el salto Administracion→Jefe. Un Administracion podía
+      // auto-promoverse a Jefe (PUT sobre sí mismo) o promover a cualquier
+      // otra cuenta, ambos con su propio token.
+      if (req.body.id_rol != null) {
+        const errAutoRol = _validarNoAutoEdicionDeRol(id, req.user.id);
+        if (errAutoRol) return res.status(errAutoRol.status).json(errAutoRol.body);
+
+        const errJefe = _validarPermisoSobreAscensoAJefe(parseInt(req.body.id_rol, 10), req.user.rol);
+        if (errJefe) return res.status(errJefe.status).json(errJefe.body);
+      }
 
       const updateData = {};
 

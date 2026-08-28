@@ -26,6 +26,14 @@ const { z } = require('zod');
 // comparar credenciales). Encontrado en la ronda de estrés del 2026-08-26.
 const USERNAME_REGEX = /^[\w\-]+$/;
 
+// Compartido con userController.js (createUser): antes sólo se validaba el
+// charset (USERNAME_REGEX) ahí, no el largo. Un nombre de 1-2 caracteres se
+// creaba igual y después nunca podía loguearse (login exige este mismo
+// mínimo); uno de más de 50 rompía con un 500 al chocar contra el ancho de
+// columna en la base. Encontrado en la ronda de estrés del 2026-08-27.
+const USERNAME_MIN_LENGTH = 3;
+const USERNAME_MAX_LENGTH = 50;
+
 // ---------------------------------------------------------------------------
 // loginSchema — POST /api/auth/login
 // ---------------------------------------------------------------------------
@@ -33,8 +41,8 @@ const loginSchema = z.object({
   nombre_usuario: z
     .string({ required_error: 'nombre_usuario is required.' })
     .trim()
-    .min(3,  'nombre_usuario must be at least 3 characters.')
-    .max(50, 'nombre_usuario must not exceed 50 characters.')
+    .min(USERNAME_MIN_LENGTH, `nombre_usuario must be at least ${USERNAME_MIN_LENGTH} characters.`)
+    .max(USERNAME_MAX_LENGTH, `nombre_usuario must not exceed ${USERNAME_MAX_LENGTH} characters.`)
     // Allow letters, digits, underscores, and hyphens only — blocks SQL metacharacters
     .regex(USERNAME_REGEX, 'nombre_usuario may only contain letters, digits, underscores, or hyphens.'),
 
@@ -44,4 +52,4 @@ const loginSchema = z.object({
     .max(128, 'password must not exceed 128 characters.'),
 });
 
-module.exports = { loginSchema, USERNAME_REGEX };
+module.exports = { loginSchema, USERNAME_REGEX, USERNAME_MIN_LENGTH, USERNAME_MAX_LENGTH };

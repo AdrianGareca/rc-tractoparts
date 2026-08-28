@@ -55,6 +55,51 @@ function _validarCamposCliente({ razon_social, nit, email, direccion, ciudad, te
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// _validarOrigenCliente — verifica que id_origen_cliente exista ANTES del
+// INSERT/UPDATE. Sin esto, un id_origen_cliente que no está en la tabla
+// origenes_cliente llegaba hasta la consulta y la restricción de clave
+// foránea la rechazaba con una excepción sin capturar: HTTP 500 genérico en
+// vez de un 422 claro. Mismo patrón que clienteLinkGuard.js/
+// licitacionLinkGuard.js en cotizaciones. Encontrado en la ronda de estrés
+// del 2026-08-27.
+//
+// El campo es opcional: null/undefined significa "sin origen" y no se valida
+// (mismo criterio que verificarVinculoLicitacion para id_licitacion).
+//
+// @returns {Promise<{status:number, body:object}|null>}
+// ---------------------------------------------------------------------------
+async function _validarOrigenCliente(idOrigenCliente) {
+  if (idOrigenCliente == null) return null;
+
+  const parsedId = parseInt(idOrigenCliente, 10);
+  if (!Number.isInteger(parsedId) || parsedId <= 0) {
+    return {
+      status: 422,
+      body: { success: false, message: `id_origen_cliente inválido: "${idOrigenCliente}".` },
+    };
+  }
+
+  const existe = await ClientModel.origenExists(parsedId);
+  if (!existe) {
+    return {
+      status: 422,
+      body: { success: false, message: `El origen de cliente #${parsedId} indicado no existe.` },
+    };
+  }
+
+  return null;
+}
+
+// MEDIO — encontrado en la ronda de estrés del 2026-08-27: los 5 roles tenían
+// el mismo permiso para desactivar/reactivar un cliente que para
+// crear/editar/listar/ver. La desactivación tiene su propio endpoint (DELETE,
+// restringido en clientRoutes.js), pero la reactivación es sólo un campo
+// (`activo`) dentro del PUT general — así que ese permiso más estricto se
+// aplica acá, adentro del controller, que es el único lugar que sabe si el
+// body está efectivamente cambiando el estado activo/inactivo.
+const ROLES_ESTADO_CLIENTE = ['Administracion', 'Jefe', 'SysAdmin'];
+
 const ClientController = {
 
   // ---------------------------------------------------------------------------
@@ -145,6 +190,9 @@ const ClientController = {
     const errValidacion = _validarCamposCliente({ razon_social, nit, email, direccion, ciudad, telefono, contacto });
     if (errValidacion) return res.status(errValidacion.status).json(errValidacion.body);
 
+    const errOrigen = await _validarOrigenCliente(id_origen_cliente);
+    if (errOrigen) return res.status(errOrigen.status).json(errOrigen.body);
+
     try {
       const id = await ClientModel.create({ razon_social, nit, contacto, email, telefono, direccion, ciudad, id_origen_cliente });
       const newClient = await ClientModel.findById(id);
@@ -216,6 +264,12 @@ const ClientController = {
     const errValidacion = _validarCamposCliente({ razon_social, nit, email, direccion, ciudad, telefono, contacto });
     if (errValidacion) return res.status(errValidacion.status).json(errValidacion.body);
 
+    // Sólo se valida cuando el campo viene explícito en el body — omitirlo
+    // conserva el id_origen_cliente ya guardado (que ya pasó esta misma
+    // validación cuando se guardó), y un null explícito lo vacía sin problema.
+    const errOrigen = await _validarOrigenCliente(id_origen_cliente);
+    if (errOrigen) return res.status(errOrigen.status).json(errOrigen.body);
+
     try {
       const existing = await ClientModel.findByIdAny(id);
 
@@ -224,6 +278,17 @@ const ClientController = {
       }
 
       const activo = req.body.activo != null ? (req.body.activo ? 1 : 0) : existing.activo;
+
+      // Cambiar el estado activo/inactivo (reactivar o desactivar por esta
+      // vía) exige el mismo permiso más estricto que el DELETE de
+      // desactivación — Ejecutivo/Proyectos conservan el resto del PUT
+      // (renombrar, corregir NIT/contacto, etc.) sin este chequeo.
+      if (activo !== existing.activo && !ROLES_ESTADO_CLIENTE.includes(req.user.rol)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. Only Administracion, Jefe, or SysAdmin can activate or deactivate a client.',
+        });
+      }
 
       // Every optional field follows the same resolve-from-existing rule as
       // `activo`: ClientModel.update always writes EVERY column, so a caller that

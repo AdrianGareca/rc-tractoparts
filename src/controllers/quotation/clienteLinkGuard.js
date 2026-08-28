@@ -22,11 +22,17 @@
 const ClientModel = require('../../models/ClientModel');
 
 /**
- * @param   {*}      idCliente — req.body.id_cliente, tal como llegó
- * @param   {string} contexto  — nombre del controlador, sólo para el aviso
+ * @param   {*}      idCliente      — req.body.id_cliente, tal como llegó
+ * @param   {string} contexto       — nombre del controlador, sólo para el aviso
+ * @param   {Object} [opts]
+ * @param   {*}      [opts.idClienteActual] — el id_cliente que la cotización YA
+ *   tenía guardado (sólo aplica en updateQuotation). Cuando se pasa y coincide
+ *   con idCliente, la edición no está cambiando el cliente — no se bloquea por
+ *   el estado activo/inactivo, sólo por creación o por un cambio real de
+ *   cliente. Ver el comentario largo más abajo.
  * @returns {Promise<{status:number, body:object}|null>} null si está todo bien
  */
-async function verificarCliente(idCliente, contexto) {
+async function verificarCliente(idCliente, contexto, { idClienteActual } = {}) {
   const parsedId = parseInt(idCliente, 10);
 
   if (!Number.isInteger(parsedId) || parsedId <= 0) {
@@ -34,6 +40,18 @@ async function verificarCliente(idCliente, contexto) {
       status: 422,
       body: { success: false, message: `id_cliente inválido: "${idCliente}".` },
     };
+  }
+
+  // MEDIO — encontrado en la ronda de estrés del 2026-08-27: este guard corría
+  // igual en creación y en edición. Si un cliente con una cotización
+  // "Pendiente" se desactivaba, esa cotización quedaba imposible de editar
+  // —aunque la edición no tocara el cliente— hasta reactivarlo. Una edición
+  // que deja el MISMO id_cliente que ya tenía la cotización no debe bloquearse
+  // por el estado del cliente: sólo importa el estado activo cuando se está
+  // creando la cotización, o cuando la edición efectivamente CAMBIA el
+  // cliente a uno distinto.
+  if (idClienteActual != null && parsedId === parseInt(idClienteActual, 10)) {
+    return null;
   }
 
   try {
