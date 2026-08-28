@@ -135,7 +135,7 @@ describe('el tamaño de las funciones sólo puede bajar', () => {
 
   // Cuántas pasan de 80 líneas — el umbral donde una función deja de entrar en
   // una pantalla y hay que hacer scroll para saber qué hace.
-  const TOPE_GRANDES = 29;
+  const TOPE_GRANDES = 28;
   const UMBRAL_GRANDE = 80;
 
   test(`ninguna función pasa de ${TOPE_MAXIMO} líneas`, () => {

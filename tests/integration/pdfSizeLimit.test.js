@@ -1,7 +1,7 @@
 // =============================================================================
 // tests/integration/pdfSizeLimit.test.js
-// HALLAZGO 4 — off-by-one en el límite máximo de tamaño de archivo, en la
-// subida de PDF de cotizaciones (POST /:id/pdf).
+// HALLAZGO 4 (ronda de estrés 2026-08-26) — off-by-one en el límite máximo de
+// tamaño de archivo, en la subida de Excel de cotizaciones (POST /:id/upload).
 //
 // Un archivo de EXACTAMENTE MAX_PDF_SIZE_MB*1024*1024 bytes se rechazaba como
 // "demasiado grande"; uno de un byte menos se aceptaba. La causa es una
@@ -12,12 +12,12 @@
 // configura `limits.fileSize = MAX_PDF_SIZE_MB*1024*1024 + 1`, así que el
 // primer tamaño que dispara el límite es el byte siguiente al documentado.
 //
-// Este archivo confirma el mismo fix que
-// tests/integration/licitacionDocSizeLimit.test.js pero contra la OTRA ruta
-// que configura este límite (quotationRoutes.js's uploadPdfSingle), y de
-// paso confirma que el 413 de "archivo demasiado grande" (Hallazgo 3) ya era
-// correcto acá — pasa por el manejador GLOBAL de src/app.js, no por el de
-// licitacionRoutes.js.
+// NOTA (2026-08-28): este test apuntaba originalmente a POST /:id/pdf, la
+// subida manual de PDF que se sacó por completo ese día — ningún botón de la
+// aplicación real la disparaba nunca (ver quotationPdfController.js). El
+// límite de tamaño en sí sigue existiendo, ahora sólo para el campo 'excel'
+// de POST /:id/upload, así que el test se reescribió contra esa ruta para
+// seguir cubriendo el mismo fix.
 //
 // Prerequisitos: NODE_ENV=test — la base de pruebas debe existir y estar migrada.
 // =============================================================================
@@ -42,12 +42,14 @@ const USUARIO  = 'test_ejec_pdfsize';
 const PASSWORD = 'TestPdfSize01!';
 const CLIENTE  = 'Test Client PDFSIZE';
 
-const MAX_PDF_MB   = parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10;
-const LIMITE_BYTES = MAX_PDF_MB * 1024 * 1024;
+const MAX_MB       = parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10;
+const LIMITE_BYTES = MAX_MB * 1024 * 1024;
 
-function bufferPdfDeTamano(bytes) {
+// Cabecera ZIP (PK\x03\x04) — necesaria para pasar el chequeo de magic-number
+// del controller independientemente del tamaño total del archivo.
+function bufferXlsxDeTamano(bytes) {
   const buf = Buffer.alloc(bytes, 0x20);
-  buf.write('%PDF-1.4\n', 0, 'ascii');
+  buf[0] = 0x50; buf[1] = 0x4B; buf[2] = 0x03; buf[3] = 0x04;
   return buf;
 }
 
@@ -89,9 +91,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  const [rows] = await pool.execute('SELECT pdf_ruta FROM cotizaciones WHERE id = ?', [cotizacionId ?? 0]);
-  if (rows[0]?.pdf_ruta) {
-    await fs.promises.unlink(path.resolve(process.cwd(), rows[0].pdf_ruta)).catch(() => {});
+  const [rows] = await pool.execute('SELECT excel_ruta FROM cotizaciones WHERE id = ?', [cotizacionId ?? 0]);
+  if (rows[0]?.excel_ruta) {
+    await fs.promises.unlink(path.resolve(process.cwd(), rows[0].excel_ruta)).catch(() => {});
   }
   await pool.execute('DELETE FROM cotizacion_detalles WHERE id_cotizacion = ?', [cotizacionId ?? 0]);
   await pool.execute('DELETE FROM cotizaciones WHERE id = ?', [cotizacionId ?? 0]);
@@ -100,22 +102,22 @@ afterAll(async () => {
   await pool.end();
 });
 
-describe('PDFSIZE — límite de tamaño en la subida de PDF de cotizaciones', () => {
+describe('PDFSIZE — límite de tamaño en la subida de Excel de cotizaciones', () => {
 
-  test('PSZ-01: un PDF de EXACTAMENTE el límite documentado se acepta', async () => {
+  test('PSZ-01: un Excel de EXACTAMENTE el límite documentado se acepta', async () => {
     const res = await request(app)
-      .post(`/api/cotizaciones/${cotizacionId}/pdf`)
+      .post(`/api/cotizaciones/${cotizacionId}/upload`)
       .set('Authorization', `Bearer ${token}`)
-      .attach('archivo', bufferPdfDeTamano(LIMITE_BYTES), 'exacto.pdf');
+      .attach('excel', bufferXlsxDeTamano(LIMITE_BYTES), 'exacto.xlsx');
 
     expect(res.status).toBe(200);
   });
 
-  test('PSZ-02: un PDF de límite + 1 byte responde 413', async () => {
+  test('PSZ-02: un Excel de límite + 1 byte responde 413', async () => {
     const res = await request(app)
-      .post(`/api/cotizaciones/${cotizacionId}/pdf`)
+      .post(`/api/cotizaciones/${cotizacionId}/upload`)
       .set('Authorization', `Bearer ${token}`)
-      .attach('archivo', bufferPdfDeTamano(LIMITE_BYTES + 1), 'muy_grande.pdf');
+      .attach('excel', bufferXlsxDeTamano(LIMITE_BYTES + 1), 'muy_grande.xlsx');
 
     expect(res.status).toBe(413);
     expect(res.body.success).toBe(false);

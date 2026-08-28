@@ -489,13 +489,8 @@ const QuotationController = {
       // ── Post-commit: refetch, regenerate PDF (single-PDF invariant), audit ──
       const updatedQuotation = await QuotationModel.findById(id);
 
-      // preserveManual:true — un PDF subido a mano (pdf_origen = 'manual') no
-      // se purga ni se regenera al editar; ver el comentario largo en
-      // pdfRegeneration.js. createQuotation/updateStatus/approveQuotation NO
-      // pasan esta opción a propósito.
       await regenerateQuotationPdf(updatedQuotation, {
         label: 'QuotationController.updateQuotation',
-        preserveManual: true,
       });
 
       try {

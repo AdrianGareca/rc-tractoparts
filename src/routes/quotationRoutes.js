@@ -106,14 +106,6 @@ const storage = multer.diskStorage({
   },
 });
 
-function pdfFileFilter(_req, file, cb) {
-  if (file.mimetype === 'application/pdf') {
-    cb(null, true);
-  } else {
-    cb(new Error(`Only PDF files are accepted. Received MIME type: ${file.mimetype}`), false);
-  }
-}
-
 // El límite documentado (MAX_PDF_SIZE_MB, en MB exactos) es el máximo
 // ACEPTADO — no uno menos. Sin el +1 de abajo, un archivo de exactamente
 // MAX_PDF_SIZE_MB*1024*1024 bytes se rechazaba igual que uno más grande.
@@ -122,46 +114,33 @@ function pdfFileFilter(_req, file, cb) {
 // evento 'limit' — y por lo tanto LIMIT_FILE_SIZE — en cuanto los bytes
 // recibidos LLEGAN a `limits.fileSize`, no cuando lo SUPERAN
 // (node_modules/busboy/lib/types/multipart.js: `if (fileSize ===
-// fileSizeLimit) { ...emit('limit')... }`). Con `fileSize: maxPdfBytes`, un
+// fileSizeLimit) { ...emit('limit')... }`). Con `fileSize: maxUploadBytes`, un
 // archivo de exactamente ese tamaño hace que el contador de bytes llegue
 // justo a `fileSizeLimit` y se trunque, aunque ya se haya recibido el
 // archivo completo. Configurar el límite un byte más alto que el máximo
-// documentado hace que ese `===` sólo dispare en `maxPdfBytes + 1` bytes —
+// documentado hace que ese `===` sólo dispare en `maxUploadBytes + 1` bytes —
 // es decir, el primer tamaño que SÍ debe rechazarse — sin abrir la puerta a
 // nada por encima del límite documentado. Encontrado en la ronda de estrés
 // del 2026-08-26.
-const maxPdfBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024 + 1;
+const maxUploadBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024 + 1;
 
-// Dual-field upload: accepts 'pdf' (alias kept for backward compat) + 'excel'
-// The controller performs magic-number verification for each file after Multer writes them.
+// Excel upload for a quotation. fileFilter is intentionally omitted here —
+// the controller verifies the file post-write via a magic-number check
+// (relying solely on the declared MIME type would give false security, since
+// it's client-controlled and trivially spoofed).
 const upload = multer({
   storage,
-  // fileFilter is intentionally omitted here — both PDF and xlsx have different
-  // declared MIME types and each is verified post-write via magic-number checks
-  // in the controller.  Relying solely on declared MIME type (easily spoofed)
-  // would give false security while a single filter cannot serve two types.
   limits: {
-    fileSize: maxPdfBytes,  // applies per-file
-    files:    2,            // at most one PDF + one Excel per request
-  },
-});
-
-// Legacy single-field uploader retained for the standalone POST /:id/pdf route
-// that accepts only a PDF via the 'archivo' field name.
-const uploadPdfSingle = multer({
-  storage,
-  fileFilter: pdfFileFilter,
-  limits: {
-    fileSize: maxPdfBytes,
+    fileSize: maxUploadBytes,  // applies per-file
     files:    1,
   },
 });
 
 // ---------------------------------------------------------------------------
-// Upload rate limiter — strictly limits PDF upload calls per IP to prevent
+// Upload rate limiter — strictly limits upload calls per IP to prevent
 // disk-exhaustion attacks. At the 10 MB file cap, 20 uploads = up to 200 MB
 // per window from a single IP, which is a safe operational ceiling.
-// Applied ONLY to POST /:id/pdf — does not affect any other endpoint.
+// Applied to POST /:id/upload.
 // ---------------------------------------------------------------------------
 const uploadLimiter = rateLimit({
   windowMs:        15 * 60 * 1000, // 15-minute sliding window
@@ -890,73 +869,25 @@ router.post(
   QuotationStateController.approveQuotation
 );
 
-/**
- * @swagger
- * /api/cotizaciones/{id}/pdf:
- *   post:
- *     summary: Subir PDF manualmente a una cotización
- *     description: Vincula un archivo PDF cargado manualmente a la cotización. El nombre del campo en el formulario multipart debe ser "archivo". Solo Ejecutivos pueden usar este endpoint.
- *     tags: [Cotizaciones]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID de la cotización
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             required:
- *               - archivo
- *             properties:
- *               archivo:
- *                 type: string
- *                 format: binary
- *                 description: Archivo PDF (máximo 10 MB)
- *     responses:
- *       200:
- *         description: PDF subido y vinculado correctamente.
- *       400:
- *         description: ID inválido.
- *       401:
- *         $ref: '#/components/responses/NoAutorizado'
- *       403:
- *         $ref: '#/components/responses/SinPermiso'
- *       404:
- *         description: Cotización no encontrada.
- *       422:
- *         description: Archivo ausente, tipo MIME no permitido o tamaño excedido.
- *       500:
- *         $ref: '#/components/responses/ErrorInterno'
- */
-// POST /api/cotizaciones/:id/pdf
-// Manual PDF upload by an Ejecutivo.
-// Multer validates MIME type and file size before the controller is invoked.
-// Field name in the multipart form must be "archivo".
-router.post(
-  '/:id/pdf',
-  ...ejecutivoOnly,
-  uploadLimiter,
-  uploadPdfSingle.single('archivo'),
-  QuotationPdfController.uploadPdf
-);
-
 // POST /api/cotizaciones/:id/upload
-// Dual-file upload: accepts optional 'pdf' field and/or optional 'excel' field
-// in the same multipart request.  Magic-number verification is performed by
-// the controller after Multer writes the files to disk.
+// Excel upload for an Ejecutivo's own quotation. Magic-number verification is
+// performed by the controller after Multer writes the file to disk.
+//
+// Este endpoint aceptaba antes un segundo campo 'pdf' para subir el PDF a
+// mano, con toda una máquina de reemplazo atómico (swapFilePath) y una
+// columna pdf_origen para que una edición posterior no lo purgara. Se sacó
+// el 2026-08-28: el formulario de cotizaciones nunca mandó ese campo — sólo
+// el Excel — así que la única forma de llegar a subir un PDF manual era
+// pegándole directo a la API (Swagger/Postman), nunca desde la aplicación
+// real. Adrian confirmó que nadie lo usa: el PDF siempre lo genera el
+// sistema y se regenera en cada edición a propósito. Mantener una ruta y una
+// columna de base de datos para una función que ningún botón dispara es
+// justamente el tipo de complejidad de más que este proyecto evita.
 router.post(
   '/:id/upload',
   ...ejecutivoOnly,
   uploadLimiter,
   upload.fields([
-    { name: 'pdf',   maxCount: 1 },
     { name: 'excel', maxCount: 1 },
   ]),
   QuotationPdfController.uploadFiles
@@ -1162,14 +1093,6 @@ router.use((err, req, res, next) => {
     return res.status(422).json({
       success: false,
       message: `File upload error: ${err.message}`,
-    });
-  }
-
-  if (err?.message?.startsWith('Only PDF')) {
-    // Thrown by pdfFileFilter when the MIME type is wrong
-    return res.status(422).json({
-      success: false,
-      message: err.message,
     });
   }
 

@@ -291,18 +291,11 @@ async function replaceDetalles(connection, id_cotizacion, detalles) {
 }
 
 // ---------------------------------------------------------------------------
-// updatePdfPath — Persist the relative file path of a SYSTEM-generated PDF
-// (PDFKit auto-generation / regeneration). Always stamps pdf_origen =
-// 'sistema': every caller of this function (pdfRegeneration.js and the
-// PDFKit emergency-fallback branch of downloadPdf) is, by construction, the
-// system writing its own generated file — a hand-uploaded PDF is persisted
-// through swapFilePath instead, which stamps 'manual'. Keeping the two
-// writers separate is what lets updateQuotation later tell them apart and
-// leave a manual upload untouched on edit.
+// updatePdfPath — Persist the relative file path of the linked PDF.
 // ---------------------------------------------------------------------------
 async function updatePdfPath(id, pdfRuta) {
   const [result] = await pool.execute(
-    `UPDATE cotizaciones SET pdf_ruta = ?, pdf_origen = 'sistema' WHERE id = ?`,
+    'UPDATE cotizaciones SET pdf_ruta = ? WHERE id = ?',
     [pdfRuta, id]
   );
   return result.affectedRows > 0;
@@ -323,11 +316,13 @@ async function updateExcelPath(id, excelRuta) {
   return result.affectedRows > 0;
 }
 
-// Únicas columnas que swapFilePath puede tocar — el nombre de columna se
-// interpola directo en el SQL (no hay forma parametrizada de nombrar una
-// columna), así que se limita a estas dos por las dudas de que algún
-// refactor futuro le pase otra cosa.
-const SWAPPABLE_FILE_COLUMNS = new Set(['pdf_ruta', 'excel_ruta']);
+// Única columna que swapFilePath puede tocar hoy (el Excel subido a mano) —
+// el nombre de columna se interpola directo en el SQL (no hay forma
+// parametrizada de nombrar una columna), así que se restringe por las dudas
+// de que algún refactor futuro le pase otra cosa. pdf_ruta salió de esta
+// lista el 2026-08-28 junto con la subida manual de PDF (ver
+// quotationPdfController.js) — el PDF siempre lo escribe updatePdfPath.
+const SWAPPABLE_FILE_COLUMNS = new Set(['excel_ruta']);
 
 // ---------------------------------------------------------------------------
 // swapFilePath — lee la ruta ACTUAL de `column` bajo un lock de fila y la
@@ -350,7 +345,7 @@ const SWAPPABLE_FILE_COLUMNS = new Set(['pdf_ruta', 'excel_ruta']);
 //
 // @param   {import('mysql2/promise').PoolConnection} connection — ya con una tx abierta (ver withDeadlockRetry)
 // @param   {number} id
-// @param   {'pdf_ruta'|'excel_ruta'} column
+// @param   {'excel_ruta'} column
 // @param   {string} newPath
 // @returns {Promise<string|null>} la ruta que había antes del swap
 // ---------------------------------------------------------------------------
@@ -365,16 +360,8 @@ async function swapFilePath(connection, id, column, newPath) {
   );
   const oldPath = rows[0]?.ruta ?? null;
 
-  // Un archivo subido por esta vía (uploadPdf/uploadFiles) es, por
-  // definición, MANUAL — se marca junto con el swap del pdf_ruta, en el mismo
-  // UPDATE, para que updateQuotation sepa después que este PDF no es un
-  // regenerado por el sistema y lo deje intacto al editar (ver
-  // pdfRegeneration.js). excel_ruta no tiene columna de origen: el Excel ya
-  // sobrevive intacto a una edición sin necesitar esta distinción.
-  const extraSet = column === 'pdf_ruta' ? `, pdf_origen = 'manual'` : '';
-
   await connection.execute(
-    `UPDATE cotizaciones SET ${column} = ?${extraSet} WHERE id = ?`,
+    `UPDATE cotizaciones SET ${column} = ? WHERE id = ?`,
     [newPath, id]
   );
 

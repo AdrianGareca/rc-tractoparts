@@ -24,42 +24,15 @@ const pdfService     = require('../../services/pdfService');
 /**
  * Purga el PDF anterior, genera el nuevo y guarda la ruta.
  *
- * @param   {Object} quotation — registro completo (findById), con .id, .pdf_ruta y .pdf_origen
+ * @param   {Object} quotation — registro completo (findById), con .id y .pdf_ruta
  * @param   {Object} opts
- *   purge          {boolean} — borrar el archivo anterior primero (default true).
- *                              En una creación no hay nada que purgar.
- *   label          {string}  — contexto para el log si falla
- *   preserveManual {boolean} — si true y el PDF actual es de origen 'manual'
- *                              (subido a mano vía /:id/upload o /:id/pdf), NO
- *                              lo toca: ni lo purga ni genera un reemplazo.
- *                              Sólo lo pasa updateQuotation — ver el comentario
- *                              largo más abajo sobre por qué create/updateStatus/
- *                              approve NO lo pasan.
- * @returns {Promise<string|null>} la ruta nueva (o la manual sin tocar), o
- *                                 null si falló la regeneración (no fatal)
+ *   purge {boolean} — borrar el archivo anterior primero (default true).
+ *                     En una creación no hay nada que purgar.
+ *   label {string}  — contexto para el log si falla
+ * @returns {Promise<string|null>} la ruta nueva, o null si falló (no fatal)
  */
-async function regenerateQuotationPdf(quotation, { purge = true, label = 'PDF regeneration', preserveManual = false } = {}) {
+async function regenerateQuotationPdf(quotation, { purge = true, label = 'PDF regeneration' } = {}) {
   if (!quotation?.id) return null;
-
-  // ── Invariante nuevo: un PDF MANUAL nunca se toca automáticamente ─────────
-  // Antes de esta distinción, editar una cotización (PUT /:id) purgaba
-  // SIEMPRE el pdf_ruta existente y lo reemplazaba por uno generado con
-  // PDFKit — sin avisar, y sin importar si ese archivo lo había subido a
-  // mano el ejecutivo. El Excel, en cambio, ya sobrevivía intacto a una
-  // edición (updateQuotation nunca toca excel_ruta). Encontrado en la ronda
-  // de estrés del 2026-08-26.
-  //
-  // SÓLO updateQuotation pasa preserveManual: true. createQuotation nunca
-  // tiene un PDF previo que preservar (purge:false, recién creada).
-  // updateStatus/approveQuotation SÍ deben seguir regenerando siempre,
-  // incluso sobre un PDF manual: la tarjeta de ESTADO / el sello APROBADO
-  // tienen que reflejar la transición de estado sin importar cómo se
-  // originó el archivo anterior — ese comportamiento es intencional (ver los
-  // comentarios en quotationStateController.js) y no es el bug que esto
-  // arregla.
-  if (preserveManual && quotation.pdf_ruta && quotation.pdf_origen === 'manual') {
-    return quotation.pdf_ruta;
-  }
 
   try {
     if (purge && quotation.pdf_ruta) {
