@@ -361,11 +361,25 @@ const UserController = {
       // para el salto Administracion→Jefe. Un Administracion podía
       // auto-promoverse a Jefe (PUT sobre sí mismo) o promover a cualquier
       // otra cuenta, ambos con su propio token.
-      if (req.body.id_rol != null) {
+      //
+      // BUG DEL PROPIO ARREGLO, encontrado el mismo día por Adrian probándolo
+      // en vivo: el modal "Editar usuario" del frontend siempre manda id_rol
+      // en el body —el valor que ya estaba seleccionado en el desplegable—
+      // aunque el usuario sólo haya tocado el nombre o la contraseña. Con
+      // `if (req.body.id_rol != null)` a secas, CUALQUIER auto-edición
+      // (cambiar la contraseña propia, por ejemplo) quedaba bloqueada con
+      // 403, porque el id_rol "presente" era el mismo de siempre, no uno
+      // nuevo. La pregunta correcta no es "¿vino id_rol en el body?" sino
+      // "¿el id_rol pedido es DISTINTO del que la cuenta ya tiene?" — sólo
+      // ahí hay una promoción/degradación real que evaluar.
+      const idRolSolicitado    = req.body.id_rol != null ? parseInt(req.body.id_rol, 10) : null;
+      const idRolRealmenteCambia = idRolSolicitado != null && idRolSolicitado !== existing.id_rol;
+
+      if (idRolRealmenteCambia) {
         const errAutoRol = _validarNoAutoEdicionDeRol(id, req.user.id);
         if (errAutoRol) return res.status(errAutoRol.status).json(errAutoRol.body);
 
-        const errJefe = _validarPermisoSobreAscensoAJefe(parseInt(req.body.id_rol, 10), req.user.rol);
+        const errJefe = _validarPermisoSobreAscensoAJefe(idRolSolicitado, req.user.rol);
         if (errJefe) return res.status(errJefe.status).json(errJefe.body);
       }
 
@@ -415,7 +429,16 @@ const UserController = {
       // JWT for this user immediately — otherwise a demoted/deactivated user, or a
       // stolen token reset via password change, keeps working until the token
       // naturally expires (up to JWT_EXPIRES_IN).
-      if (updateData.id_rol !== undefined || updateData.activo !== undefined || updateData.password_hash !== undefined) {
+      //
+      // Se usa idRolRealmenteCambia (no `updateData.id_rol !== undefined`) por el
+      // mismo motivo que el guardián de arriba: el frontend reenvía siempre el
+      // id_rol actual, así que `updateData.id_rol` está definido en CADA
+      // auto-edición (cambiar solo el nombre, por ejemplo) aunque el rol no
+      // cambie de verdad. Sin este ajuste, cualquier edición de tu propio
+      // perfil te deslogueaba al instante, no sólo las que de verdad importan
+      // (rol, contraseña, activo/inactivo). Encontrado por Adrian en vivo el
+      // mismo día del fix original.
+      if (idRolRealmenteCambia || updateData.activo !== undefined || updateData.password_hash !== undefined) {
         await UserModel.incrementTokenVersion(id);
       }
 

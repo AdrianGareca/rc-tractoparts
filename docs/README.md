@@ -11,6 +11,7 @@ discutirlas ni deshacerlas sin querer.
 | [diseno.md](diseno.md) | ¿De qué color va esto? ¿Puedo poner un emoji? ¿Por qué mi `style=""` no se aplica? ¿Cómo nombro una clase? |
 | [pruebas.md](pruebas.md) | ¿Qué es un trinquete? ¿Por qué falla un guardia? ¿Por qué `--runInBand`? ¿Cómo escribo una prueba acá? |
 | [respaldos.md](respaldos.md) | ¿Se están respaldando los datos? ¿Cómo restauro? ¿Dónde quedan las copias? ¿Qué pasa si se pierde el servidor? |
+| [recuperacion.md](recuperacion.md) | El droplet entero desapareció, ¿por dónde empiezo? Checklist en orden, sin tener que buscar entre varios documentos bajo presión. |
 
 ## Dónde está el resto
 

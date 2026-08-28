@@ -146,6 +146,27 @@ describe('ROLESC — anti-escalación de roles en gestión de usuarios', () => {
     await pool.execute('DELETE FROM usuarios WHERE nombre_usuario = ?', ['test_jefe_colado_rolesc']);
   });
 
+  test('ROLESC-07: auto-edición SIN cambiar el rol (reenviando el mismo id_rol) sí funciona', async () => {
+    // BUG encontrado por Adrian en vivo el mismo día del fix: el frontend
+    // (userCrudModals.js) siempre manda id_rol en el body del PUT —el valor
+    // ya seleccionado en el desplegable—, incluso si sólo se está cambiando
+    // la contraseña o el nombre. El chequeo original bloqueaba esto con 403
+    // sólo por la PRESENCIA de id_rol en el body, sin fijarse si el valor
+    // pedido coincidía con el que la cuenta ya tenía. Reproduce exactamente
+    // ese caso: Administracion se edita a sí misma reenviando su propio
+    // id_rol sin cambiarlo, junto con un cambio real (nombre).
+    const res = await request(app)
+      .put(`/api/usuarios/${idAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ id_rol: ID_ROL_ADMINISTACION, nombre_completo: 'Test Admin Renombrado' });
+
+    expect(res.status).toBe(200);
+
+    const [rows] = await pool.execute('SELECT id_rol, nombre_completo FROM usuarios WHERE id = ?', [idAdmin]);
+    expect(rows[0].id_rol).toBe(ID_ROL_ADMINISTACION);
+    expect(rows[0].nombre_completo).toBe('Test Admin Renombrado');
+  });
+
   test('ROLESC-06: Administracion SÍ puede crear cuentas con roles que no son Jefe/SysAdmin (comportamiento intacto)', async () => {
     const res = await request(app)
       .post('/api/usuarios')
@@ -160,5 +181,27 @@ describe('ROLESC — anti-escalación de roles en gestión de usuarios', () => {
     expect(res.status).toBe(201);
 
     await pool.execute('DELETE FROM usuarios WHERE nombre_usuario = ?', ['test_ejec_ok_rolesc']);
+  });
+
+  // Al final a propósito: cambiar la propia contraseña invalida tokenAdmin
+  // (token_version), así que ningún test de arriba puede depender de que
+  // ese token siga sirviendo después de este.
+  test('ROLESC-09: auto-edición de la PROPIA contraseña, reenviando el id_rol sin cambiar, sí funciona', async () => {
+    const nuevaPassword = 'NuevaPasswordOK01!';
+    const res = await request(app)
+      .put(`/api/usuarios/${idAdmin}`)
+      .set('Authorization', `Bearer ${tokenAdmin}`)
+      .send({ id_rol: ID_ROL_ADMINISTACION, password: nuevaPassword });
+
+    expect(res.status).toBe(200);
+
+    // La contraseña realmente cambió: login con la vieja falla, con la nueva funciona.
+    const loginVieja = await request(app).post('/api/auth/login')
+      .send({ nombre_usuario: U_ADMIN, password: PASSWORD });
+    expect(loginVieja.status).toBe(401);
+
+    const loginNueva = await request(app).post('/api/auth/login')
+      .send({ nombre_usuario: U_ADMIN, password: nuevaPassword });
+    expect(loginNueva.status).toBe(200);
   });
 });
