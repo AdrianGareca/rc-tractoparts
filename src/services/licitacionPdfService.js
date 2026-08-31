@@ -303,6 +303,10 @@ function renderExpediente(doc, lic) {
   // ── 1. Datos de la licitación ────────────────────────────────────────────
   y = sectionTitle(doc, y, 'Datos de la licitación');
   const boxTop = y;
+  // De qué página arranca la caja. Hace falta porque cualquiera de las kvRow de
+  // abajo puede saltar de página (kvRow → ensureSpace → addPage), y entonces
+  // `boxTop` queda en una hoja y la `y` final en otra.
+  const paginasAlAbrir = doc.bufferedPageRange().count;
   doc.rect(MARGIN, boxTop, CW, 2).fill(C.WHITE); // spacer anchor
   y += 2;
   y = kvRow(doc, y, 'Nombre', lic.nombre);
@@ -311,8 +315,56 @@ function renderExpediente(doc, lic) {
   y = kvRow(doc, y, 'Fecha límite', fmtDate(lic.fecha_limite));
   if (lic.descripcion)             y = kvRow(doc, y, 'Descripción', lic.descripcion);
   if (lic.observaciones_resultado) y = kvRow(doc, y, 'Observaciones', lic.observaciones_resultado);
-  // frame around the data box
-  doc.roundedRect(MARGIN, boxTop, CW, y - boxTop + 2, 3).lineWidth(0.6).strokeColor(C.BORDER).stroke();
+
+  // ── El marco de la caja ──────────────────────────────────────────────────
+  // Se dibuja al final porque recién ahí se sabe cuánto ocupó el contenido
+  // (la descripción es texto libre y el validador acepta hasta 5000
+  // caracteres). El problema es que si alguna fila saltó de página, `boxTop`
+  // es una coordenada de la hoja ANTERIOR, y usarla acá daba dos defectos
+  // medidos con el arnés de geometría:
+  //
+  //   (a) el marco cortaba el texto: con ~1800 caracteres de descripción, la
+  //       página 1 quedaba SIN marco y en la página 2 el borde superior pasaba
+  //       por encima del renglón, dejando líneas afuera de la caja que dice
+  //       contenerlas.
+  //   (b) alto NEGATIVO: si el salto lo disparaba una fila corta
+  //       (Observaciones) justo después de una descripción larga, `y - boxTop`
+  //       daba negativo —se midió −180 pt— o sea el rectángulo se dibujaba
+  //       hacia arriba, encima de la sección anterior.
+  //
+  // Cuando la caja no se partió (el caso normal), se enmarca como siempre.
+  // Cuando se partió, se dibuja UN TRAMO DE MARCO POR PÁGINA: el de la primera
+  // baja desde boxTop hasta el pie del área útil, los del medio la ocupan
+  // entera, y el de la última cierra en la `y` final. Dibujar uno solo dejaría
+  // sin marco a las filas de las páginas anteriores — que es lo que pasaba.
+  // Encontrado por tests/unit/pdfGeometriaExpediente.test.js.
+  const rango       = doc.bufferedPageRange();
+  const idxAlAbrir  = paginasAlAbrir - 1;
+  const idxAlCerrar = rango.count - 1;
+  // El mismo borde inferior que respeta ensureSpace, y el mismo tope al que
+  // salta: si estos dos se desincronizaran del helper, el marco dejaría de
+  // coincidir con el área donde realmente se escribe.
+  const pieUtil     = PH - MARGIN - 24;
+  const topePagina  = MARGIN + 6;
+
+  const marco = (top, bottom) =>
+    doc.roundedRect(MARGIN, top, CW, bottom - top, 3)
+      .lineWidth(0.6).strokeColor(C.BORDER).stroke();
+
+  if (idxAlCerrar === idxAlAbrir) {
+    marco(boxTop, y + 2);
+  } else {
+    for (let i = idxAlAbrir; i <= idxAlCerrar; i++) {
+      doc.switchToPage(rango.start + i);
+      marco(
+        i === idxAlAbrir  ? boxTop : topePagina,
+        i === idxAlCerrar ? y + 2  : pieUtil
+      );
+    }
+    // Volver a la última página: lo que sigue se dibuja a continuación del
+    // contenido, no encima de una hoja anterior.
+    doc.switchToPage(rango.start + idxAlCerrar);
+  }
   y += 12;
 
   // ── 2. Resumen económico ─────────────────────────────────────────────────

@@ -53,6 +53,17 @@ const PH     = 841.89; // A4 height (pt)
 const MARGIN = 40;
 const CW     = PW - MARGIN * 2;
 
+// Alto de la barra del pie, y la Y a partir de la cual YA NO se puede escribir
+// (el filete naranja va 3 pt por encima de la barra marina).
+//
+// Estaba declarado adentro de drawFooter, así que cualquier bloque que quisiera
+// saber "hasta dónde llego" tenía que adivinarlo. Y adivinar salió mal: las
+// tarjetas de ticket promedio se dibujaban sobre la barra, en verde petróleo
+// sobre marino — ilegibles. Compartir la constante es lo que evita que la
+// guarda y el pie se desincronicen.
+const FOOTER_H  = 34;
+const TOPE_UTIL = PH - FOOTER_H - 3;
+
 // Same palette as pdfService.js — keeps reports visually part of the same
 // document family as the cotización proformas.
 const C = {
@@ -141,7 +152,6 @@ function drawHeader(doc, { title, periodo, rol, nombreUsuario }) {
 // blank trailing page — see the file-level comment above for why).
 // ---------------------------------------------------------------------------
 function drawFooter(doc, subtitle) {
-  const FOOTER_H = 34;
   const footerY  = PH - FOOTER_H;
 
   const savedBottomMargin = doc.page.margins.bottom;
@@ -325,6 +335,27 @@ function statBox(doc, x, y, w, label, value, color) {
 
 /** Fila 1 (conversion/dias/en proceso/rechazadas) + fila 2 (tickets por moneda). */
 function _drawStatBoxes(doc, m, y) {
+  // Este bloque ocupa 110 pt desde `y`: la fila de cuatro tarjetas (42), la
+  // aclaración del denominador (50 + 18) y la fila de ticket promedio (42).
+  //
+  // POR QUÉ SE FIJA ACÁ Y NO SE CONFÍA EN EL LLAMADOR
+  // sectionTitle salta de página si `y > PH - MARGIN - 90`, o sea reserva 90 —
+  // menos de lo que esto necesita. En el peor caso que ese guardia deja pasar,
+  // la segunda fila (TICKET PROMEDIO USD/BOB) terminaba dibujada ENCIMA de la
+  // barra marina del pie: número verde petróleo sobre fondo marino, ilegible, y
+  // la tarjeta blanca tapando la barra. Medido con el arnés de geometría, con
+  // 25 filas en "Mis Clientes Principales" arriba.
+  //
+  // Un bloque que sabe cuánto mide tiene que reservarse su propio lugar; si
+  // depende de que el de arriba haya dejado suficiente, cualquier cambio de
+  // contenido lo rompe en silencio. Encontrado por
+  // tests/unit/pdfGeometriaReporte.test.js.
+  const ALTO_NECESARIO = 110;
+  if (y + ALTO_NECESARIO > TOPE_UTIL) {
+    doc.addPage();
+    y = MARGIN;
+  }
+
   const boxW = (CW - 3 * 8) / 4;
   const x = (i) => MARGIN + i * (boxW + 8);
 
