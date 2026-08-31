@@ -45,6 +45,102 @@ import { navIcon } from '../shared/icons.js';
 // Bootstraps the page, selects the Strategy based on the user's role,
 // renders sidebar navigation, and wires global interactions.
 // =============================================================================
+// ---------------------------------------------------------------------------
+// enlacesDeBarraLateral — el HTML del menú lateral que le toca a cada rol.
+//
+// Estaba dentro de _renderSidebar, que con esto pasa de 124 líneas a unas 40.
+// De esas 124, más de ochenta eran estas cuatro plantillas: la función
+// mezclaba "qué botones ve cada rol" con "qué hace cada botón al tocarlo", que
+// son dos cosas que cambian por motivos distintos y en momentos distintos.
+//
+// Al quedar afuera es una función PURA —entra un rol, sale un string— y por
+// primera vez se puede probar sin montar el dashboard entero. Lo cubre
+// tests/unit/barraLateral.test.js.
+// ---------------------------------------------------------------------------
+export function enlacesDeBarraLateral(role) {
+    let links = '';
+
+    // NOTE: SysAdmin is intentionally grouped with 'Jefe' here — it already
+    // gets the full ManagerStrategy content (see DashboardController strategy
+    // selection: role === 'Jefe' || role === 'SysAdmin'), but this sidebar
+    // check previously read `role === 'Jefe'` only, so a SysAdmin login fell
+    // through to the Ejecutivo-only sidebar (no way to reach any Manager tab
+    // via the nav). Fixed as part of adding the Swagger docs link below,
+    // which must be visible to SysAdmin — the primary user of this feature.
+    if (role === 'Jefe' || role === 'SysAdmin') {
+      links = `
+        <span class="sidebar-section-label">Panel Principal</span>
+        <button class="sidebar-link active" data-section="approvals">
+          ${navIcon('aprobacion')} Cola de aprobación
+        </button>
+        <button class="sidebar-link" data-section="quotations">
+          ${navIcon('cotizaciones')} Todas las cotizaciones
+        </button>
+        <span class="sidebar-section-label">Administración</span>
+        <button class="sidebar-link" data-section="users">
+          ${navIcon('usuarios')} Gestión de usuarios
+        </button>
+        <button class="sidebar-link" data-section="audit">
+          ${navIcon('auditoria')} Registros de auditoría
+        </button>
+        <button class="sidebar-link" id="sidebar-api-docs">
+          ${navIcon('docs')} Documentación API
+        </button>
+        <span class="sidebar-section-label">Cuenta</span>
+        <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
+          ${navIcon('salir')} Cerrar Sesión
+        </button>`;
+    } else if (role === 'Administracion') {
+      links = `
+        <span class="sidebar-section-label">Panel Principal</span>
+        <button class="sidebar-link active" data-section="review">
+          ${navIcon('revision')} Cola de revisión
+        </button>
+        <button class="sidebar-link" data-section="quotations">
+          ${navIcon('cotizaciones')} Todas las cotizaciones
+        </button>
+        <span class="sidebar-section-label">Administración</span>
+        <button class="sidebar-link" data-section="users">
+          ${navIcon('usuarios')} Gestión de usuarios
+        </button>
+        <button class="sidebar-link" data-section="audit">
+          ${navIcon('auditoria')} Registros de auditoría
+        </button>
+        <span class="sidebar-section-label">Cuenta</span>
+        <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
+          ${navIcon('salir')} Cerrar Sesión
+        </button>`;
+    } else if (role === 'Proyectos') {
+      links = `
+        <span class="sidebar-section-label">Área de Proyectos</span>
+        <button class="sidebar-link active" data-section="licitaciones">
+          ${navIcon('licitaciones')} Licitaciones
+        </button>
+        <button class="sidebar-link" data-section="clientes">
+          ${navIcon('clientes')} Gestión de clientes
+        </button>
+        <span class="sidebar-section-label">Cuenta</span>
+        <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
+          ${navIcon('salir')} Cerrar Sesión
+        </button>`;
+    } else {
+      links = `
+        <span class="sidebar-section-label">Mi Trabajo</span>
+        <button class="sidebar-link active" data-section="quotations">
+          ${navIcon('cotizaciones')} Mis cotizaciones
+        </button>
+        <button class="sidebar-link btn-new-cot" data-section="new">
+          ${navIcon('nueva')} Nueva cotización
+        </button>
+        <span class="sidebar-section-label">Cuenta</span>
+        <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
+          ${navIcon('salir')} Cerrar Sesión
+        </button>`;
+    }
+
+    return links;
+}
+
 class DashboardController {
   #strategy = null;
 
@@ -145,87 +241,7 @@ class DashboardController {
     const nav = document.getElementById('sidebar-nav');
     if (!nav) return;
 
-    let links = '';
-
-    // NOTE: SysAdmin is intentionally grouped with 'Jefe' here — it already
-    // gets the full ManagerStrategy content (see DashboardController strategy
-    // selection: role === 'Jefe' || role === 'SysAdmin'), but this sidebar
-    // check previously read `role === 'Jefe'` only, so a SysAdmin login fell
-    // through to the Ejecutivo-only sidebar (no way to reach any Manager tab
-    // via the nav). Fixed as part of adding the Swagger docs link below,
-    // which must be visible to SysAdmin — the primary user of this feature.
-    if (role === 'Jefe' || role === 'SysAdmin') {
-      links = `
-        <span class="sidebar-section-label">Panel Principal</span>
-        <button class="sidebar-link active" data-section="approvals">
-          ${navIcon('aprobacion')} Cola de aprobación
-        </button>
-        <button class="sidebar-link" data-section="quotations">
-          ${navIcon('cotizaciones')} Todas las cotizaciones
-        </button>
-        <span class="sidebar-section-label">Administración</span>
-        <button class="sidebar-link" data-section="users">
-          ${navIcon('usuarios')} Gestión de usuarios
-        </button>
-        <button class="sidebar-link" data-section="audit">
-          ${navIcon('auditoria')} Registros de auditoría
-        </button>
-        <button class="sidebar-link" id="sidebar-api-docs">
-          ${navIcon('docs')} Documentación API
-        </button>
-        <span class="sidebar-section-label">Cuenta</span>
-        <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
-          ${navIcon('salir')} Cerrar Sesión
-        </button>`;
-    } else if (role === 'Administracion') {
-      links = `
-        <span class="sidebar-section-label">Panel Principal</span>
-        <button class="sidebar-link active" data-section="review">
-          ${navIcon('revision')} Cola de revisión
-        </button>
-        <button class="sidebar-link" data-section="quotations">
-          ${navIcon('cotizaciones')} Todas las cotizaciones
-        </button>
-        <span class="sidebar-section-label">Administración</span>
-        <button class="sidebar-link" data-section="users">
-          ${navIcon('usuarios')} Gestión de usuarios
-        </button>
-        <button class="sidebar-link" data-section="audit">
-          ${navIcon('auditoria')} Registros de auditoría
-        </button>
-        <span class="sidebar-section-label">Cuenta</span>
-        <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
-          ${navIcon('salir')} Cerrar Sesión
-        </button>`;
-    } else if (role === 'Proyectos') {
-      links = `
-        <span class="sidebar-section-label">Área de Proyectos</span>
-        <button class="sidebar-link active" data-section="licitaciones">
-          ${navIcon('licitaciones')} Licitaciones
-        </button>
-        <button class="sidebar-link" data-section="clientes">
-          ${navIcon('clientes')} Gestión de clientes
-        </button>
-        <span class="sidebar-section-label">Cuenta</span>
-        <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
-          ${navIcon('salir')} Cerrar Sesión
-        </button>`;
-    } else {
-      links = `
-        <span class="sidebar-section-label">Mi Trabajo</span>
-        <button class="sidebar-link active" data-section="quotations">
-          ${navIcon('cotizaciones')} Mis cotizaciones
-        </button>
-        <button class="sidebar-link btn-new-cot" data-section="new">
-          ${navIcon('nueva')} Nueva cotización
-        </button>
-        <span class="sidebar-section-label">Cuenta</span>
-        <button class="sidebar-link sidebar-link-logout" id="btn-logout-sidebar">
-          ${navIcon('salir')} Cerrar Sesión
-        </button>`;
-    }
-
-    nav.innerHTML = links;
+    nav.innerHTML = enlacesDeBarraLateral(role);
 
     // Wire sidebar logout button (present for both roles)
     nav.querySelector('#btn-logout-sidebar')?.addEventListener('click', () => {
