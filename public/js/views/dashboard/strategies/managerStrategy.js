@@ -524,7 +524,7 @@ export class ManagerStrategy extends DashboardStrategy {
   // ── Tab: User Management (CRUD) ───────────────────────────────────────────
 
   async _renderUsers(panel) {
-    panel.innerHTML = tableSkeleton({ columnas: 8, etiqueta: 'Cargando datos' });
+    panel.innerHTML = tableSkeleton({ columnas: 6, etiqueta: 'Cargando datos' });
     try {
       const data  = await api.get('/api/usuarios');
       const users = data.data ?? [];

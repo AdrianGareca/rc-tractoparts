@@ -270,7 +270,7 @@ function buildShellHtml() {
         <button class="btn btn-ghost btn-sm filter-action"   id="audit-clear">Limpiar</button>
       </div>
       <div class="card-toolbar" id="audit-pagination"></div>
-      <div id="audit-results">${tableSkeleton({ columnas: 7, etiqueta: 'Cargando registros de auditoría' })}</div>
+      <div id="audit-results">${tableSkeleton({ columnas: 8, etiqueta: 'Cargando registros de auditoría' })}</div>
     </div>`;
 }
 

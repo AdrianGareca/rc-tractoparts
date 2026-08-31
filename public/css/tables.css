@@ -18,6 +18,22 @@
   font-size: .875rem;
 }
 
+/* Tabla secundaria: la que acompaña a un panel, no la del listado principal.
+ *
+ * POR QUÉ VIVE ACÁ Y NO EN components.css, CON EL RESTO DE LOS COMPONENTES
+ * Ahí estaba antes, y no hacía absolutamente nada. `.data-table-sm` y
+ * `.data-table` tienen la misma especificidad (una clase contra una clase),
+ * así que entre las dos desempata el orden de carga — y components.css se
+ * enlaza ANTES que tables.css (ver el <link> de dashboard.html). Ganaba la
+ * base: la tabla "chica" se dibujaba con la letra de la grande.
+ *
+ * Nadie lo notó nunca porque la diferencia era de 14px a 13.6px. Un
+ * modificador tiene que declararse después de su base, y la única forma de
+ * garantizarlo entre dos archivos distintos es que esté en el que carga
+ * último. Lo vigila cssBundle.test.js ("ningún modificador queda pisado por
+ * su propia clase base"). Encontrado en la auditoría del 2026-08-28. */
+.data-table-sm { font-size: .85rem; }
+
 .data-table thead th {
   background: var(--bg-raised);
   padding: .5rem 1rem;

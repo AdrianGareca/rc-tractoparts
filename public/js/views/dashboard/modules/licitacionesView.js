@@ -65,7 +65,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
         <button class="btn btn-ghost btn-sm" id="lic-search-btn">Filtrar</button>
       </div>
       <div class="card-toolbar" id="lic-pagination"></div>
-      <div id="lic-results">${tableSkeleton({ columnas: 7, etiqueta: 'Cargando licitaciones' })}</div>
+      <div id="lic-results">${tableSkeleton({ columnas: 8, etiqueta: 'Cargando licitaciones' })}</div>
     </div>`;
 
   const $ = (sel) => panel.querySelector(sel);

@@ -245,7 +245,7 @@ export class AdminStrategy extends DashboardStrategy {
   // ── Tab: User Management ─────────────────────────────────────────────────
   // Admin has full CRUD access per the hierarchy spec (same as Jefe).
   async _renderUsers(panel) {
-    panel.innerHTML = tableSkeleton({ columnas: 7, etiqueta: 'Cargando datos' });
+    panel.innerHTML = tableSkeleton({ columnas: 6, etiqueta: 'Cargando datos' });
     try {
       const data  = await api.get('/api/usuarios');
       const users = data.data ?? [];

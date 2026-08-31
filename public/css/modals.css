@@ -70,13 +70,9 @@ body.modal-open .page-shell {
   overflow-y: auto;
 }
 
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: .5rem;
-  padding: 1rem 1.5rem;
-  border-top: 1px solid var(--border);
-}
+/* Acá vivía `.modal-footer`, que quedó sin usar cuando los modales pasaron a
+   `.modal-actions` (components.css). Ningún HTML ni JS del proyecto la
+   nombraba: se borró en la auditoría del 2026-08-28. */
 
 /* ===== 26. CONFIRMATION DIALOG ===== */
 .confirm-dialog { text-align: center; padding: .5rem 0; }

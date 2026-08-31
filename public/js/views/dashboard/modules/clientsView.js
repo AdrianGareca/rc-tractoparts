@@ -45,7 +45,7 @@ function buildShellHtml() {
         <button class="btn btn-ghost btn-sm filter-action" id="clients-search-btn">Buscar</button>
       </div>
       <div class="card-toolbar" id="clients-pagination"></div>
-      <div id="clients-results">${tableSkeleton({ columnas: 6, etiqueta: 'Cargando clientes' })}</div>
+      <div id="clients-results">${tableSkeleton({ columnas: 7, etiqueta: 'Cargando clientes' })}</div>
     </div>`;
 }
 

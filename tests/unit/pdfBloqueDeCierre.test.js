@@ -36,57 +36,12 @@ const {
 } = require('../../src/services/pdf/drawers/totals');
 
 const { MARGIN } = require('../../src/services/pdf/constants');
+const { docFalso } = require('../helpers/docFalso');
 
-/**
- * Un `doc` de PDFKit de mentira: acepta todas las llamadas encadenadas y anota
- * dónde se dibujó cada texto. Es todo lo que hace falta para medir posiciones.
- */
-function docFalso() {
-  const textos = [];
-  const doc = {
-    textos,
-    _y: 0,
-    _fontSize: 7,
-    font:        () => doc,
-    fontSize:    (n) => { doc._fontSize = n; return doc; },
-    fillColor:   () => doc,
-    strokeColor: () => doc,
-    lineWidth:   () => doc,
-    moveTo:      () => doc,
-    lineTo:      () => doc,
-    stroke:      () => doc,
-    rect:        () => doc,
-    fill:        () => doc,
-    addPage:     () => doc,
-    image:       () => doc,
-    text: (contenido, x, y) => {
-      textos.push({ contenido: String(contenido), x, y });
-      return doc;
-    },
-    // Simulación de ajuste de línea, no una medida real: sólo necesita ser lo
-    // bastante fiel para que un texto corto quepa en una línea y uno largo
-    // envuelva a varias — como hace el _calcRowHeight() real que esto imita.
-    heightOfString: (contenido, opts = {}) => {
-      const width = opts.width ?? Infinity;
-      const charW = doc._fontSize * 0.5;
-      const palabras = String(contenido).split(' ');
-      let lineas = 1;
-      let anchoLinea = 0;
-      for (const palabra of palabras) {
-        const w = (palabra.length + 1) * charW;
-        if (anchoLinea + w > width && anchoLinea > 0) {
-          lineas += 1;
-          anchoLinea = w;
-        } else {
-          anchoLinea += w;
-        }
-      }
-      return lineas * (doc._fontSize * 1.3);
-    },
-    get y() { return doc._y; },
-  };
-  return doc;
-}
+// El arnés que mide posiciones vive en tests/helpers/docFalso.js. Nació acá
+// adentro y protegía sólo este drawer; está afuera para que lo usen todos los
+// demás (encabezado, reporte, expediente) sin que cada uno se haga su copia y
+// las copias se desincronicen.
 
 const COTIZACION = {
   moneda: 'BOB',

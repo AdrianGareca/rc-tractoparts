@@ -71,7 +71,7 @@ function buildShellHtml() {
         <button class="btn btn-ghost btn-sm filter-action"   id="allq-clear">Limpiar</button>
       </div>
       <div class="card-toolbar" id="allq-pagination"></div>
-      <div id="allq-results">${tableSkeleton({ columnas: 10, etiqueta: 'Cargando cotizaciones' })}</div>
+      <div id="allq-results">${tableSkeleton({ columnas: 9, etiqueta: 'Cargando cotizaciones' })}</div>
     </div>`;
 }
 
