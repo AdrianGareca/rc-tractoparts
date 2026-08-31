@@ -17,7 +17,9 @@
 
 'use strict';
 
-const { pool }                   = require('../config/db');
+// `pool` ya no se importa acá: la única transacción que este controlador
+// manejaba a mano (createLicitacion) pasó a withDeadlockRetry, que pide y
+// devuelve la conexión por su cuenta.
 const LicitacionModel            = require('../models/LicitacionModel');
 const LicitacionDocumentModel    = require('../models/LicitacionDocumentModel');
 const QuotationModel             = require('../models/QuotationModel');
@@ -29,6 +31,11 @@ const licitacionPdfService       = require('../services/licitacionPdfService');
 const { parseId } = require('../utils/parseId');
 // El bloque `pagination`, compartido.
 const { construirPaginacion } = require('../utils/paginacion');
+// Transacción con reintento ante deadlocks. Se comparte con cotizaciones a
+// propósito: las dos creaciones compiten por la fila de su contador de
+// correlativo con SELECT … FOR UPDATE, que es exactamente la contención que
+// hace que InnoDB declare un deadlock legítimo bajo carga.
+const { withDeadlockRetry } = require('./quotation/transactionHelpers');
 // Filtros de listado (estado, id_responsable) — ver el comentario largo junto
 // a la función en licitacionValidator.js.
 const { validateListFilters } = require('../validators/licitacionValidator');
@@ -230,31 +237,35 @@ const LicitacionController = {
     const errValidacion = await validarClienteYResponsableParaCrear(id_cliente, responsableId);
     if (errValidacion) return res.status(errValidacion.status).json(errValidacion.body);
 
-    let connection;
-    let codigo;
-    let licitacionId;
-
     try {
-      connection = await pool.getConnection();
-      await connection.beginTransaction();
+      // Transacción con reintento, igual que createQuotation. Antes esto se
+      // manejaba a mano —getConnection / beginTransaction / commit / release,
+      // más el rollback en el catch— y era el ÚNICO lugar de controllers/ que
+      // seguía así. La diferencia no es sólo de estilo: sin reintento, dos
+      // licitaciones creadas a la vez podían chocar sobre la fila del contador
+      // de correlativo y una recibía un 500 opaco, cuando lo correcto ante un
+      // deadlock de InnoDB es reintentar la transacción entera (lo dice la
+      // propia guía de MySQL, y es lo que cotizaciones ya hacía).
+      //
+      // Los dos valores salen COMO RESULTADO y no como variables de afuera:
+      // withDeadlockRetry puede correr este bloque más de una vez, así que
+      // cada intento tiene que producir los suyos.
+      const { codigo, licitacionId } = await withDeadlockRetry(async (connection) => {
+        const codigoNuevo = await LicitacionModel.generateCorrelativo(connection);
 
-      codigo = await LicitacionModel.generateCorrelativo(connection);
+        const idNuevo = await LicitacionModel.create(connection, {
+          codigo:                  codigoNuevo,
+          nombre:                  String(nombre).trim(),
+          id_cliente:              parseInt(id_cliente, 10),
+          descripcion:             descripcion ? String(descripcion).trim() : null,
+          presupuesto_referencial: presupuesto_referencial ?? null,
+          moneda:                  moneda || 'BOB',
+          fecha_limite:            fecha_limite || null,
+          id_responsable:          responsableId,
+        });
 
-      licitacionId = await LicitacionModel.create(connection, {
-        codigo,
-        nombre:                  String(nombre).trim(),
-        id_cliente:              parseInt(id_cliente, 10),
-        descripcion:             descripcion ? String(descripcion).trim() : null,
-        presupuesto_referencial: presupuesto_referencial ?? null,
-        moneda:                  moneda || 'BOB',
-        fecha_limite:            fecha_limite || null,
-        id_responsable:          responsableId,
-      });
-
-      await connection.commit();
-      // Liberar la conexión de la transacción ANTES de auditar / releer.
-      connection.release();
-      connection = null;
+        return { codigo: codigoNuevo, licitacionId: idNuevo };
+      }, { label: 'LicitacionController.createLicitacion' });
 
       // ── Auditoría (no fatal) ─────────────────────────────────────────────
       try {
@@ -294,12 +305,8 @@ const LicitacionController = {
         data:    created ?? { id: licitacionId, codigo },
       });
     } catch (error) {
-      if (connection) {
-        try { await connection.rollback(); } catch (rbErr) {
-          console.error('[LicitacionController.createLicitacion] Rollback error:', rbErr.message);
-        }
-        connection.release();
-      }
+      // El rollback y la devolución de la conexión ya los hizo
+      // withDeadlockRetry — mismo criterio que createQuotation.
 
       // FK violation (cliente o responsable inexistente) → 422 legible.
       if (error.code === 'ER_NO_REFERENCED_ROW_2' || error.code === 'ER_NO_REFERENCED_ROW') {
