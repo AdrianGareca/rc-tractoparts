@@ -127,6 +127,95 @@ describe('pantalla de clientes — el esqueleto reserva el lugar exacto de la ta
     expect(panel.textContent).toContain('Sin resultados');
   });
 
+  // ── Las tres acciones de cada fila ───────────────────────────────────────
+  // Se fijan ANTES de mover ese cableado a su propia función: son ~55 líneas
+  // que hoy viven dentro de load(), y lo que tiene que sobrevivir a la mudanza
+  // es exactamente esto — que cada botón le pegue al endpoint correcto con el
+  // cliente correcto, y que Desactivar pida confirmación antes de borrar nada.
+  describe('acciones de cada fila', () => {
+    beforeEach(async () => {
+      api.get.mockResolvedValue({
+        data: [
+          { ...cliente(1), activo: 1 },
+          { ...cliente(2), activo: 0 },
+        ],
+        pagination: { totalRecords: 2, page: 1, limit: 20 },
+      });
+    });
+
+    test('Editar abre el modal del cliente de ESA fila', async () => {
+      const { openClienteModal } = require('../../public/js/views/dashboard/modules/clientModal.js');
+      await mountClientsTab(panel);
+      await tick();
+
+      panel.querySelector('[data-client-edit="1"]').click();
+
+      expect(openClienteModal).toHaveBeenCalledTimes(1);
+      const args = openClienteModal.mock.calls[0][0];
+      expect(args.mode).toBe('edit');
+      expect(args.client.id).toBe(1);
+    });
+
+    test('Desactivar pide confirmación primero, y recién ahí borra', async () => {
+      api.delete.mockResolvedValue({});
+      await mountClientsTab(panel);
+      await tick();
+
+      panel.querySelector('[data-client-deact="1"]').click();
+      await tick();
+
+      // Todavía no borró nada: está esperando el sí.
+      expect(api.delete).not.toHaveBeenCalled();
+      expect(document.querySelector('#cd-confirm')).not.toBeNull();
+
+      document.querySelector('#cd-confirm').click();
+      await tick();
+
+      expect(api.delete).toHaveBeenCalledWith('/api/clientes/1');
+    });
+
+    test('Desactivar y cancelar NO borra', async () => {
+      api.delete.mockResolvedValue({});
+      await mountClientsTab(panel);
+      await tick();
+
+      panel.querySelector('[data-client-deact="1"]').click();
+      await tick();
+      document.querySelector('#cd-cancel').click();
+      await tick();
+
+      expect(api.delete).not.toHaveBeenCalled();
+    });
+
+    test('Activar reactiva al cliente inactivo conservando sus datos', async () => {
+      api.put.mockResolvedValue({});
+      await mountClientsTab(panel);
+      await tick();
+
+      panel.querySelector('[data-client-act="2"]').click();
+      await tick();
+
+      expect(api.put).toHaveBeenCalledTimes(1);
+      const [url, cuerpo] = api.put.mock.calls[0];
+      expect(url).toBe('/api/clientes/2');
+      expect(cuerpo.activo).toBe(true);
+      // Reactivar no puede borrar los datos del cliente de paso: el endpoint
+      // es el update general, así que hay que reenviarlos todos.
+      expect(cuerpo.razon_social).toBe('Cliente 2');
+      expect(cuerpo.nit).toBe('1002');
+    });
+
+    test('el cliente activo ofrece Desactivar y el inactivo, Activar', async () => {
+      await mountClientsTab(panel);
+      await tick();
+
+      expect(panel.querySelector('[data-client-deact="1"]')).not.toBeNull();
+      expect(panel.querySelector('[data-client-act="1"]')).toBeNull();
+      expect(panel.querySelector('[data-client-act="2"]')).not.toBeNull();
+      expect(panel.querySelector('[data-client-deact="2"]')).toBeNull();
+    });
+  });
+
   test('el buscador está cableado: escribir y apretar Buscar vuelve a pedir con q=', async () => {
     // Esto es lo que NINGUNA prueba del proyecto podía verificar hasta ahora:
     // que el listener quedó puesto. Una refactorización que mueva el markup a

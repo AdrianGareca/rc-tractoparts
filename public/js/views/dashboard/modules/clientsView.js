@@ -22,6 +22,85 @@ import { ETIQUETAS_ALFABETICAS } from '../../../shared/pagination.js';
 import { createListSection } from '../../../shared/listSection.js';
 
 // ---------------------------------------------------------------------------
+// cablearAccionesDeFila — los tres botones de cada fila: Editar, Desactivar,
+// Activar.
+//
+// Estaban dentro de load(), que hacía tres cosas distintas pegadas: pedir los
+// datos, armar la tabla, y cablear las acciones. Sacar la tercera acorta DOS
+// funciones de un solo corte —load() y mountClientsTab(), que la contiene— y
+// deja la junta donde de verdad está: "traer y mostrar" es una cosa, "qué pasa
+// cuando tocás un botón" es otra.
+//
+// Sólo necesita tres datos, y los tres son explícitos: dónde buscar los
+// botones, la lista para encontrar el cliente de esa fila, y cómo recargar
+// después de una modificación.
+//
+// @param {Object}   seccion — la sección de listado (shared/listSection.js)
+// @param {Array}    rows    — los clientes que se acaban de dibujar
+// @param {Function} load    — recargar la tabla tras una modificación
+// ---------------------------------------------------------------------------
+function cablearAccionesDeFila(seccion, rows, load) {
+  // "Editar" — reuses the shared Nuevo/Editar Cliente sub-modal.
+  seccion.el.querySelectorAll('[data-client-edit]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const client = rows.find((c) => String(c.id) === btn.dataset.clientEdit);
+      if (!client) return;
+      openClienteModal({ mode: 'edit', client, onSaved: load, mountTarget: document.body });
+    });
+  });
+
+  // "Desactivar" — soft delete (DELETE /api/clientes/:id), confirmed first.
+  seccion.el.querySelectorAll('[data-client-deact]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const client = rows.find((c) => String(c.id) === btn.dataset.clientDeact);
+      if (!client) return;
+
+      const ok = await confirmDialog({
+        title:        'Confirmar desactivación',
+        message:      `¿Desactivar al cliente "${escHtml(client.razon_social)}"? ` +
+                      `Podrá reactivarse luego editándolo.`,
+        confirmLabel: 'Sí, desactivar',
+        confirmClass: 'btn-danger',
+      });
+      if (!ok) return;
+
+      try {
+        await api.delete(`/api/clientes/${client.id}`);
+        showToast(`Cliente "${client.razon_social}" desactivado.`, 'success');
+        load();
+      } catch (err) {
+        showToast(err.data?.message || err.message || 'Error al desactivar el cliente.', 'error');
+      }
+    });
+  });
+
+  // "Activar" — reactivation goes through the general update endpoint
+  // (mirrors UserController.updateUser: reactivation is just a field on
+  // the general update, not a dedicated endpoint).
+  seccion.el.querySelectorAll('[data-client-act]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const client = rows.find((c) => String(c.id) === btn.dataset.clientAct);
+      if (!client) return;
+
+      try {
+        await api.put(`/api/clientes/${client.id}`, {
+          razon_social: client.razon_social,
+          nit:          client.nit,
+          contacto:     client.contacto,
+          email:        client.email,
+          telefono:     client.telefono,
+          activo:       true,
+        });
+        showToast(`Cliente "${client.razon_social}" reactivado.`, 'success');
+        load();
+      } catch (err) {
+        showToast(err.data?.message || err.message || 'Error al reactivar el cliente.', 'error');
+      }
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // mountClientsTab
 // @param {HTMLElement} panel — tab panel (or modal body) to render into
 // ---------------------------------------------------------------------------
@@ -138,64 +217,7 @@ export async function mountClientsTab(panel) {
           </table>
         </div>`);
 
-      // "Editar" — reuses the shared Nuevo/Editar Cliente sub-modal.
-      seccion.el.querySelectorAll('[data-client-edit]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const client = rows.find((c) => String(c.id) === btn.dataset.clientEdit);
-          if (!client) return;
-          openClienteModal({ mode: 'edit', client, onSaved: load, mountTarget: document.body });
-        });
-      });
-
-      // "Desactivar" — soft delete (DELETE /api/clientes/:id), confirmed first.
-      seccion.el.querySelectorAll('[data-client-deact]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const client = rows.find((c) => String(c.id) === btn.dataset.clientDeact);
-          if (!client) return;
-
-          const ok = await confirmDialog({
-            title:        'Confirmar desactivación',
-            message:      `¿Desactivar al cliente "${escHtml(client.razon_social)}"? ` +
-                          `Podrá reactivarse luego editándolo.`,
-            confirmLabel: 'Sí, desactivar',
-            confirmClass: 'btn-danger',
-          });
-          if (!ok) return;
-
-          try {
-            await api.delete(`/api/clientes/${client.id}`);
-            showToast(`Cliente "${client.razon_social}" desactivado.`, 'success');
-            load();
-          } catch (err) {
-            showToast(err.data?.message || err.message || 'Error al desactivar el cliente.', 'error');
-          }
-        });
-      });
-
-      // "Activar" — reactivation goes through the general update endpoint
-      // (mirrors UserController.updateUser: reactivation is just a field on
-      // the general update, not a dedicated endpoint).
-      seccion.el.querySelectorAll('[data-client-act]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const client = rows.find((c) => String(c.id) === btn.dataset.clientAct);
-          if (!client) return;
-
-          try {
-            await api.put(`/api/clientes/${client.id}`, {
-              razon_social: client.razon_social,
-              nit:          client.nit,
-              contacto:     client.contacto,
-              email:        client.email,
-              telefono:     client.telefono,
-              activo:       true,
-            });
-            showToast(`Cliente "${client.razon_social}" reactivado.`, 'success');
-            load();
-          } catch (err) {
-            showToast(err.data?.message || err.message || 'Error al reactivar el cliente.', 'error');
-          }
-        });
-      });
+      cablearAccionesDeFila(seccion, rows, load);
 
       seccion.paginate(data.pagination);
     } catch (err) {
