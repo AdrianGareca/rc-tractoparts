@@ -9,13 +9,16 @@
 // =============================================================================
 
 import api, { showToast } from '../../../services/apiClient.js';
-import { escHtml, badgeHtml, fmtAmount, fmtDate, roleBadgeHtml } from '../helpers.js';
+// roleBadgeHtml salió de acá junto con la tabla de usuarios: ahora la usa
+// modules/usersTab.js, que es el único lugar de esta pantalla que pinta roles.
+import { escHtml, badgeHtml, fmtAmount, fmtDate } from '../helpers.js';
 import { wirePdfButton, wireExcelButton, wireSeguimientoVenta } from '../modules/timelineView.js';
 import { renderReportes }      from '../modules/reportesView.js';
 import { mountClientsTab }     from '../modules/clientsView.js';
 import { mountAuditLogTab }    from '../modules/auditView.js';
 import { mountAllQuotationsTab } from '../modules/allQuotationsTab.js';
 import { mountLicitacionesTab } from '../modules/licitacionesView.js';
+import { mountUsersTab }       from '../modules/usersTab.js';
 import { buildProformaHTML }   from '../modules/proformaTemplate.js';
 import {
   showCreateUserModal, showEditUserModal, confirmDeactivateUser, confirmActivateUser,
@@ -523,74 +526,18 @@ export class ManagerStrategy extends DashboardStrategy {
 
   // ── Tab: User Management (CRUD) ───────────────────────────────────────────
 
+  // La tabla y su cableado viven en modules/usersTab.js: eran las mismas ~70
+  // líneas que AdminStrategy, y ya se habían desincronizado una vez (ver el
+  // comentario de ese archivo). Acá se queda sólo lo propio de esta strategy:
+  // el id de su botón y a qué modal va cada acción.
   async _renderUsers(panel) {
-    panel.innerHTML = tableSkeleton({ columnas: 6, etiqueta: 'Cargando datos' });
-    try {
-      const data  = await api.get('/api/usuarios');
-      const users = data.data ?? [];
-
-      panel.innerHTML = `
-        <div class="card">
-          <div class="card-header">
-            <h3>Gestión de usuarios</h3>
-            <button class="btn btn-primary btn-sm" id="btn-create-user">+ Nuevo usuario</button>
-          </div>
-          <div class="table-wrapper">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th><th>Nombre</th><th>Usuario</th>
-                  <th>Rol</th><th>Estado</th><th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${users.map(u => `
-                  <tr>
-                    <td>${u.id}</td>
-                    <td>${escHtml(u.nombre_completo)}</td>
-                    <td class="fw-600">${escHtml(u.nombre_usuario)}</td>
-                    <td>${roleBadgeHtml(u.rol)}</td>
-                    <td>
-                      <span class="badge ${u.activo ? 'badge-active' : 'badge-inactive'}">
-                        ${u.activo ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </td>
-                    <td>
-                      <div class="table-actions">
-                        <button class="btn btn-ghost btn-sm" data-user-edit="${u.id}"
-                                data-nombre="${escHtml(u.nombre_completo)}" data-rol="${u.id_rol}"
-                                data-canapprove="${u.can_approve_quotations ? 1 : 0}">Editar</button>
-                        ${u.activo
-                          ? `<button class="btn btn-danger btn-sm" data-user-deact="${u.id}"
-                                data-uname="${escHtml(u.nombre_usuario)}">Desactivar</button>`
-                          : `<button class="btn btn-success btn-sm" data-user-act="${u.id}"
-                                data-uname="${escHtml(u.nombre_usuario)}">Activar</button>`}
-                      </div>
-                    </td>
-                  </tr>`).join('')}
-              </tbody>
-            </table>
-          </div>
-        </div>`;
-
-      panel.querySelector('#btn-create-user')?.addEventListener('click', () =>
-        this._showCreateUserModal());
-
-      panel.querySelectorAll('[data-user-edit]').forEach(btn =>
-        btn.addEventListener('click', () =>
-          this._showEditUserModal(btn.dataset.userEdit, btn.dataset.nombre, btn.dataset.rol, btn.dataset.canapprove)));
-
-      panel.querySelectorAll('[data-user-deact]').forEach(btn =>
-        btn.addEventListener('click', () =>
-          this._confirmDeactivateUser(btn.dataset.userDeact, btn.dataset.uname)));
-
-      panel.querySelectorAll('[data-user-act]').forEach(btn =>
-        btn.addEventListener('click', () =>
-          this._confirmActivateUser(btn.dataset.userAct, btn.dataset.uname)));
-
-    } catch (err) {
-      panel.innerHTML = `<div class="empty-state"><p>Error cargando usuarios: ${escHtml(err.message)}</p></div>`;
-    }
+    await mountUsersTab(panel, {
+      botonCrearId: 'btn-create-user',
+      onCrear:      () => this._showCreateUserModal(),
+      onEditar:     (id, nombre, rol, canApprove) => this._showEditUserModal(id, nombre, rol, canApprove),
+      onDesactivar: (id, uname) => this._confirmDeactivateUser(id, uname),
+      onActivar:    (id, uname) => this._confirmActivateUser(id, uname),
+    });
   }
 
   // ── User CRUD modals — shared with AdminStrategy via userCrudModals.js ─────
