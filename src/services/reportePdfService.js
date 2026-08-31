@@ -551,6 +551,95 @@ function drawMisMetricas(doc, m, leaderboard, y) {
 //   metricas        {Object|null} misMetricas.obtener() — individual mode only
 //   clientesPorOrigen {Array} — company mode only
 // ---------------------------------------------------------------------------
+// ── Secciones del reporte ────────────────────────────────────────────────────
+// Mismo patrón que ya usaban las siete de drawMisMetricas (_drawStatBoxes,
+// _drawPorEstadoTable, _drawComparacionPeriodo…): reciben el doc y la `y` donde
+// arrancan, y devuelven la `y` donde terminaron. generateReportePdf nunca había
+// recibido ese tratamiento y arrastraba las cuatro secciones adentro.
+//
+// Ninguna calcula alturas por su cuenta: todas delegan en sectionTitle /
+// simpleTable / statBox, que ya manejan su propio salto de página. El llamador
+// sólo reenvía la `y`, que es lo que hace seguro moverlas.
+
+/** Título entre dos reglas marinas — el trato que drawSubtitle le da a la proforma. */
+function _drawTituloEnmarcado(doc, mode, y) {
+  doc.moveTo(MARGIN, y).lineTo(PW - MARGIN, y).lineWidth(0.8).strokeColor(C.NAVY).stroke();
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(C.NAVY)
+     .text(mode === 'company' ? 'REPORTE GENERAL' : 'REPORTE INDIVIDUAL',
+       MARGIN, y + 5, { width: CW, align: 'center', lineBreak: false });
+  doc.moveTo(MARGIN, y + 21).lineTo(PW - MARGIN, y + 21).lineWidth(0.8).strokeColor(C.NAVY).stroke();
+  return y + 32;
+}
+
+/** Sólo modo empresa: las cuatro cifras del período y la tabla por ejecutivo. */
+function _drawResumenGeneral(doc, progreso, y) {
+  y = sectionTitle(doc, 'Resumen General', y);
+
+  const boxW = (CW - 3 * 8) / 4;
+  statBox(doc, MARGIN,               y, boxW, 'Volumen USD', `$ ${fmtMoney(progreso.volumen.total_mes_usd)}`, '#2563EB');
+  statBox(doc, MARGIN + (boxW + 8),  y, boxW, 'Volumen BOB', `Bs. ${fmtMoney(progreso.volumen.total_mes_bob)}`, '#6D28D9');
+  statBox(doc, MARGIN + 2*(boxW+8),  y, boxW, 'Cotizaciones', String(progreso.volumen.total_cotizaciones), C.ORANGE);
+  statBox(doc, MARGIN + 3*(boxW+8),  y, boxW, 'Tasa de Éxito', `${progreso.conversion.ratio_pct}%`,
+    parseFloat(progreso.conversion.ratio_pct) >= 50 ? '#059669' : '#DC2626');
+  y += 58;
+
+  y = sectionTitle(doc, 'Rendimiento por Ejecutivo', y);
+  return simpleTable(doc, {
+    y,
+    columns: [
+      { key: 'ejecutivo',  label: 'EJECUTIVO',   width: CW * 0.28 },
+      { key: 'total',      label: 'TOTAL',        width: CW * 0.12, align: 'right' },
+      { key: 'aceptadas',  label: 'CONFIRMADAS',  width: CW * 0.15, align: 'right' },
+      { key: 'rechazadas', label: 'RECHAZADAS',   width: CW * 0.15, align: 'right' },
+      { key: 'volumen_usd', label: 'VOLUMEN USD', width: CW * 0.30, align: 'right',
+        render: (r) => `$ ${fmtMoney(r.volumen_usd)}` },
+    ],
+    rows: progreso.por_ejecutivo,
+  });
+}
+
+/** Va en los dos modos; sólo cambia el título. */
+function _drawTopClientes(doc, mode, topClientes, y) {
+  y = sectionTitle(doc, mode === 'company' ? 'Top 10 Clientes' : 'Mis Clientes Principales', y);
+  return simpleTable(doc, {
+    y,
+    columns: [
+      { key: 'cliente',            label: 'CLIENTE',    width: CW * 0.35 },
+      { key: 'nit',                label: 'NIT',        width: CW * 0.15 },
+      { key: 'proformas_emitidas', label: 'PROFORMAS',  width: CW * 0.15, align: 'right' },
+      { key: 'total_usd',          label: 'TOTAL USD',  width: CW * 0.175, align: 'right', render: (r) => `$ ${fmtMoney(r.total_usd)}` },
+      { key: 'total_bob',          label: 'TOTAL BOB',  width: CW * 0.175, align: 'right', render: (r) => `Bs. ${fmtMoney(r.total_bob)}` },
+    ],
+    rows: topClientes,
+    emptyLabel: 'Sin cotizaciones confirmadas/enviadas en este período.',
+  });
+}
+
+/** Sólo modo empresa. */
+function _drawClientesPorOrigen(doc, clientesPorOrigen, y) {
+  y = sectionTitle(doc, 'Clientes por Origen', y);
+  return simpleTable(doc, {
+    y,
+    columns: [
+      { key: 'origen',         label: 'ORIGEN',         width: CW * 0.4 },
+      { key: 'total_clientes', label: 'CLIENTES',       width: CW * 0.2, align: 'right' },
+      { key: 'total_usd',      label: 'VOLUMEN USD',    width: CW * 0.2, align: 'right', render: (r) => `$ ${fmtMoney(r.total_usd)}` },
+      { key: 'total_bob',      label: 'VOLUMEN BOB',    width: CW * 0.2, align: 'right', render: (r) => `Bs. ${fmtMoney(r.total_bob)}` },
+    ],
+    rows: clientesPorOrigen,
+    emptyLabel: 'Sin clientes clasificados todavía.',
+  });
+}
+
+/** El pie se dibuja al final, cuando ya se sabe cuántas páginas salieron. */
+function _pieEnTodasLasPaginas(doc, footerSubtitle) {
+  const pageRange = doc.bufferedPageRange();
+  for (let i = 0; i < pageRange.count; i++) {
+    doc.switchToPage(pageRange.start + i);
+    drawFooter(doc, footerSubtitle);
+  }
+}
+
 async function generateReportePdf(data) {
   const {
     mode, periodo, rol, nombreUsuario,
@@ -594,54 +683,11 @@ async function generateReportePdf(data) {
       // de esta empresa.
       y = drawBrandStrip(doc, y);
 
-      // Titulo enmarcado entre dos reglas marinas: el mismo tratamiento que
-      // drawSubtitle le da a "PROFORMA REPUESTOS".
-      doc.moveTo(MARGIN, y).lineTo(PW - MARGIN, y).lineWidth(0.8).strokeColor(C.NAVY).stroke();
-      doc.font('Helvetica-Bold').fontSize(12).fillColor(C.NAVY)
-         .text(mode === 'company' ? 'REPORTE GENERAL' : 'REPORTE INDIVIDUAL',
-           MARGIN, y + 5, { width: CW, align: 'center', lineBreak: false });
-      doc.moveTo(MARGIN, y + 21).lineTo(PW - MARGIN, y + 21).lineWidth(0.8).strokeColor(C.NAVY).stroke();
-      y += 32;
+      y = _drawTituloEnmarcado(doc, mode, y);
 
-      if (mode === 'company' && progreso) {
-        y = sectionTitle(doc, 'Resumen General', y);
+      if (mode === 'company' && progreso) y = _drawResumenGeneral(doc, progreso, y);
 
-        const boxW = (CW - 3 * 8) / 4;
-        statBox(doc, MARGIN,               y, boxW, 'Volumen USD', `$ ${fmtMoney(progreso.volumen.total_mes_usd)}`, '#2563EB');
-        statBox(doc, MARGIN + (boxW + 8),  y, boxW, 'Volumen BOB', `Bs. ${fmtMoney(progreso.volumen.total_mes_bob)}`, '#6D28D9');
-        statBox(doc, MARGIN + 2*(boxW+8),  y, boxW, 'Cotizaciones', String(progreso.volumen.total_cotizaciones), C.ORANGE);
-        statBox(doc, MARGIN + 3*(boxW+8),  y, boxW, 'Tasa de Éxito', `${progreso.conversion.ratio_pct}%`,
-          parseFloat(progreso.conversion.ratio_pct) >= 50 ? '#059669' : '#DC2626');
-        y += 58;
-
-        y = sectionTitle(doc, 'Rendimiento por Ejecutivo', y);
-        y = simpleTable(doc, {
-          y,
-          columns: [
-            { key: 'ejecutivo',  label: 'EJECUTIVO',   width: CW * 0.28 },
-            { key: 'total',      label: 'TOTAL',        width: CW * 0.12, align: 'right' },
-            { key: 'aceptadas',  label: 'CONFIRMADAS',  width: CW * 0.15, align: 'right' },
-            { key: 'rechazadas', label: 'RECHAZADAS',   width: CW * 0.15, align: 'right' },
-            { key: 'volumen_usd', label: 'VOLUMEN USD', width: CW * 0.30, align: 'right',
-              render: (r) => `$ ${fmtMoney(r.volumen_usd)}` },
-          ],
-          rows: progreso.por_ejecutivo,
-        });
-      }
-
-      y = sectionTitle(doc, mode === 'company' ? 'Top 10 Clientes' : 'Mis Clientes Principales', y);
-      y = simpleTable(doc, {
-        y,
-        columns: [
-          { key: 'cliente',            label: 'CLIENTE',    width: CW * 0.35 },
-          { key: 'nit',                label: 'NIT',        width: CW * 0.15 },
-          { key: 'proformas_emitidas', label: 'PROFORMAS',  width: CW * 0.15, align: 'right' },
-          { key: 'total_usd',          label: 'TOTAL USD',  width: CW * 0.175, align: 'right', render: (r) => `$ ${fmtMoney(r.total_usd)}` },
-          { key: 'total_bob',          label: 'TOTAL BOB',  width: CW * 0.175, align: 'right', render: (r) => `Bs. ${fmtMoney(r.total_bob)}` },
-        ],
-        rows: topClientes,
-        emptyLabel: 'Sin cotizaciones confirmadas/enviadas en este período.',
-      });
+      y = _drawTopClientes(doc, mode, topClientes, y);
 
       if (mode === 'individual') {
         // ANTES: una sola tabla de UNA fila con cinco numeros. El ejecutivo
@@ -650,27 +696,16 @@ async function generateReportePdf(data) {
         y = drawMisMetricas(doc, metricas, leaderboard, y);
       }
 
-      if (mode === 'company') {
-        y = sectionTitle(doc, 'Clientes por Origen', y);
-        y = simpleTable(doc, {
-          y,
-          columns: [
-            { key: 'origen',         label: 'ORIGEN',         width: CW * 0.4 },
-            { key: 'total_clientes', label: 'CLIENTES',       width: CW * 0.2, align: 'right' },
-            { key: 'total_usd',      label: 'VOLUMEN USD',    width: CW * 0.2, align: 'right', render: (r) => `$ ${fmtMoney(r.total_usd)}` },
-            { key: 'total_bob',      label: 'VOLUMEN BOB',    width: CW * 0.2, align: 'right', render: (r) => `Bs. ${fmtMoney(r.total_bob)}` },
-          ],
-          rows: clientesPorOrigen,
-          emptyLabel: 'Sin clientes clasificados todavía.',
-        });
-      }
+      // La `y` que devuelve esta última sección no la lee nadie —el pie se
+      // dibuja por página, no a continuación— y por eso eslint la marca. Se
+      // conserva igual, a propósito: si mañana se agrega una sección más
+      // abajo, tiene que arrancar de donde terminó ésta. Borrar la asignación
+      // «porque no se usa» es exactamente cómo se perdió el `y += SON_H + 8`
+      // que imprimió el importe en letras encima de las condiciones.
+      // eslint-disable-next-line no-unused-vars
+      if (mode === 'company') y = _drawClientesPorOrigen(doc, clientesPorOrigen, y);
 
-      // Footer on every page generated above.
-      const pageRange = doc.bufferedPageRange();
-      for (let i = 0; i < pageRange.count; i++) {
-        doc.switchToPage(pageRange.start + i);
-        drawFooter(doc, footerSubtitle);
-      }
+      _pieEnTodasLasPaginas(doc, footerSubtitle);
 
       doc.end();
     } catch (err) {

@@ -233,16 +233,16 @@ function resumenEconomico(doc, y, lic, moneda) {
 }
 
 // ── main render ──────────────────────────────────────────────────────────────
-function renderExpediente(doc, lic) {
-  const moneda = lic.moneda || 'BOB';
-
-  // ── Cabecera, con la estructura de la proforma ───────────────────────────
-  // ANTES: una banda marina que ocupaba todo el ancho, con el logo sobre un
-  // chip blanco encima. Se veia como la portada de un informe, no como el papel
-  // membretado que usa la empresa.
-  //
-  // AHORA: logo a la izquierda sobre blanco, caja de datos a la derecha y un
-  // divisor marino debajo — exactamente lo que hace drawHeader en la proforma.
+// ---------------------------------------------------------------------------
+// cabecera — logo, caja de datos, divisor, franja de marcas, título y píldora
+// de estado. Todo lo que va antes del contenido.
+//
+// Salió de renderExpediente, que tenía 113 líneas y mezclaba el membrete con
+// las cinco secciones del expediente. Es posicionamiento absoluto desde
+// y0 = MARGIN: no depende de nada de lo que venga después, y por eso se puede
+// leer y cambiar sin tener el resto en la cabeza.
+// ---------------------------------------------------------------------------
+function cabecera(doc, lic) {
   const LOGO_W = 130, LOGO_H = 58;
   const BOX_W  = 215, BOX_H = 58;
   const BOX_X  = PW - MARGIN - BOX_W;
@@ -299,7 +299,18 @@ function renderExpediente(doc, lic) {
   doc.fillColor(C.WHITE).font('Helvetica-Bold').fontSize(8)
     .text(estadoTxt, MARGIN + 9, y + 5, { lineBreak: false });
   y += 26;
+  return y;
+}
 
+// ---------------------------------------------------------------------------
+// datosDeLaLicitación — la caja de pares etiqueta/valor, con su marco.
+//
+// Va entera en una función a propósito: el marco se dibuja al final usando
+// `boxTop`, capturado al principio. Partir ESE par —la captura por un lado y
+// el trazo por el otro— es exactamente la forma del bug que ya imprimió el
+// importe en letras encima de las condiciones en la proforma.
+// ---------------------------------------------------------------------------
+function datosDeLaLicitacion(doc, y, lic) {
   // ── 1. Datos de la licitación ────────────────────────────────────────────
   y = sectionTitle(doc, y, 'Datos de la licitación');
   const boxTop = y;
@@ -366,6 +377,22 @@ function renderExpediente(doc, lic) {
     doc.switchToPage(rango.start + idxAlCerrar);
   }
   y += 12;
+  return y;
+}
+
+function renderExpediente(doc, lic) {
+  const moneda = lic.moneda || 'BOB';
+
+  // ── Cabecera, con la estructura de la proforma ───────────────────────────
+  // ANTES: una banda marina que ocupaba todo el ancho, con el logo sobre un
+  // chip blanco encima. Se veia como la portada de un informe, no como el papel
+  // membretado que usa la empresa.
+  //
+  // AHORA: logo a la izquierda sobre blanco, caja de datos a la derecha y un
+  // divisor marino debajo — exactamente lo que hace drawHeader en la proforma.
+  let y = cabecera(doc, lic);
+
+  y = datosDeLaLicitacion(doc, y, lic);
 
   // ── 2. Resumen económico ─────────────────────────────────────────────────
   y = resumenEconomico(doc, y, lic, moneda);
@@ -398,6 +425,12 @@ function renderExpediente(doc, lic) {
   // incrusta (se descarga aparte, desde la pantalla de la licitación).
   // Encontrado en la ronda de estrés del 2026-08-25.
   y = sectionTitle(doc, y, `Documentos adjuntos (${(lic.documentos || []).length})`);
+  // La `y` de esta última tabla no la lee nadie —el pie se dibuja por página,
+  // no a continuación— y por eso eslint la marca. Se conserva a propósito: si
+  // mañana se agrega una sección 6, tiene que arrancar de donde terminó ésta.
+  // Borrar la asignación «porque no se usa» es exactamente cómo se perdió el
+  // `y += SON_H + 8` que imprimió el importe en letras sobre las condiciones.
+  // eslint-disable-next-line no-unused-vars
   y = table(doc, y, [
     { t: 'Nombre',    k: 'nombre_original', w: 44 },
     { t: 'Tipo',      w: 14, align: 'center', r: (r) => path.extname(r.nombre_original || '').replace('.', '').toUpperCase() || '—' },
