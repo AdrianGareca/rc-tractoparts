@@ -316,7 +316,7 @@ export async function mountAuditLogTab(panel) {
   const seccion = createListSection({
     resultsEl:    $('#audit-results'),
     paginationEl: $('#audit-pagination'),
-    columnas:     7,
+    columnas:     8,
     etiqueta:     'Cargando registros de auditoría',
     etiquetas:    ETIQUETAS_FECHA,
     onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },

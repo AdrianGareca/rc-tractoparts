@@ -112,14 +112,22 @@ describe('los paneles piden la cantidad de columnas de SU tabla', () => {
     });
   }
 
-  // QUÉ SE PUEDE AFIRMAR LEYENDO EL CÓDIGO, Y QUÉ NO
-  // No todo esqueleto reemplaza a UNA tabla. Hay dos formas que este test
-  // sabe verificar, y dos que deliberadamente no toca:
+  // HAY DOS FORMAS DE DECLARAR EL ANCHO DEL ESQUELETO, Y HAY QUE MIRAR LAS DOS
+  //   tableSkeleton({ columnas: N })      — la pintada inicial del panel
+  //   createListSection({ columnas: N })  — el que usa seccion.loading()
   //
-  //   ✔ Un archivo con UN esqueleto y UNA tabla: no hay ambigüedad posible.
-  //     (allQuotationsTab, auditView, clientsView, licitacionesView, misMetricas)
-  //   ✔ Un esqueleto seguido de cerca por su propia tabla: es el patrón de
-  //     las strategies, que tienen dos paneles con tabla en el mismo archivo.
+  // La segunda es la que más se ve: se dispara en cada búsqueda y en cada
+  // cambio de página, no sólo al abrir la pantalla. La primera versión de este
+  // test sólo miraba `tableSkeleton(`, así que al corregir los cuatro paneles
+  // quedó arreglada la mitad del bug: la pintada inicial pasó a estar bien y
+  // el recargado siguió saltando igual. Por eso ahora se busca `columnas:`
+  // suelto, que cubre las dos. Encontrado al escribir la prueba de pantalla.
+  //
+  // QUÉ SE PUEDE AFIRMAR LEYENDO EL CÓDIGO, Y QUÉ NO
+  //   ✔ Un archivo con UNA tabla: todas sus declaraciones tienen que dar ese
+  //     número. No hay ambigüedad posible.
+  //   ✔ Un esqueleto seguido de cerca por su propia tabla: es el patrón de las
+  //     strategies, que tienen dos paneles con tabla en el mismo archivo.
   //
   //   ✘ reportesView: sus cuatro esqueletos son marcadores genéricos de un
   //     panel entero —varias tarjetas con varias tablas—, no de una tabla
@@ -127,10 +135,19 @@ describe('los paneles piden la cantidad de columnas de SU tabla', () => {
   //   ✘ clienteItemReport: arma su <thead> en tiempo de ejecución con
   //     buildEncabezadosHtml(vista, …); la cantidad de columnas depende de la
   //     vista elegida y no se puede contar leyendo el fuente.
+  //   ✘ executiveStrategy: su tabla tiene una columna condicional («Ejecutivo»,
+  //     sólo en la vista de equipo) y el panel lo resuelve bien pasándole el
+  //     ancho a loading() en cada carga: `loading(scope === 'equipo' ? 8 : 7)`.
+  //     El `columnas: 7` declarado es el valor por defecto, correcto, pero
+  //     emparejarlo con un <thead> estático daría un falso positivo.
   //
   // Un test que acusa en falso se termina ignorando, que es peor que no
   // tenerlo. Este prefiere callarse cuando no puede estar seguro.
-  const SIN_TABLA_PROPIA = ['modules/reportesView.js', 'modules/clienteItemReport.js'];
+  const SIN_TABLA_PROPIA = [
+    'modules/reportesView.js',
+    'modules/clienteItemReport.js',
+    'strategies/executiveStrategy.js',
+  ];
 
   const CERCA = 40;   // líneas; las parejas reales están a 13-22, ver arriba
 
@@ -144,9 +161,13 @@ describe('los paneles piden la cantidad de columnas de SU tabla', () => {
     const src    = fs.readFileSync(ruta, 'utf8');
     const lineas = src.split('\n');
 
+    // Las dos formas de declarar el ancho, en una sola pasada: `columnas: N`
+    // cubre tanto `tableSkeleton({ columnas: N })` como el `columnas: N` que
+    // recibe createListSection. El `\d` deja afuera el `columnas: [` de
+    // clienteItemReport, que es una lista de definiciones de columna, no un ancho.
     const esqueletos = [];
     lineas.forEach((linea, i) => {
-      const m = linea.match(/tableSkeleton\(\{\s*columnas:\s*(\d+)/);
+      const m = linea.match(/columnas:\s*(\d+)/);
       if (m) esqueletos.push({ linea: i + 1, pedidas: Number(m[1]), i });
     });
     if (esqueletos.length === 0) return [];
@@ -155,12 +176,16 @@ describe('los paneles piden la cantidad de columnas de SU tabla', () => {
       .map((m) => m[0])
       .filter((t) => columnasDe(t) > 0);   // los dinámicos no se pueden contar
 
+    // Forma 1 — el archivo tiene UNA sola tabla: todas sus declaraciones, sin
+    // importar cuántas sean ni de qué función vengan, tienen que dar ese número.
+    if (theads.length === 1) {
+      const reales = columnasDe(theads[0]);
+      return esqueletos.map((e) => ({ archivo: relativo, linea: e.linea, pedidas: e.pedidas, reales }));
+    }
+
+    // Forma 2 — varias tablas en el archivo: se empareja cada declaración con
+    // la tabla que tiene justo debajo (el patrón de las strategies).
     return esqueletos.flatMap((e) => {
-      // Forma 1 — un solo esqueleto y una sola tabla: se corresponden sí o sí.
-      if (esqueletos.length === 1 && theads.length === 1) {
-        return [{ archivo: relativo, linea: e.linea, pedidas: e.pedidas, reales: columnasDe(theads[0]) }];
-      }
-      // Forma 2 — la tabla propia del esqueleto está justo debajo.
       const cercano = lineas.slice(e.i, e.i + CERCA).join('\n').match(/<thead>[\s\S]*?<\/thead>/);
       if (cercano && columnasDe(cercano[0]) > 0) {
         return [{ archivo: relativo, linea: e.linea, pedidas: e.pedidas, reales: columnasDe(cercano[0]) }];

@@ -76,7 +76,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
   const seccion = createListSection({
     resultsEl:    $('#lic-results'),
     paginationEl: $('#lic-pagination'),
-    columnas:     7,
+    columnas:     8,
     etiqueta:     'Cargando licitaciones',
     etiquetas:    ETIQUETAS_FECHA,
     onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },

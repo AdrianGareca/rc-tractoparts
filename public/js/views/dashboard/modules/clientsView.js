@@ -88,7 +88,7 @@ export async function mountClientsTab(panel) {
   const seccion = createListSection({
     resultsEl:    $('#clients-results'),
     paginationEl: $('#clients-pagination'),
-    columnas:     6,
+    columnas:     7,
     etiqueta:     'Cargando clientes',
     etiquetas:    ETIQUETAS_ALFABETICAS,
     onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },

@@ -111,7 +111,7 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
   const seccion = createListSection({
     resultsEl:    $('#allq-results'),
     paginationEl: $('#allq-pagination'),
-    columnas:     10,
+    columnas:     9,
     etiqueta:     'Cargando cotizaciones',
     etiquetas:    ETIQUETAS_FECHA,
     onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },
