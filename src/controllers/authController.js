@@ -25,6 +25,111 @@ const { logEvent, AuditActions }  = require('../utils/auditLog');
 // bcrypt call; known user with wrong password = ~80-150ms bcrypt.compare).
 const DUMMY_BCRYPT_HASH = '$2a$12$CwTycUXWue0Thq9StjUM0uJ8mEywNw12KVUwEVQjLzQKtUyq93U9m';
 
+// ---------------------------------------------------------------------------
+// _rechazarLogin — auditar el intento fallido y responder 401.
+//
+// Los tres motivos de rechazo que conocen al usuario (cuenta inactiva, cuenta
+// bloqueada, contraseña incorrecta) terminaban con el MISMO bloque de quince
+// líneas: un logEvent de LOGIN_FAILED con los mismos siete campos, y un 401.
+// Lo único que cambiaba entre los tres era el `reason`, algún dato extra en el
+// detalle, y —en el caso del bloqueo— el mensaje.
+//
+// QUÉ NO ENTRA ACÁ, Y ES A PROPÓSITO
+// El `bcrypt.compare(password, DUMMY_BCRYPT_HASH)` que iguala los tiempos NO
+// se movió adentro. Cada camino lo necesita distinto: el de usuario
+// inexistente y el de cuenta inactiva lo queman a propósito, el de contraseña
+// incorrecta ya gastó ese tiempo comparando de verdad, y el de cuenta
+// bloqueada corta antes sin comparar nada. Meterlo acá le agregaría ~100ms al
+// camino más común y volvería a abrir el canal de tiempos que ese código
+// existe para cerrar.
+//
+// Tampoco entra el incrementFailedAttempts: sólo cuenta como intento fallido
+// la contraseña equivocada, no que la cuenta esté inactiva o ya bloqueada.
+// ---------------------------------------------------------------------------
+async function _rechazarLogin(res, { user, clientIp, motivo, detalleExtra = {}, mensaje }) {
+  await logEvent({
+    id_usuario:     user.id,
+    nombre_usuario: user.nombre_usuario,
+    accion:         AuditActions.LOGIN_FAILED,
+    entidad:        'usuarios',
+    id_entidad:     user.id,
+    detalle:        { reason: motivo, ...detalleExtra },
+    ip_origen:      clientIp,
+    resultado:      'fallo',
+  });
+
+  // El genérico por defecto: nunca revelar si el usuario existe (enumeración).
+  // El bloqueo es la única excepción y pasa su propio mensaje, porque ahí sí
+  // conviene que la persona sepa que tiene que esperar.
+  return res.status(401).json({
+    success: false,
+    message: mensaje ?? 'Invalid credentials.',
+  });
+}
+
+// ---------------------------------------------------------------------------
+// _emitirSesion — las credenciales dieron bien: abrir la sesión.
+//
+// Es el paso 6 de login(), entero: limpiar el contador de intentos, armar el
+// token, firmarlo, dejar constancia en la bitácora y devolverle a la pantalla
+// lo que necesita para arrancar. Se saca como una pieza sola porque es UNA
+// cosa —"la cuenta está bien, dale acceso"— y porque login() quedaba de 84
+// líneas: cuatro por encima del umbral que el proyecto se puso.
+//
+// No decide nada. Cuando esto corre, ya se comprobó que el usuario existe,
+// está activo, no está bloqueado y la contraseña coincide.
+// ---------------------------------------------------------------------------
+async function _emitirSesion(res, { user, clientIp }) {
+  // Reset failed-attempt counter and record last-access timestamp
+  await UserModel.updateLoginSuccess(user.id);
+
+  // Build the JWT payload — include only what downstream middleware needs.
+  // user.rol is the role NAME string (e.g. 'Jefe') from the JOIN with roles.
+  const tokenPayload = {
+    id:             user.id,
+    nombre_usuario: user.nombre_usuario,
+    rol:            user.rol,   // Always the string name from the roles table JOIN
+    // Persistent revocation stamp. The auth middleware compares this against
+    // usuarios.token_version on every request, so a logout (which bumps the
+    // counter) invalidates this token even after a server restart.
+    token_version:  user.token_version ?? 0,
+  };
+
+  const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN || '8h',
+    algorithm: 'HS256',
+  });
+
+  await logEvent({
+    id_usuario:     user.id,
+    nombre_usuario: user.nombre_usuario,
+    accion:         AuditActions.LOGIN,
+    entidad:        'usuarios',
+    id_entidad:     user.id,
+    ip_origen:      clientIp,
+    resultado:      'exito',
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: 'Authentication successful.',
+    data: {
+      token,
+      user: {
+        id:              user.id,
+        nombre_completo: user.nombre_completo,
+        nombre_usuario:  user.nombre_usuario,
+        rol:             user.rol,
+        // Delegación de Funciones flag — the SPA stores this in AuthSession to
+        // conditionally render the "Aprobar Internamente" action for delegated
+        // executives. Authorization is still enforced server-side (the state
+        // controller re-reads the flag fresh from the DB).
+        can_approve_quotations: Boolean(user.can_approve_quotations),
+      },
+    },
+  });
+}
+
 const AuthController = {
 
   // ---------------------------------------------------------------------------
@@ -70,20 +175,7 @@ const AuthController = {
       // ── 3. Active account check ───────────────────────────────────────────────
       if (!user.activo) {
         await bcrypt.compare(password, DUMMY_BCRYPT_HASH); // keep timing uniform
-
-        await logEvent({
-          id_usuario:    user.id,
-          nombre_usuario: user.nombre_usuario,
-          accion:        AuditActions.LOGIN_FAILED,
-          entidad:       'usuarios',
-          id_entidad:    user.id,
-          detalle:       { reason: 'account_inactive' },
-          ip_origen:     clientIp,
-          resultado:     'fallo',
-        });
-
-        // Return the same generic message to prevent username enumeration
-        return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+        return _rechazarLogin(res, { user, clientIp, motivo: 'account_inactive' });
       }
 
       // ── 4. Brute-force lockout check ──────────────────────────────────────────
@@ -94,20 +186,15 @@ const AuthController = {
       if (user.bloqueo_activo) {
         const minutos = Math.max(1, Number(user.bloqueo_minutos_restantes) || 1);
 
-        await logEvent({
-          id_usuario:    user.id,
-          nombre_usuario: user.nombre_usuario,
-          accion:        AuditActions.LOGIN_FAILED,
-          entidad:       'usuarios',
-          id_entidad:    user.id,
-          detalle:       { reason: 'account_locked', minutos_restantes: minutos },
-          ip_origen:     clientIp,
-          resultado:     'fallo',
-        });
-
-        return res.status(401).json({
-          success: false,
-          message: `Account temporarily locked due to repeated failed login attempts. ` +
+        return _rechazarLogin(res, {
+          user,
+          clientIp,
+          motivo:       'account_locked',
+          detalleExtra: { minutos_restantes: minutos },
+          // El único rechazo que NO usa el mensaje genérico: acá conviene que
+          // la persona sepa que está bloqueada y cuánto falta, en vez de
+          // seguir probando contraseñas que igual no van a entrar.
+          mensaje: `Account temporarily locked due to repeated failed login attempts. ` +
                    `Try again in ${minutos} minute(s).`,
         });
       }
@@ -121,72 +208,20 @@ const AuthController = {
       const passwordMatches = await bcrypt.compare(password, storedHash);
 
       if (!passwordMatches) {
+        // Sólo este camino cuenta como intento fallido: una cuenta inactiva o
+        // ya bloqueada no suma al contador que dispara el bloqueo.
         await UserModel.incrementFailedAttempts(user.id);
 
-        await logEvent({
-          id_usuario:    user.id,
-          nombre_usuario: user.nombre_usuario,
-          accion:        AuditActions.LOGIN_FAILED,
-          entidad:       'usuarios',
-          id_entidad:    user.id,
-          detalle:       { reason: 'wrong_password', attempts: (user.intentos_fallidos || 0) + 1 },
-          ip_origen:     clientIp,
-          resultado:     'fallo',
+        return _rechazarLogin(res, {
+          user,
+          clientIp,
+          motivo:       'wrong_password',
+          detalleExtra: { attempts: (user.intentos_fallidos || 0) + 1 },
         });
-
-        return res.status(401).json({ success: false, message: 'Invalid credentials.' });
       }
 
       // ── 6. Authentication successful ──────────────────────────────────────────
-
-      // Reset failed-attempt counter and record last-access timestamp
-      await UserModel.updateLoginSuccess(user.id);
-
-      // Build the JWT payload — include only what downstream middleware needs.
-      // user.rol is the role NAME string (e.g. 'Jefe') from the JOIN with roles.
-      const tokenPayload = {
-        id:             user.id,
-        nombre_usuario: user.nombre_usuario,
-        rol:            user.rol,   // Always the string name from the roles table JOIN
-        // Persistent revocation stamp. The auth middleware compares this against
-        // usuarios.token_version on every request, so a logout (which bumps the
-        // counter) invalidates this token even after a server restart.
-        token_version:  user.token_version ?? 0,
-      };
-
-      const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, {
-        expiresIn: process.env.JWT_EXPIRES_IN || '8h',
-        algorithm: 'HS256',
-      });
-
-      await logEvent({
-        id_usuario:    user.id,
-        nombre_usuario: user.nombre_usuario,
-        accion:        AuditActions.LOGIN,
-        entidad:       'usuarios',
-        id_entidad:    user.id,
-        ip_origen:     clientIp,
-        resultado:     'exito',
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: 'Authentication successful.',
-        data: {
-          token,
-          user: {
-            id:              user.id,
-            nombre_completo: user.nombre_completo,
-            nombre_usuario:  user.nombre_usuario,
-            rol:             user.rol,
-            // Delegación de Funciones flag — the SPA stores this in AuthSession to
-            // conditionally render the "Aprobar Internamente" action for delegated
-            // executives. Authorization is still enforced server-side (the state
-            // controller re-reads the flag fresh from the DB).
-            can_approve_quotations: Boolean(user.can_approve_quotations),
-          },
-        },
-      });
+      return _emitirSesion(res, { user, clientIp });
     } catch (error) {
       console.error('[AuthController.login] Unexpected error:', error.message);
 
