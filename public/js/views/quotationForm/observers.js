@@ -13,6 +13,9 @@
 
 import { sumSubtotals, computeTotal } from '../../shared/quotationTotals.js';
 import { fmt } from './helpers.js';
+// La unidad por defecto vive junto a la lista del desplegable: declararla acá
+// también dejaría las dos en desacuerdo la próxima vez que cambie la lista.
+import { UNIDAD_POR_DEFECTO } from './lineItemsComponent.js';
 
 // =============================================================================
 // OBSERVER PATTERN — Subject (Observable)
@@ -48,7 +51,7 @@ export class LineItemsSubject {
       descripcion_item:   '',
       codigo:             '',
       codigo_alternativo: '',
-      unidad:             'UND',
+      unidad:             UNIDAD_POR_DEFECTO,
       cantidad:           1,
       precio_unitario:    0,
       marca_id:           null,
@@ -68,7 +71,7 @@ export class LineItemsSubject {
       descripcion_item:   item.descripcion_item   ?? '',
       codigo:             item.codigo             ?? '',
       codigo_alternativo: item.codigo_alternativo ?? '',
-      unidad:             item.unidad             ?? 'UND',
+      unidad:             item.unidad             ?? UNIDAD_POR_DEFECTO,
       cantidad:           item.cantidad           ?? 1,
       precio_unitario:    item.precio_unitario    ?? 0,
       marca_id:           item.marca_id           ?? null,

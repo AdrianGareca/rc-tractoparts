@@ -206,7 +206,7 @@ CREATE TABLE productos (
   id                INT UNSIGNED   NOT NULL AUTO_INCREMENT,
   codigo            VARCHAR(50)    NOT NULL,
   descripcion       VARCHAR(255)   NOT NULL,
-  unidad            VARCHAR(20)    DEFAULT 'UND',
+  unidad            VARCHAR(20)    DEFAULT 'UNI',
   precio_referencia DECIMAL(15,2)  DEFAULT NULL,
   marca_id          INT UNSIGNED   NULL
     COMMENT '3NF: FK to marcas.id — replaces the former denormalized marca VARCHAR(80) column.',
@@ -426,8 +426,8 @@ CREATE TABLE cotizacion_detalles (
     COMMENT 'Manufacturer Part Number — ad-hoc when id_producto is NULL; mirrors productos.codigo when set.',
   codigo_alternativo VARCHAR(100)  NULL
     COMMENT 'Código alternativo del fabricante o código cruzado para la línea — aparece en columna PDF.',
-  unidad           VARCHAR(20)    NOT NULL DEFAULT 'UND'
-    COMMENT 'Unidad de medida del ítem (UND, KG, M, etc.).',
+  unidad           VARCHAR(20)    NOT NULL DEFAULT 'UNI'
+    COMMENT 'Unidad de medida del ítem. La app manda siempre un valor, así que este DEFAULT no se usa en la práctica. Lista vigente desde 2026-09-01: JGOS, PZA, KIT, LTS, KG, UNI, MTS. Es VARCHAR libre a propósito, no un ENUM: las cotizaciones anteriores conservan sus códigos viejos (GGO, UND) y el desplegable los sigue mostrando.',
   tiempo_entrega   VARCHAR(100)   NULL
     COMMENT 'Tiempo de entrega específico para esta línea (ej. 15 DÍAS HÁBILES).',
   marca_id         INT UNSIGNED   NULL

@@ -37,7 +37,7 @@ import {
   TotalsObserver,
 } from './quotationForm/observers.js';
 import { buildFormHTML } from './quotationForm/formTemplate.js';
-import { appendRow } from './quotationForm/lineItemsComponent.js';
+import { appendRow, UNIDAD_POR_DEFECTO } from './quotationForm/lineItemsComponent.js';
 import { openBrandModal } from './quotationForm/brandModal.js';
 import { wireClientSearch } from './quotationForm/clientSearch.js';
 import { wireFileUpload } from './quotationForm/fileUpload.js';
@@ -151,7 +151,7 @@ class FormMediator {
           descripcion_item:   d.descripcion_item,
           codigo:             d.codigo_parte ?? d.producto_codigo ?? '',
           codigo_alternativo: d.codigo_alternativo ?? '',
-          unidad:             d.unidad ?? 'UND',
+          unidad:             d.unidad ?? UNIDAD_POR_DEFECTO,
           cantidad:           Number(d.cantidad),
           precio_unitario:    Number(d.precio_unitario),
           marca_id:           d.marca_id != null ? Number(d.marca_id) : null,

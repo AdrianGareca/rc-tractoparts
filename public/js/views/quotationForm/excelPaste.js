@@ -18,6 +18,9 @@
 // =============================================================================
 
 import { crearSubModal } from '../../shared/subModal.js';
+// La unidad por defecto sale de donde vive la lista del desplegable, para que
+// una celda de Excel sin unidad caiga en lo mismo que una fila nueva a mano.
+import { UNIDAD_POR_DEFECTO } from './lineItemsComponent.js';
 
 /** Mayúsculas y sin tildes, para comparar encabezados sin depender de acentos. */
 function normalizar(s) {
@@ -53,13 +56,21 @@ const ALIAS_COLUMNA = {
   'PRECIO UNIT.':           'precio_unitario',
 };
 
-// Variantes de unidad -> una de las 4 que la app realmente acepta
-// (ver el <select> en lineItemsComponent.js). Lo que no matchea cae a UND.
+// Variantes de unidad -> una de las que la app realmente acepta (ver UNIDADES
+// en lineItemsComponent.js). Lo que no matchea cae a la unidad por defecto.
+//
+// La tabla incluye los códigos VIEJOS —`UND` y `GGO`, de antes del cambio de
+// lista del 2026-09-01— apuntando a los nuevos: quien pegue una planilla
+// armada con el formato anterior no tiene por qué saber que cambiaron, y lo
+// que quiso decir es evidente.
 const ALIAS_UNIDAD = {
   PZA: 'PZA', PZ: 'PZA', PIEZA: 'PZA', PIEZAS: 'PZA',
-  UND: 'UND', UNI: 'UND', UNIDAD: 'UND', UNIDADES: 'UND',
-  JGO: 'GGO', JUEGO: 'GGO', JUEGOS: 'GGO', GGO: 'GGO',
+  UNI: 'UNI', UND: 'UNI', UNIDAD: 'UNI', UNIDADES: 'UNI',
+  JGOS: 'JGOS', JGO: 'JGOS', GGO: 'JGOS', JUEGO: 'JGOS', JUEGOS: 'JGOS',
   KIT: 'KIT', KITS: 'KIT', SET: 'KIT',
+  LTS: 'LTS', LT: 'LTS', L: 'LTS', LITRO: 'LTS', LITROS: 'LTS',
+  KG: 'KG', KGS: 'KG', KILO: 'KG', KILOS: 'KG', KILOGRAMO: 'KG', KILOGRAMOS: 'KG',
+  MTS: 'MTS', MT: 'MTS', M: 'MTS', METRO: 'MTS', METROS: 'MTS',
 };
 
 // ---------------------------------------------------------------------------
@@ -221,10 +232,10 @@ export function parseExcelPaste(texto) {
     const precio   = parseNumero(leer('precio_unitario'));
     const unidadCelda = leer('unidad');
     const unidadNorm  = normalizar(unidadCelda);
-    const unidad = ALIAS_UNIDAD[unidadNorm] ?? 'UND';
+    const unidad = ALIAS_UNIDAD[unidadNorm] ?? UNIDAD_POR_DEFECTO;
 
     if (unidadCelda && !ALIAS_UNIDAD[unidadNorm]) {
-      advertencias.push(`Unidad "${unidadCelda}" no reconocida en "${descripcion}" — se dejó UND.`);
+      advertencias.push(`Unidad "${unidadCelda}" no reconocida en "${descripcion}" — se dejó ${UNIDAD_POR_DEFECTO}.`);
     }
     if (leer('cantidad') && !Number.isFinite(cantidad)) {
       advertencias.push(`Cantidad no reconocida en "${descripcion}" — se puso 1.`);
