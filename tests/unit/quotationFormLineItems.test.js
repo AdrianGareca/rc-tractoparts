@@ -46,7 +46,7 @@ describe('buildRowHtml', () => {
     const html = buildRowHtml(0);
     expect(html).toContain('value="1"');          // cantidad
     expect(html).toContain('value="0"');          // precio
-    expect(html).toContain('value="UND" selected');
+    expect(html).toContain('value="UNI" selected');
   });
 
   test('propaga el índice a todos los data-idx de la fila', () => {
@@ -84,9 +84,41 @@ describe('buildRowHtml', () => {
     expect(buildRowHtml(0, null, [])).toContain('— Sin marca —');
   });
 
-  test('mantiene las 4 unidades de medida', () => {
+  test('ofrece las siete unidades de medida', () => {
+    // Lista pedida por la empresa el 2026-09-01. Antes eran cuatro: los juegos
+    // pasaron de GGO a JGOS, la unidad de UND a UNI, y se sumaron litro, kilo
+    // y metros.
     const html = buildRowHtml(0);
-    ['PZA', 'GGO', 'KIT', 'UND'].forEach(u => expect(html).toContain(`value="${u}"`));
+    ['JGOS', 'PZA', 'KIT', 'LTS', 'KG', 'UNI', 'MTS']
+      .forEach(u => expect(html).toContain(`value="${u}"`));
+  });
+
+  // ── Lo que protege a las cotizaciones ya guardadas ───────────────────────
+  // Los códigos viejos (GGO, UND) siguen escritos en la base: la columna es
+  // VARCHAR libre, no un ENUM. Si el desplegable dejara de ofrecerlos, al
+  // abrir una cotización vieja el navegador mostraría la primera opción de la
+  // lista y al guardar le cambiaría la unidad sin que nadie lo pida — el mismo
+  // patrón del bug recurrente de este proyecto (una edición parcial que pisa
+  // un campo que nadie tocó).
+  describe('unidades de cotizaciones anteriores', () => {
+    test.each([
+      ['GGO', 'los juegos de antes del cambio de lista'],
+      ['UND', 'la unidad de antes del cambio de lista'],
+      ['CJA', 'cualquier valor cargado por fuera del desplegable'],
+    ])('conserva %s (%s)', (unidadVieja) => {
+      const html = buildRowHtml(0, { unidad: unidadVieja });
+
+      // Aparece como opción propia y queda marcada: no se pierde al editar.
+      expect(html).toContain(`value="${unidadVieja}" selected`);
+      // Y se avisa que es de las anteriores, para que quien edita lo vea.
+      expect(html).toContain('unidad anterior');
+    });
+
+    test('una unidad de la lista NUEVA no se marca como anterior', () => {
+      const html = buildRowHtml(0, { unidad: 'KG' });
+      expect(html).toContain('value="KG" selected');
+      expect(html).not.toContain('unidad anterior');
+    });
   });
 });
 

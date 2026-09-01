@@ -197,7 +197,10 @@ function _drawRowCells(doc, item, idx, y, rowH, layout, quotation) {
     .font('Helvetica')
     .fontSize(7)
     .fillColor(C.MID_GRAY)
-    .text(item.unidad || 'UND', layout.x.uni + 1, ty,
+    // 'UNI': la lista de unidades cambió el 2026-09-01 (ver UNIDADES en
+    // lineItemsComponent.js). Un ítem viejo guardado con 'UND' se imprime con
+    // 'UND', que es lo correcto — esto es sólo el respaldo para uno sin unidad.
+    .text(item.unidad || 'UNI', layout.x.uni + 1, ty,
       { width: layout.w.uni - 2, align: 'center', lineBreak: false });
 
   // PRECIO UNITARIO — right-aligned, es-BO

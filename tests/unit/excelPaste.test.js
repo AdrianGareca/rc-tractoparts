@@ -172,16 +172,33 @@ describe('parseExcelPaste — unidades', () => {
       'B\t1\tJGO\t10',
       'C\t1\tKIT\t10',
       'D\t1\tUNIDAD\t10',
+      'E\t1\tLITROS\t10',
+      'F\t1\tKILO\t10',
+      'G\t1\tMETROS\t10',
     ].join('\n');
     const { items, advertencias } = parseExcelPaste(texto);
-    expect(items.map((i) => i.unidad)).toEqual(['PZA', 'GGO', 'KIT', 'UND']);
+    expect(items.map((i) => i.unidad)).toEqual(['PZA', 'JGOS', 'KIT', 'UNI', 'LTS', 'KG', 'MTS']);
     expect(advertencias).toEqual([]);
   });
 
-  test('una unidad no reconocida cae a UND y avisa', () => {
+  test('una planilla armada con los códigos VIEJOS se traduce a los nuevos', () => {
+    // Quien tenga una plantilla de antes del cambio de lista (2026-09-01) no
+    // tiene por qué saber que GGO pasó a JGOS y UND a UNI. Lo que quiso decir
+    // es evidente, así que se traduce en vez de avisarle que no se reconoce.
+    const texto = [
+      'DESCRIPCION\tUNI',
+      'A\tGGO',
+      'B\tUND',
+    ].join('\n');
+    const { items, advertencias } = parseExcelPaste(texto);
+    expect(items.map((i) => i.unidad)).toEqual(['JGOS', 'UNI']);
+    expect(advertencias).toEqual([]);
+  });
+
+  test('una unidad no reconocida cae a la de por defecto y avisa', () => {
     const texto = 'DESCRIPCION\tUNI\nItem raro\tBULTOS';
     const { items, advertencias } = parseExcelPaste(texto);
-    expect(items[0].unidad).toBe('UND');
+    expect(items[0].unidad).toBe('UNI');
     expect(advertencias.some((a) => a.includes('BULTOS'))).toBe(true);
   });
 });

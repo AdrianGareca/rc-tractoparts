@@ -171,9 +171,16 @@ async function createDetalles(connection, id_cotizacion, detalles) {
     const codigoAlt = item.codigo_alternativo
       ? String(item.codigo_alternativo).trim().substring(0, 100) || null
       : null;
+    // 'UNI' y no 'UND': la lista de unidades del formulario cambió el
+    // 2026-09-01 y la unidad pasó de UND a UNI (ver UNIDADES en
+    // public/js/views/quotationForm/lineItemsComponent.js). Este es sólo el
+    // respaldo para un ítem que llegue sin unidad — el formulario siempre
+    // manda una—, pero dejarlo en el código viejo metería un valor que ya no
+    // está en el desplegable y partiría en dos el reporte de consumo por ítem,
+    // que agrupa por unidad.
     const unidad = item.unidad
-      ? String(item.unidad).trim().substring(0, 20) || 'UND'
-      : 'UND';
+      ? String(item.unidad).trim().substring(0, 20) || 'UNI'
+      : 'UNI';
     const tiempoEntrega = item.tiempo_entrega
       ? String(item.tiempo_entrega).trim().substring(0, 100) || null
       : null;

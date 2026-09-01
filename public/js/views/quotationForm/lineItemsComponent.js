@@ -14,6 +14,62 @@
 
 import { escText } from './helpers.js';
 
+// ---------------------------------------------------------------------------
+// Las unidades de medida que ofrece el desplegable de cada ítem.
+//
+// Lista pedida por la empresa el 2026-09-01. Antes eran cuatro (PZA, GGO, KIT,
+// UND) y dos de ellas CAMBIARON de código: los juegos pasaron de `GGO` a
+// `JGOS`, y la unidad de `UND` a `UNI`.
+//
+// POR QUÉ EL CÓDIGO VIEJO NO DESAPARECE DEL TODO — ver unidadesParaFila()
+// Las cotizaciones ya guardadas tienen `GGO` y `UND` escritos en la base (la
+// columna es VARCHAR libre, no un ENUM, así que siguen ahí tal cual). Si el
+// desplegable dejara de ofrecer esos valores, al abrir una cotización vieja
+// para editarla el navegador no encontraría cuál marcar, mostraría la primera
+// opción de la lista, y al guardar le cambiaría la unidad SIN que nadie lo
+// pida. Es el mismo patrón del bug recurrente de este proyecto: una edición
+// parcial que pisa un campo que nadie tocó.
+// ---------------------------------------------------------------------------
+export const UNIDADES_DE_MEDIDA = [
+  ['JGOS', 'JUEGOS'],
+  ['PZA',  'PIEZAS'],
+  ['KIT',  'KITS'],
+  ['LTS',  'LITRO'],
+  ['KG',   'KILO'],
+  ['UNI',  'UNIDAD'],
+  ['MTS',  'METROS'],
+];
+
+/** La unidad por defecto de una fila nueva. */
+export const UNIDAD_POR_DEFECTO = 'UNI';
+
+/**
+ * Las opciones del desplegable para UNA fila, contemplando su valor guardado.
+ *
+ * Si la fila trae una unidad que ya no está en la lista (una cotización vieja
+ * con `GGO` o `UND`, o algo cargado desde Excel), se agrega al final como
+ * opción propia y marcada. Así el valor se conserva al editar, y la persona ve
+ * que ese ítem tiene una unidad de las de antes — en vez de que se le cambie
+ * sola por la primera de la lista.
+ *
+ * @param {string} valorActual — la unidad guardada de esa fila
+ * @returns {string} el HTML de los <option>
+ */
+export function unidadesParaFila(valorActual) {
+  const opciones = UNIDADES_DE_MEDIDA.map(([codigo, nombre]) =>
+    `<option value="${codigo}"${valorActual === codigo ? ' selected' : ''}>${codigo} (${nombre})</option>`
+  );
+
+  const esConocida = UNIDADES_DE_MEDIDA.some(([codigo]) => codigo === valorActual);
+  if (valorActual && !esConocida) {
+    opciones.push(
+      `<option value="${safeAttr(valorActual)}" selected>${escText(valorActual)} (unidad anterior)</option>`
+    );
+  }
+
+  return opciones.join('\n      ');
+}
+
 /** Escaper mínimo para valores preinsertados en atributos (evita XSS por
  *  inyección de comilla doble en el contexto value="…"). */
 export function safeAttr(v) {
@@ -33,7 +89,7 @@ export function buildRowHtml(index, itemData = null, brands = []) {
   const safeCant  = itemData?.cantidad        ?? 1;
   const safePrice = itemData?.precio_unitario ?? 0;
   const safeMarca = itemData?.marca_id        ?? '';
-  const safeUnidadVal = itemData?.unidad ?? 'UND';
+  const safeUnidadVal = itemData?.unidad ?? UNIDAD_POR_DEFECTO;
   const safeTEnt  = safeAttr(itemData?.tiempo_entrega ?? '');
 
   // Build brand options HTML from cached brand list
@@ -74,10 +130,7 @@ export function buildRowHtml(index, itemData = null, brands = []) {
   <td>
     <select class="form-control unit-select item-unidad" name="detalles[][unidad]" data-field="unidad" data-idx="${index}"
            >
-      <option value="PZA"${safeUnidadVal === 'PZA' ? ' selected' : ''}>PZA (Piezas)</option>
-      <option value="GGO"${safeUnidadVal === 'GGO' ? ' selected' : ''}>GGO (Juegos)</option>
-      <option value="KIT"${safeUnidadVal === 'KIT' ? ' selected' : ''}>KIT (Kits)</option>
-      <option value="UND"${safeUnidadVal === 'UND' ? ' selected' : ''}>UND (Unidades)</option>
+      ${unidadesParaFila(safeUnidadVal)}
     </select>
   </td>
   <td>
