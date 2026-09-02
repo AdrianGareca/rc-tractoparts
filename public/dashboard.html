@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RC Tractoparts — Dashboard</title>
+  <!-- El engranaje del logo sobre el amarillo de la marca. Se genera con
+       scripts/generar-favicon.js, que lee el color de tokens.css: el icono no
+       puede quedar de un amarillo distinto al del resto de la aplicacion. -->
+  <link rel="icon" href="/favicon.svg?v=1" type="image/svg+xml" />
+  <link rel="icon" href="/favicon-32.png?v=1" sizes="32x32" type="image/png" />
+  <link rel="icon" href="/favicon-16.png?v=1" sizes="16x16" type="image/png" />
+  <link rel="apple-touch-icon" href="/favicon-180.png?v=1" />
   <!-- Hoja de estilos dividida por concern. El ORDEN IMPORTA: tokens primero
        (todo lo demas lo consume) y responsive ultimo (debe poder pisar).
        Son <link> separados y no @import a proposito: @import encadena las
