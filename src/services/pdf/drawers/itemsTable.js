@@ -197,7 +197,7 @@ function _drawRowCells(doc, item, idx, y, rowH, layout, quotation) {
     .font('Helvetica')
     .fontSize(7)
     .fillColor(C.MID_GRAY)
-    // 'UNI': la lista de unidades cambió el 2026-09-01 (ver UNIDADES en
+    // 'UNI': la lista de unidades cambió el 2026-09-01 (ver UNIDADES_DE_MEDIDA en
     // lineItemsComponent.js). Un ítem viejo guardado con 'UND' se imprime con
     // 'UND', que es lo correcto — esto es sólo el respaldo para uno sin unidad.
     .text(item.unidad || 'UNI', layout.x.uni + 1, ty,

@@ -982,6 +982,9 @@ docker compose exec db mysqldump -u root -p rc_tractoparts > backup.sql   # resp
 | `upgrade_2026_licitaciones.sql` | Módulo de licitaciones: rol `Proyectos` (5), tablas `licitaciones` / `licitaciones_correlativo` / `licitacion_historial_estados`, FK `cotizaciones.id_licitacion`, `notificaciones.id_licitacion` + valor ENUM `'licitacion'` (idempotente) |
 | `upgrade_2026_licitacion_documentos.sql` | `licitacion_documentos` — adjuntos multi-archivo (PDF/Word/Excel/imágenes) por licitación (idempotente; correr DESPUÉS de `upgrade_2026_licitaciones.sql`) |
 | `upgrade_2026_licitacion_gastos.sql` | `licitacion_gastos` — gastos operativos para el análisis de resultado (ganancia/pérdida) post-adjudicación (idempotente; correr DESPUÉS de `upgrade_2026_licitaciones.sql`) |
+| `upgrade_2026_estado_venta.sql` | `cotizaciones.estado_venta` / `estado_venta_detalle` / `fecha_proximo_seguimiento` — seguimiento comercial, independiente del flujo de aprobación `estado` (idempotente) |
+| `upgrade_2026_indices_bitacora.sql` | Dos índices en `bitacora_auditoria` — la pestaña de auditoría y la línea de tiempo de cada cotización/licitación escaneaban la tabla entera (idempotente) |
+| `upgrade_2026_unidades_medida.sql` | Cambia el `DEFAULT` de `unidad` de `'UND'` a `'UNI'` en `cotizacion_detalles` y `productos` (lista de unidades del 2026-09-01). **No urgente**: la app siempre manda la unidad, así que ese `DEFAULT` no se usa — se corre para que producción e `init.sql` no digan cosas distintas. **No reescribe filas históricas** a propósito: los `GGO`/`UND` ya guardados salieron en PDFs que el cliente tiene (idempotente) |
 
 **Procedimiento** (el orden importa — migrar *antes* de reconstruir la app, para que el código nuevo nunca consulte columnas que aún no existen; ver el flujo en [§3.7](#37-flujo-de-release-y-migraciones-de-esquema)):
 

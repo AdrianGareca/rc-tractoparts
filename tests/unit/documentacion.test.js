@@ -221,3 +221,57 @@ describe('los números que afirma la documentación son los reales', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Las migraciones de esquema, listadas donde alguien las va a buscar.
+//
+// POR QUÉ EXISTE
+// sql/init.sql sólo corre en el PRIMER arranque. Todo cambio de esquema para
+// una base ya viva viaja en un sql/upgrade_*.sql aparte, y la única lista de
+// esos scripts está en la tabla de §16.7 del README.
+//
+// El modo de fallar es silencioso en las dos direcciones: se agrega un upgrade
+// y no se lo lista (quien despliega no lo corre, y producción queda distinta
+// del esquema del repo — que fue exactamente lo que pasó con estado_venta e
+// indices_bitacora), o se renombra un script y la tabla queda mandando a un
+// archivo que no existe. Ninguna de las dos rompe una prueba por su cuenta:
+// todo sigue en verde mientras el servidor se aleja del código.
+// ---------------------------------------------------------------------------
+describe('migraciones de esquema', () => {
+  const enDisco = fs.readdirSync(path.join(RAIZ, 'sql'))
+    .filter((f) => f.startsWith('upgrade_') && f.endsWith('.sql'))
+    .sort();
+
+  const readme    = fs.readFileSync(path.join(RAIZ, 'README.es.md'), 'utf8');
+  const nombrados = new Set(readme.match(/upgrade_[a-z0-9_]+\.sql/g) ?? []);
+
+  test('hay scripts de upgrade que revisar', () => {
+    expect(enDisco.length).toBeGreaterThan(0);
+  });
+
+  test('cada sql/upgrade_*.sql aparece en el README', () => {
+    const faltantes = enDisco.filter((f) => !nombrados.has(f));
+
+    if (faltantes.length) {
+      throw new Error(
+        `Estos scripts existen pero el README no los nombra:\n  ${faltantes.join('\n  ')}\n\n` +
+        'Esa tabla (§16.7) es la única lista de qué hay que correr al desplegar. ' +
+        'Un upgrade que no está ahí no se corre, y el servidor queda con un ' +
+        'esquema distinto al del repositorio sin que nada avise.'
+      );
+    }
+  });
+
+  test('cada upgrade que el README nombra existe en disco', () => {
+    const enDiscoSet = new Set(enDisco);
+    const fantasmas  = [...nombrados].filter((f) => !enDiscoSet.has(f));
+
+    if (fantasmas.length) {
+      throw new Error(
+        `El README nombra estos scripts, pero no están en sql/:\n  ${fantasmas.join('\n  ')}\n\n` +
+        'Quien siga esas instrucciones al desplegar se va a encontrar con un ' +
+        'archivo que no existe, en el peor momento para descubrirlo.'
+      );
+    }
+  });
+});
