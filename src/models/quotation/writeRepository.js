@@ -172,7 +172,7 @@ async function createDetalles(connection, id_cotizacion, detalles) {
       ? String(item.codigo_alternativo).trim().substring(0, 100) || null
       : null;
     // 'UNI' y no 'UND': la lista de unidades del formulario cambió el
-    // 2026-09-01 y la unidad pasó de UND a UNI (ver UNIDADES en
+    // 2026-09-01 y la unidad pasó de UND a UNI (ver UNIDADES_DE_MEDIDA en
     // public/js/views/quotationForm/lineItemsComponent.js). Este es sólo el
     // respaldo para un ítem que llegue sin unidad — el formulario siempre
     // manda una—, pero dejarlo en el código viejo metería un valor que ya no

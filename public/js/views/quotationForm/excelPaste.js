@@ -56,7 +56,7 @@ const ALIAS_COLUMNA = {
   'PRECIO UNIT.':           'precio_unitario',
 };
 
-// Variantes de unidad -> una de las que la app realmente acepta (ver UNIDADES
+// Variantes de unidad -> una de las que la app realmente acepta (ver UNIDADES_DE_MEDIDA
 // en lineItemsComponent.js). Lo que no matchea cae a la unidad por defecto.
 //
 // La tabla incluye los códigos VIEJOS —`UND` y `GGO`, de antes del cambio de
