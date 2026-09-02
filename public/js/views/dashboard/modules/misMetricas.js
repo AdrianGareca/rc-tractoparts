@@ -24,6 +24,7 @@
 import api from '../../../services/apiClient.js';
 import { escHtml, badgeHtml, fmtAmount } from '../helpers.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
+import { serieTemporal, anillo, contarHasta } from '../../../shared/graficos.js';
 
 /** Un número que puede no existir todavía. */
 const val = (v, sufijo = '') => (v == null ? '—' : `${v}${sufijo}`);
@@ -101,6 +102,10 @@ function tablaPorMes(filas) {
         <h3>Mi evolución</h3>
         <span class="text-muted text-sm">Emitidas contra cerradas, mes a mes</span>
       </div>
+      <div class="lienzo-grafico">
+        <canvas data-grafico="mes" height="170" role="img"
+                aria-label="Curva de cotizaciones emitidas mes a mes. El detalle exacto está en la lista de abajo."></canvas>
+      </div>
       <div class="panel-barras">
         ${filas.map((f) => {
           const pct = f.emitidas > 0 ? Math.round((f.cerradas / f.emitidas) * 100) : 0;
@@ -108,7 +113,7 @@ function tablaPorMes(filas) {
           <div class="barra-mes">
             <span class="text-sm text-muted barra-mes-etiqueta">${escHtml(f.mes)}</span>
             <div class="barra-pista">
-              <div style="width:${(f.emitidas / tope) * 100}%;height:100%;background:rgba(59,130,246,.35);"></div>
+              <div style="width:${(f.emitidas / tope) * 100}%;height:100%;background:var(--badge-bg-blue);"></div>
               <div style="width:${(f.cerradas / tope) * 100}%;height:100%;background:var(--clr-green);position:absolute;top:0;left:0;"></div>
             </div>
             <span class="text-sm barra-mes-cifra">
@@ -193,11 +198,91 @@ export async function renderMisMetricas(el, { desde, hasta, idEjecutivo } = {}) 
           <h3>En qué anda cada cotización</h3>
           <span class="text-muted text-sm">Los montos van separados por moneda: sumarlas no significaría nada</span>
         </div>
+        <div class="lienzo-anillo">
+          <canvas data-grafico="estado" height="150" role="img"
+                  aria-label="Reparto de cotizaciones por estado. El detalle exacto está en la tabla."></canvas>
+        </div>
         ${tablaPorEstado(m.por_estado ?? [])}
       </div>
 
       ${tablaPorMes(m.por_mes ?? [])}`;
+
+    montarGraficos(el, m);
   } catch (err) {
     el.innerHTML = `<div class="empty-state"><p>Error cargando métricas: ${escHtml(err.data?.message || err.message)}</p></div>`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Los gráficos y las cifras que suben.
+//
+// POR QUÉ VA DESPUÉS DEL innerHTML Y NO DENTRO DE LAS PLANTILLAS
+// Un <canvas> no se puede dibujar hasta que está en el documento y el navegador
+// le calculó un ancho. Mientras vive en una cadena de texto no mide nada, y
+// dibujarlo daría un lienzo de cero píxeles.
+//
+// LOS GRÁFICOS NO REEMPLAZAN A LAS TABLAS
+// Las tablas y las barras que ya estaban se quedan. Una curva muestra la FORMA
+// —si viene subiendo, si hubo un mes flojo— y una tabla muestra el NÚMERO. En
+// un reporte comercial hacen falta los dos: nadie cierra un mes mirando una
+// curva, y nadie ve una tendencia leyendo doce filas.
+//
+// SI FALLA, NO SE LLEVA LA PANTALLA PUESTA
+// Todo va en try/catch: un gráfico es un agregado. Que no se pueda dibujar no
+// puede dejar sin métricas a quien entró a verlas.
+// ---------------------------------------------------------------------------
+
+/** Los estados, con el token de color que ya usa cada badge. */
+const COLOR_ESTADO = {
+  'Borrador':          '--clr-gray',
+  'Pendiente':         '--clr-amber',
+  'En revision':       '--clr-orange',
+  'En revisión':       '--clr-orange',
+  'Aprobada':          '--clr-green',
+  'Enviada al cliente':'--clr-blue',
+  'Confirmada':        '--clr-violet',
+  'Rechazada':         '--clr-red',
+  'Archivada':         '--clr-gray',
+};
+
+function montarGraficos(el, m) {
+  try {
+    const lienzoMes = el.querySelector('[data-grafico="mes"]');
+    const porMes = m.por_mes ?? [];
+    if (lienzoMes && porMes.length >= 2) {
+      serieTemporal(lienzoMes, porMes.map((f) => ({
+        etiqueta: String(f.mes ?? '').slice(-2),
+        valor:    Number(f.emitidas) || 0,
+      })));
+    }
+
+    const lienzoEstado = el.querySelector('[data-grafico="estado"]');
+    const porEstado = m.por_estado ?? [];
+    if (lienzoEstado && porEstado.length > 0) {
+      anillo(lienzoEstado, porEstado.map((f) => ({
+        etiqueta: f.estado,
+        valor:    Number(f.cantidad) || 0,
+        // Un estado que todavía no esté en el mapa cae en gris: es preferible a
+        // que el anillo entero deje de dibujarse por un nombre nuevo.
+        token:    COLOR_ESTADO[f.estado] || '--clr-gray',
+      })));
+    }
+
+    // Las cifras suben desde cero. Sólo las numéricas: un «—» o un importe con
+    // símbolo de moneda se dejan como están.
+    el.querySelectorAll('.stat-card-value').forEach((celda) => {
+      const texto = celda.textContent.trim();
+      const solo = /^([\d.,]+)\s*%?$/.exec(texto);
+      if (!solo) return;
+      const esPct = texto.endsWith('%');
+      const n = Number(solo[1].replace(/\./g, '').replace(',', '.'));
+      if (!isFinite(n)) return;
+      contarHasta(celda, n, (v) => (esPct
+        ? v.toFixed(1) + '%'
+        : Math.round(v).toLocaleString('es-BO')));
+    });
+  } catch (e) {
+    // Un gráfico es un agregado: si no se puede dibujar, las métricas siguen.
+    console.warn('[misMetricas] No se pudieron dibujar los gráficos:', e.message);
   }
 }
