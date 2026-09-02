@@ -2,7 +2,7 @@
    public/css/tokens.css
    Design tokens: la paleta, la tipografia y los radios/sombras que todo lo demas consume.
 
-   Parte 1 de 12 de la hoja de estilos. El orden de carga IMPORTA:
+   Parte 1 de 13 de la hoja de estilos. El orden de carga IMPORTA:
    se enlazan en este mismo orden desde index.html y dashboard.html.
    =========================================================================== */
 /* ===== 1. DESIGN TOKENS (CSS CUSTOM PROPERTIES) =====
@@ -28,33 +28,33 @@
   /* Backgrounds */
   /* Superficies del tema oscuro, derivadas del marino de la proforma y ya no
      del gris azulado de Tailwind. Ver «LA IDENTIDAD DE LA EMPRESA» más abajo. */
-  --bg-deep:    #121D33;   /* base de la página — marino profundo */
-  --bg-surface: #1B2B4B;   /* tarjetas, barra lateral, barra superior — EL marino */
-  --bg-raised:  #24375E;   /* superficie apenas elevada */
-  --bg-hover:   #2D4373;   /* hover de filas / ítems */
-  --bg-input:   #121D33;   /* campos de formulario */
+  --bg-deep:    #0B0B0C;   /* base de la página — casi negro */
+  --bg-surface: #141416;   /* tarjetas, barra lateral, barra superior */
+  --bg-raised:  #1E1E20;   /* superficie apenas elevada */
+  --bg-hover:   #2A2A2D;   /* hover de filas / ítems */
+  --bg-input:   #0B0B0C;   /* campos de formulario */
 
   /* Esqueletos de carga. `base` es el bloque en reposo; `shine` es el brillo que
      lo recorre. Van como tokens y no como literales porque el contraste que
      funciona en oscuro (un blanco muy tenue) es invisible en claro, donde hace
      falta casi blanco puro sobre el gris. */
-  --skeleton-base:  #2E3F58;
+  --skeleton-base:  #1E1E20;
   --skeleton-shine: rgba(255, 255, 255, .07);
 
   /* Borders */
-  --border:      #33456B;  /* marino claro — de la familia, ya no slate-700 */
-  --border-focus:#10B981;  /* emerald — focus ring */
+  --border:      #2A2A2D;  /* gris neutro, de la familia del fondo */
+  --border-focus:#FCCC24;  /* el amarillo del logo — el foco es de la marca */
 
   /* Text */
-  --text-primary: #F1F5F9; /* slate-100 */
-  --text-secondary:#94A3B8;/* slate-400 */
-  --text-muted:   #64748B; /* slate-500 */
+  --text-primary: #F2F2F0; /* casi blanco, apenas cálido */
+  --text-secondary:#A5A5A0;/* gris neutro cálido */
+  --text-muted:   #787874; /* gris neutro cálido, más apagado */
 
   /* Accent — Status colors */
   --clr-green:  #10B981;   /* emerald-500 — Aprobada, Confirmada */
   --clr-amber:  #F59E0B;   /* amber-400   — Pendiente */
   --clr-orange: #F97316;   /* orange-500  — En revision */
-  --clr-blue:   #3B82F6;   /* blue-500    — Enviada al cliente / primary action */
+  --clr-blue:   #213FFF;   /* azul eléctrico — Enviada al cliente. Ya NO es la acción principal: esa es la marca. */
   --clr-violet: #8B5CF6;   /* violet-500  — Confirmada (client) */
   --clr-red:    #EF4444;   /* red-500     — Rechazada / danger */
   --clr-gray:   #6B7280;   /* gray-500    — Archivada / draft */
@@ -82,6 +82,30 @@
      en vez del gris azulado de Tailwind. Es un corrimiento de tono, no un
      cambio de diseño: se siente, no se nota. Los colores de ESTADO no se
      tocan, porque codifican significado que la gente ya aprendió. */
+  /* ── EL AMARILLO DEL LOGO ──────────────────────────────────────────────────
+     #FCCC24 es el color dominante de src/assets/images/rc_logo.png — se midió
+     del archivo, no se eligió a ojo. Es también, con un punto de diferencia, el
+     amarillo de la maquinaria pesada.
+
+     POR QUÉ EXISTE COMO TOKEN PROPIO Y NO SE REUSA --clr-blue
+     Antes la acción principal era `--clr-blue` y los botones sólidos ponían
+     texto BLANCO encima. Sobre amarillo eso es ilegible. Y `--clr-blue` además
+     significa «Enviada al cliente» en la máquina de estados: si la marca se
+     colgara de ese token, cambiar el color de un botón cambiaría el de un
+     estado. Son dos cosas distintas y ahora tienen dos nombres distintos.
+
+     --text-sobre-marca es el texto que va ENCIMA del amarillo. Nunca blanco.
+
+     OJO CON «Pendiente»: usa --clr-amber (#F59E0B), que es anaranjado y se
+     distingue de este amarillo, pero son vecinos. Si algún día se confunden, lo
+     que se mueve es el ámbar del estado, no la marca.
+     ─────────────────────────────────────────────────────────────────────── */
+  --clr-marca:        #FCCC24;
+  --clr-marca-fuerte: #E0B510;   /* :hover de los sólidos */
+  --clr-marca-suave:  #FFE38A;   /* como TEXTO sobre un tinte de marca */
+  --text-sobre-marca: #16150F;   /* lo que se escribe encima del amarillo */
+  --badge-bg-marca:   rgba(252,204,36,.18);
+
   --clr-navy:       #1B2B4B;
   --clr-navy-deep:  #121D33;   /* un paso más oscuro — base de la página */
   --clr-navy-soft:  #24375E;   /* superficie elevada */
@@ -114,7 +138,7 @@
   --clr-green-soft:  #6EE7B7;
   --clr-amber-soft:  #FCD34D;
   --clr-orange-soft: #FDBA74;
-  --clr-blue-soft:   #93C5FD;
+  --clr-blue-soft:   #9FB0FF;
   --clr-violet-soft: #C4B5FD;
   --clr-red-soft:    #FCA5A5;
   --clr-gray-soft:   #9CA3AF;
@@ -122,10 +146,10 @@
   --clr-indigo-soft: #A5B4FC;
   --clr-slate-soft:  #CBD5E1;
 
-  --clr-blue-strong:  #2563EB;
+  --clr-blue-strong:  #1A33D6;
   --clr-green-strong: #059669;
   --clr-red-strong:   #DC2626;
-  --clr-blue-deep:    #1D4ED8;  /* gradient end on the sidebar avatar */
+  --clr-blue-deep:    #16299E;  /* gradient end on the sidebar avatar */
 
   /* ── Badge backgrounds ─────────────────────────────────────────────────────
      Every status pill is the same recipe: the hue at 20% opacity behind its
@@ -134,7 +158,7 @@
   --badge-bg-green:  rgba(16,185,129,.2);
   --badge-bg-amber:  rgba(245,158,11,.2);
   --badge-bg-orange: rgba(249,115,22,.2);
-  --badge-bg-blue:   rgba(59,130,246,.2);
+  --badge-bg-blue:   rgba(33,63,255,.28);
   --badge-bg-violet: rgba(139,92,246,.2);
   --badge-bg-red:    rgba(239,68,68,.2);
   --badge-bg-gray:   rgba(107,114,128,.2);
@@ -153,7 +177,7 @@
   --alert-br-blue:   rgba(59,130,246,.4);
 
   /* Semantic role-colors */
-  --clr-primary:       var(--clr-blue);
+  --clr-primary:       var(--clr-marca);   /* la acción principal es la MARCA, no el azul */
   --clr-success:       var(--clr-green);
   --clr-warning:       var(--clr-amber);
   --clr-danger:        var(--clr-red);
@@ -198,7 +222,7 @@
   --shadow-lg:  0 12px 32px rgba(0,0,0,.6);
   /* Elevated hover shadow + colored accent glow for interactive elements */
   --shadow-hover: 0 8px 22px rgba(0,0,0,.55);
-  --glow-primary: 0 4px 14px rgba(59,130,246,.45);
+  --glow-primary: 0 4px 14px rgba(252,204,36,.38);
   --glow-success: 0 4px 14px rgba(16,185,129,.40);
   --glow-danger:  0 4px 14px rgba(239,68,68,.40);
 
@@ -232,26 +256,26 @@
      del marino de la proforma en vez de quedarse en el slate de Tailwind. Es
      medio grado de tono — se siente, no se nota — y hace que la pantalla y el
      papel pertenezcan al mismo juego de colores. */
-  --light-bg-deep:    #EFF2F7;  /* base de la página */
-  --light-bg-surface: #FFFFFF;  /* tarjetas, barra lateral, barra superior */
-  --light-bg-raised:  #F7F9FC;  /* superficie apenas elevada */
-  --light-bg-hover:   #E1E7F0;  /* hover de filas */
+  --light-bg-deep:    #F2EFE6;  /* base de la página — papel cálido */
+  --light-bg-surface: #FFFDF8;  /* tarjetas, barra lateral, barra superior */
+  --light-bg-raised:  #FAF8F2;  /* superficie apenas elevada */
+  --light-bg-hover:   #F0ECDF;  /* hover de filas */
   --light-bg-input:   #FFFFFF;
 
-  --light-skeleton-base:  #E1E7F0;
+  --light-skeleton-base:  #E4DED0;
   --light-skeleton-shine: rgba(255, 255, 255, .75);     /* casi blanco: en claro un brillo tenue no se ve */
 
-  --light-border:      #C9D2E0; /* de la familia del marino */
+  --light-border:      #DED8C6; /* de la familia del papel */
 
-  --light-text-primary:   #141F38; /* marino profundo, no negro azulado */
-  --light-text-secondary: #475569; /* slate-600 */
-  --light-text-muted:     #64748B; /* slate-500 */
+  --light-text-primary:   #16150F; /* casi negro, apenas cálido */
+  --light-text-secondary: #5A5546; /* pardo apagado */
+  --light-text-muted:     #847D69; /* pardo más apagado */
 
   /* SOFT invertidas: el tono 700 del mismo hue, legible sobre el tinte al 20% */
   --light-green-soft:  #047857;
   --light-amber-soft:  #B45309;
   --light-orange-soft: #C2410C;
-  --light-blue-soft:   #1D4ED8;
+  --light-blue-soft:   #1A33D6;
   --light-violet-soft: #6D28D9;
   --light-red-soft:    #B91C1C;
   --light-gray-soft:   #4B5563;
@@ -259,10 +283,16 @@
   --light-indigo-soft: #4338CA;
   --light-slate-soft:  #334155;
 
-  --light-shadow-sm:    0 1px 3px rgba(15,23,42,.08);
-  --light-shadow-md:    0 4px 12px rgba(15,23,42,.10);
-  --light-shadow-lg:    0 12px 32px rgba(15,23,42,.14);
-  --light-shadow-hover: 0 8px 22px rgba(15,23,42,.14);
+  /* El amarillo de marca sigue sirviendo de FONDO en claro (es el logo
+     tal cual), pero como TEXTO sobre papel no se lee: para eso está su
+     versión quemada. --text-sobre-marca no cambia: encima del amarillo
+     siempre va tinta oscura, haya luz o no. */
+  --light-marca-suave: #7A5E00;
+
+  --light-shadow-sm:    0 1px 3px rgba(30,25,10,.09);
+  --light-shadow-md:    0 4px 12px rgba(30,25,10,.12);
+  --light-shadow-lg:    0 12px 32px rgba(30,25,10,.16);
+  --light-shadow-hover: 0 8px 22px rgba(30,25,10,.15);
 }
 
 /* Bloque compartido por la preferencia del sistema y la elección explícita. */
@@ -295,6 +325,7 @@
     --clr-teal-soft:   var(--light-teal-soft);
     --clr-indigo-soft: var(--light-indigo-soft);
     --clr-slate-soft:  var(--light-slate-soft);
+    --clr-marca-suave: var(--light-marca-suave);
 
     --shadow-sm:    var(--light-shadow-sm);
     --shadow-md:    var(--light-shadow-md);
@@ -332,6 +363,7 @@
   --clr-teal-soft:   var(--light-teal-soft);
   --clr-indigo-soft: var(--light-indigo-soft);
   --clr-slate-soft:  var(--light-slate-soft);
+  --clr-marca-suave: var(--light-marca-suave);
 
   --shadow-sm:    var(--light-shadow-sm);
   --shadow-md:    var(--light-shadow-md);

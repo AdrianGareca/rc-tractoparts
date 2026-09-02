@@ -2,7 +2,7 @@
    public/css/buttons.css
    Botones base y los de la maquina de estados de aprobacion del Jefe.
 
-   Parte 5 de 12 de la hoja de estilos. El orden de carga IMPORTA:
+   Parte 5 de 13 de la hoja de estilos. El orden de carga IMPORTA:
    se enlazan en este mismo orden desde index.html y dashboard.html.
    =========================================================================== */
 /* ===== 9. BUTTONS ===== */
@@ -29,8 +29,13 @@
 .btn:active:not(:disabled) { transform: translateY(0); box-shadow: var(--shadow-sm); }
 .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
 
-.btn-primary  { background: var(--clr-blue);  color: var(--clr-white); border-color: var(--clr-blue);  }
-.btn-primary:hover:not(:disabled)  { background: var(--clr-blue-strong); box-shadow: var(--glow-primary); }
+/* La acción principal es la MARCA, no el azul. Y el texto encima NUNCA es
+   blanco: sobre el amarillo del logo hay que escribir en tinta oscura, que es
+   justo lo que dice --text-sobre-marca. Antes esto era `--clr-blue` + blanco;
+   si sólo se hubiera cambiado el color de fondo, el rótulo del botón más usado
+   de la aplicación habría quedado ilegible. */
+.btn-primary  { background: var(--clr-marca);  color: var(--text-sobre-marca); border-color: var(--clr-marca);  }
+.btn-primary:hover:not(:disabled)  { background: var(--clr-marca-fuerte); box-shadow: var(--glow-primary); }
 
 .btn-success  { background: var(--clr-green); color: var(--clr-white); border-color: var(--clr-green); }
 .btn-success:hover:not(:disabled)  { background: var(--clr-green-strong); box-shadow: var(--glow-success); }
