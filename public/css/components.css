@@ -954,3 +954,15 @@
   border-radius: 50%;
   background: var(--clr-amber);
 }
+
+/* ── Lienzos de gráfico ──────────────────────────────────────────────────────
+   La ALTURA se fija acá, no la decide el JavaScript. Asignar canvas.height
+   reescribe el atributo height del elemento; si el dibujado lo volviera a leer
+   de ahí en el cuadro siguiente, se realimentaría y el lienzo crecería solo
+   hasta estirar la página. Con la altura puesta en CSS, ese fallo no puede
+   pasar del código al maquetado. Ver public/js/shared/graficos.js. */
+.lienzo-grafico { padding: .75rem 1.25rem 0; }
+.lienzo-grafico canvas { display: block; width: 100%; height: 170px; max-height: 170px; }
+
+.lienzo-anillo { display: flex; justify-content: center; padding: 1rem 1rem .25rem; }
+.lienzo-anillo canvas { display: block; width: 150px; height: 150px; max-height: 150px; }
