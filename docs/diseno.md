@@ -8,35 +8,72 @@ todo, **qué decisiones ya están tomadas** para no volver a discutirlas.
 
 ---
 
-## 1. La identidad viene del papel, no de la pantalla
+## 1. La identidad es el amarillo del logo
 
-RC Tractoparts ya tenía identidad visual antes de tener aplicación: **azul
-marino y naranja**, en la cabecera, el encabezado de la tabla de ítems y el
-cuadro de totales de cada proforma impresa que recibe un cliente.
+El logo de RC Tractoparts es **amarillo y negro**. Ese amarillo es
+**`#FCCC24`**, y no se eligió a ojo: se **midió** de
+`src/assets/images/rc_logo.png`, donde ocupa el 70,6 % de los píxeles. Es
+también, con un punto de diferencia, el amarillo de la maquinaria pesada.
 
-Los valores viven en `src/services/pdf/constants.js`:
-
-| Rol | Valor | Token de pantalla |
+| Rol | Valor | Token |
 |---|---|---|
-| Marino | `#1B2B4B` | `--clr-navy` |
-| Naranja de proforma | `#C85A0F` | `--clr-proforma-orange` |
+| Amarillo de marca | `#FCCC24` | `--clr-marca` |
+| Tinta sobre el amarillo | `#16150F` | `--text-sobre-marca` |
+| Marino de la proforma | `#1B2B4B` | `--clr-navy` |
+| Naranja de la proforma | `#C85A0F` | `--clr-proforma-orange` |
 
-**La pantalla se derivó del papel, no al revés.** Las superficies del tema
-oscuro (`--bg-deep`, `--bg-surface`, `--bg-raised`, `--bg-hover`) salen de la
-familia del marino, y el tema claro se corrió medio grado en la misma
-dirección.
+`tests/unit/paletaMarca.test.js` vuelve a decodificar el PNG en cada corrida y
+compara. Si el logo cambia o alguien «ajusta» el token, la prueba lo dice.
 
-### Por qué se cambió
+### Tres identidades que no se hablaban
 
-La paleta original era la de Tailwind **sin modificar** — los propios
-comentarios de `tokens.css` lo documentaban: `slate-100`, `slate-300`,
-`slate-900`, y los acentos en el tono `500`. Es el juego de colores por
-defecto del marco de CSS más usado que existe, así que una aplicación que lo
-deja tal cual **comparte literalmente sus colores con todas las demás que
-hicieron lo mismo**.
+Hasta el 2026-09-02 la empresa tenía tres juegos de colores distintos:
 
-No se veía mal. Se veía genérica. Y mientras tanto la identidad real de la
-empresa estaba sólo en el PDF.
+| | Colores | Dónde |
+|---|---|---|
+| El logo | amarillo `#FCCC24` + negro | la marca de verdad |
+| La proforma impresa | marino + naranja | lo único que ve el cliente |
+| La aplicación | azul `#3B82F6` de Tailwind | de nadie |
+
+La pantalla no usaba **ninguno** de los colores del logo. Se veía prestada
+porque lo estaba: era la paleta por defecto del marco de CSS más usado que
+existe —los propios comentarios de `tokens.css` lo documentaban: `slate-100`,
+`slate-900`, los acentos en el tono `500`—, así que compartía literalmente sus
+colores con todas las demás aplicaciones que la dejaron tal cual.
+
+No se veía mal. Se veía genérica.
+
+### Los dos temas son las dos caras de la misma marca
+
+No compiten: **son una elección de quien usa la aplicación**, igual que
+cualquier modo claro/oscuro.
+
+| Tema | Fondo | Carácter |
+|---|---|---|
+| **Oscuro** | casi negro `#0B0B0C` | alto contraste; el amarillo salta |
+| **Claro** | papel cálido `#F2EFE6` | convive con la proforma, que también se lee sobre blanco |
+
+El azul dejó de ser Tailwind: ahora es el eléctrico `#213FFF`, y **ya no es la
+acción principal**. Sólo significa «Enviada al cliente».
+
+### Encima del amarillo nunca va blanco
+
+Blanco sobre `#FCCC24` da un contraste de **1,4:1**; el mínimo legible es 4,5:1.
+Antes de este cambio `.btn-primary` era `background: var(--clr-blue)` con
+`color: var(--clr-white)`: volver amarillo el fondo sin tocar el texto habría
+dejado **ilegible el botón más usado de la aplicación**.
+
+Por eso la marca tiene token propio y no se cuelga de `--clr-blue`:
+
+- `--clr-marca` es el fondo.
+- `--text-sobre-marca` es lo que se escribe encima. **Nunca `--clr-white`.**
+
+`paletaMarca.test.js` recorre todo el CSS buscando esa combinación y calcula el
+contraste en vez de confiar en un número anotado.
+
+> **Ojo con `Pendiente`.** Usa `--clr-amber` (`#F59E0B`), anaranjado y por eso
+> distinguible del amarillo de marca — pero son vecinos. Si alguna vez se
+> confunden, **lo que se mueve es el ámbar del estado, no la marca.**
 
 ---
 

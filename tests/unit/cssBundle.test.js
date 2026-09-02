@@ -69,6 +69,7 @@ const ORDEN_ESPERADO = [
   'modals.css',
   'quotation-form.css',
   'proforma.css',
+  'movimiento.css',
   'responsive.css',
 ];
 
