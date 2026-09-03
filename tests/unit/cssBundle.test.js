@@ -143,6 +143,36 @@ describe('hoja de estilos dividida', () => {
     }
   });
 
+  // ── El fallo que motiva este bloque ────────────────────────────────────────
+  // El 2026-09-02 se sumó movimiento.css al paquete: quedó enlazado en los tres
+  // HTML, los tests de arriba lo dieron por presente, y el archivo estaba
+  // VACÍO. Se commiteó así cuatro veces seguidas. Nada falló: la hoja existía,
+  // se servía con 200, y la aplicación simplemente no tenía ninguna de las
+  // animaciones que se suponía que traía.
+  //
+  // Comprobar que un archivo EXISTE no comprueba que tenga algo adentro. El
+  // umbral es deliberadamente bajo — no juzga si la hoja está completa, sólo
+  // ataja el caso de que no llegara a escribirse.
+  test('ninguna hoja enlazada está vacía', () => {
+    const MINIMO = 200;   // bytes: menos que eso no es una hoja, es un accidente
+    const flacas = [];
+
+    for (const archivo of linkedCss(HTMLS_APP[0])) {
+      const bytes = fs.statSync(enPublic(`css/${archivo}`)).size;
+      if (bytes < MINIMO) flacas.push(`${archivo} — ${bytes} bytes`);
+    }
+
+    if (flacas.length > 0) {
+      throw new Error(
+        'Estas hojas están enlazadas pero prácticamente vacías:\n  ' +
+        flacas.join('\n  ') +
+        '\n\nEl navegador las pide, recibe un 200 y no aplica nada. No hay error ' +
+        'en consola ni al desplegar: la interfaz simplemente no tiene lo que esa ' +
+        'hoja debía traer. Ya pasó una vez con movimiento.css.'
+      );
+    }
+  });
+
   test('ya no queda el styles.css monolítico', () => {
     expect(archivosEnDisco).not.toContain('styles.css');
   });

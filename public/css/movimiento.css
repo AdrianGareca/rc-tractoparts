@@ -1,0 +1,208 @@
+/* ===========================================================================
+   public/css/movimiento.css
+   Movimiento y formas de la marca.
+
+   Parte 12 de 13 de la hoja de estilos. Va anteúltima a propósito: sólo agrega
+   transiciones, animaciones y formas sobre componentes que ya existen. No
+   define ni un color, ni un tamaño de fuente, ni una posición. Se puede quitar
+   el <link> entero y la aplicación queda exactamente como estaba, sólo quieta.
+
+   POR QUÉ EXISTE
+   La interfaz se sentía «apagada» y el diagnóstico fue que le faltaba
+   respuesta: nada confirmaba un clic, nada avisaba que la pantalla estaba
+   trabajando, nada distinguía lo que espera acción de lo que ya está resuelto.
+   Eso no es un problema de color — ninguna paleta lo arregla.
+
+   EL CRITERIO
+   Esta es una herramienta que se usa ocho horas por día, no una página de
+   presentación. El movimiento tiene que SIGNIFICAR algo: que algo cambió, que
+   algo está cargando, que algo espera una decisión. Todo lo demás sobra y
+   termina molestando. Por eso las duraciones son cortas (.18s–.45s) y no hay
+   nada que se mueva en bucle salvo lo que de verdad está en curso.
+
+   ACCESIBILIDAD
+   El bloque final apaga TODO bajo `prefers-reduced-motion: reduce`. Quien pidió
+   menos movimiento ve la interfaz igual, pero quieta y ya terminada — nunca a
+   medio camino.
+   =========================================================================== */
+
+/* ── 1. El cambio de tema se funde ───────────────────────────────────────────
+   Al pasar de claro a oscuro (o al revés) los colores se derriten en vez de
+   saltar. Es lo que más cambia la sensación por la menor cantidad de código.
+   Sólo se anima el COLOR: animar tamaños o posiciones acá provocaría reflows
+   en cada cambio de tema. */
+/* .card y .stat-card NO están en esta lista: las declara el bloque 3, que
+   además del color anima su elevación. Ponerlas en los dos lugares hacía que la
+   segunda `transition` pisara entera a la primera y el color dejara de fundirse
+   en las tarjetas — lo cachó tests/unit/cssBundle.test.js. */
+.data-table td,
+.data-table th,
+.badge,
+.form-control {
+  transition:
+    background-color .32s ease,
+    border-color     .32s ease,
+    color            .32s ease;
+}
+
+/* ── 2. Respuesta al clic ────────────────────────────────────────────────────
+   Un botón que no se hunde al presionarlo no se siente pulsado. Es el detalle
+   más barato que hay y el que más se nota cuando falta. */
+.btn {
+  transition:
+    transform        .09s ease,
+    box-shadow       .18s ease,
+    background-color .32s ease,
+    border-color     .32s ease,
+    color            .32s ease;
+}
+.btn:active:not(:disabled) { transform: scale(.965); }
+
+/* ── 3. Elevación de lo que es interactivo ───────────────────────────────────
+   Una tarjeta sobre la que se puede hacer algo se despega del fondo al pasar
+   por encima. */
+.card, .stat-card {
+  transition:
+    transform        .22s cubic-bezier(.22,.61,.36,1),
+    box-shadow       .22s ease,
+    background-color .32s ease,
+    border-color     .32s ease,
+    color            .32s ease;
+}
+.card:hover, .stat-card:hover { box-shadow: var(--shadow-hover); }
+
+/* ── 4. Las filas de una tabla entran escalonadas ────────────────────────────
+   No es adorno: al llegar datos nuevos, el escalonado deja ver que la lista se
+   repobló. Si aparecieran todas de golpe, un refresco y una carga inicial se
+   verían idénticos.
+
+   Se limita a las primeras 12: más allá, el retraso acumulado se convertiría en
+   una espera real. De la 13 en adelante entran juntas. */
+.data-table tbody tr {
+  animation: mvEntraFila .34s cubic-bezier(.22,.61,.36,1) backwards;
+}
+.data-table tbody tr:nth-child(1)  { animation-delay: .02s; }
+.data-table tbody tr:nth-child(2)  { animation-delay: .05s; }
+.data-table tbody tr:nth-child(3)  { animation-delay: .08s; }
+.data-table tbody tr:nth-child(4)  { animation-delay: .11s; }
+.data-table tbody tr:nth-child(5)  { animation-delay: .14s; }
+.data-table tbody tr:nth-child(6)  { animation-delay: .17s; }
+.data-table tbody tr:nth-child(7)  { animation-delay: .20s; }
+.data-table tbody tr:nth-child(8)  { animation-delay: .23s; }
+.data-table tbody tr:nth-child(9)  { animation-delay: .26s; }
+.data-table tbody tr:nth-child(10) { animation-delay: .29s; }
+.data-table tbody tr:nth-child(11) { animation-delay: .32s; }
+.data-table tbody tr:nth-child(12) { animation-delay: .35s; }
+@keyframes mvEntraFila {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── 5. La fila que se está mirando ──────────────────────────────────────────
+   Un filete de marca entra por el costado. Marca la fila sin correr el texto,
+   que es lo que hace un cambio de fondo cuando además mueve el contenido. */
+.data-table tbody tr { position: relative; }
+.data-table tbody tr::after {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--clr-marca);
+  transform: scaleY(0);
+  transition: transform .2s cubic-bezier(.22,.61,.36,1);
+}
+.data-table tbody tr:hover::after { transform: scaleY(1); }
+
+/* ── 6. Lo que espera una decisión, late ─────────────────────────────────────
+   Sólo «Pendiente». Es el único estado sobre el que hay algo que hacer, y el
+   latido lo dice sin agregar una palabra. Si latieran todos, no diría nada. */
+.badge-pendiente { position: relative; }
+.badge-pendiente::before {
+  content: '';
+  position: absolute; inset: -3px;
+  border-radius: 999px;
+  border: 1px solid var(--clr-amber);
+  opacity: 0;
+  animation: mvLatido 2.8s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes mvLatido {
+  0%   { opacity: .5; transform: scale(.94); }
+  70%  { opacity: 0;  transform: scale(1.26); }
+  100% { opacity: 0;  transform: scale(1.26); }
+}
+
+/* ── 7. El brillo del esqueleto de carga ─────────────────────────────────────
+   Los tokens --skeleton-base y --skeleton-shine ya existían y casi no se veían.
+   Es la diferencia entre «la pantalla está en blanco» y «la pantalla está
+   trabajando». */
+[class*="skeleton"] { position: relative; overflow: hidden; }
+[class*="skeleton"]::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg,
+    transparent, var(--skeleton-shine), transparent);
+  animation: mvBrillo 1.5s linear infinite;
+}
+@keyframes mvBrillo {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+/* ── 8 y 9: TODAVÍA NO SE USAN ───────────────────────────────────────────────
+   Las dos piezas que siguen —la franja de peligro y el engranaje— están
+   definidas pero ningún elemento de la aplicación las lleva todavía. Se dejan
+   listas a propósito: son las formas de la marca, y el paso siguiente es
+   cablearlas (el engranaje como indicador de espera, en lugar del círculo
+   genérico de .spinner). Si dentro de unos meses siguen sin usarse, borrarlas:
+   CSS muerto que nadie reconoce es peor que no tenerlo.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* ── 8. Franja de peligro ────────────────────────────────────────────────────
+   Diagonales amarillo sobre negro: el lenguaje visual de la maquinaria pesada
+   —cinta de precaución, señalización de obra—, que es de donde viene la
+   empresa. Se usa como remate de una sección, no como fondo.
+
+   El desplazamiento es lento a propósito: se percibe de reojo y no compite con
+   lo que se está leyendo. */
+.franja-marca {
+  height: 8px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--clr-marca) 0 12px,
+    var(--bg-deep)   12px 24px);
+  background-size: 34px 34px;
+  animation: mvDesplaza 2.6s linear infinite;
+}
+@keyframes mvDesplaza { to { background-position: 34px 0; } }
+
+/* ── 9. El engranaje del logo, girando ───────────────────────────────────────
+   Para las esperas. Una forma de la marca en lugar de un círculo genérico. */
+.engranaje-marca { fill: var(--clr-marca); animation: mvGira 7s linear infinite; }
+.engranaje-marca .hueco { fill: var(--bg-surface); }
+@keyframes mvGira { to { transform: rotate(360deg); } }
+
+/* ── 10. Foco visible ────────────────────────────────────────────────────────
+   El foco de teclado es de la marca. Va acá y no en base.css porque es
+   presentación, no estructura — y porque conviene que se pueda quitar junto con
+   el resto si alguna vez se revierte esta capa. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── 11. Menos movimiento ────────────────────────────────────────────────────
+   Se apaga TODO, no se acorta. Una animación de .01s sigue siendo movimiento;
+   quien pidió que no lo haya no quiere una versión rápida, quiere ninguna.
+   El foco visible SÍ se conserva: es accesibilidad, no decoración. */
+@media (prefers-reduced-motion: reduce) {
+  .card, .stat-card, .data-table td, .data-table th,
+  .badge, .form-control, .btn { transition: none; }
+  .btn:active:not(:disabled) { transform: none; }
+  .data-table tbody tr { animation: none; }
+  .data-table tbody tr::after { transition: none; }
+  .badge-pendiente::before { animation: none; opacity: 0; }
+  [class*="skeleton"]::after { animation: none; }
+  .franja-marca { animation: none; }
+  .engranaje-marca { animation: none; }
+}
