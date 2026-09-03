@@ -17,6 +17,7 @@ import { escHtml }        from '../helpers.js';
 import { saveBlobAs }     from './timelineView.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
 import { renderMisMetricas } from './misMetricas.js';
+import { anillo, aguja, contarHasta } from '../../../shared/graficos.js';
 
 // ---------------------------------------------------------------------------
 // Date helpers for the reports range filter.
@@ -510,6 +511,7 @@ export async function renderReportes(panel) {
       dataEl.innerHTML = buildReportesDataHTML(
         cached.progresoRes, cached.advancedRes, monedaEl.value, cached.ejecutivoId
       );
+      montarGraficosReportes(dataEl, cached.progresoRes);
     }
   });
 
@@ -576,6 +578,7 @@ async function loadReportesData(panel, desde, hasta, ejecutivoId = '', moneda = 
     // instante sin una segunda vuelta (las dos monedas vienen siempre).
     panel._reportesCache = { progresoRes, advancedRes, ejecutivoId };
     dataEl.innerHTML = buildReportesDataHTML(progresoRes, advancedRes, moneda, ejecutivoId);
+    montarGraficosReportes(dataEl, progresoRes);
   } catch (err) {
     panel._reportesCache = null;
     dataEl.innerHTML = `<div class="empty-state"><p>Error cargando reportes: ${escHtml(err.message)}</p></div>`;
@@ -632,6 +635,67 @@ function _buildSeguimientoVentaCard(seg, periodo, alcance) {
 // buildReportesDataHTML — builds the full analytics HTML (stats grid + monthly
 // executive breakdown + BI tables) from the two API responses.
 // ---------------------------------------------------------------------------
+// _buildPanelRendimiento
+// La tarjeta de cabecera del reporte de Jefe / Administración: los dos gráficos
+// y la grilla de indicadores del período.
+//
+// POR QUÉ ESTÁ APARTE
+// Vivía dentro de buildReportesDataHTML. Al sumarle los lienzos, esa función
+// pasó de 124 a 133 líneas y el trinquete de tests/unit/funcionesLargas.test.js
+// la frenó. El tope sólo puede BAJAR, así que la salida no era subirlo: era
+// partir por donde ya había una costura — esta tarjeta es una unidad completa,
+// se arma con valores ya calculados y no toca nada de lo que viene después.
+//
+// Los <canvas> van vacíos: los dibuja montarGraficosReportes() una vez que el
+// HTML está en el documento y el navegador les calculó un ancho.
+// ---------------------------------------------------------------------------
+function _buildPanelRendimiento(v) {
+  return `
+      <!-- ── Cabecera: gráficos + indicadores del período ── -->
+      <div class="card mb-2">
+        <div class="card-header">
+          <h3>Dashboard de Rendimiento — ${escHtml(v.periodo)}${v.alcance}</h3>
+          ${v.ejecutivoId
+            ? `<span class="text-muted text-sm">Métricas de un solo ejecutivo — no son los totales de la empresa</span>`
+            : ''}
+        </div>
+        <div class="fila-graficos">
+          <div class="lienzo-anillo">
+            <canvas data-grafico="rep-exito" height="150" role="img"
+                    aria-label="Tasa de éxito del período: ${v.ratioPct} por ciento."></canvas>
+          </div>
+          <div class="lienzo-anillo">
+            <canvas data-grafico="rep-seguimiento" height="150" role="img"
+                    aria-label="Reparto del seguimiento comercial. El detalle exacto está en la tabla de abajo."></canvas>
+          </div>
+        </div>
+        <div class="stats-grid stats-grid-en-tarjeta">
+          <div class="stat-card" style="--stat-accent:${v.monAccent};">
+            <div class="stat-card-value">${v.volSel}</div>
+            <div class="stat-card-label">Volumen ${v.monLabel} (período)</div>
+          </div>
+          <div class="stat-card" style="--stat-accent:var(--clr-amber);">
+            <div class="stat-card-value">${v.totalCot}</div>
+            <div class="stat-card-label">Cotizaciones (período)</div>
+          </div>
+          <div class="stat-card" style="--stat-accent:${v.ratioColor};">
+            <div class="stat-card-value">${v.ratioPct}%</div>
+            <div class="stat-card-label">Tasa de Éxito (período)</div>
+          </div>
+          <div class="stat-card" style="--stat-accent:var(--clr-green);">
+            <div class="stat-card-value">${v.aceptadas}</div>
+            <div class="stat-card-label">Confirmadas (período)</div>
+          </div>
+          <div class="stat-card" style="--stat-accent:var(--clr-red);">
+            <div class="stat-card-value">${v.rechazadas}</div>
+            <div class="stat-card-label">Rechazadas (período)</div>
+          </div>
+        </div>
+      </div>
+`;
+}
+
+// ---------------------------------------------------------------------------
 function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecutivoId = '') {
     // ── Progreso data ─────────────────────────────────────────────────────
     const {
@@ -686,37 +750,9 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
       : (ejecutivoId ? ' · Ejecutivo seleccionado' : '');
 
     return `
-      <!-- ── Stats grid ── -->
-      <div class="card mb-2">
-        <div class="card-header">
-          <h3>Dashboard de Rendimiento — ${escHtml(periodo)}${alcance}</h3>
-          ${ejecutivoId
-            ? `<span class="text-muted text-sm">Métricas de un solo ejecutivo — no son los totales de la empresa</span>`
-            : ''}
-        </div>
-        <div class="stats-grid stats-grid-en-tarjeta">
-          <div class="stat-card" style="--stat-accent:${monAccent};">
-            <div class="stat-card-value">${volSel}</div>
-            <div class="stat-card-label">Volumen ${monLabel} (período)</div>
-          </div>
-          <div class="stat-card" style="--stat-accent:var(--clr-amber);">
-            <div class="stat-card-value">${totalCot}</div>
-            <div class="stat-card-label">Cotizaciones (período)</div>
-          </div>
-          <div class="stat-card" style="--stat-accent:${ratioColor};">
-            <div class="stat-card-value">${ratioPct}%</div>
-            <div class="stat-card-label">Tasa de Éxito (período)</div>
-          </div>
-          <div class="stat-card" style="--stat-accent:var(--clr-green);">
-            <div class="stat-card-value">${aceptadas}</div>
-            <div class="stat-card-label">Confirmadas (período)</div>
-          </div>
-          <div class="stat-card" style="--stat-accent:var(--clr-red);">
-            <div class="stat-card-value">${rechazadas}</div>
-            <div class="stat-card-label">Rechazadas (período)</div>
-          </div>
-        </div>
-      </div>
+      ${_buildPanelRendimiento({ periodo, alcance, ejecutivoId, ratioPct,
+                                monAccent, volSel, monLabel, totalCot,
+                                ratioColor, aceptadas, rechazadas })}
 
       <!-- ── Seguimiento comercial — independiente del Estado de aprobación ── -->
       ${_buildSeguimientoVentaCard(seg, periodo, alcance)}
@@ -774,4 +810,71 @@ function buildReportesDataHTML(progresoRes, advancedRes, moneda = 'BOB', ejecuti
            "there is no data" instead of "this metric does not apply here". -->
       ${ejecutivoId ? '' : _buildClientesPorOrigenTable(clientes_por_origen)}
     `;
+}
+
+// ---------------------------------------------------------------------------
+// montarGraficosReportes
+// Los gráficos del reporte de Jefe / Administración.
+//
+// POR QUÉ EXISTE ESTA FUNCIÓN Y NO SE REUSA LA DEL EJECUTIVO
+// Son dos pantallas distintas con dos formas de los datos distintas. El
+// ejecutivo mira SU evolución mes a mes (por_mes) y en qué anda cada cotización
+// suya. El Jefe mira el período completo de la empresa: qué proporción se cerró
+// y en qué punto del embudo comercial está lo que no.
+//
+// Los dos números ya venían en /api/reportes/progreso y se imprimían sueltos:
+// la tasa de éxito como un porcentaje en una tarjeta, y el seguimiento como
+// siete casillas. Acá no se calcula nada nuevo, sólo se dibuja lo que ya había.
+//
+// SI FALLA, NO SE LLEVA EL REPORTE PUESTO
+// Todo en try/catch: un gráfico es un agregado. Que no se pueda dibujar no
+// puede dejar sin números a quien entró a verlos.
+// ---------------------------------------------------------------------------
+const COLOR_SEGUIMIENTO = [
+  ['venta_concretada', 'Venta concretada', '--clr-green'],
+  ['confirmado',       'Confirmado',       '--clr-teal'],
+  ['en_negociacion',   'En negociación',   '--clr-blue'],
+  ['interesado',       'Interesado',       '--clr-amber'],
+  ['otro',             'Otro',             '--clr-violet'],
+  ['no_le_interesa',   'No le interesa',   '--clr-red'],
+  ['sin_seguimiento',  'Sin seguimiento',  '--clr-gray'],
+];
+
+function montarGraficosReportes(dataEl, progresoRes) {
+  try {
+    const datos = progresoRes?.data ?? {};
+
+    const lienzoExito = dataEl.querySelector('[data-grafico="rep-exito"]');
+    if (lienzoExito) {
+      aguja(lienzoExito, parseFloat(datos.conversion?.ratio_pct ?? 0) || 0);
+    }
+
+    const lienzoSeg = dataEl.querySelector('[data-grafico="rep-seguimiento"]');
+    const seg = datos.seguimiento_venta ?? {};
+    if (lienzoSeg) {
+      anillo(lienzoSeg, COLOR_SEGUIMIENTO.map(([clave, etiqueta, token]) => ({
+        etiqueta,
+        valor: Number(seg[clave]) || 0,
+        token,
+      })));
+    }
+
+    // Las cifras de las tarjetas suben desde cero. Sólo las numéricas: un
+    // volumen con decimales o un porcentaje se formatean como corresponde, y
+    // cualquier otra cosa se deja intacta.
+    dataEl.querySelectorAll('.stat-card-value').forEach((celda) => {
+      const texto = celda.textContent.trim();
+      const m = /^(\d+(?:\.\d+)?)\s*%?$/.exec(texto);
+      if (!m) return;
+      const n = Number(m[1]);
+      if (!isFinite(n)) return;
+      const esPct = texto.endsWith('%');
+      const decimales = (m[1].split('.')[1] ?? '').length;
+      contarHasta(celda, n, (v) => (esPct
+        ? v.toFixed(decimales || 1) + '%'
+        : v.toFixed(decimales)));
+    });
+  } catch (e) {
+    console.warn('[reportes] No se pudieron dibujar los gráficos:', e.message);
+  }
 }
