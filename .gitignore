@@ -37,3 +37,16 @@ Sistema_Cotizaciones_Cap1-4.docx
 
 *.doc
 *.docx
+
+# Andamios de prueba visual — SOLO LOCAL.
+#
+# Paginas sueltas para comparar paletas, componentes o maquetas antes de
+# tocar la aplicacion de verdad. No las enlaza nadie y no forman parte del
+# producto, pero public/ se sirve entero y sin login: si viajaran al
+# servidor quedarian accesibles desde internet.
+#
+# Ademas usan colores escritos a mano y estilos en linea a proposito —los
+# hex SON lo que se esta probando—, que es justo lo que los trinquetes de
+# tests/unit/estilosInline.test.js prohiben en el codigo de la aplicacion.
+prueba-*.html
+prueba-*.js
