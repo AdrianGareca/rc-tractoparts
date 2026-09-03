@@ -966,3 +966,7 @@
 
 .lienzo-anillo { display: flex; justify-content: center; padding: 1rem 1rem .25rem; }
 .lienzo-anillo canvas { display: block; width: 150px; height: 150px; max-height: 150px; }
+
+/* Dos gráficos lado a lado encabezando un reporte. En pantalla angosta se
+   apilan: dos anillos de 150px no entran en un teléfono. */
+.fila-graficos { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; }
