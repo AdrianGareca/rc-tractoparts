@@ -90,6 +90,29 @@ describe('el parche de qs sigue puesto', () => {
     }
   });
 
+  test('la revisión semanal sigue en pie', () => {
+    // El override deja la auditoría en cero HOY. Lo que la mantiene así es que
+    // alguien vuelva a mirar: si el workflow desaparece o deja de auditar, un
+    // aviso nuevo puede quedarse meses sin que nadie se entere — y eso no lo
+    // detecta ninguna otra prueba, porque el código sigue funcionando igual.
+    const ruta = path.join(RAIZ, '.github/workflows/auditoria-dependencias.yml');
+    if (!fs.existsSync(ruta)) {
+      throw new Error(
+        'Falta .github/workflows/auditoria-dependencias.yml.\n\n' +
+        'Es la revisión semanal que avisa por correo cuando aparece una ' +
+        'vulnerabilidad nueva. Sin ella hay que acordarse de correr `npm audit` ' +
+        'a mano, y nadie se acuerda.'
+      );
+    }
+
+    const yml = fs.readFileSync(ruta, 'utf8');
+    expect(yml).toMatch(/npm audit/);
+    expect(yml).toMatch(/schedule:/);
+    // Sin `workflow_dispatch` no se puede lanzar a mano, y una alarma que no se
+    // puede probar no se sabe si funciona hasta el día que hace falta.
+    expect(yml).toMatch(/workflow_dispatch:/);
+  });
+
   test('mysql2 tiene su propio parche', () => {
     // Se actualizó junto con qs (3.22.3 → 3.24.3) por un aviso moderado. No
     // necesita override: la versión corregida entra en el rango que ya declara

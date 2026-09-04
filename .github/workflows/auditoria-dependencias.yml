@@ -1,0 +1,112 @@
+# =============================================================================
+# .github/workflows/auditoria-dependencias.yml
+# Revisa cada lunes si alguna dependencia tiene un aviso de seguridad nuevo.
+#
+# POR QUÉ ACÁ Y NO EN EL SERVIDOR
+# La alternativa era una tarea programada en el droplet. Se descartó: el
+# servidor no tiene cliente de correo, así que habría que instalar msmtp y
+# generar una contraseña de aplicación de Google — una pieza más que mantener,
+# y que falla en silencio el día que esa contraseña caduque.
+#
+# Acá no hace falta nada de eso: GitHub avisa por correo cuando una tarea
+# programada falla. Cero infraestructura propia.
+#
+# POR QUÉ FALLA A PROPÓSITO CUANDO ENCUENTRA ALGO
+# Un aviso que hay que ir a buscar no se lee. `npm audit` devuelve un código de
+# error cuando encuentra vulnerabilidades, la tarea queda en rojo, y GitHub
+# manda el correo solo. Si no encuentra nada, no llega nada — que es lo que
+# se quiere el 99% de las semanas.
+#
+# QUÉ NO REEMPLAZA
+# Dependabot ya revisa las dependencias los lunes y abre PRs con las versiones
+# nuevas. Esto es distinto y complementario: Dependabot dice «hay una versión
+# más nueva», esto dice «lo que tenés instalado HOY tiene un problema conocido».
+# Y sobre todo: esto mira el package-lock.json real, con los `overrides`
+# aplicados — que es lo que hoy mantiene la auditoría en cero (ver
+# tests/unit/dependenciasSeguras.test.js).
+# =============================================================================
+
+name: Auditoría de dependencias
+
+on:
+  schedule:
+    # Lunes a las 12:00 UTC = 08:00 en Bolivia. Justo después de que Dependabot
+    # haga su pasada, para que las dos cosas lleguen juntas y no en días
+    # distintos.
+    - cron: '0 12 * * 1'
+
+  # Permite lanzarla a mano desde la pestaña Actions. Sirve para PROBAR que el
+  # aviso llega de verdad, sin esperar al lunes.
+  workflow_dispatch:
+
+# Sólo lectura: esta tarea no escribe nada en el repositorio.
+permissions:
+  contents: read
+
+jobs:
+  auditar:
+    name: Revisar avisos de seguridad
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Traer el código
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # `npm audit` lee package-lock.json y consulta el registro: no hace falta
+      # instalar nada. Se salta `npm ci`, que tardaría minutos sin aportar.
+      #
+      # --omit=dev: sólo lo que corre en producción. Una vulnerabilidad en una
+      # herramienta de desarrollo no está expuesta a internet y llenaría el
+      # correo de ruido que nadie va a atender.
+      #
+      # --audit-level=moderate: el umbral desde el que vale la pena avisar.
+      - name: Auditar dependencias de producción
+        id: auditoria
+        run: npm audit --omit=dev --audit-level=moderate
+
+      # Sólo corre si el paso anterior falló. Deja en la pantalla del reporte
+      # una explicación en castellano, para que quien abra el correo entienda
+      # qué pasó sin saber leer la salida de npm.
+      - name: Explicar qué hacer
+        if: failure()
+        run: |
+          {
+            echo "## Apareció un aviso de seguridad en una dependencia"
+            echo ""
+            echo "La revisión semanal encontró al menos una vulnerabilidad en"
+            echo "las dependencias que corren en producción."
+            echo ""
+            echo "### Qué hacer"
+            echo ""
+            echo "1. Mirá el detalle en el paso **Auditar dependencias de producción**."
+            echo "2. En tu máquina, probá el arreglo automático:"
+            echo ""
+            echo '   ```bash'
+            echo '   npm audit fix --omit=dev'
+            echo '   npm test'
+            echo '   ```'
+            echo ""
+            echo "3. Si \`npm audit fix\` no alcanza, suele ser porque un paquete"
+            echo "   fija una versión vieja de otro. En ese caso va un \`overrides\`"
+            echo "   en package.json — ya hay uno para \`qs\`, sirve de ejemplo."
+            echo ""
+            echo "4. Desplegá como siempre: \`git pull\` + \`docker compose up -d --build app\`."
+            echo ""
+            echo "> Nada de esto es urgente salvo que el aviso sea **crítico**."
+            echo "> Una vulnerabilidad moderada puede esperar a un momento tranquilo."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dejar constancia de que salió limpia
+        if: success()
+        run: |
+          {
+            echo "## Sin avisos de seguridad"
+            echo ""
+            echo "Las dependencias de producción no tienen vulnerabilidades"
+            echo "conocidas al día de hoy. No hay nada que hacer."
+          } >> "$GITHUB_STEP_SUMMARY"
