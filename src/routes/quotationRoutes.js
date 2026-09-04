@@ -107,22 +107,27 @@ const storage = multer.diskStorage({
 });
 
 // El límite documentado (MAX_PDF_SIZE_MB, en MB exactos) es el máximo
-// ACEPTADO — no uno menos. Sin el +1 de abajo, un archivo de exactamente
-// MAX_PDF_SIZE_MB*1024*1024 bytes se rechazaba igual que uno más grande.
+// ACEPTADO — no uno menos.
 //
-// LA CAUSA: busboy (la librería que multer usa por debajo) dispara su
-// evento 'limit' — y por lo tanto LIMIT_FILE_SIZE — en cuanto los bytes
-// recibidos LLEGAN a `limits.fileSize`, no cuando lo SUPERAN
-// (node_modules/busboy/lib/types/multipart.js: `if (fileSize ===
-// fileSizeLimit) { ...emit('limit')... }`). Con `fileSize: maxUploadBytes`, un
-// archivo de exactamente ese tamaño hace que el contador de bytes llegue
-// justo a `fileSizeLimit` y se trunque, aunque ya se haya recibido el
-// archivo completo. Configurar el límite un byte más alto que el máximo
-// documentado hace que ese `===` sólo dispare en `maxUploadBytes + 1` bytes —
-// es decir, el primer tamaño que SÍ debe rechazarse — sin abrir la puerta a
-// nada por encima del límite documentado. Encontrado en la ronda de estrés
-// del 2026-08-26.
-const maxUploadBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024 + 1;
+// ACÁ HABÍA UN +1 Y SE SACÓ EL 2026-09-03 — no lo vuelvas a poner
+// El problema era de busboy (la librería que multer usa por debajo): dispara
+// su evento 'limit' en cuanto los bytes recibidos LLEGAN a `limits.fileSize`,
+// no cuando lo SUPERAN (`if (fileSize === fileSizeLimit)` en
+// busboy/lib/types/multipart.js). Con el límite puesto en el máximo exacto, un
+// archivo de justo ese tamaño se rechazaba igual que uno más grande. La
+// solución de entonces fue configurar un byte más (ronda de estrés del
+// 2026-08-26).
+//
+// multer 2.3.0 arregló eso mismo aguas arriba: ahora hace
+// `busboyLimits.fileSize = limits.fileSize + 1` por su cuenta
+// (multer/lib/make-middleware.js). Con el +1 de acá quedaban DOS sumados, y un
+// archivo de MAX+1 bytes pasaba en vez de rechazarse — lo cachó
+// tests/integration/pdfSizeLimit.test.js (PSZ-02) al actualizar la
+// dependencia.
+//
+// O sea: el rodeo dejó de hacer falta y pasó a ser el bug. Se pasa el máximo
+// documentado tal cual y multer se encarga del borde.
+const maxUploadBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024;
 
 // Excel upload for a quotation. fileFilter is intentionally omitted here —
 // the controller verifies the file post-write via a magic-number check
