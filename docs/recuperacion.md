@@ -106,9 +106,26 @@ docker cp /tmp/archivos-restaurados/storage/. rc_tractoparts_app:/app/storage/
 
 ### 8. Configurar Nginx + HTTPS
 
-Seguí **README.es.md §16.3 y §16.4** — el bloque de Nginx y `certbot --nginx`.
-Esto genera un certificado TLS nuevo (el viejo quedó en el droplet que ya no
-existe).
+La configuración está respaldada en **`deploy/nginx/`**, así que no hay que
+rearmarla de memoria:
+
+```bash
+scp deploy/nginx/nginx.conf          root@<IP>:/etc/nginx/nginx.conf
+scp deploy/nginx/rctractoparts.conf  root@<IP>:/etc/nginx/sites-available/rctractoparts
+ln -sf /etc/nginx/sites-available/rctractoparts /etc/nginx/sites-enabled/rctractoparts
+nginx -t                 # comprobar la sintaxis ANTES de recargar
+systemctl reload nginx
+certbot --nginx -d rctractoparts.org -d www.rctractoparts.org
+```
+
+**Copiá los DOS archivos, no sólo el del sitio.** `nginx.conf` lleva
+`client_max_body_size 15M`; sin esa línea Nginx vuelve a su valor por defecto
+de 1 MB y deja de aceptar casi cualquier PDF — con un `413` que la aplicación
+nunca ve ni registra, así que el error parece salido de la nada.
+
+`certbot` genera un certificado nuevo (el viejo quedó en el droplet que ya no
+existe) y deja instalada la renovación automática. Ver `deploy/nginx/README.md`
+para el detalle, y **README.es.md §16.3 y §16.4** para el contexto original.
 
 ### 9. Reinstalar los backups automáticos
 
