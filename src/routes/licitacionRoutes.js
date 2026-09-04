@@ -96,11 +96,11 @@ function licDocFileFilter(_req, file, cb) {
   }
 }
 
-// +1: mismo motivo que quotationRoutes.js — busboy dispara LIMIT_FILE_SIZE en
-// cuanto los bytes recibidos LLEGAN al límite configurado, no cuando lo
-// superan, así que un archivo de exactamente MAX_PDF_SIZE_MB MB se rechazaba
-// igual que uno más grande. Ver el comentario largo en quotationRoutes.js.
-const maxDocBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024 + 1;
+// Se pasa el máximo documentado tal cual. Acá había un +1 por un problema de
+// busboy que multer 2.3.0 arregló aguas arriba; mantenerlo dejaba DOS sumados
+// y colaba un archivo de MAX+1 bytes. Ver el comentario largo en
+// quotationRoutes.js antes de tocar esto.
+const maxDocBytes = (parseInt(process.env.MAX_PDF_SIZE_MB, 10) || 10) * 1024 * 1024;
 
 const uploadLicDocs = multer({
   storage:    licDocStorage,
