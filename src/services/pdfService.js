@@ -40,7 +40,8 @@ const { drawThreeColumnGrid } = require('./pdf/drawers/infoGrid');
 const { drawItemsTable } = require('./pdf/drawers/itemsTable');
 const { drawTotalsAndConditions } = require('./pdf/drawers/totals');
 const { drawObservations } = require('./pdf/drawers/observations');
-const { drawFooter } = require('./pdf/drawers/footer');
+const { drawFooter, numerarPaginas } = require('./pdf/drawers/footer');
+const { drawTerminosPage } = require('./pdf/drawers/terminos');
 
 // =============================================================================
 // Public API
@@ -115,6 +116,10 @@ async function generateQuotationPdf(quotation) {
           Creator:  'RC Tractoparts SGC v3.0',
         },
         compress: true,
+        // Retiene las paginas en memoria en vez de escribirlas al vuelo, para
+        // que numerarPaginas() pueda volver sobre cada una al final — el total
+        // no se sabe hasta que el documento esta armado. Ver footer.js.
+        bufferPages: true,
       });
 
       // 3. Pipe to write stream — resolve/reject driven by stream events
@@ -180,6 +185,17 @@ async function generateQuotationPdf(quotation) {
 
       // Footer is painted at a fixed absolute Y — not part of the flow
       drawFooter(doc, quotation);
+
+      // Hoja de CONDICIONES GENERALES DE LA OFERTA, siempre la ultima.
+      //
+      // Va DESPUES del drawFooter de arriba a proposito: ese pie corresponde a
+      // la ultima pagina del cuerpo, y drawTerminosPage abre una pagina nueva
+      // con su propia marca de agua y su propio pie. Invertir el orden dejaria
+      // la ultima pagina del cuerpo sin pie.
+      drawTerminosPage(doc, quotation);
+
+      // «Pagina X de Y» en todas — necesita que ya existan todas las paginas.
+      numerarPaginas(doc);
 
       // 5. Finalise — triggers 'finish' on the write stream
       doc.end();

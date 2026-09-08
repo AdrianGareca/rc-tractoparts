@@ -84,4 +84,50 @@ function drawFooter(doc, quotation) {
   doc.page.margins.bottom = savedBottomMargin;
 }
 
-module.exports = { drawFooter };
+// ---------------------------------------------------------------------------
+// numerarPaginas
+// Escribe «Página X de Y» en el pie de TODAS las páginas.
+//
+// POR QUÉ EN UNA PASADA APARTE
+// El total no se sabe hasta que el documento está armado: cuando se dibuja la
+// página 1 todavía no existe la 4. Por eso el documento se crea con
+// `bufferPages: true` (ver pdfService.js), que le pide a PDFKit que retenga las
+// páginas en memoria en vez de escribirlas al vuelo — y así se puede volver
+// sobre cada una al final, ya con el total conocido.
+//
+// Sirve para notar que falta una hoja. La proforma se imprime, se escanea y se
+// reenvía por WhatsApp, y en ese camino una página se queda atrás sin que nadie
+// lo note: la hoja de condiciones, que va al final, es la primera candidata.
+//
+// Se llama DESPUÉS de todos los drawers y ANTES de doc.end().
+// ---------------------------------------------------------------------------
+function numerarPaginas(doc) {
+  const rango = doc.bufferedPageRange();
+  if (!rango || !rango.count) return;
+
+  const footerY = PH - 38;
+
+  for (let i = 0; i < rango.count; i++) {
+    doc.switchToPage(rango.start + i);
+
+    // Misma precaución que drawFooter: el texto va por debajo del área de
+    // contenido y sin esto PDFKit abriría una página nueva para acomodarlo —
+    // que a su vez necesitaría numeración, y así sin fin.
+    const savedBottomMargin = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
+
+    doc
+      .font('Helvetica')
+      .fontSize(6)
+      .fillColor('#A0AEC0')
+      .text(`Página ${i + 1} de ${rango.count}`, MARGIN, footerY + 19,
+        { lineBreak: false });
+
+    doc.page.margins.bottom = savedBottomMargin;
+  }
+
+  doc.flushPages();
+}
+
+module.exports = { drawFooter, numerarPaginas };
+

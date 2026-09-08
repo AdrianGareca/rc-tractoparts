@@ -67,9 +67,29 @@ describe('generateQuotationPdf — documento válido', () => {
     expect(buf.length).toBeGreaterThan(1000);
   });
 
-  test('una cotización de una sola página genera exactamente una', async () => {
+  test('una cotización de una sola página genera dos: el cuerpo y las condiciones', async () => {
+    // La hoja de CONDICIONES GENERALES DE LA OFERTA va SIEMPRE al final, en su
+    // propia página (drawers/terminos.js). Es una exigencia legal: la empresa
+    // debe entregar sus condiciones junto con cada oferta.
+    //
+    // Este número es la suma de dos cosas distintas, y por eso el mensaje de
+    // abajo las separa: si el cuerpo se desbordara a una segunda página, el
+    // total seguiría pareciendo razonable y nadie lo notaría.
     const { buf } = await render(quotation());
-    expect(contarPaginas(buf)).toBe(1);
+    const paginas = contarPaginas(buf);
+
+    if (paginas !== 2) {
+      throw new Error(
+        `El PDF salió con ${paginas} página(s) y se esperaban 2 ` +
+        '(1 de cuerpo + 1 de condiciones).\n\n' +
+        'Si es 1: desapareció la hoja de condiciones, y la proforma sale sin los ' +
+        'términos que la empresa está obligada a entregar con cada oferta.\n\n' +
+        'Si son 3 o más: o el cuerpo se desbordó, o la hoja de condiciones se ' +
+        'partió en dos. Lo segundo suele ser por escribir por debajo de los ' +
+        '760 pt, que dispara un salto de página automático en PDFKit — ver la ' +
+        'maniobra del margen inferior en drawers/footer.js.'
+      );
+    }
   });
 
   test('devuelve una ruta relativa dentro del directorio de subidas', async () => {

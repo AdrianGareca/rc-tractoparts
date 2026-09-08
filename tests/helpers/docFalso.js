@@ -62,6 +62,13 @@ function docFalso(opciones = {}) {
   const lineas   = [];
   const eventos  = {};
 
+  // Índice de la anotación que sigue ABIERTA por un text(..., {continued:true}).
+  // PDFKit deja el cursor al final del texto y la llamada siguiente continúa en
+  // la MISMA línea: el par titulo-en-negrita + cuerpo es un solo párrafo, no dos
+  // bloques apilados. Sin esto, la continuación se anotaría como un bloque que
+  // arranca debajo del título y se pisaría con lo que viene después.
+  let abierta       = null;
+
   let pagina        = 0;   // índice de la página donde se está dibujando
   let totalPaginas  = 1;
   let puntoActual   = null;  // último moveTo(), para armar el segmento en lineTo()
@@ -216,6 +223,23 @@ function docFalso(opciones = {}) {
       if (anchoCaja != null && o.align === 'center') izquierda = px + (anchoCaja - ancho) / 2;
       if (anchoCaja != null && o.align === 'right')  izquierda = px + anchoCaja - ancho;
 
+      // Continuación de un párrafo ya abierto: no es un bloque nuevo. Se fusiona
+      // con el anterior y se re-mide el conjunto, que es lo que PDFKit dibuja.
+      if (abierta !== null) {
+        const previa = textos[abierta];
+        previa.contenido += texto;
+        previa.alto   = doc.heightOfString(previa.contenido, { width: previa.width ?? Infinity });
+        previa.abajo  = previa.arriba + previa.alto;
+        previa.lineas = Math.max(1, Math.round(previa.alto / (doc._fontSize * 1.3)));
+        if (previa.width != null) {
+          previa.ancho   = previa.width;
+          previa.derecha = previa.izquierda + previa.width;
+        }
+        doc._y = previa.abajo;
+        if (!o.continued) abierta = null;
+        return doc;
+      }
+
       textos.push({
         contenido: texto,
         x: px, y: py,
@@ -230,6 +254,9 @@ function docFalso(opciones = {}) {
         pagina,
       });
 
+      // Queda abierta para que la próxima llamada se fusione en vez de apilarse.
+      abierta = o.continued ? textos.length - 1 : null;
+
       doc._y = py + alto;
       doc._x = px;
       return doc;
@@ -243,7 +270,10 @@ function docFalso(opciones = {}) {
       const charW = doc._fontSize * 0.5;
       const palabras = String(contenido).split(' ');
       let lineas2 = 1;
-      let anchoLinea = 0;
+      // `indent` reserva espacio al principio de la PRIMERA línea — es como
+      // PDFKit modela un título corrido antes del cuerpo. Sin esto, un párrafo
+      // con sangría se mide más bajo de lo que se dibuja.
+      let anchoLinea = opts.indent || 0;
       for (const palabra of palabras) {
         const w = (palabra.length + 1) * charW;
         if (anchoLinea + w > width && anchoLinea > 0) {

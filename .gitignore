@@ -50,3 +50,4 @@ Sistema_Cotizaciones_Cap1-4.docx
 # tests/unit/estilosInline.test.js prohiben en el codigo de la aplicacion.
 prueba-*.html
 prueba-*.js
+prueba-*.pdf
