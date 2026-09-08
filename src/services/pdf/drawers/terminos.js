@@ -33,11 +33,19 @@ const { drawFooter } = require('./footer');
 // midan con LOS MISMOS números que se dibujan: una prueba que repita estas
 // constantes por su cuenta deja de vigilar el día que alguien las cambia acá.
 const BANDA_H   = 30;    // alto de la banda de identificación
-const COLUMNAS  = 2;
-const CANAL     = 16;    // separación entre columnas
-const SANGRIA   = 15;    // espacio del número «12.» a la izquierda del texto
-const CUERPO_PT = 7;     // tamaño del texto de las cláusulas
-const AIRE      = CUERPO_PT * 0.52;   // separación vertical entre cláusulas
+const COLUMNAS  = 1;
+const CANAL     = 16;    // separación entre columnas (sin uso con una sola)
+const SANGRIA   = 17;    // espacio del número «12.» a la izquierda del texto
+const CUERPO_PT = 6.5;   // tamaño del texto de las cláusulas
+
+// Separación vertical entre cláusulas.
+//
+// Es generosa a propósito. En una sola columna cada renglón mide 506 pt —unos
+// 130 caracteres— y con letra de 6,5 pt eso es una línea larga y fina: lo que
+// vuelve legible un bloque así no es el tamaño de la letra sino el aire que
+// separa un punto del siguiente. Además reparte las 24 cláusulas por toda la
+// hoja en vez de amontonarlas arriba y dejar media página en blanco.
+const AIRE      = CUERPO_PT * 1.55;
 
 const fecha = (v) => {
   if (!v) return '—';

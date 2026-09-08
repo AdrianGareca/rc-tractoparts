@@ -112,30 +112,48 @@ describe('nada se pisa ni se sale de la hoja', () => {
   });
 });
 
-describe('las dos columnas se reparten el texto', () => {
-  test('se dibujan las 24 cláusulas en dos columnas', () => {
+describe('las cláusulas van en una sola columna, en orden', () => {
+  test('se dibujan las 24, todas alineadas en la misma columna', () => {
     const numeros = numerosDeClausula(dibujar());
     expect(numeros).toHaveLength(24);
 
+    // Una sola columna: todos los números arrancan en la misma X.
     const columnas = [...new Set(numeros.map((t) => Math.round(t.x)))];
-    expect(columnas).toHaveLength(2);
-  });
-
-  test('ninguna columna se lleva casi todo', () => {
-    const numeros    = numerosDeClausula(dibujar());
-    const izquierda  = Math.min(...numeros.map((t) => Math.round(t.x)));
-    const cuantosIzq = numeros.filter((t) => Math.round(t.x) === izquierda).length;
-
-    // El reparto es por ALTURA, no por cantidad, así que no tienen por qué ser
-    // 12 y 12 — pero un 23/1 significa que el balanceo dejó de funcionar.
-    if (cuantosIzq < 8 || cuantosIzq > 16) {
+    if (columnas.length !== 1) {
       throw new Error(
-        `La columna izquierda se quedó con ${cuantosIzq} de 24 cláusulas.\n\n` +
-        'El reparto se hace midiendo todo antes de dibujar (medirClausulas) y ' +
-        'cortando a la mitad de la altura total. Un reparto tan desparejo ' +
-        'sugiere que esa medición dejó de reflejar lo que se dibuja.'
+        `Los números de cláusula arrancan en ${columnas.length} posiciones ` +
+        `distintas (${columnas.join(', ')} pt) y debería ser una sola.\n\n` +
+        'La hoja se pasó a una columna a pedido: en dos, con letra chica, el ' +
+        'texto legal quedaba apretado. Si volvieran a aparecer dos, GEOMETRIA.' +
+        'COLUMNAS dejó de valer 1.'
       );
     }
+    expect(GEOMETRIA.COLUMNAS).toBe(1);
+  });
+
+  test('cada cláusula empieza por debajo de la anterior', () => {
+    // En una columna el orden de lectura es el orden vertical, sin excepciones.
+    // Si dos se cruzaran, el documento legal quedaría desordenado.
+    const numeros = numerosDeClausula(dibujar());
+    const desordenadas = numeros
+      .map((t, i) => ({ n: i + 1, y: t.y, previa: i === 0 ? -Infinity : numeros[i - 1].y }))
+      .filter((c) => c.y <= c.previa);
+
+    if (desordenadas.length) {
+      throw new Error(
+        'Estas cláusulas no arrancan por debajo de la anterior:\n  ' +
+        desordenadas.map((c) => `${c.n}. arranca en Y=${c.y.toFixed(1)}, la previa en ${c.previa.toFixed(1)}`)
+          .join('\n  ')
+      );
+    }
+  });
+
+  test('la letra es más chica que la del cuerpo de la proforma', () => {
+    // El resto del documento usa 7,5 pt. Las condiciones son letra chica a
+    // propósito: son 24 cláusulas que tienen que entrar en UNA hoja.
+    expect(GEOMETRIA.CUERPO_PT).toBeLessThan(7.5);
+    // Por debajo de 5,5 pt deja de leerse en papel impreso.
+    expect(GEOMETRIA.CUERPO_PT).toBeGreaterThanOrEqual(5.5);
   });
 });
 
@@ -309,6 +327,38 @@ describe('la altura estimada coincide con la que PDFKit dibuja', () => {
         'El reparto en dos columnas usa la estimación, así que el corte cae ' +
         'donde no corresponde: la columna se pasa de largo y el texto se mete ' +
         'debajo del pie o abre una segunda hoja de condiciones.'
+      );
+    }
+  });
+
+  test('las 24 cláusulas entran en UNA hoja, medidas con PDFKit real', () => {
+    // La garantía central de esta hoja. docFalso da una idea, pero el alto que
+    // decide si el texto se pasa de página es el de las métricas reales de la
+    // fuente — así que acá se dibuja con PDFKit de verdad y se cuenta.
+    //
+    // Si esto se pone en rojo, la proforma pasa a tener DOS hojas de
+    // condiciones: la segunda con cuatro renglones sueltos y el resto en
+    // blanco. La salida es bajar CUERPO_PT o AIRE en drawers/terminos.js.
+    const doc = new PDFDocument({
+      size: 'A4', autoFirstPage: true,
+      margins: { top: MARGIN, bottom: MARGIN + 45, left: MARGIN, right: MARGIN },
+    });
+    doc.pipe(new (require('stream').Writable)({ write(_c, _e, cb) { cb(); } }));
+
+    let paginas = 1;
+    doc.on('pageAdded', () => { paginas += 1; });
+
+    drawTerminosPage(doc, cotizacion());
+
+    // drawTerminosPage abre SU hoja: de 1 pasa a 2. Cualquier cosa por encima
+    // significa que el texto se desbordó.
+    if (paginas !== 2) {
+      throw new Error(
+        `La hoja de condiciones ocupó ${paginas - 1} página(s) en vez de 1.\n\n` +
+        `Hoy el cuerpo está en ${GEOMETRIA.CUERPO_PT} pt con ${GEOMETRIA.AIRE.toFixed(2)} pt ` +
+        'de aire entre cláusulas. Si se agregó texto o se agrandó la letra, hay ' +
+        'que bajar CUERPO_PT o AIRE en src/services/pdf/drawers/terminos.js ' +
+        'hasta que vuelva a entrar.'
       );
     }
   });
