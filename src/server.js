@@ -19,6 +19,7 @@ require('dotenv').config(); // Must be first — loads .env before any module re
 const http                      = require('http');
 const app                       = require('./app');              // Configured Express instance
 const { pool, testConnection }  = require('./config/db');        // MySQL pool + startup validator
+const { revisarEntorno, informarEntorno } = require('./config/verificarEntorno');
 const { initSocket }            = require('./realtime/socketServer'); // Draft-lock realtime layer
 const QuotationLockModel        = require('./models/QuotationLockModel');
 
@@ -32,6 +33,21 @@ const PORT = parseInt(process.env.PORT, 10) || 3000;
 // ---------------------------------------------------------------------------
 async function startServer() {
   try {
+    // Antes que nada: que el entorno sirva.
+    //
+    // Va PRIMERO —antes incluso de tocar la base— porque el problema que ataja
+    // no se manifiesta nunca por su cuenta. Si JWT_SECRET quedó en el texto de
+    // ejemplo del .env.example, la aplicación arranca perfecta, la gente entra
+    // y trabaja, y no hay un solo error en los registros: sólo que cualquiera
+    // que vea el repositorio conoce el secreto que firma las sesiones.
+    //
+    // Morir acá es ruidoso y molesto, y es exactamente lo que se busca: el
+    // despliegue falla en el momento en que se puede arreglar, en vez de andar
+    // meses con una puerta abierta. Ver src/config/verificarEntorno.js.
+    if (!informarEntorno(revisarEntorno(process.env))) {
+      process.exit(1);
+    }
+
     // Verify that MySQL is reachable before opening the HTTP port
     await testConnection();
 
