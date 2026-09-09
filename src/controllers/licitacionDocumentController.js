@@ -29,6 +29,7 @@ const { logEvent, AuditActions } = require('../utils/auditLog');
 // Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
 // con el mensaje en dos idiomas distintos.
 const { parseId } = require('../utils/parseId');
+const { buscarLicitacion } = require('./licitacion/buscarLicitacion');
 // La cabecera de descarga, con el nombre en castellano intacto.
 const { cabeceraDeDescarga } = require('../utils/nombreDeDescarga');
 // El guardado de las filas: todas o ninguna, con vuelta atrás propia.
@@ -204,14 +205,9 @@ const LicitacionDocumentController = {
   // getDocumentos — GET /api/licitaciones/:id/documentos  (todos los autenticados)
   // ---------------------------------------------------------------------------
   async getDocumentos(req, res) {
-    const { id, error: idError } = parseId(req.params.id, 'licitación');
-    if (idError) return res.status(idError.status).json(idError.body);
-
     try {
-      const licitacion = await LicitacionModel.findById(id);
-      if (!licitacion) {
-        return res.status(404).json({ success: false, message: `No se encontró la licitación con ID ${id}.` });
-      }
+      const { id, error } = await buscarLicitacion(req.params.id);
+      if (error) return res.status(error.status).json(error.body);
 
       const documentos = await LicitacionDocumentModel.findByLicitacion(id);
       return res.status(200).json({ success: true, total: documentos.length, data: documentos });

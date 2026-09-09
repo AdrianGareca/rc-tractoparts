@@ -29,6 +29,7 @@ const licitacionPdfService       = require('../services/licitacionPdfService');
 // Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
 // con el mensaje en dos idiomas distintos.
 const { parseId } = require('../utils/parseId');
+const { buscarLicitacion } = require('./licitacion/buscarLicitacion');
 // El bloque `pagination`, compartido.
 const { construirPaginacion } = require('../utils/paginacion');
 // Transacción con reintento ante deadlocks. Se comparte con cotizaciones a
@@ -153,15 +154,11 @@ const LicitacionController = {
   // transmite directo, así siempre refleja el estado/cotizaciones/gastos actual.
   // ---------------------------------------------------------------------------
   async downloadPdf(req, res) {
-    const { id, error: idError } = parseId(req.params.id, 'licitación');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
-    if (idError) return res.status(idError.status).json(idError.body);
 
     try {
-      const licitacion = await LicitacionModel.findById(id);
-      if (!licitacion) {
-        return res.status(404).json({ success: false, message: `No se encontró la licitación con ID ${id}.` });
-      }
+      const { id, licitacion, error } = await buscarLicitacion(req.params.id);
+      if (error) return res.status(error.status).json(error.body);
 
       // findById no trae los documentos adjuntos (son de otra tabla, y el
       // resto de sus llamadores no los necesitan) — se agregan acá para que
@@ -393,14 +390,10 @@ const LicitacionController = {
   // getLicitacionById — GET /api/licitaciones/:id  (todos los autenticados)
   // ---------------------------------------------------------------------------
   async getLicitacionById(req, res) {
-    const { id, error: idError } = parseId(req.params.id, 'licitación');
-    if (idError) return res.status(idError.status).json(idError.body);
-
     try {
-      const licitacion = await LicitacionModel.findById(id);
-      if (!licitacion) {
-        return res.status(404).json({ success: false, message: `No se encontró la licitación con ID ${id}.` });
-      }
+      const { licitacion, error } = await buscarLicitacion(req.params.id);
+      if (error) return res.status(error.status).json(error.body);
+
       return res.status(200).json({ success: true, data: licitacion });
     } catch (error) {
       console.error('[LicitacionController.getLicitacionById] Error:', error.message);
@@ -412,14 +405,9 @@ const LicitacionController = {
   // getStateHistory — GET /api/licitaciones/:id/historial  (todos los autenticados)
   // ---------------------------------------------------------------------------
   async getStateHistory(req, res) {
-    const { id, error: idError } = parseId(req.params.id, 'licitación');
-    if (idError) return res.status(idError.status).json(idError.body);
-
     try {
-      const licitacion = await LicitacionModel.findById(id);
-      if (!licitacion) {
-        return res.status(404).json({ success: false, message: `No se encontró la licitación con ID ${id}.` });
-      }
+      const { id, licitacion, error } = await buscarLicitacion(req.params.id);
+      if (error) return res.status(error.status).json(error.body);
 
       const history = await LicitacionModel.findStateHistory(id);
       return res.status(200).json({
@@ -439,16 +427,11 @@ const LicitacionController = {
   // Solo se puede editar la cabecera en estados 'En preparacion'/'Cotizando'.
   // ---------------------------------------------------------------------------
   async updateLicitacion(req, res) {
-    const { id, error: idError } = parseId(req.params.id, 'licitación');
-    if (idError) return res.status(idError.status).json(idError.body);
-
     const clientIp = req.ip || req.socket?.remoteAddress || null;
 
     try {
-      const licitacion = await LicitacionModel.findById(id);
-      if (!licitacion) {
-        return res.status(404).json({ success: false, message: `No se encontró la licitación con ID ${id}.` });
-      }
+      const { id, licitacion, error } = await buscarLicitacion(req.params.id);
+      if (error) return res.status(error.status).json(error.body);
 
       // Ownership: Proyectos solo puede editar SUS licitaciones; Jefe/SysAdmin, todas.
       const isPrivileged  = req.user.rol === 'Jefe' || req.user.rol === 'SysAdmin';

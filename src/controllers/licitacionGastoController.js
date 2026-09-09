@@ -15,13 +15,13 @@
 
 'use strict';
 
-const LicitacionModel            = require('../models/LicitacionModel');
 const LicitacionGastoModel       = require('../models/LicitacionGastoModel');
 const { logEvent, AuditActions } = require('../utils/auditLog');
 const { sumGastosEnMoneda }      = require('../utils/licitacionTotals');
 // Lectura del id de la URL, compartida: estaba escrita a mano 28 veces
 // con el mensaje en dos idiomas distintos.
 const { parseId } = require('../utils/parseId');
+const { buscarLicitacion } = require('./licitacion/buscarLicitacion');
 
 // Estados en los que se pueden gestionar gastos (post-adjudicación).
 const GASTO_ALLOWED_STATES = ['Adjudicada', 'Archivada'];
@@ -42,17 +42,12 @@ const LicitacionGastoController = {
   // addGasto — POST /api/licitaciones/:id/gastos
   // ---------------------------------------------------------------------------
   async addGasto(req, res) {
-    const { id, error: idError } = parseId(req.params.id, 'licitación');
     const clientIp = req.ip || req.socket?.remoteAddress || null;
-    if (idError) return res.status(idError.status).json(idError.body);
-
     const { concepto, monto, moneda } = req.body;
 
     try {
-      const licitacion = await LicitacionModel.findById(id);
-      if (!licitacion) {
-        return res.status(404).json({ success: false, message: `No se encontró la licitación con ID ${id}.` });
-      }
+      const { id, licitacion, error } = await buscarLicitacion(req.params.id);
+      if (error) return res.status(error.status).json(error.body);
 
       if (!canManageGastos(req.user, licitacion)) {
         return res.status(403).json({
@@ -119,13 +114,10 @@ const LicitacionGastoController = {
   // getGastos — GET /api/licitaciones/:id/gastos  (todos los autenticados)
   // ---------------------------------------------------------------------------
   async getGastos(req, res) {
-    const { id, error: idError } = parseId(req.params.id, 'licitación');
-    if (idError) return res.status(idError.status).json(idError.body);
     try {
-      const licitacion = await LicitacionModel.findById(id);
-      if (!licitacion) {
-        return res.status(404).json({ success: false, message: `No se encontró la licitación con ID ${id}.` });
-      }
+      const { id, licitacion, error } = await buscarLicitacion(req.params.id);
+      if (error) return res.status(error.status).json(error.body);
+
       const gastos = await LicitacionGastoModel.findByLicitacion(id);
       // Mismo criterio de moneda que LicitacionModel.findById: sólo se suman
       // los gastos en la moneda de la licitación (ver utils/licitacionTotals.js).
@@ -149,18 +141,23 @@ const LicitacionGastoController = {
   // deleteGasto — DELETE /api/licitaciones/:id/gastos/:gastoId
   // ---------------------------------------------------------------------------
   async deleteGasto(req, res) {
-    const { id, error: idError } = parseId(req.params.id, 'licitación');
-    const gastoId  = parseInt(req.params.gastoId, 10);
     const clientIp = req.ip || req.socket?.remoteAddress || null;
-    if (isNaN(id) || id < 1 || isNaN(gastoId) || gastoId < 1) {
-      return res.status(400).json({ success: false, message: 'ID inválido.' });
-    }
+
+    // Esta ruta lleva DOS identificadores, y era la última validación de id
+    // escrita a mano que quedaba en src/ (ver el trinquete de
+    // tests/unit/parseIdCompartido.test.js). Devolvía «ID inválido.» a secas
+    // para los dos casos, así que quien recibía el error no sabía CUÁL de los
+    // dos estaba mal. Además calculaba el `error` de parseId y lo descartaba.
+    //
+    // El del gasto va primero porque no toca la base: no tiene sentido ir a
+    // buscar la licitación para después rechazar por el otro parámetro.
+    const { id: gastoId, error: errGasto } = parseId(req.params.gastoId, 'gasto');
+    if (errGasto) return res.status(errGasto.status).json(errGasto.body);
 
     try {
-      const licitacion = await LicitacionModel.findById(id);
-      if (!licitacion) {
-        return res.status(404).json({ success: false, message: `No se encontró la licitación con ID ${id}.` });
-      }
+      const { id, licitacion, error } = await buscarLicitacion(req.params.id);
+      if (error) return res.status(error.status).json(error.body);
+
       if (!canManageGastos(req.user, licitacion)) {
         return res.status(403).json({
           success: false,

@@ -75,7 +75,15 @@ describe('parseId — lo que acepta y lo que no', () => {
 // EL TRINQUETE
 // ---------------------------------------------------------------------------
 describe('la validación a mano sólo puede disminuir', () => {
-  const TOPE = 1;
+  // CERO desde el 2026-09-09. La última que quedaba era deleteGasto en
+  // licitacionGastoController.js: leía el id de la licitación con parseId,
+  // DESCARTABA su error, y validaba a mano los dos identificadores devolviendo
+  // «ID inválido.» sin decir cuál de los dos estaba mal.
+  //
+  // Que el tope llegue a cero no vuelve inútil a este trinquete — al revés: de
+  // acá en adelante, la PRIMERA validación a mano que alguien escriba lo pone
+  // en rojo, en vez de sumarse a un grupo tolerado.
+  const TOPE = 0;
 
   const contar = () => archivos.reduce((total, f) => {
     // Se salta el propio helper: ahí la comprobación es la implementación.
