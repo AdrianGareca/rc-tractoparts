@@ -25,6 +25,9 @@
 
 const express   = require('express');
 const multer    = require('multer');
+// Manejador de errores de subida, compartido entre los dos routers que
+// reciben archivos. Estaba escrito dos veces y ya divergia en el idioma.
+const { erroresDeSubida } = require('../middlewares/erroresDeSubida');
 const path      = require('path');
 const fs        = require('fs');
 const { buildUploadFilename, arreglarNombreOriginal } = require('../utils/uploadFilename');
@@ -644,38 +647,15 @@ router.get(
 );
 
 // =============================================================================
-// Multer error handler — must be a 4-argument Express error middleware and
-// declared AFTER all routes so it only catches errors bubbled up from within
-// this router (mirrors quotationRoutes.js's handler).
+// Errores de subida — compartido con quotationRoutes.js.
+//
+// Va DESPUES de todas las rutas: Express solo le pasa errores a los middlewares
+// de cuatro argumentos registrados despues de lo que fallo.
+//
+// El prefijo declarado es el que lanza el fileFilter de mas arriba cuando la
+// extension no esta en la lista. Se responde 422 con su texto tal cual porque
+// describe una peticion invalida, no un fallo del servidor.
 // =============================================================================
-router.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    // "Archivo demasiado grande" es un caso aparte: el manejador GLOBAL
-    // (src/app.js) responde 413 para el mismo error en la subida de PDF de
-    // cotizaciones. Este router interceptaba TODO multer.MulterError antes
-    // de que llegara ahí, así que el mismo problema (archivo demasiado
-    // grande) volvía 422 acá y 413 allá — un código de estado distinto para
-    // el mismo motivo de rechazo, según qué endpoint lo recibiera. El resto
-    // de los MulterError (tipo de archivo inválido, demasiados archivos,
-    // etc.) sigue siendo 422 como siempre. Encontrado en la ronda de estrés
-    // del 2026-08-26.
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({
-        success: false,
-        message: `Error al subir el archivo: ${err.message}`,
-      });
-    }
-    return res.status(422).json({
-      success: false,
-      message: `Error al subir el archivo: ${err.message}`,
-    });
-  }
-
-  if (err?.message?.startsWith('Tipo de archivo no permitido')) {
-    return res.status(422).json({ success: false, message: err.message });
-  }
-
-  next(err);
-});
+router.use(erroresDeSubida({ prefijosDeCliente: ['Tipo de archivo no permitido'] }));
 
 module.exports = router;

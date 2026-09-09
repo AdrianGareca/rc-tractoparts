@@ -31,6 +31,9 @@
 
 const express    = require('express');
 const multer     = require('multer');
+// Manejador de errores de subida, compartido entre los dos routers que
+// reciben archivos. Estaba escrito dos veces y ya divergia en el idioma.
+const { erroresDeSubida } = require('../middlewares/erroresDeSubida');
 const path       = require('path');
 const { buildUploadFilename } = require('../utils/uploadFilename');
 const fs         = require('fs');
@@ -1073,36 +1076,15 @@ router.patch(
 );
 
 // =============================================================================
-// Multer error handler
-// Must be a 4-argument Express error middleware and must be declared AFTER
-// all routes so it only catches errors that bubbled up from within this router.
+// Errores de subida — compartido con licitacionRoutes.js.
+//
+// Va DESPUES de todas las rutas: Express solo le pasa errores a los middlewares
+// de cuatro argumentos registrados despues de lo que fallo.
+//
+// Sin `prefijosDeCliente`: este router no tiene filtro de extensiones a
+// proposito — el controlador verifica el contenido despues de escribirlo, por
+// numero magico, porque el tipo declarado por el cliente se falsifica solo.
 // =============================================================================
-router.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    // "File too large" es un caso aparte: este router tenía su PROPIO
-    // manejador de MulterError (declarado después de todas las rutas), así
-    // que interceptaba LIMIT_FILE_SIZE ANTES de que llegara al manejador
-    // GLOBAL de src/app.js, que sí responde 413 para ese mismo error. El
-    // resultado era el mismo código de estado inconsistente que tenía
-    // licitacionRoutes.js para sus propios documentos — arreglado ahí con el
-    // mismo criterio. El resto de los MulterError (tipo de archivo inválido,
-    // demasiados archivos) sigue siendo 422 como siempre. Encontrado en la
-    // ronda de estrés del 2026-08-26.
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({
-        success: false,
-        message: `File upload error: ${err.message}`,
-      });
-    }
-    // e.g. LIMIT_UNEXPECTED_FILE
-    return res.status(422).json({
-      success: false,
-      message: `File upload error: ${err.message}`,
-    });
-  }
-
-  // Unknown error — propagate to the global handler in app.js
-  next(err);
-});
+router.use(erroresDeSubida());
 
 module.exports = router;
