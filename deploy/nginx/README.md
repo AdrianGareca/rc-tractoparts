@@ -42,6 +42,69 @@ Por eso se respalda `nginx.conf` entero y no sólo el archivo del sitio.
 `tests/unit/nginxLimites.test.js` verifica que este número siga siendo mayor o
 igual al límite de la aplicación.
 
+## Antes de poner Cloudflare (o cualquier proxy) delante — LEER
+
+`cloudflare-real-ip.conf` **se instala ANTES de activar el proxy, no después.**
+
+### Por qué
+
+Hoy la cadena es `persona → nginx → aplicación`: un salto. `src/app.js` tiene
+`app.set('trust proxy', 1)` y por eso `req.ip` es la IP de la persona.
+
+Con Cloudflare pasan a ser **dos** saltos, y sin esta configuración la
+aplicación deja de ver a la persona. Está medido:
+
+```
+hoy                        req.ip = 190.104.22.5   <- la persona
+con Cloudflare, sin esto   req.ip = 172.68.10.3    <- Cloudflare
+```
+
+### Qué se rompe si se olvida
+
+1. **El login, para toda la empresa.** El límite es de 5 intentos por IP cada 15
+   minutos. Si todo llega con la misma media docena de IPs de Cloudflare, esa
+   cuota pasa a ser compartida: el sexto intento del día, de quien sea, se
+   rechaza con «demasiados intentos desde esta IP» — que es justo lo que nadie
+   va a entender, porque cada uno intentó una vez.
+2. **La bitácora de auditoría.** Los 28 sitios que guardan `req.ip` registrarían
+   la dirección de Cloudflare. El registro se sigue llenando, sin errores, y
+   deja de servir para nada.
+
+### Cómo instalarlo
+
+```bash
+# 1. Copiar el archivo
+sudo cp deploy/nginx/cloudflare-real-ip.conf /etc/nginx/conf.d/
+
+# 2. Comprobar la sintaxis ANTES de recargar
+sudo nginx -t
+
+# 3. Recargar
+sudo systemctl reload nginx
+
+# 4. Recién ahora activar la nube naranja en Cloudflare
+```
+
+### Qué NO hay que hacer
+
+Subir `trust proxy` de 1 a 2 «para compensar el salto de más». Funciona por
+casualidad y se rompe el día que cambie la cadena. La forma correcta es que
+nginx entregue la IP real y que ese número **siga en 1** — lo vigila
+`tests/unit/nginxIpReal.test.js`.
+
+### Mantenimiento
+
+Cloudflare cambia sus rangos pocas veces al año. La lista viva:
+
+```bash
+curl -s https://www.cloudflare.com/ips-v4
+curl -s https://www.cloudflare.com/ips-v6
+```
+
+Un rango que falte no deja a nadie afuera: sólo hace que esas peticiones se
+registren con la IP de Cloudflare. O sea, el problema original en chico y en
+silencio. Conviene revisarla una vez al año.
+
 ## Lo que NO está acá, a propósito
 
 - **Los certificados TLS** (`/etc/letsencrypt/`). Son secretos y además tienen
