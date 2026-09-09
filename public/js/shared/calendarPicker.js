@@ -15,6 +15,9 @@
 
 import { crearSubModal } from './subModal.js';
 import { escapeHtml } from './escapeHtml.js';
+// Las dos estaban escritas acá y otra copia en reportesView.js — ver el
+// comentario de fechaLocal.js sobre por qué toISOString() no sirve en Bolivia.
+import { ymd, parseYmd } from './fechaLocal.js';
 
 const DIAS_SEMANA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const MESES = [
@@ -22,20 +25,6 @@ const MESES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
 
-/** 'YYYY-MM-DD' local, sin pasar por UTC (a diferencia de toISOString). */
-function ymd(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/** Parsea 'YYYY-MM-DD' a un Date local (evita el corrimiento de un día que
- *  da `new Date('YYYY-MM-DD')` al interpretarlo como UTC medianoche). */
-function parseYmd(s) {
-  const [y, m, d] = s.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
 
 /** Arma la grilla de un mes: celdas vacías de relleno + un <button> por día. */
 function _gridHtml(mesRef, valorActual, ocupadas, hoyStr) {

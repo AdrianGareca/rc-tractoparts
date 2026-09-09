@@ -23,6 +23,8 @@
 // Ninguno de los tres se nota al probarlo en la máquina de quien lo programó.
 // =============================================================================
 
+import { hoyYmd } from './fechaLocal.js';
+
 /**
  * Un valor listo para una celda CSV.
  * Siempre entrecomillado: así una coma o un salto de línea dentro del texto no
@@ -79,7 +81,10 @@ export function downloadCsv({ nombre, cabecera, filas }) {
 
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${nombre}-${new Date().toISOString().slice(0, 10)}.csv`;
+  // hoyYmd() y no toISOString(): un archivo exportado a las 21:00 de un lunes
+  // salía nombrado con la fecha del martes, porque en UTC ya lo era. Quien
+  // después busca el archivo por su fecha no lo encuentra donde lo espera.
+  a.download = `${nombre}-${hoyYmd()}.csv`;
   a.click();
 
   // Sin revoke, el blob queda en memoria hasta que se cierre la pestaña.

@@ -18,18 +18,10 @@ import { saveBlobAs }     from './timelineView.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
 import { renderMisMetricas } from './misMetricas.js';
 import { anillo, aguja, contarHasta } from '../../../shared/graficos.js';
+// Estaba copiada acá y en calendarPicker.js, las dos con el mismo comentario
+// sobre el corrimiento de UTC. Ahora hay un solo lugar donde arreglarlo.
+import { ymd } from '../../../shared/fechaLocal.js';
 
-// ---------------------------------------------------------------------------
-// Date helpers for the reports range filter.
-// ymd() formats a Date as local 'YYYY-MM-DD' (NOT toISOString, which is UTC and
-// would shift the day for negative timezones like Bolivia's UTC-4).
-// ---------------------------------------------------------------------------
-function ymd(d) {
-  const y   = d.getFullYear();
-  const m   = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
 
 /** Maps a quick-range preset id to a [desde, hasta] pair of 'YYYY-MM-DD' strings. */
 function presetRange(preset) {

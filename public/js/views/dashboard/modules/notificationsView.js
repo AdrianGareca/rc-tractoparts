@@ -13,6 +13,7 @@
 
 import api, { showToast } from '../../../services/apiClient.js';
 import { escHtml }        from '../helpers.js';
+import { hoyYmd } from '../../../shared/fechaLocal.js';
 
 // ---------------------------------------------------------------------------
 // _requestNotifPermission
@@ -237,7 +238,12 @@ export function startNotifPolling(UI, intervalMs = 90_000) {
 // @param {number} userId  — id del usuario actual, para que la marca sea por persona
 // ---------------------------------------------------------------------------
 export async function checkSeguimientosDelDia(UI, userId) {
-  const hoy = new Date().toISOString().slice(0, 10);
+  // hoyYmd() y no toISOString(): Bolivia es UTC−4, así que entre las 20:00 y la
+  // medianoche toISOString() devuelve la fecha de MAÑANA. La marca quedaba
+  // guardada con el día siguiente, y al día siguiente el aviso ya figuraba como
+  // visto — el ejecutivo se perdía sus seguimientos de esa jornada entera.
+  // Sólo le pasaba a quien entrara de noche, que es cuando menos se revisa.
+  const hoy = hoyYmd();
   const flagKey = `rc_seguimientos_popup_${userId}_${hoy}`;
 
   let yaMostrado = false;
