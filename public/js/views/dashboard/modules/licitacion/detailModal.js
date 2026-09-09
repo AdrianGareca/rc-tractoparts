@@ -13,7 +13,8 @@
 
 import api, { showToast } from '../../../../services/apiClient.js';
 import { escHtml, fmtDate, fmtDateTime, licitacionBadgeHtml, docIcon, fmtFileSize } from '../../helpers.js';
-import { buildTimelineHtml, saveBlobAs } from '../timelineView.js';
+import { buildTimelineHtml } from '../timelineView.js';
+import { guardarArchivo, TIPO_PDF, TIPO_CUALQUIERA } from '../../../../shared/guardarArchivo.js';
 import { openLicitacionModal } from '../licitacionModal.js';
 import {
   EDITABLE_STATES,
@@ -47,9 +48,9 @@ function wireDocumentActions(overlay, { id, close, openDetail }) {
       try {
         const response = await api.get(`/api/licitaciones/${id}/documentos/${docId}`);
         const blob = await response.blob();
-        const outcome = await saveBlobAs(blob, docName, { description: 'Documento', accept: {} });
-        if (outcome === 'saved')      showToast('Documento guardado en la ubicación elegida.', 'success', 2500);
-        else if (outcome === 'downloaded') showToast('Documento descargado a tu carpeta de Descargas.', 'info', 3500);
+        const { aviso } = await guardarArchivo(blob, docName,
+          { sustantivo: 'Documento', tipo: TIPO_CUALQUIERA });
+        if (aviso) showToast(aviso.texto, aviso.tipo, aviso.ms);
       } catch (err) {
         showToast(err.data?.message || err.message || 'No se pudo descargar el documento.', 'error');
       } finally {
@@ -85,11 +86,9 @@ function wirePdfActions(overlay, { id, lic }) {
     try {
       const response = await api.get(`/api/licitaciones/${id}/pdf`);
       const blob = await response.blob();
-      const outcome = await saveBlobAs(blob, `Expediente_${lic.codigo}.pdf`, {
-        description: 'Documento PDF', accept: { 'application/pdf': ['.pdf'] },
-      });
-      if (outcome === 'saved')      showToast('Expediente guardado.', 'success', 2500);
-      else if (outcome === 'downloaded') showToast('Expediente descargado a tu carpeta de Descargas.', 'info', 3500);
+      const { aviso } = await guardarArchivo(blob, `Expediente_${lic.codigo}.pdf`,
+        { sustantivo: 'Expediente', tipo: TIPO_PDF });
+      if (aviso) showToast(aviso.texto, aviso.tipo, aviso.ms);
     } catch (err) {
       showToast(err.data?.message || err.message || 'No se pudo generar el PDF.', 'error');
     } finally {
@@ -107,11 +106,9 @@ function wirePdfActions(overlay, { id, lic }) {
         const response = await api.get(`/api/cotizaciones/${cotId}/pdf`);
         const blob = await response.blob();
         const safe = String(cotName).replace(/[^\w\-]/g, '_');
-        const outcome = await saveBlobAs(blob, `${safe}.pdf`, {
-          description: 'Documento PDF', accept: { 'application/pdf': ['.pdf'] },
-        });
-        if (outcome === 'saved')      showToast('Proforma guardada.', 'success', 2500);
-        else if (outcome === 'downloaded') showToast('Proforma descargada a tu carpeta de Descargas.', 'info', 3500);
+        const { aviso } = await guardarArchivo(blob, `${safe}.pdf`,
+          { sustantivo: 'Proforma', genero: 'f', tipo: TIPO_PDF });
+        if (aviso) showToast(aviso.texto, aviso.tipo, aviso.ms);
       } catch (err) {
         showToast(err.data?.message || err.message || 'No se pudo abrir la proforma.', 'error');
       } finally {

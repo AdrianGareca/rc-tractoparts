@@ -9,81 +9,14 @@
 //   buildTimelineHtml(history)   — builds the state-history timeline HTML string
 // =============================================================================
 
+// saveBlobAs vivia ACA dentro y lo importaban otros tres modulos que no
+// tienen que ver con la linea de tiempo. Se mudo a shared/ junto con el
+// aviso, que estaba copiado en los seis sitios que guardan archivos.
+import { guardarArchivo, TIPO_PDF, TIPO_EXCEL } from '../../../shared/guardarArchivo.js';
 import api, { showToast } from '../../../services/apiClient.js';
 import { escHtml, fmtDate } from '../helpers.js';
 import { CommandInvoker, SetSeguimientoVentaCommand } from '../commands.js';
 import { openCalendarPicker } from '../../../shared/calendarPicker.js';
-
-// ---------------------------------------------------------------------------
-// saveBlobAs — user-controlled file save with graceful degradation.
-//
-// Modern path (Chrome/Edge over HTTPS/localhost): window.showSaveFilePicker
-// opens the OS-native "Guardar como…" dialog so the user CHOOSES the
-// destination folder (and may rename), with the quotation correlativo
-// pre-filled as the suggested filename. Nothing touches disk until they
-// confirm; cancelling the dialog saves nothing at all.
-//
-// Fallback path (Firefox/Safari, or contexts where the picker API is
-// unavailable): the classic anchor-download trick with the forced filename.
-// Where THAT file lands is governed by the browser's own settings — users
-// who want a location prompt there must enable "Preguntar dónde guardar
-// cada archivo antes de descargarlo" in the browser preferences.
-//
-// @param   {Blob}   blob      — File content to persist
-// @param   {string} fileName  — Suggested filename (e.g. "SC-2026_000692.pdf")
-// @param   {Object} fileType  — showSaveFilePicker "types" entry, e.g.
-//                               { description: 'Documento PDF',
-//                                 accept: { 'application/pdf': ['.pdf'] } }
-// @returns {Promise<'saved'|'cancelled'|'downloaded'>}
-//   'saved'      → user picked a location via the native dialog.
-//   'cancelled'  → user dismissed the dialog; nothing written.
-//   'downloaded' → picker unavailable/failed; file went to the browser's
-//                  default Downloads folder via the legacy anchor fallback.
-//                  Callers use this to tell the user WHERE the file landed,
-//                  since in that path they never got to choose.
-// ---------------------------------------------------------------------------
-export async function saveBlobAs(blob, fileName, fileType) {
-  // The picker is ONLY exposed in a secure context (HTTPS or http://localhost)
-  // on Chromium browsers. Over plain HTTP on a LAN IP, or in Firefox/Safari, it
-  // is undefined — so this branch is skipped and we fall back to a download.
-  if (typeof window.showSaveFilePicker === 'function') {
-    try {
-      // showSaveFilePicker rejects a `types` entry whose `accept` is empty
-      // (TypeError). Only pass `types` when a real MIME→extension map is given,
-      // so callers can request "any file" (e.g. arbitrary licitación documents)
-      // by passing an empty/omitted accept without breaking the picker.
-      const pickerOpts = { suggestedName: fileName };
-      if (fileType && fileType.accept && Object.keys(fileType.accept).length > 0) {
-        pickerOpts.types = [fileType];
-      }
-      const handle   = await window.showSaveFilePicker(pickerOpts);
-      const writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-      return 'saved';
-    } catch (err) {
-      // User dismissed the dialog — a deliberate choice, not an error.
-      if (err?.name === 'AbortError') return 'cancelled';
-      // Any other picker failure (rare: permission policy, transient FS error)
-      // falls through to the legacy anchor download so the file is never lost.
-      console.warn('[saveBlobAs] Save picker failed — falling back to direct download:', err.message);
-    }
-  }
-
-  // Legacy fallback: direct anchor download (browser decides the folder).
-  const url  = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href  = url;
-  link.setAttribute('download', fileName);
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  // Short delay before releasing the URL guarantees the download has been
-  // handed off to the browser's download manager.
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
-  return 'downloaded';
-}
 
 // ---------------------------------------------------------------------------
 // buildDownloadBaseName — canonical filename (without extension) for quotation
@@ -144,15 +77,8 @@ export function wirePdfButton(body, id, correlativo, clienteNombre) {
       const response = await api.get(`/api/cotizaciones/${id}/pdf`);
       const blob     = await response.blob();
       const fileName = `${buildDownloadBaseName(correlativo, clienteNombre, id)}.pdf`;
-      const outcome = await saveBlobAs(blob, fileName, {
-        description: 'Documento PDF',
-        accept:      { 'application/pdf': ['.pdf'] },
-      });
-      if (outcome === 'saved') {
-        showToast('PDF guardado en la ubicación elegida.', 'success', 2500);
-      } else if (outcome === 'downloaded') {
-        showToast('PDF descargado a tu carpeta de Descargas.', 'info', 3500);
-      }
+      const { aviso } = await guardarArchivo(blob, fileName, { sustantivo: 'PDF', tipo: TIPO_PDF });
+      if (aviso) showToast(aviso.texto, aviso.tipo, aviso.ms);
     } catch (err) {
       showToast(err.data?.message || err.message || 'No se pudo cargar el PDF.', 'error');
     } finally {
@@ -188,15 +114,9 @@ export function wireExcelButton(body, id, correlativo, clienteNombre) {
       const response = await api.get(`/api/cotizaciones/${id}/excel`);
       const blob     = await response.blob();
       const fileName = `${buildDownloadBaseName(correlativo, clienteNombre, id)}.xlsx`;
-      const outcome = await saveBlobAs(blob, fileName, {
-        description: 'Planilla de Excel',
-        accept:      { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
-      });
-      if (outcome === 'saved') {
-        showToast('Planilla Excel guardada en la ubicación elegida.', 'success', 2500);
-      } else if (outcome === 'downloaded') {
-        showToast('Planilla Excel descargada a tu carpeta de Descargas.', 'info', 3500);
-      }
+      const { aviso } = await guardarArchivo(blob, fileName,
+        { sustantivo: 'Planilla Excel', genero: 'f', tipo: TIPO_EXCEL });
+      if (aviso) showToast(aviso.texto, aviso.tipo, aviso.ms);
     } catch (err) {
       showToast(err.data?.message || err.message || 'No se pudo descargar la planilla Excel.', 'error');
     } finally {

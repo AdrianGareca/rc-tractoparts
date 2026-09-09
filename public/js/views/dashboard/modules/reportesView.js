@@ -14,7 +14,7 @@ import api, { showToast } from '../../../services/apiClient.js';
 // Evita que una respuesta lenta de un pedido viejo pise a una mas nueva.
 import { crearTurnero } from '../../../shared/ultimaGana.js';
 import { escHtml }        from '../helpers.js';
-import { saveBlobAs }     from './timelineView.js';
+import { guardarArchivo, TIPO_PDF } from '../../../shared/guardarArchivo.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
 import { renderMisMetricas } from './misMetricas.js';
 import { anillo, aguja, contarHasta } from '../../../shared/graficos.js';
@@ -83,15 +83,8 @@ async function downloadReportePdf(btn, desde, hasta) {
     const response = await api.get('/api/reportes/pdf' + qs);
     const blob     = await response.blob();
     const fileName = `Reporte_${desde || 'historico'}_${hasta || ''}.pdf`.replace(/[^\w.\-]/g, '_');
-    const outcome  = await saveBlobAs(blob, fileName, {
-      description: 'Documento PDF',
-      accept:      { 'application/pdf': ['.pdf'] },
-    });
-    if (outcome === 'saved') {
-      showToast('PDF guardado en la ubicación elegida.', 'success', 2500);
-    } else if (outcome === 'downloaded') {
-      showToast('PDF descargado a tu carpeta de Descargas.', 'info', 3500);
-    }
+    const { aviso } = await guardarArchivo(blob, fileName, { sustantivo: 'PDF', tipo: TIPO_PDF });
+    if (aviso) showToast(aviso.texto, aviso.tipo, aviso.ms);
   } catch (err) {
     showToast(err.data?.message || err.message || 'No se pudo generar el PDF.', 'error');
   } finally {
