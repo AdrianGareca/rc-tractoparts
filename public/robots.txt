@@ -1,0 +1,28 @@
+# =============================================================================
+# robots.txt — rctractoparts.org
+#
+# Este dominio NO es un sitio público: es el sistema interno de cotizaciones de
+# la empresa. Todo lo que sirve es una pantalla de inicio de sesión y el
+# cascarón del panel; los datos viven detrás del login y ninguna de las 60
+# rutas de la API responde sin sesión.
+#
+# O sea que no hay nada que indexar. Lo único que lograría un buscador es
+# publicar en sus resultados que este sistema existe, cómo se llama su login y
+# qué archivos de JavaScript lo componen. Eso no es una filtración —el código
+# del navegador siempre es visible para quien entra— pero es un mapa gratis
+# para quien busque por dónde empezar, y no compra nada a cambio.
+#
+# NO ES UN CONTROL DE SEGURIDAD
+# robots.txt es una petición, no una barrera: un bot que quiera ignorarlo lo
+# ignora. La seguridad de verdad es que todo exige sesión, y eso lo vigila
+# tests/unit/rutasProtegidas.test.js. Esto sólo evita la exposición gratuita
+# ante los buscadores que sí respetan la convención, que son todos los grandes.
+#
+# SI ALGÚN DÍA HAY CONTENIDO PÚBLICO
+# Si se agrega una página de presentación o un catálogo abierto, hay que abrir
+# esa ruta a mano acá. El "Disallow: /" de abajo la dejaría fuera de Google sin
+# que nadie entienda por qué.
+# =============================================================================
+
+User-agent: *
+Disallow: /
