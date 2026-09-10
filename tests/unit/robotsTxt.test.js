@@ -20,6 +20,19 @@
 // aparece en Google.
 // =============================================================================
 
+// LO QUE ESTA PRUEBA **NO** PUEDE VER
+// Comprueba el archivo del repositorio, que es lo que sirve el servidor. Pero
+// desde el 2026-09-10 el dominio pasa por Cloudflare, y su función de control
+// de rastreo de IA puede GENERAR su propio robots.txt y reemplazar al del
+// origen. Pasó: el servidor servía «Disallow: /» y lo que llegaba al navegador
+// era un archivo de Cloudflare con «Allow: /».
+//
+// O sea que estas pruebas pueden estar todas en verde mientras el mundo ve lo
+// contrario. Lo único que lo detecta es pedirlo por Cloudflare:
+//     curl -s https://rctractoparts.org/robots.txt
+// Si trae «Content-Signal:» o «Allow: /», lo está generando Cloudflare y hay
+// que apagar ese interruptor en su panel.
+
 'use strict';
 
 const fs   = require('fs');

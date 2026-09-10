@@ -18,6 +18,21 @@
 # tests/unit/rutasProtegidas.test.js. Esto sólo evita la exposición gratuita
 # ante los buscadores que sí respetan la convención, que son todos los grandes.
 #
+# ⚠️ CLOUDFLARE PUEDE PISAR ESTE ARCHIVO
+# Desde el 2026-09-10 el dominio pasa por Cloudflare, y su función «Control de
+# rastreo de IA» GENERA su propio robots.txt que reemplaza a éste — comprobado:
+# el origen servía este archivo y lo que llegaba al navegador era uno de
+# Cloudflare con «Allow: /», o sea lo contrario de lo que dice acá.
+#
+# Se apaga en el panel: Cloudflare → Control de rastreo de IA → el interruptor
+# «Block training in robots.txt» (o «gestionar robots.txt») en OFF. Con eso
+# vuelve a pasar el archivo del servidor.
+#
+# Si alguien lo vuelve a encender, este archivo queda escrito pero sin efecto.
+# La forma de comprobarlo es pedir /robots.txt POR CLOUDFLARE y ver qué llega:
+#     curl -s https://rctractoparts.org/robots.txt
+# Si aparece «Content-Signal:» o «Allow: /», lo está generando Cloudflare.
+#
 # SI ALGÚN DÍA HAY CONTENIDO PÚBLICO
 # Si se agrega una página de presentación o un catálogo abierto, hay que abrir
 # esa ruta a mano acá. El "Disallow: /" de abajo la dejaría fuera de Google sin
