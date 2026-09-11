@@ -5,14 +5,19 @@
 // Lógica PURA separada del cableado:
 //   upsertBrand       — inserta la marca en el caché y lo reordena por nombre
 //   buildBrandOptions — markup de <option> del selector de marca
+//   aplicarMarcaAFilas — elige una marca en varias filas y la ofrece en todas
 //   openBrandModal    — monta el sub-modal y maneja el alta contra la API
 //
 // Extraído de FormMediator._openNuevaMarcaModal sin cambios de comportamiento.
-// Cubierto por tests/unit/quotationFormBrandModal.test.js.
+// Desde el 2026-09-11, antes de crear pregunta «¿quisiste decir…?» si el nombre
+// se parece a una marca que ya existe (ver marcasParecidas.js).
+// Cubierto por tests/unit/quotationFormBrandModal.test.js y
+// tests/unit/brandModalParecidas.test.js.
 // =============================================================================
 
 import api, { showToast } from '../../services/apiClient.js';
 import { escText } from './helpers.js';
+import { buscarMarcaExacta, marcasParecidas } from './marcasParecidas.js';
 
 /**
  * Inserta una marca en el caché compartido si todavía no está, y lo reordena
@@ -60,6 +65,7 @@ function construirModalMarca() {
           <span class="field-error" id="bm-err"></span>
         </div>
         <div class="form-alert" id="bm-alert" role="alert"></div>
+        <div class="form-alert alert-warning" id="bm-sugerencias" role="status"></div>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" id="bm-cancel">Cancelar</button>
           <button type="button" class="btn btn-primary" id="bm-save">
@@ -73,29 +79,30 @@ function construirModalMarca() {
 }
 
 /**
- * Deja la marca recién creada elegida en la fila que la pidió, y disponible en
- * TODAS las demás.
+ * Deja la marca elegida en las filas `filas`, y disponible en TODAS las demás.
  *
- * POR QUÉ SE RECORREN TODOS LOS SELECTORES Y NO SÓLO EL DE LA FILA
+ * POR QUÉ SE RECORREN TODOS LOS SELECTORES Y NO SÓLO LOS DE ESAS FILAS
  * El catálogo de marcas es uno solo para la grilla entera. Si la opción se
  * agregara nada más que en la fila que la creó, las otras diecinueve seguirían
  * sin verla y habría que crearla de nuevo en cada una — y el servidor
  * contestaría 409 cada vez.
  *
  * Al reconstruir cada <select> se pierde su valor, así que se guarda antes y se
- * restaura después. La única que cambia de valor es la fila que pidió la marca.
+ * restaura después. Sólo cambian de valor las filas pedidas: la que tocó «+»,
+ * o todas las que traían esa marca en la planilla pegada desde Excel.
  */
-function propagarMarcaNueva({ container, brands, brand, rowIndex, onFieldChange }) {
+export function aplicarMarcaAFilas({ container, brands, brand, filas, onFieldChange }) {
   upsertBrand(brands, brand);
+  const destino = new Set(filas);
 
   container.querySelectorAll('.item-marca').forEach((sel) => {
     const valorPrevio = sel.value;
-    sel.innerHTML = buildBrandOptions(brands, brand.id);
+    sel.innerHTML = buildBrandOptions(brands);
 
     const idx = parseInt(sel.dataset.idx, 10);
-    if (idx === rowIndex) {
+    if (destino.has(idx)) {
       sel.value = String(brand.id);
-      onFieldChange?.(rowIndex, 'marca_id', brand.id);
+      onFieldChange?.(idx, 'marca_id', brand.id);
     } else {
       sel.value = valorPrevio;
     }
@@ -136,6 +143,87 @@ function adoptarMarcaExistente({ err, container, brands, rowIndex, onFieldChange
   return true;
 }
 
+/** «¿Quisiste decir…?»: un botón por marca parecida, y la salida para crearla igual. */
+function htmlSugerencias(nombre, parecidas) {
+  const botones = parecidas.map((m, i) =>
+    `<button type="button" class="btn btn-outline btn-sm" data-sugerencia="${i}">${escText(m.nombre)}</button>`
+  ).join('');
+  return `
+    <p class="mb-1">Ya hay ${parecidas.length === 1 ? 'una marca parecida' : 'marcas parecidas'}. ¿Quisiste decir…?</p>
+    <div class="flex flex-wrap gap-1">
+      ${botones}
+      <button type="button" class="btn btn-ghost btn-sm" id="bm-crear-igual">No, crear «${escText(nombre)}»</button>
+    </div>`;
+}
+
+/**
+ * Antes de crear: ¿la marca ya está, escrita de otra forma, o se parece a otra?
+ *
+ * POR QUÉ
+ * El servidor sólo rechaza nombres idénticos sin distinguir mayúsculas, y así
+ * entró «CAT» al lado de «Caterpillar». La pregunta no bloquea: hay parecidas
+ * que son marcas distintas de verdad (MASTER y MASTER POWER), y para eso está
+ * «No, crear».
+ *
+ * @returns {boolean} true si se resolvió acá (se eligió una existente o se
+ *   está preguntando); false si no hay nada parecido y hay que crearla.
+ */
+function revisarAntesDeCrear({ nombre, $, brands, elegir, crear }) {
+  const existente = buscarMarcaExacta(nombre, brands);
+  if (existente) {
+    elegir(existente, `Marca "${existente.nombre}" ya existe. Seleccionada automáticamente.`);
+    return true;
+  }
+
+  const parecidas = marcasParecidas(nombre, brands);
+  if (parecidas.length === 0) return false;
+
+  const caja = $('#bm-sugerencias');
+  caja.innerHTML = htmlSugerencias(nombre, parecidas);
+  caja.classList.add('show');
+  caja.querySelectorAll('[data-sugerencia]').forEach((boton) => {
+    boton.addEventListener('click', () => elegir(parecidas[Number(boton.dataset.sugerencia)]));
+  });
+  caja.querySelector('#bm-crear-igual').addEventListener('click', crear);
+  return true;
+}
+
+/** El alta contra la API, con el botón en «Guardando…» mientras tanto. */
+async function crearMarca({ nombre, $, ctx, close }) {
+  const alertEl = $('#bm-alert');
+  const boton   = $('#bm-save');
+  const rotulo  = $('#bm-label');
+  const spinner = $('#bm-spinner');
+
+  alertEl.className  = 'form-alert';
+  $('#bm-sugerencias').classList.remove('show');
+  boton.disabled     = true;
+  rotulo.textContent = 'Guardando...';
+  spinner.classList.remove('hidden');
+
+  try {
+    const resp = await api.post('/api/marcas', { nombre });
+    aplicarMarcaAFilas({ ...ctx, brand: resp.data, filas: [ctx.rowIndex] });
+    showToast(`Marca "${resp.data.nombre}" registrada y seleccionada.`, 'success');
+    close();
+  } catch (err) {
+    if (adoptarMarcaExistente({ err, ...ctx })) {
+      close();
+      return;
+    }
+
+    alertEl.textContent = err.data?.message || err.message || 'Error al crear la marca.';
+    alertEl.className   = 'form-alert show alert-error';
+
+    // El botón se libera SÓLO en el camino de error: en el éxito el modal se
+    // cierra y el botón se va con él, y restaurarlo antes de cerrar reabre por
+    // un instante la ventana del doble clic.
+    boton.disabled     = false;
+    rotulo.textContent = 'Guardar Marca';
+    spinner.classList.add('hidden');
+  }
+}
+
 /**
  * Abre el sub-modal de registro de marca.
  *
@@ -172,43 +260,29 @@ export function openBrandModal(rowIndex, { container, brands, onFieldChange } = 
     if (e.key === 'Enter') { e.preventDefault(); $('#bm-save')?.click(); }
   });
 
-  $('#bm-save')?.addEventListener('click', async () => {
-    const nombre  = $('#bm-nombre')?.value.trim();
-    const errEl   = $('#bm-err');
-    const alertEl = $('#bm-alert');
-    const boton   = $('#bm-save');
-    const rotulo  = $('#bm-label');
-    const spinner = $('#bm-spinner');
+  const ctx = { container, brands, rowIndex, onFieldChange };
 
-    if (!nombre) { errEl.textContent = 'El nombre es requerido.'; return; }
+  // Una marca que YA está en el catálogo: se elige en la fila y listo.
+  const elegir = (marca, aviso) => {
+    aplicarMarcaAFilas({ ...ctx, brand: marca, filas: [rowIndex] });
+    if (aviso) showToast(aviso, 'info');
+    close();
+  };
 
-    errEl.textContent  = '';
-    alertEl.className  = 'form-alert';
-    boton.disabled     = true;
-    rotulo.textContent = 'Guardando...';
-    spinner.classList.remove('hidden');
+  // Si se corrige el nombre, la pregunta de antes ya no corresponde.
+  $('#bm-nombre')?.addEventListener('input', () => {
+    const caja = $('#bm-sugerencias');
+    caja.classList.remove('show');
+    caja.innerHTML = '';
+  });
 
-    try {
-      const resp = await api.post('/api/marcas', { nombre });
-      propagarMarcaNueva({ container, brands, brand: resp.data, rowIndex, onFieldChange });
-      showToast(`Marca "${resp.data.nombre}" registrada y seleccionada.`, 'success');
-      close();
-    } catch (err) {
-      if (adoptarMarcaExistente({ err, container, brands, rowIndex, onFieldChange })) {
-        close();
-        return;
-      }
+  $('#bm-save')?.addEventListener('click', () => {
+    const nombre = $('#bm-nombre')?.value.trim();
+    if (!nombre) { $('#bm-err').textContent = 'El nombre es requerido.'; return; }
+    $('#bm-err').textContent = '';
 
-      alertEl.textContent = err.data?.message || err.message || 'Error al crear la marca.';
-      alertEl.className   = 'form-alert show alert-error';
-
-      // El botón se libera SÓLO en el camino de error: en el éxito el modal se
-      // cierra y el botón se va con él, y restaurarlo antes de cerrar reabre por
-      // un instante la ventana del doble clic.
-      boton.disabled     = false;
-      rotulo.textContent = 'Guardar Marca';
-      spinner.classList.add('hidden');
-    }
+    const crear = () => crearMarca({ nombre, $, ctx, close });
+    if (!revisarAntesDeCrear({ nombre, $, brands, elegir, crear })) crear();
   });
 
   // El foco al campo. El setTimeout espera a que el navegador termine de

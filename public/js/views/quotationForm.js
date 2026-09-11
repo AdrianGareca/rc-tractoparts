@@ -46,6 +46,8 @@ import { submitQuotation } from './quotationForm/submitPayload.js';
 import { populateHeaderForEdit, populateLicitaciones } from './quotationForm/editHydration.js';
 import { saveDraft, loadDraft, clearDraft, restoreHeaderFields } from './quotationForm/autosaveDraft.js';
 import { openExcelPasteModal } from './quotationForm/excelPaste.js';
+import { resolverMarcas } from './quotationForm/marcasParecidas.js';
+import { abrirRevisionImportacion } from './quotationForm/revisionImportacion.js';
 
 // NOTE: sumSubtotals / clampDiscount / computeTotal / validateDetalle viven en
 // public/js/shared/quotationTotals.js — la ÚNICA fuente de verdad, compartida
@@ -318,10 +320,15 @@ class FormMediator {
    * Si el formulario todavía tiene solo la fila en blanco inicial, la
    * reemplaza; si ya hay ítems cargados a mano, los pegados se agregan
    * después de los existentes.
+   *
+   * La columna MARCA de la planilla se traduce al catálogo antes de dibujar
+   * las filas; lo que no se reconoce, las columnas ignoradas y los avisos se
+   * muestran en una ventana de revisión (antes iban a la consola, que nadie
+   * que cotiza abre).
    */
   _openExcelPasteModal(itemsBody) {
     openExcelPasteModal({
-      onImport: (items, advertencias) => {
+      onImport: (pegados, advertencias, columnasIgnoradas = []) => {
         const actuales = this.#subject.getItems();
         const soloFilaVacia = actuales.length === 1 && !actuales[0].descripcion_item;
         if (soloFilaVacia) {
@@ -329,17 +336,25 @@ class FormMediator {
           itemsBody.innerHTML = '';
         }
 
-        items.forEach((item) => {
-          this._appendRow(this.#subject.addItemData(item), itemsBody, item);
+        const { items, desconocidas } = resolverMarcas(pegados, this.#brands);
+        const filaDe = items.map((item) => {
+          const idx = this.#subject.addItemData(item);
+          this._appendRow(idx, itemsBody, item);
+          return idx;
         });
         this.#dirty = true;
 
-        let mensaje = `Se importaron ${items.length} ítem${items.length === 1 ? '' : 's'}.`;
-        if (advertencias.length > 0) {
-          mensaje += ` ${advertencias.length} advertencia${advertencias.length === 1 ? '' : 's'} — revisa unidad/cantidad/precio en algunas filas (detalle en la consola).`;
-          console.warn('[Pegar desde Excel] Advertencias:', advertencias);
-        }
-        showToast(mensaje, advertencias.length > 0 ? 'info' : 'success', 5000);
+        showToast(`Se importaron ${items.length} ítem${items.length === 1 ? '' : 's'}.`, 'success', 5000);
+
+        abrirRevisionImportacion({
+          // resolverMarcas numera por posición en lo pegado; la grilla, por fila.
+          desconocidas:  desconocidas.map((d) => ({ ...d, filas: d.filas.map((p) => filaDe[p]) })),
+          columnasIgnoradas,
+          advertencias,
+          brands:        this.#brands,
+          container:     this.#container,
+          onFieldChange: (idx, field, value) => this._onItemFieldChange(idx, field, value),
+        });
       },
     });
   }
