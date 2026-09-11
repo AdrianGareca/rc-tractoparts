@@ -132,6 +132,17 @@
 
 .line-items-section .table-wrapper { border-radius: var(--radius-sm); }
 
+/* El modal que lleva el formulario de cotización es más ancho que el resto.
+   Con los 680px de un modal normal, las diez columnas editables de la tabla de
+   ítems quedaban tan apretadas que el selector de Marca mostraba sólo «-» y no
+   se veía qué marca tenía cada fila (captura de Adrian, 2026-09-11).
+   Se hace con :has() y no con una opción de UI.openModal a propósito: el
+   formulario se abre desde cuatro lugares (nueva, editar, vinculada a una
+   licitación, borrador) y una opción se puede olvidar en el quinto. Así,
+   cualquier modal que monte la tabla de ítems se ensancha solo. En pantallas
+   angostas manda el width:100% de .modal-dialog. */
+.modal-dialog:has(.line-items-table) { max-width: 1200px; }
+
 .line-items-table {
   width: 100%;
   border-collapse: collapse;
@@ -147,11 +158,11 @@
 .line-items-table th:nth-child(1)  { width: 22%; }  /* Descripción   */
 .line-items-table th:nth-child(2)  { width: 10%; }  /* Cód. Parte    */
 .line-items-table th:nth-child(3)  { width: 10%; }  /* Cód. Alt.     */
-.line-items-table th:nth-child(4)  { width: 11%; }  /* Marca         */
+.line-items-table th:nth-child(4)  { width: 14%; }  /* Marca         */
 .line-items-table th:nth-child(5)  { width:  7%; }  /* UM            */
 .line-items-table th:nth-child(6)  { width:  7%; }  /* Cantidad      */
-.line-items-table th:nth-child(7)  { width: 11%; }  /* Precio Unit.  */
-.line-items-table th:nth-child(8)  { width: 10%; }  /* Subtotal      */
+.line-items-table th:nth-child(7)  { width: 10%; }  /* Precio Unit.  */
+.line-items-table th:nth-child(8)  { width:  8%; }  /* Subtotal      */
 .line-items-table th:nth-child(9)  { width: 10%; }  /* T. Entrega    */
 .line-items-table th:nth-child(10) { width:  2%; }  /* quitar ítem   */
 
@@ -370,7 +381,10 @@
 /* Campos dentro de una fila de ítems. Los anchos estaban inline en siete
    lugares de lineItemsComponent.js con cinco valores distintos. */
 .item-full   { width: 100%; font-size: .8rem; }
-.item-marca  { flex: 1; min-width: 0; font-size: .8rem; padding: 2px 4px; }
+/* La marca nunca se achica hasta volverse ilegible: con min-width 0 quedaba en
+   «-». Si la pantalla no alcanza, la tabla se desplaza de costado
+   (.table-wrapper tiene overflow-x) en vez de esconder la marca. */
+.item-marca  { flex: 1; min-width: 6.5rem; font-size: .8rem; padding: 2px 4px; }
 .item-unidad { width: 80px; font-size: .8rem; padding: 2px 4px; }
 .item-cant   { width: 72px; }
 .item-precio { width: 100px; }
