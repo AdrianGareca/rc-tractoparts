@@ -104,6 +104,31 @@ describe('PDF individual — trae mucho más que antes', () => {
 });
 
 // ---------------------------------------------------------------------------
+// El reporte de un ejecutivo generado por OTRA persona.
+//
+// El Jefe elige un ejecutivo en la pantalla y baja SU reporte. El encabezado
+// tiene que decir de quién son los números: «GENERADO POR» lleva el nombre de
+// quien apretó el botón, así que sin esta fila los PDF de tres ejecutivos
+// distintos salen idénticos por fuera. El alcance de los datos lo cubre
+// tests/unit/reportePdfPorEjecutivo.test.js; acá se comprueba que la fila
+// llegue al documento.
+// ---------------------------------------------------------------------------
+describe('PDF individual — cuando lo genera el Jefe para un ejecutivo', () => {
+  test('el encabezado suma la fila del ejecutivo', async () => {
+    const base = { ...BASE, metricas: METRICAS, rol: 'Jefe', nombreUsuario: 'Adrian Gareca' };
+
+    const [sinFila, conFila] = await Promise.all([
+      reportePdfService.generateReportePdf(base),
+      reportePdfService.generateReportePdf({ ...base, ejecutivoNombre: 'Andrés Pérez Villarroel' }),
+    ]);
+
+    // Misma comprobación estructural que el resto del archivo: el texto va
+    // comprimido, pero un documento con una fila más pesa más.
+    expect(conFila.length).toBeGreaterThan(sinFila.length);
+  }, 30000);
+});
+
+// ---------------------------------------------------------------------------
 // Los casos que rompen un generador de PDF: valores que todavía no existen.
 // Un ejecutivo que recién arranca no tiene conversión ni ticket promedio, y el
 // PDF tiene que salir igual — no con "null%" impreso ni con una excepción.

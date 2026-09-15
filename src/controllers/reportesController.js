@@ -15,6 +15,7 @@
 'use strict';
 
 const QuotationModel       = require('../models/QuotationModel');
+const UserModel            = require('../models/UserModel');
 const clienteItemReport    = require('../models/quotation/clienteItemReport');
 const misMetricas          = require('../models/quotation/misMetricas');
 const reportePdfService    = require('../services/reportePdfService');
@@ -215,9 +216,33 @@ const ReportesController = {
   // ---------------------------------------------------------------------------
   async getReportePdf(req, res) {
     try {
-      const rol        = req.user.rol;
-      const isManager   = MANAGER_ROLES.has(rol);
-      const ejecutivoId = isManager ? null : req.user.id;
+      const rol       = req.user.rol;
+      const isManager = MANAGER_ROLES.has(rol);
+
+      // EL ALCANCE SALE DEL MISMO HELPER QUE EL RESTO DE LOS REPORTES.
+      // Antes era `isManager ? null : req.user.id`, y no miraba el filtro: el
+      // Jefe elegía un ejecutivo en la pantalla, los números de arriba se
+      // filtraban bien, y el PDF salía con los de TODA la empresa. O sea, un
+      // documento titulado «REPORTE INDIVIDUAL» con los datos de los demás
+      // adentro. Encontrado el 2026-09-14 mostrándole los reportes al Jefe.
+      const scope = resolveEjecutivoScope(req);
+      if (scope.error) {
+        return res.status(422).json({ success: false, message: scope.error });
+      }
+      const ejecutivoId = scope.ejecutivoId;
+      const esGeneral   = ejecutivoId === null;
+
+      // Cuando el reporte es de OTRA persona, lleva su nombre: «GENERADO POR»
+      // dice quién apretó el botón, no de quién son los números. Sin esto, los
+      // PDF de tres ejecutivos distintos salen idénticos por fuera.
+      let ejecutivoNombre = null;
+      if (!esGeneral && ejecutivoId !== req.user.id) {
+        const ejecutivo = await UserModel.findById(ejecutivoId);
+        if (!ejecutivo) {
+          return res.status(404).json({ success: false, message: 'El ejecutivo indicado no existe.' });
+        }
+        ejecutivoNombre = ejecutivo.nombre_completo;
+      }
 
       const range = resolveDateRange(req.query, /* defaultToMonth */ isManager);
       if (range.error) {
@@ -225,18 +250,18 @@ const ReportesController = {
       }
 
       const advanced = await QuotationModel.getAdvancedReports(ejecutivoId, range.desde, range.hasta);
-      const progreso = isManager ? await QuotationModel.getProgreso(range.desde, range.hasta) : null;
+      const progreso = esGeneral ? await QuotationModel.getProgreso(range.desde, range.hasta) : null;
 
       // El PDF individual traia dos tablas, y una era de UNA sola fila. Las
       // mismas metricas que ahora se ven en pantalla (conversion, dias de
       // cierre, desglose por estado y evolucion mes a mes) van tambien al PDF:
       // es el documento que el ejecutivo imprime para mostrar como viene.
-      const metricas = isManager
+      const metricas = esGeneral
         ? null
         : await misMetricas.obtener({
             // La clave la define el modelo (misMetricas.obtener), no el
             // controlador: renombrarla acá rompe el bind de la consulta.
-            idEjecutivo: req.user.id,
+            idEjecutivo: ejecutivoId,
             desde: range.desde,
             hasta: range.hasta,
           });
@@ -249,11 +274,12 @@ const ReportesController = {
         : 'Histórico (todas las fechas)';
 
       const pdfBuffer = await reportePdfService.generateReportePdf({
-        mode:           isManager ? 'company' : 'individual',
+        mode:           esGeneral ? 'company' : 'individual',
         metricas,
         periodo,
         rol,
         nombreUsuario:  req.user.nombre_usuario,
+        ejecutivoNombre,
         progreso,
         topClientes:    advanced.top_clientes,
         leaderboard:    advanced.leaderboard,
@@ -270,7 +296,7 @@ const ReportesController = {
           accion:         AuditActions.GENERAR_REPORTE_PDF,
           entidad:        'reportes',
           id_entidad:     null,
-          detalle:        { periodo, modo: isManager ? 'company' : 'individual' },
+          detalle:        { periodo, modo: esGeneral ? 'company' : 'individual', id_ejecutivo: ejecutivoId },
           ip_origen:      req.ip || req.socket?.remoteAddress || null,
           resultado:      'exito',
         });
@@ -284,7 +310,12 @@ const ReportesController = {
       const safePeriodo = periodo
         .normalize('NFD').replace(/[̀-ͯ]/g, '')
         .replace(/[^\w-]/g, '_');
-      const filename = `Reporte_${isManager ? 'General' : 'Individual'}_${safePeriodo}.pdf`;
+      // El nombre del ejecutivo también va en el archivo: el Jefe se baja
+      // varios seguidos y, sin eso, todos se llaman igual.
+      const safeNombre = ejecutivoNombre
+        ? '_' + ejecutivoNombre.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]/g, '_')
+        : '';
+      const filename = `Reporte_${esGeneral ? 'General' : 'Individual'}${safeNombre}_${safePeriodo}.pdf`;
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);

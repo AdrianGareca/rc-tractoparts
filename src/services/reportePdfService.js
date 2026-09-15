@@ -88,7 +88,7 @@ function fmtMoney(v) {
 // on the right (mirrors the "DATOS DE COTIZACIÓN" box from pdfService.js),
 // a navy divider beneath. Returns the Y position where content may start.
 // ---------------------------------------------------------------------------
-function drawHeader(doc, { title, periodo, rol, nombreUsuario }) {
+function drawHeader(doc, { title, periodo, rol, nombreUsuario, ejecutivoNombre }) {
   const y0     = MARGIN;
   const LOGO_W = 140;
   const LOGO_H = 64;
@@ -108,6 +108,12 @@ function drawHeader(doc, { title, periodo, rol, nombreUsuario }) {
     ['GENERADO POR',  `${nombreUsuario || '—'} (${rol})`],
     ['FECHA',         formatDateTime()],
   ];
+
+  // DE QUIÉN SON LOS NÚMEROS, cuando no son de quien imprime: el Jefe puede
+  // sacar el reporte de cada ejecutivo, y «GENERADO POR» diría siempre su
+  // propio nombre. La fila va primero porque es lo que identifica al
+  // documento; la caja se mide después, así que crece sola.
+  if (ejecutivoNombre) rows.unshift(['EJECUTIVO', ejecutivoNombre]);
 
   const VALUE_W   = BOX_W - 80;
   const MIN_ROW_H = 13;
@@ -645,6 +651,7 @@ async function generateReportePdf(data) {
     mode, periodo, rol, nombreUsuario,
     progreso, topClientes = [], leaderboard = [], clientesPorOrigen = [],
     metricas = null,
+    ejecutivoNombre = null,
   } = data;
 
   const docTitle = mode === 'company' ? 'REPORTE GENERAL' : 'REPORTE INDIVIDUAL';
@@ -675,6 +682,7 @@ async function generateReportePdf(data) {
         periodo,
         rol,
         nombreUsuario,
+        ejecutivoNombre,
       });
 
       // La franja de marcas, igual que en la proforma. Pesa 136 KB en total

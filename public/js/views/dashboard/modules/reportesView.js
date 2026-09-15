@@ -63,7 +63,7 @@ function presetRange(preset) {
 // managers). Backend RLS decides company vs individual content; the frontend
 // only forwards whatever range is currently selected.
 // ---------------------------------------------------------------------------
-async function downloadReportePdf(btn, desde, hasta) {
+async function downloadReportePdf(btn, desde, hasta, ejecutivoId = '') {
   // A partial range (only one of the two dates filled) would otherwise be
   // silently dropped below (desde && hasta) and fall back to the backend's
   // default period with no indication to the user — mirror the explicit
@@ -77,9 +77,13 @@ async function downloadReportePdf(btn, desde, hasta) {
   btn.disabled = true;
   btn.textContent = '…';
   try {
-    const qs = desde && hasta
+    let qs = desde && hasta
       ? `?fecha_desde=${encodeURIComponent(desde)}&fecha_hasta=${encodeURIComponent(hasta)}`
       : '';
+    // El ejecutivo elegido en el filtro tiene que viajar también al PDF. No
+    // iba, y el servidor tampoco lo miraba: el PDF de un ejecutivo salía con
+    // los datos de toda la empresa (2026-09-14).
+    if (ejecutivoId) qs += `${qs ? '&' : '?'}id_ejecutivo=${encodeURIComponent(ejecutivoId)}`;
     const response = await api.get('/api/reportes/pdf' + qs);
     const blob     = await response.blob();
     const fileName = `Reporte_${desde || 'historico'}_${hasta || ''}.pdf`.replace(/[^\w.\-]/g, '_');
@@ -501,7 +505,7 @@ export async function renderReportes(panel) {
   });
 
   panel.querySelector('#rep-pdf').addEventListener('click', (e) =>
-    downloadReportePdf(e.currentTarget, desdeEl.value, hastaEl.value));
+    downloadReportePdf(e.currentTarget, desdeEl.value, hastaEl.value, ejecEl.value));
 
   await loadReportesData(panel, defDesde, defHasta, '', monedaEl.value);
 }
