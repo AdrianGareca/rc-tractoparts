@@ -34,6 +34,8 @@ import { DashboardStrategy, wireTabs } from './dashboardStrategy.js';
 import { emptyState }        from '../../../shared/listSection.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
 import { mountClienteItemReport } from '../modules/clienteItemReport.js';
+// La cola (paginada) es la misma para el Jefe y el Administrador.
+import { mountColaAprobacion } from '../modules/colaAprobacion.js';
 
 export class AdminStrategy extends DashboardStrategy {
   #container;
@@ -88,7 +90,7 @@ export class AdminStrategy extends DashboardStrategy {
     const panel = document.getElementById('admin-panel');
     if (!panel) return;
     switch (tab) {
-      case 'review':     await this._renderReviewQueue(panel);    break;
+      case 'review':     this.#limpiarPanel = await this._renderReviewQueue(panel); break;
       case 'quotations': await this._renderAllQuotations(panel);  break;
       case 'licitaciones': this.#limpiarPanel = await mountLicitacionesTab(panel, { canCreate: false }); break;
       case 'users':      await this._renderUsers(panel);          break;
@@ -109,64 +111,16 @@ export class AdminStrategy extends DashboardStrategy {
   // ── Tab: Review queue (read + hold + comment) ─────────────────────────────
 
   async _renderReviewQueue(panel) {
-    panel.innerHTML = tableSkeleton({ columnas: 7, etiqueta: 'Cargando datos' });
-    try {
-      const data = await api.get('/api/cotizaciones/pendientes-aprobacion');
-      const rows = data.data ?? [];
-
-      if (rows.length === 0) {
-        panel.innerHTML = emptyState({
-          icono:  'alDia',
-          titulo: 'Cola vacía',
-          texto:  'No hay cotizaciones pendientes de revisión.',
-        });
-        return;
-      }
-
-      panel.innerHTML = `
-        <div class="card">
-          <div class="card-header">
-            <h3>Cola de revisión (${rows.length})</h3>
-            <span class="text-muted text-sm">Puede añadir comentarios y poner en espera</span>
-          </div>
-          <div class="table-wrapper">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Correlativo</th><th>Ejecutivo</th>
-                  <th>Cliente</th><th>Monto</th><th>Fecha</th>
-                  <th>Vence</th><th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows.map(r => `
-                  <tr>
-                    <td class="fw-600">${escHtml(r.numero_correlativo)}</td>
-                    <td>${escHtml(r.ejecutivo_nombre ?? '—')}</td>
-                    <td>${escHtml(r.cliente_nombre ?? String(r.id_cliente))}</td>
-                    <td>${fmtAmount(r.monto_total, r.moneda)}</td>
-                    <td>${fmtDate(r.fecha_emision)}</td>
-                    <td>${fmtDate(r.fecha_validez)}</td>
-                    <td>
-                      <button class="btn btn-primary btn-sm nowrap" data-review="${r.id}"
-                             >
-                        Revisar
-                      </button>
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        </div>`;
-
-      panel.querySelectorAll('[data-review]').forEach(btn => {
-        btn.addEventListener('click', () => this._viewAdminDetail(btn.dataset.review));
-      });
-
-    } catch (err) {
-      panel.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.message)}</p></div>`;
-    }
+    // Paginada desde la ronda de estrés del 2026-09-15, y compartida con la
+    // cola del Jefe: ver modules/colaAprobacion.js.
+    return mountColaAprobacion(panel, {
+      titulo:     'Cola de revisión',
+      ayuda:      'Puede añadir comentarios y poner en espera',
+      conEstado:  false,
+      textoBoton: 'Revisar',
+      textoVacio: 'No hay cotizaciones pendientes de revisión.',
+      onRevisar:  (id) => this._viewAdminDetail(id),
+    });
   }
 
   // ── Admin proforma detail (comment box + En Espera only) ──────────────────

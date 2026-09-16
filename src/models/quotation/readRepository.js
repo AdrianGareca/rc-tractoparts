@@ -9,7 +9,7 @@
 
 const { pool } = require('../../config/db');
 const { BASE_JOINS, SORTABLE_COLUMNS } = require('./constants');
-const { buildWhereClause } = require('./whereBuilder');
+const { buildWhereClause, necesitaClientes } = require('./whereBuilder');
 
 // ---------------------------------------------------------------------------
 // findById — Full quotation detail including line items and approval metadata.
@@ -214,14 +214,27 @@ async function findAll(filters = {}, pagination = {}, sort = {}) {
 // ---------------------------------------------------------------------------
 // countAll — COUNT(*) with the same WHERE as findAll.
 // Run in parallel with findAll via Promise.all to avoid sequential latency.
+//
+// POR QUE NO USA BASE_JOINS
+// Antes unía clientes, usuarios y el aprobador para contar, aunque ningún
+// filtro los mirara. Esas uniones no pueden cambiar el número: id_cliente e
+// id_ejecutivo son NOT NULL con clave foránea (la fila del otro lado existe
+// siempre) y el aprobador es un LEFT JOIN por clave primaria (nunca duplica).
+// Pero sí cambian el costo: con 40.000 cotizaciones el conteo sin filtros
+// tardaba ~360 ms y se paga en cada carga de «Todas las cotizaciones» y en el
+// badge de «Cotizaciones del equipo» de cada ejecutivo. Sin las uniones, MySQL
+// cuenta sobre un índice. Medido en la ronda de estrés del 2026-09-15.
+//
+// clientes sólo se une cuando un filtro lo necesita (q, razon_social, nit).
 // ---------------------------------------------------------------------------
 async function countAll(filters = {}) {
   const { clause: whereClause, values: whereValues } = buildWhereClause(filters);
+  const joinClientes = necesitaClientes(filters) ? 'INNER JOIN clientes cl ON cl.id = c.id_cliente' : '';
 
   const sql = `
       SELECT COUNT(*) AS total
       FROM cotizaciones c
-      ${BASE_JOINS}
+      ${joinClientes}
       ${whereClause}
     `;
 
@@ -264,8 +277,34 @@ async function findSummaryByState(id_ejecutivo = null) {
 // findPendingApproval — Jefe's approval queue: all quotations that require a
 // decision ('Pendiente', 'En revision', 'En espera'), ordered oldest-first so
 // the backlog is cleared chronologically.
+//
+// PAGINADA desde la ronda de estrés del 2026-09-15. Antes devolvía la cola
+// ENTERA en una respuesta: con 40.000 cotizaciones eran 11.630 filas y 3,7 MB
+// que el navegador tenía que dibujar de una vez. Y la cola crece sola: una
+// cotización que nadie archiva se queda en Pendiente para siempre (la base
+// local ya tenía 97 de 152). Decisión de Adrian: paginarla como los demás
+// listados.
+//
+// El orden lleva `c.id` como desempate: dos cotizaciones creadas en el mismo
+// segundo tienen el mismo creado_en, y sin un segundo criterio MySQL puede
+// devolverlas en distinto orden en cada página — una fila aparecería dos veces
+// y otra nunca.
 // ---------------------------------------------------------------------------
-async function findPendingApproval() {
+const ESTADOS_EN_COLA = "'Pendiente', 'En revision', 'En espera'";
+
+async function countPendingApproval() {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS total FROM cotizaciones c WHERE c.estado IN (${ESTADOS_EN_COLA})`
+  );
+  return rows[0].total;
+}
+
+async function findPendingApproval(pagination = {}) {
+  const page   = Math.max(1, parseInt(pagination.page,  10) || 1);
+  const limit  = Math.min(100, Math.max(1, parseInt(pagination.limit, 10) || 50));
+  const offset = (page - 1) * limit;
+
+  // LIMIT/OFFSET como literales enteros ya validados: mismo motivo que findAll.
   const sql = `
       SELECT
         c.id,
@@ -281,8 +320,9 @@ async function findPendingApproval() {
       FROM cotizaciones c
       INNER JOIN clientes cl ON cl.id = c.id_cliente
       INNER JOIN usuarios u  ON u.id  = c.id_ejecutivo
-      WHERE c.estado IN ('Pendiente', 'En revision', 'En espera')
-      ORDER BY c.creado_en ASC
+      WHERE c.estado IN (${ESTADOS_EN_COLA})
+      ORDER BY c.creado_en ASC, c.id ASC
+      LIMIT ${limit} OFFSET ${offset}
     `;
 
   const [rows] = await pool.execute(sql);
@@ -296,4 +336,5 @@ module.exports = {
   countAll,
   findSummaryByState,
   findPendingApproval,
+  countPendingApproval,
 };

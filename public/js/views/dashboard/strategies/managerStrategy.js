@@ -31,6 +31,8 @@ import { DashboardStrategy, wireTabs } from './dashboardStrategy.js';
 import { confirmStateChange } from '../modules/stateChangeDialog.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
 import { mountClienteItemReport } from '../modules/clienteItemReport.js';
+// La cola (paginada) es la misma para el Jefe y el Administrador.
+import { mountColaAprobacion } from '../modules/colaAprobacion.js';
 import { emptyState }        from '../../../shared/listSection.js';
 
 export class ManagerStrategy extends DashboardStrategy {
@@ -87,7 +89,7 @@ export class ManagerStrategy extends DashboardStrategy {
     if (!panel) return;
 
     switch (tab) {
-      case 'approvals':  await this._renderApprovals(panel);       break;
+      case 'approvals':  this.#limpiarPanel = await this._renderApprovals(panel); break;
       case 'quotations': await this._renderAllQuotations(panel);   break;
       case 'licitaciones': this.#limpiarPanel = await mountLicitacionesTab(panel, { canCreate: true }); break;
       case 'users':      await this._renderUsers(panel);           break;
@@ -108,65 +110,16 @@ export class ManagerStrategy extends DashboardStrategy {
   // ── Tab: Approval queue ────────────────────────────────────────────────────
 
   async _renderApprovals(panel) {
-    panel.innerHTML = tableSkeleton({ columnas: 8, etiqueta: 'Cargando datos' });
-    try {
-      const data = await api.get('/api/cotizaciones/pendientes-aprobacion');
-      const rows = data.data ?? [];
-
-      if (rows.length === 0) {
-        panel.innerHTML = emptyState({
-          icono:  'alDia',
-          titulo: 'Cola vacía',
-          texto:  'No hay cotizaciones pendientes de aprobación.',
-        });
-        return;
-      }
-
-      panel.innerHTML = `
-        <div class="card">
-          <div class="card-header">
-            <h3>Cola de aprobación (${rows.length})</h3>
-            <span class="text-muted text-sm">Haz clic en "Revisar y Decidir" para ver la proforma completa</span>
-          </div>
-          <div class="table-wrapper">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Correlativo</th><th>Estado</th><th>Ejecutivo</th>
-                  <th>Cliente</th><th>Monto</th><th>Fecha</th>
-                  <th>Vence</th><th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows.map(r => `
-                  <tr>
-                    <td class="fw-600">${escHtml(r.numero_correlativo)}</td>
-                    <td>${badgeHtml(r.estado)}</td>
-                    <td>${escHtml(r.ejecutivo_nombre ?? '—')}</td>
-                    <td>${escHtml(r.cliente_nombre ?? String(r.id_cliente))}</td>
-                    <td>${fmtAmount(r.monto_total, r.moneda)}</td>
-                    <td>${fmtDate(r.fecha_emision)}</td>
-                    <td>${fmtDate(r.fecha_validez)}</td>
-                    <td>
-                      <button class="btn btn-primary btn-sm nowrap" data-review="${r.id}"
-                             >
-                        Revisar y Decidir
-                      </button>
-                    </td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        </div>`;
-
-      panel.querySelectorAll('[data-review]').forEach(btn => {
-        btn.addEventListener('click', () => this._viewApprovalDetail(btn.dataset.review));
-      });
-
-    } catch (err) {
-      panel.innerHTML = `<div class="empty-state"><p>Error: ${escHtml(err.message)}</p></div>`;
-    }
+    // Paginada desde la ronda de estrés del 2026-09-15, y compartida con la
+    // cola del Administrador: ver modules/colaAprobacion.js.
+    return mountColaAprobacion(panel, {
+      titulo:     'Cola de aprobación',
+      ayuda:      'Haz clic en "Revisar y Decidir" para ver la proforma completa',
+      conEstado:  true,
+      textoBoton: 'Revisar y Decidir',
+      textoVacio: 'No hay cotizaciones pendientes de aprobación.',
+      onRevisar:  (id) => this._viewApprovalDetail(id),
+    });
   }
 
   // ── Full proforma detail + state-machine action panel (Jefe view) ──────────

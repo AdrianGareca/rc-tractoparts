@@ -65,8 +65,27 @@ const QuotationQueryController = {
   // ---------------------------------------------------------------------------
   async getPendingApproval(req, res) {
     try {
-      const rows = await QuotationModel.findPendingApproval();
-      return res.status(200).json({ success: true, total: rows.length, data: rows });
+      // Paginada desde la ronda de estrés del 2026-09-15: antes mandaba la cola
+      // entera (ver readRepository.findPendingApproval). Mismos topes que el
+      // modelo; se repiten acá porque construirPaginacion necesita los valores
+      // efectivos, no los que vinieron en la URL.
+      const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+
+      const [rows, totalRecords] = await Promise.all([
+        QuotationModel.findPendingApproval({ page, limit }),
+        QuotationModel.countPendingApproval(),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        // `total` se conserva: antes era el largo de la lista completa. Ahora
+        // que la lista llega por páginas sigue diciendo cuántas hay en la cola,
+        // que es lo que siempre quiso decir — no cuántas vinieron en esta página.
+        total:      totalRecords,
+        data:       rows,
+        pagination: construirPaginacion({ page, limit, totalRecords }),
+      });
     } catch (error) {
       console.error('[QuotationController.getPendingApproval] Error:', error.message);
       return res.status(500).json({ success: false, message: 'Failed to retrieve approval queue.' });

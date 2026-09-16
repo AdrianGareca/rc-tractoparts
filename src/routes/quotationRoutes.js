@@ -236,13 +236,28 @@ router.get(
  * /api/cotizaciones/pendientes-aprobacion:
  *   get:
  *     summary: Cola de cotizaciones pendientes de aprobación (HU08)
- *     description: Retorna todas las cotizaciones en estado 'En revision', ordenadas de la más antigua a la más reciente. Exclusivo para los roles Jefe, Administracion y SysAdmin.
+ *     description: Retorna, por páginas, las cotizaciones en estado 'Pendiente', 'En revision' o 'En espera', ordenadas de la más antigua a la más reciente. `total` es la cantidad de la cola completa, no la de la página. Exclusivo para los roles Jefe, Administracion y SysAdmin.
  *     tags: [Cotizaciones]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 50
+ *         description: Filas por página. Un valor mayor a 100 se recorta a 100.
  *     responses:
  *       200:
- *         description: Lista de cotizaciones pendientes de aprobación.
+ *         description: Una página de la cola, con el bloque `pagination`.
  *       401:
  *         $ref: '#/components/responses/NoAutorizado'
  *       403:
