@@ -1,6 +1,6 @@
 # Las pruebas: qué protege cada una
 
-**2750 pruebas en 153 suites** (al 15 de septiembre de 2026). Este documento no las lista: explica los **tipos**
+**2755 pruebas en 153 suites** (al 16 de septiembre de 2026). Este documento no las lista: explica los **tipos**
 que hay, porque este proyecto usa dos que no son habituales y que confunden si
 uno se los cruza sin contexto.
 

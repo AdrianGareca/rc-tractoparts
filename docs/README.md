@@ -8,6 +8,7 @@ discutirlas ni deshacerlas sin querer.
 | Documento | Responde a |
 |---|---|
 | [historia.md](historia.md) | ¿Cómo llegó el sistema a ser lo que es? ¿Qué pasó en cada etapa? ¿Qué errores se repitieron y qué decisiones no hay que deshacer? |
+| [codigo/README.md](codigo/README.md) | ¿Qué hace cada parte del código? Carpeta por carpeta y función por función: el recorrido de una petición, quién puede usar cada dirección de la API y por qué cada pieza es como es. |
 | [arquitectura.md](arquitectura.md) | Tengo que cambiar X, ¿dónde toco? ¿Por qué la misma matriz está en dos lados? ¿Qué se rompe sin dar error? |
 | [diseno.md](diseno.md) | ¿De qué color va esto? ¿Puedo poner un emoji? ¿Por qué mi `style=""` no se aplica? ¿Cómo nombro una clase? |
 | [pruebas.md](pruebas.md) | ¿Qué es un trinquete? ¿Por qué falla un guardia? ¿Por qué `--runInBand`? ¿Cómo escribo una prueba acá? |

@@ -333,6 +333,26 @@ ningún modelo de reportes consulte sin tope,
 clientes, y `tests/integration/colaAprobacionPaginada.test.js` recorre la cola
 página por página comprobando que no se repita ni se pierda ninguna cotización.
 
+### Explicar cada parte del código (16 de septiembre)
+
+Con el sistema estable, el pedido fue que **cualquiera pueda entender qué hace
+cada parte**: Adrian, un programador que lo retome, y quien lo presente
+formalmente. La condición: no agregar líneas de código.
+
+Se resolvió en dos capas. **Cada función del backend lleva un comentario arriba**
+que dice qué hace; los comentarios no cuentan como código, así que el trinquete
+de funciones largas no se movió. En los 77 archivos del núcleo faltaban 29, y se
+agregaron verificando que ninguna instrucción cambiara. Y **un documento por
+carpeta** en [codigo/README.md](codigo/README.md), cada uno en tres niveles: en
+pocas palabras, cómo funciona archivo por archivo, y por qué es así.
+
+Como un documento que describe funciones envejece en cuanto alguien renombra
+una, `tests/unit/documentacion.test.js` ahora verifica que cada archivo,
+enlace y función que nombran esos documentos siga existiendo.
+
+Se hace por etapas: primero el núcleo del backend; después la generación de PDF
+(`src/services/`) y por último el frontend (`public/js/`).
+
 ---
 
 ## 8. Cómo creció la red de pruebas
@@ -346,6 +366,7 @@ página por página comprobando que no se repita ni se pierda ninguna cotizació
 | 9 sep | 2561 | Reducción de duplicación y seguridad |
 | 11 sep | ~2667 | Marcas desde Excel |
 | 15 sep | 2750 | Prueba de rendimiento: tope de reportes, cola paginada, pantallas de consumo y de la cola |
+| 16 sep | 2755 | Guardia de la documentación del código: archivos, enlaces y funciones citadas |
 
 El proyecto usa dos tipos de prueba poco habituales, explicados en
 [pruebas.md](pruebas.md): los **trinquetes** (números que sólo pueden bajar) y

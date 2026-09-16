@@ -146,15 +146,19 @@ function validateTransitionByRole(estadoActual, nuevoEstado, rol, canApproveQuot
 }
 
 // ---------------------------------------------------------------------------
-// generateCorrelativo — ATÓMICO: debe llamarse dentro de una transacción del
-// caller. Bloquea la fila del año (SELECT … FOR UPDATE) en
-// licitaciones_correlativo, incrementa y devuelve 'LIC-YYYY/NNNN'.
-// Espejo de correlativoRepository.generateCorrelativo, contador PROPIO.
+// El número de cada licitación: 'LIC-YYYY/NNNN', con un contador PROPIO por año
+// en licitaciones_correlativo, así la serie nunca se cruza con la de
+// cotizaciones. Espejo de correlativoRepository.js.
 // ---------------------------------------------------------------------------
+
+// formatCorrelativo — arma el texto del número: el año y 4 dígitos con ceros.
 function formatCorrelativo(anio, nextNumber) {
   return `LIC-${anio}/${String(nextNumber).padStart(4, '0')}`;
 }
 
+// peekNextCorrelativo — el PRÓXIMO número, sólo para mostrarlo en el formulario
+// antes de guardar. No reserva ni bloquea nada: si dos personas miran a la vez,
+// las dos ven el mismo, y el definitivo lo asigna generateCorrelativo al guardar.
 async function peekNextCorrelativo() {
   const currentYear = new Date().getFullYear();
   const [rows] = await pool.execute(
@@ -165,6 +169,10 @@ async function peekNextCorrelativo() {
   return formatCorrelativo(currentYear, nextNumber);
 }
 
+// generateCorrelativo — ATÓMICO: debe llamarse dentro de una transacción del
+// caller. Bloquea la fila del año (SELECT … FOR UPDATE) en
+// licitaciones_correlativo, incrementa y devuelve 'LIC-YYYY/NNNN'. Si es la
+// primera licitación del año, crea la fila empezando en 1.
 async function generateCorrelativo(connection) {
   const currentYear = new Date().getFullYear();
 

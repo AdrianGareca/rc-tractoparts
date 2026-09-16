@@ -344,6 +344,8 @@ const CLAVES_DISTINTAS = {
   item:    `${CLAVE_SQL}, d.unidad`,
 };
 
+// count — el total de filas del reporte, para la paginación, con los mismos
+// filtros que find(). Cómo cuenta y por qué, en el bloque de arriba.
 async function count(filtros = {}, modo = 'detalle') {
   const m = MODOS.includes(modo) ? modo : 'detalle';
   const { clause, params } = _where(filtros);

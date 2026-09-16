@@ -292,6 +292,8 @@ async function findSummaryByState(id_ejecutivo = null) {
 // ---------------------------------------------------------------------------
 const ESTADOS_EN_COLA = "'Pendiente', 'En revision', 'En espera'";
 
+// countPendingApproval — cuántas cotizaciones hay en la cola completa: el número
+// que muestra el título «Cola de aprobación (N)», no el de la página.
 async function countPendingApproval() {
   const [rows] = await pool.execute(
     `SELECT COUNT(*) AS total FROM cotizaciones c WHERE c.estado IN (${ESTADOS_EN_COLA})`
@@ -299,6 +301,8 @@ async function countPendingApproval() {
   return rows[0].total;
 }
 
+// findPendingApproval — una página de la cola, de la cotización más antigua a la
+// más nueva. page y limit se sanean acá (limit entre 1 y 100, 50 por defecto).
 async function findPendingApproval(pagination = {}) {
   const page   = Math.max(1, parseInt(pagination.page,  10) || 1);
   const limit  = Math.min(100, Math.max(1, parseInt(pagination.limit, 10) || 50));

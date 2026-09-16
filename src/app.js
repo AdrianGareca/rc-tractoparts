@@ -80,6 +80,10 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 app.use(cors({
+  // origin — decide, petición por petición, si quien llama puede usar la API.
+  // Se acepta si no manda cabecera Origin (curl, Postman, el propio servidor) o
+  // si su dominio está en CORS_ORIGIN. Cualquier otro recibe el error 'CORS:',
+  // que el manejador global de más abajo convierte en un 403.
   origin: (origin, callback) => {
     // Permite peticiones sin origen (Postman/curl) o si está en la lista blanca extendida
     if (!origin || allowedOrigins.includes(origin)) {
@@ -174,6 +178,8 @@ const { swaggerSpec: swaggerDocs } = require('./config/swagger');
 // ---------------------------------------------------------------------------
 function requireDocsAccess(req, res, next) {
   const token = req.query.token;
+  // deny — responde la página de «Acceso restringido» con el código HTTP y el
+  // motivo indicados. Es HTML y no JSON porque a /api-docs se entra navegando.
   const deny = (status, msg) => res.status(status).send(`
     <!DOCTYPE html>
     <html lang="es"><head><meta charset="utf-8"><title>Acceso restringido</title></head>

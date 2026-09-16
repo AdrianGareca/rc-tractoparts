@@ -275,3 +275,77 @@ describe('migraciones de esquema', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// docs/codigo/ — qué hace cada parte del código.
+//
+// POR QUÉ TIENE SU PROPIO BLOQUE
+// Los bloques de arriba leen sólo docs/*.md. Los documentos de docs/codigo/
+// describen el código función por función, que es lo que más rápido envejece:
+// basta renombrar una función para que su documento mande a algo que ya no
+// existe. Acá se verifica que los archivos y las funciones que nombran sigan
+// estando donde dicen.
+// ---------------------------------------------------------------------------
+describe('docs/codigo describe código que existe', () => {
+  const DIR_CODIGO = path.join(DOCS, 'codigo');
+  const deCodigo = fs.readdirSync(DIR_CODIGO)
+    .filter((f) => f.endsWith('.md'))
+    .map((f) => ({ nombre: f, texto: fs.readFileSync(path.join(DIR_CODIGO, f), 'utf8') }));
+
+  /** Todo el JavaScript de src/, para buscar los nombres de funciones. */
+  const leerJs = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const ruta = path.join(dir, e.name);
+    if (e.isDirectory()) return leerJs(ruta);
+    return e.name.endsWith('.js') ? [fs.readFileSync(ruta, 'utf8')] : [];
+  });
+  const FUENTE = leerJs(path.join(RAIZ, 'src')).join('\n');
+
+  test('docs/README.md enlaza el índice de docs/codigo', () => {
+    const indiceGeneral = documentos.find((d) => d.nombre === 'README.md');
+    expect(indiceGeneral.texto).toContain('(codigo/README.md)');
+  });
+
+  test('cada documento de docs/codigo está en su índice', () => {
+    const indice = deCodigo.find((d) => d.nombre === 'README.md');
+    const sueltos = deCodigo
+      .filter((d) => d.nombre !== 'README.md')
+      .filter((d) => !indice.texto.includes(`(${d.nombre})`))
+      .map((d) => d.nombre);
+    expect(sueltos).toEqual([]);
+  });
+
+  test('los enlaces entre documentos llevan a archivos que existen', () => {
+    const rotos = deCodigo.flatMap((d) =>
+      [...d.texto.matchAll(/\]\(([a-zA-Z0-9_.\/-]+\.md)\)/g)]
+        .map((m) => m[1])
+        .filter((destino) => !fs.existsSync(path.join(DIR_CODIGO, destino)))
+        .map((destino) => `${d.nombre} → ${destino}`)
+    );
+    expect(rotos).toEqual([]);
+  });
+
+  test('los archivos citados existen', () => {
+    const faltan = new Set(deCodigo.flatMap((d) =>
+      [...d.texto.matchAll(/`((?:src|public|sql|tests|scripts|docs)\/[a-zA-Z0-9_\/.-]+\.(?:js|sql|css|html|md))`/g)]
+        .map((m) => m[1])
+        .filter((r) => !fs.existsSync(path.join(RAIZ, r)))
+    ));
+    expect([...faltan]).toEqual([]);
+  });
+
+  test('las funciones citadas existen en src/', () => {
+    // `nombreDeFuncion(...)` — lo que se escribe con paréntesis es una función.
+    const faltan = new Set(deCodigo.flatMap((d) =>
+      [...d.texto.matchAll(/`([A-Za-z_$][A-Za-z0-9_$]*)\(/g)]
+        .map((m) => m[1])
+        .filter((nombre) => !new RegExp(`\\b${nombre.replace(/\$/g, '\\$')}\\b`).test(FUENTE))
+    ));
+
+    if (faltan.size > 0) {
+      throw new Error(
+        `docs/codigo nombra funciones que no aparecen en src/:\n  ${[...faltan].join('\n  ')}\n\n` +
+        'Si se renombró la función, actualizá el documento en el mismo cambio.'
+      );
+    }
+  });
+});

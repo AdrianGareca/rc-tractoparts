@@ -103,6 +103,8 @@ function initSocket(httpServer) {
 
   io = new Server(httpServer, {
     cors: {
+      // origin — la misma lista blanca que la API REST: se acepta la conexión si
+      // no trae Origin o si su dominio está en CORS_ORIGIN; otro dominio, no.
       origin: (origin, callback) => {
         if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
         callback(new Error('CORS: Origin not allowed.'));

@@ -75,11 +75,15 @@ function _periodoAnterior(desde, hasta) {
   const dias = Math.round((h - d) / 86400000) + 1;   // inclusivo en los dos extremos
   const finPrevio    = new Date(d.getTime() - 86400000);
   const inicioPrevio = new Date(finPrevio.getTime() - (dias - 1) * 86400000);
+  // ymd — la fecha como 'YYYY-MM-DD'. Acá leer en UTC es lo correcto: las fechas
+  // se armaron en UTC a propósito (T00:00:00Z), así que no hay corrimiento de día.
   const ymd = (x) => x.toISOString().slice(0, 10);
 
   return { desde: ymd(inicioPrevio), hasta: ymd(finPrevio) };
 }
 
+// marcadores — n signos de pregunta separados por coma («?, ?, ?») para armar un
+// IN (...) con parámetros: los valores nunca se escriben dentro del SQL.
 const marcadores = (n) => Array(n).fill('?').join(', ');
 
 // Cada consulta es independiente (mismo WHERE, distinto agregado) — separadas

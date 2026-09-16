@@ -32,6 +32,8 @@ const reportePdfLimiter = rateLimit({
     success: false,
     message: 'Too many PDF report requests from this IP. Please wait 15 minutes.',
   },
+  // skip — en las pruebas automáticas este límite no se aplica: la suite genera
+  // muchos PDF seguidos desde la misma IP. En desarrollo y producción sí rige.
   skip: () => process.env.NODE_ENV === 'test',
 });
 // Progreso dashboard: full management view — Jefe, Administracion and SysAdmin.

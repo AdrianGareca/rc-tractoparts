@@ -51,6 +51,8 @@ const SEÑALES_DE_EJEMPLO = [
   'example', 'ejemplo', 'placeholder', 'todo', 'xxxx',
 ];
 
+// esDeEjemplo — ¿el valor contiene alguno de los textos de ejemplo de arriba?
+// Compara en minúscula y por inclusión, así que «CHANGE_ME_2026» también cae.
 const esDeEjemplo = (valor) => {
   const v = String(valor).toLowerCase();
   return SEÑALES_DE_EJEMPLO.some((señal) => v.includes(señal));

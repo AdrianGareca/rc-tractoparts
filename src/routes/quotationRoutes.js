@@ -87,6 +87,9 @@ if (!fs.existsSync(excelDir)) {
 }
 
 const storage = multer.diskStorage({
+  // destination — la carpeta donde multer escribe el archivo subido: el Excel va
+  // a storage/excels/ y cualquier otro campo a UPLOAD_DIR (uploads/cotizaciones
+  // si la variable no está definida).
   destination: (_req, file, cb) => {
     // Route Excel uploads to a dedicated audit directory
     cb(null, file.fieldname === 'excel' ? excelDir : uploadDir);
@@ -159,6 +162,8 @@ const uploadLimiter = rateLimit({
     success: false,
     message: 'Too many PDF upload attempts from this IP. Please wait 15 minutes.',
   },
+  // skip — en las pruebas automáticas este límite no se aplica: la suite sube
+  // muchos archivos seguidos desde la misma IP. En desarrollo y producción rige.
   skip: () => process.env.NODE_ENV === 'test',
 });
 

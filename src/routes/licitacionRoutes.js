@@ -66,6 +66,8 @@ const ALLOWED_DOC_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jp
 const MAX_DOC_FILES = 10;
 
 const licDocStorage = multer.diskStorage({
+  // destination — la carpeta donde multer escribe cada documento subido: todos
+  // van a storage/licitaciones/, creada al cargar este archivo.
   destination: (_req, _file, cb) => cb(null, licDocsDir),
   // El nombre se arma con buildUploadFilename y NO interpolando req.params.id:
   // Express decodifica los params después del match de la ruta, así que un
@@ -82,6 +84,10 @@ const licDocStorage = multer.diskStorage({
   },
 });
 
+// licDocFileFilter — primer filtro de los documentos de licitación, antes de que
+// multer los escriba: corrige el nombre con tildes y deja pasar sólo las
+// extensiones de ALLOWED_DOC_EXTENSIONS. El contenido real se verifica después,
+// en el controlador, por número mágico.
 function licDocFileFilter(_req, file, cb) {
   // Corrige el mojibake de Busboy ACÁ, antes de que nada más use el nombre:
   // la extensión de abajo, el nombre en disco (buildUploadFilename) y el
@@ -122,6 +128,8 @@ const licDocUploadLimiter = rateLimit({
     success: false,
     message: 'Demasiados intentos de subida de documentos desde esta IP. Espere 15 minutos.',
   },
+  // skip — en las pruebas automáticas este límite no se aplica: la suite sube
+  // muchos documentos seguidos desde la misma IP. En desarrollo y producción rige.
   skip: () => process.env.NODE_ENV === 'test',
 });
 

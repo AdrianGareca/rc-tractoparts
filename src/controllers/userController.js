@@ -44,6 +44,8 @@ const VALID_ROLE_IDS = new Set([1, 2, 3, 4, 5]);
 // "1" pasaba (201). Encontrado en la ronda de estrés del 2026-08-26.
 const MIN_PASSWORD_LENGTH = 10;
 
+// _validarPassword — devuelve el error de validación ({ field, message }) si la
+// contraseña tiene menos de MIN_PASSWORD_LENGTH caracteres, o null si está bien.
 function _validarPassword(password) {
   if (String(password).length < MIN_PASSWORD_LENGTH) {
     return {

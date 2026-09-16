@@ -51,26 +51,42 @@ const MIME_BY_EXT = {
   png:  'image/png',
 };
 
+// isZip — ¿los primeros 4 bytes son la firma de un ZIP («PK\x03\x04»)? Los .docx
+// y los .xlsx son, por dentro, archivos ZIP.
 const isZip  = (buf) => buf[0] === 0x50 && buf[1] === 0x4B && buf[2] === 0x03 && buf[3] === 0x04;
+// isOle2 — ¿los primeros 8 bytes son la firma OLE2 de Microsoft? Es el formato
+// de los .doc y .xls viejos (Office 97-2003).
 const isOle2 = (buf) => buf[0] === 0xD0 && buf[1] === 0xCF && buf[2] === 0x11 && buf[3] === 0xE0 &&
                          buf[4] === 0xA1 && buf[5] === 0xB1 && buf[6] === 0x1A && buf[7] === 0xE1;
 
+// MAGIC_CHECKS — para cada extensión permitida, la función que confirma que el
+// CONTENIDO del archivo es de ese tipo mirando sus primeros bytes (el «número
+// mágico»). Renombrar un .exe a .pdf no lo convierte en PDF: acá se nota.
 const MAGIC_CHECKS = {
+  // pdf — todo PDF empieza con el texto «%PDF-».
   pdf:  (buf) => buf.toString('ascii', 0, 5) === '%PDF-',
   doc:  isOle2,
   xls:  isOle2,
   docx: isZip,
   xlsx: isZip,
+  // jpg — los JPEG empiezan con los bytes FF D8 FF.
   jpg:  (buf) => buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF,
+  // jpeg — la misma firma que jpg: son dos extensiones del mismo formato.
   jpeg: (buf) => buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF,
+  // png — los PNG empiezan con la firma fija de 8 bytes 89 50 4E 47 0D 0A 1A 0A.
   png:  (buf) => buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47 &&
                  buf[4] === 0x0D && buf[5] === 0x0A && buf[6] === 0x1A && buf[7] === 0x0A,
 };
 
+// extOf — la extensión de un nombre de archivo, en minúscula y sin el punto:
+// «Plano.PDF» devuelve «pdf».
 function extOf(originalname) {
   return path.extname(originalname).toLowerCase().replace('.', '');
 }
 
+// verifyMagicNumber — lee los primeros 8 bytes del archivo ya escrito en disco y
+// confirma que coinciden con la firma de su extensión. Devuelve false si la
+// extensión no está en MAGIC_CHECKS o si el archivo no se puede leer.
 async function verifyMagicNumber(absPath, ext) {
   const check = MAGIC_CHECKS[ext];
   if (!check) return false; // unknown extension — never reached if fileFilter did its job, but defense-in-depth
@@ -85,6 +101,8 @@ async function verifyMagicNumber(absPath, ext) {
   }
 }
 
+// unlink — borra un archivo del disco sin lanzar error si ya no existe: se usa
+// para limpiar subidas rechazadas, donde un archivo que falta no es un problema.
 const unlink = (absPath) => fs.promises.unlink(absPath).catch(() => {});
 
 // ---------------------------------------------------------------------------
@@ -109,6 +127,9 @@ const LicitacionDocumentController = {
     const clientIp = req.ip || req.socket?.remoteAddress || null;
     const files    = req.files || [];
 
+    // cleanupAll — borra del disco TODOS los archivos de esta subida. Se llama
+    // en cada salida con error: multer ya los escribió antes de llegar acá, y
+    // sin esto quedarían archivos huérfanos que nadie va a reclamar.
     const cleanupAll = () => Promise.all(files.map((f) => unlink(path.resolve(process.cwd(), f.path))));
 
     // El error de parseId se usa tal como viene: trae el 400 y el mensaje en
@@ -171,6 +192,8 @@ const LicitacionDocumentController = {
         // El MIME sale de la extensión YA VERIFICADA contra el número mágico
         // unas líneas más arriba, nunca del Content-Type que declaró el cliente.
         mimeDe:       (file) => MIME_BY_EXT[extOf(file.originalname)] || 'application/octet-stream',
+        // borrarDeDisco — cómo quitar un archivo si el guardado en la base falla a
+        // mitad de camino: persistirDocumentos lo usa para no dejar huérfanos.
         borrarDeDisco: (ruta) => unlink(path.resolve(process.cwd(), ruta)),
       });
 
