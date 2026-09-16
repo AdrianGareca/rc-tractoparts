@@ -59,3 +59,21 @@ export function parseYmd(s) {
 export function hoyYmd() {
   return ymd(new Date());
 }
+
+/**
+ * Los últimos 12 meses hasta hoy, inclusive: del día siguiente a hoy hace un
+ * año, hasta hoy. El 15/09/2026 da ['2025-09-16', '2026-09-15'].
+ *
+ * Es el rango con el que abren los reportes pesados (consumo por ítem y los
+ * reportes del ejecutivo). Antes abrían con TODO el historial, y cada año que
+ * pasa ese cálculo se vuelve más lento; decisión de Adrian del 2026-09-15.
+ * El historial completo sigue disponible vaciando las fechas.
+ *
+ * @param   {Date} [hoy]
+ * @returns {[string, string]} [desde, hasta]
+ */
+export function ultimos12Meses(hoy = new Date()) {
+  // Date resuelve solo el desborde: el 29/02 menos un año cae en 01/03.
+  const desde = new Date(hoy.getFullYear() - 1, hoy.getMonth(), hoy.getDate() + 1);
+  return [ymd(desde), ymd(hoy)];
+}

@@ -34,6 +34,8 @@ import { escHtml, fmtDate } from '../helpers.js';
 import { tableSkeleton } from '../../../shared/skeleton.js';
 import { createListSection } from '../../../shared/listSection.js';
 import { downloadCsv } from '../../../shared/csvExport.js';
+// El rango con el que abre el reporte: los ultimos 12 meses.
+import { ultimos12Meses } from '../../../shared/fechaLocal.js';
 
 const ESTADOS = [
   'Pendiente', 'En revision', 'En espera', 'Aprobada internamente',
@@ -203,11 +205,16 @@ function buildEncabezadosHtml(vista, sortBy, sortOrder) {
 }
 
 /** El texto que explica qué está contando el número que se ve. Pura. */
-function buildNotaTexto(vista, estado) {
+function buildNotaTexto(vista, estado, conRango = false) {
   const alcance = estado
     ? `Contando solo cotizaciones en estado "${estado}".`
     : 'Contando TODAS las cotizaciones, incluidas las rechazadas: es lo que los clientes pidieron cotizar, no lo que compraron. Filtrá por "Confirmada" para ver ventas cerradas.';
-  return `${vista.ayuda} ${alcance}`;
+  // El reporte abre con un rango puesto: hay que decir que el historial
+  // completo existe, o parece que lo anterior a un año se perdió.
+  const periodo = conRango
+    ? ' Muestra solo el período elegido; vaciá las dos fechas para ver todo el historial (tarda más).'
+    : '';
+  return `${vista.ayuda} ${alcance}${periodo}`;
 }
 
 /**
@@ -217,13 +224,17 @@ function buildNotaTexto(vista, estado) {
  * @returns {Promise<Function>} destroy
  */
 export async function mountClienteItemReport(panel, opts = {}) {
+  // Abre con los últimos 12 meses y no con todo el historial: con años de
+  // datos, calcularlo entero en cada apertura pasaba del minuto y Nginx lo
+  // cortaba (ronda de estrés del 2026-09-15). Vaciando las fechas se ve todo.
+  const [desdeInicial, hastaInicial] = ultimos12Meses();
   const state = {
     vista: 'item',                 // la que contesta la pregunta de compras
     page: 1,
     limit: 50,                     // 50 y no 25: con pocas filas por pagina, los
                                    // items de una misma cotizacion quedaban
                                    // repartidos y parecia que faltaban.
-    desde: '', hasta: '', estado: '', q: '', ejecutivo: '',
+    desde: desdeInicial, hasta: hastaInicial, estado: '', q: '', ejecutivo: '',
     // La fecha manda: la gente busca por cuando, no por cuanto. La cantidad
     // queda a un clic y desempata dentro del mismo dia (ver el modelo).
     sortBy: 'fecha', sortOrder: 'DESC',
@@ -234,6 +245,8 @@ export async function mountClienteItemReport(panel, opts = {}) {
   panel.innerHTML = buildShellHtml(opts);
 
   const $ = (sel) => panel.querySelector(sel);
+  $('#ci-desde').value = state.desde;
+  $('#ci-hasta').value = state.hasta;
 
   // El ciclo cargando/vacio/error/paginar sale de shared/listSection.js — el
   // mismo que usan los cuatro paneles de listado. Este reporte lo tenia
@@ -274,7 +287,7 @@ export async function mountClienteItemReport(panel, opts = {}) {
     const vista   = VISTAS[state.vista];
     seccion.loading(vista.columnas.length);
     const notaEl = $('#ci-nota');
-    if (notaEl) notaEl.textContent = buildNotaTexto(vista, state.estado);
+    if (notaEl) notaEl.textContent = buildNotaTexto(vista, state.estado, Boolean(state.desde || state.hasta));
 
     const params = new URLSearchParams({
       agrupar: state.vista,
@@ -349,6 +362,24 @@ export async function mountClienteItemReport(panel, opts = {}) {
   }
 
   // ── Controles ──────────────────────────────────────────────────────────────
+  cablearControles({ panel, state, load, exportarCsv });
+
+  await load();
+
+  return function destroy() { seccion.destroy(); };
+}
+
+/**
+ * Engancha los filtros, las pestañas de vista, la exportación y «Limpiar».
+ *
+ * Salió de mountClienteItemReport cuando el rango inicial de 12 meses la dejó
+ * por encima del tope de largo (tests/unit/funcionesLargas.test.js). No tiene
+ * estado propio: escribe en `state` y pide `load()`. El cableado lo verifica
+ * tests/unit/pantallaConsumo.test.js sobre un DOM real.
+ */
+function cablearControles({ panel, state, load, exportarCsv }) {
+  const $ = (sel) => panel.querySelector(sel);
+
   const aplicar = () => {
     state.desde     = $('#ci-desde').value;
     state.hasta     = $('#ci-hasta').value;
@@ -380,13 +411,10 @@ export async function mountClienteItemReport(panel, opts = {}) {
   $('#ci-q').addEventListener('keydown', (e) => { if (e.key === 'Enter') aplicar(); });
   $('#ci-csv').addEventListener('click', exportarCsv);
   $('#ci-clear').addEventListener('click', () => {
-    $('#ci-desde').value = ''; $('#ci-hasta').value = '';
+    // «Limpiar» vuelve al rango con el que abre, no a todo el historial.
+    [$('#ci-desde').value, $('#ci-hasta').value] = ultimos12Meses();
     $('#ci-estado').value = ''; $('#ci-q').value = '';
     if ($('#ci-ejecutivo')) $('#ci-ejecutivo').value = '';
     aplicar();
   });
-
-  await load();
-
-  return function destroy() { seccion.destroy(); };
 }

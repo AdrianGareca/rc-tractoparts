@@ -20,7 +20,7 @@ import { renderMisMetricas } from './misMetricas.js';
 import { anillo, aguja, contarHasta } from '../../../shared/graficos.js';
 // Estaba copiada acá y en calendarPicker.js, las dos con el mismo comentario
 // sobre el corrimiento de UTC. Ahora hay un solo lugar donde arreglarlo.
-import { ymd } from '../../../shared/fechaLocal.js';
+import { ymd, ultimos12Meses } from '../../../shared/fechaLocal.js';
 
 
 /** Maps a quick-range preset id to a [desde, hasta] pair of 'YYYY-MM-DD' strings. */
@@ -29,6 +29,8 @@ function presetRange(preset) {
   switch (preset) {
     case 'todo':
       return ['', ''];
+    case '12m':
+      return ultimos12Meses(now);
     case 'hoy':
       return [ymd(now), ymd(now)];
     case 'ayer': {
@@ -287,7 +289,9 @@ function _buildLeaderboardTable(rows, rol) {
 // cotizaciones y nada más" — GET /api/reportes/pdf applies the same RLS,
 // never company-wide data for this role).
 //
-// Default range is "Todo el historial" (both bounds empty = all-time).
+// Abre con los últimos 12 meses (decisión de Adrian del 2026-09-15). Antes
+// abría con «Todo el historial», que con años de datos tardaba segundos en
+// cada apertura. El historial completo sigue en el selector.
 //
 // @param {HTMLElement} panel — Container element (#metrics-section)
 // ---------------------------------------------------------------------------
@@ -302,7 +306,8 @@ export async function renderExecutiveMetrics(panel) {
         <div class="form-group">
           <label class="form-label">Rango rápido</label>
           <select class="form-control fc-narrow" id="mym-preset">
-            <option value="todo" selected>Todo el historial</option>
+            <option value="12m" selected>Últimos 12 meses</option>
+            <option value="todo">Todo el historial</option>
             <option value="hoy">Hoy</option>
             <option value="ayer">Ayer</option>
             <option value="7d">Últimos 7 días</option>
@@ -350,7 +355,10 @@ export async function renderExecutiveMetrics(panel) {
   panel.querySelector('#mym-pdf').addEventListener('click', (e) =>
     downloadReportePdf(e.currentTarget, desdeEl.value, hastaEl.value));
 
-  await loadExecutiveMetrics(panel, '', '');
+  const [desdeInicial, hastaInicial] = presetRange('12m');
+  desdeEl.value = desdeInicial;
+  hastaEl.value = hastaInicial;
+  await loadExecutiveMetrics(panel, desdeInicial, hastaInicial);
 }
 
 // ---------------------------------------------------------------------------
