@@ -29,7 +29,8 @@
 
 'use strict';
 
-const { pool } = require('../../config/db');
+// Toda consulta de reporte lleva tope de tiempo: ver src/utils/topeConsultas.js.
+const { consultarReporte } = require('../../utils/topeConsultas');
 // Qué cuenta como venta se decide en un solo lugar para todo el sistema.
 const { ESTADOS_VENTA } = require('./constants');
 
@@ -87,7 +88,7 @@ const marcadores = (n) => Array(n).fill('?').join(', ');
 
 /** Una fila por estado, conteo y monto separado por moneda. */
 async function _fetchPorEstado(clause, params) {
-  const [rows] = await pool.execute(`
+  const [rows] = await consultarReporte(`
     SELECT
       c.estado,
       COUNT(*)                                                      AS cantidad,
@@ -117,7 +118,7 @@ async function _fetchPorEstado(clause, params) {
 // cotizacion muerta y sin enviar se mostraba como "en preparación" en el PDF
 // individual — que es exactamente lo contrario de lo que dice ese estado.
 async function _fetchResumen(clause, params) {
-  const [[resumen]] = await pool.execute(`
+  const [[resumen]] = await consultarReporte(`
     SELECT
       COUNT(*)                                                        AS total,
       SUM(c.estado IN (${marcadores(ESTADOS_EN_LA_CANCHA.length)}))   AS en_la_cancha,
@@ -139,7 +140,7 @@ async function _fetchResumen(clause, params) {
 
 /** "Mis avances" mes a mes: cuantas se cargaron y cuantas se cerraron. */
 async function _fetchPorMes(clause, params) {
-  const [rows] = await pool.execute(`
+  const [rows] = await consultarReporte(`
     SELECT
       DATE_FORMAT(c.fecha_emision, '%Y-%m')                        AS mes,
       COUNT(*)                                                     AS emitidas,
@@ -157,7 +158,7 @@ async function _fetchPorMes(clause, params) {
 // dias que llevan esperando. Es la unica seccion ACCIONABLE del reporte: no
 // dice como te fue, dice a quien llamar manana.
 async function _fetchPendientes(clause, params) {
-  const [rows] = await pool.execute(`
+  const [rows] = await consultarReporte(`
     SELECT
       c.numero_correlativo,
       cl.razon_social                                   AS cliente,
@@ -175,7 +176,7 @@ async function _fetchPendientes(clause, params) {
 
 /** La evidencia concreta detras del porcentaje: que vendio, a quien y cuando. */
 async function _fetchConfirmadas(clause, params) {
-  const [rows] = await pool.execute(`
+  const [rows] = await consultarReporte(`
     SELECT
       c.numero_correlativo,
       cl.razon_social        AS cliente,
@@ -202,7 +203,7 @@ async function _fetchConfirmadas(clause, params) {
 // columnas simples y la condicion se cumple sola. (Mismo motivo y misma forma
 // que en clienteItemReport.js.)
 async function _fetchTopItems(clause, params) {
-  const [rows] = await pool.execute(`
+  const [rows] = await consultarReporte(`
     SELECT
       l.codigo,
       SUBSTRING_INDEX(GROUP_CONCAT(l.descripcion_item ORDER BY CHAR_LENGTH(l.descripcion_item) DESC SEPARATOR '||'), '||', 1) AS descripcion,
@@ -231,6 +232,28 @@ async function _fetchTopItems(clause, params) {
   return rows;
 }
 
+// ---------------------------------------------------------------------------
+// _consultarPeriodo — las seis consultas de un periodo, en paralelo.
+//
+// Son independientes (mismo WHERE, distinto agregado): en paralelo el reporte
+// tarda lo que la mas lenta, no la suma de las seis. Medido con 40.000
+// cotizaciones: 657 ms en fila para un mes con comparacion. Ronda de estres del
+// 2026-09-15.
+//
+// Esta aparte de obtener() porque ahi sumaba lineas hasta pasar el tope de 80
+// (tests/unit/funcionesLargas.test.js).
+// ---------------------------------------------------------------------------
+function _consultarPeriodo(clause, params) {
+  return Promise.all([
+    _fetchPorEstado(clause, params),
+    _fetchResumen(clause, params),
+    _fetchPorMes(clause, params),
+    _fetchPendientes(clause, params),
+    _fetchConfirmadas(clause, params),
+    _fetchTopItems(clause, params),
+  ]);
+}
+
 /**
  * @param {Object} opts
  * @param {number} opts.idEjecutivo
@@ -241,12 +264,10 @@ async function _fetchTopItems(clause, params) {
 async function obtener({ idEjecutivo, desde = null, hasta = null, conComparacion = true }) {
   const { clause, params } = _where({ idEjecutivo, desde, hasta });
 
-  const porEstado    = await _fetchPorEstado(clause, params);
-  const resumen      = await _fetchResumen(clause, params);
-  const porMes       = await _fetchPorMes(clause, params);
-  const pendientes   = await _fetchPendientes(clause, params);
-  const confirmadas  = await _fetchConfirmadas(clause, params);
-  const topItems     = await _fetchTopItems(clause, params);
+  // La comparacion con el periodo anterior va DESPUES de estas seis y no junto,
+  // a proposito: las dos tandas a la vez serian doce conexiones para una sola
+  // pantalla, mas que las diez del pool, y el resto esperaria en la cola.
+  const [porEstado, resumen, porMes, pendientes, confirmadas, topItems] = await _consultarPeriodo(clause, params);
 
   // ── Comparacion con el periodo anterior ──────────────────────────────────
   // Un 57 % de conversion no se sabe si es bueno hasta verlo contra el mes

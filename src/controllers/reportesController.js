@@ -23,6 +23,8 @@ const { formatDate }       = require('../services/pdf/format');
 const { logEvent, AuditActions } = require('../utils/auditLog');
 // El bloque `pagination`, compartido.
 const { construirPaginacion } = require('../utils/paginacion');
+// Un reporte que pasa de 30 s se corta y se responde 503 (ver topeConsultas.js).
+const { esTopeExcedido, MENSAJE_TOPE } = require('../utils/topeConsultas');
 
 // Roles that may view company-wide aggregate data
 const MANAGER_ROLES = new Set(['Jefe', 'Administracion', 'SysAdmin']);
@@ -104,6 +106,26 @@ function resolveEjecutivoScope(req) {
   return { ejecutivoId: parsed };
 }
 
+/**
+ * La respuesta de error de todos los reportes.
+ *
+ * Un reporte que pasa el tope de 30 segundos no es una falla del servidor: es un
+ * rango demasiado grande, y la persona lo arregla acotando las fechas. Por eso
+ * se responde 503 con MENSAJE_TOPE en vez del 500 genérico, que no le dice qué
+ * hacer (ver src/utils/topeConsultas.js). Cualquier otro error sigue siendo 500
+ * con el mensaje propio de cada reporte.
+ *
+ * Los cinco manejadores repetían esta secuencia entera en su catch; al agregar
+ * el tope, getReportePdf pasó el largo máximo de funciones.
+ */
+function responderError(res, error, etiqueta, mensaje) {
+  if (esTopeExcedido(error)) {
+    return res.status(503).json({ success: false, message: MENSAJE_TOPE });
+  }
+  console.error(`[ReportesController.${etiqueta}] Error:`, error.message);
+  return res.status(500).json({ success: false, message: mensaje });
+}
+
 const ReportesController = {
 
   // ---------------------------------------------------------------------------
@@ -138,11 +160,7 @@ const ReportesController = {
         data:         progreso,
       });
     } catch (error) {
-      console.error('[ReportesController.getProgreso] Error:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Error al obtener el reporte de progreso. Intente nuevamente.',
-      });
+      return responderError(res, error, 'getProgreso', 'Error al obtener el reporte de progreso. Intente nuevamente.');
     }
   },
 
@@ -194,11 +212,7 @@ const ReportesController = {
         data:         report,
       });
     } catch (error) {
-      console.error('[ReportesController.getAdvancedReports] Error:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Error al obtener el reporte avanzado. Intente nuevamente.',
-      });
+      return responderError(res, error, 'getAdvancedReports', 'Error al obtener el reporte avanzado. Intente nuevamente.');
     }
   },
 
@@ -322,11 +336,7 @@ const ReportesController = {
       return res.status(200).send(pdfBuffer);
 
     } catch (error) {
-      console.error('[ReportesController.getReportePdf] Error:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Error al generar el reporte en PDF. Intente nuevamente.',
-      });
+      return responderError(res, error, 'getReportePdf', 'Error al generar el reporte en PDF. Intente nuevamente.');
     }
   },
 
@@ -437,6 +447,11 @@ const ReportesController = {
     try {
       // Datos y conteo en paralelo: la agrupacion es la misma y la segunda
       // consulta no depende de la primera.
+      //
+      // Se probo sacar el total de la misma consulta con COUNT(*) OVER () y
+      // salio MAS LENTO (44 s contra 37 s con 40.000 cotizaciones): la funcion
+      // de ventana obliga a MySQL a ordenar todos los grupos y pierde el atajo
+      // de ordenar solo los primeros de la pagina. Ronda de estres 2026-09-15.
       const [rows, totalRecords, listaEjecutivos] = await Promise.all([
         clienteItemReport.find(filtros, { page, limit },
           { by: sortBy, order: req.query.sort_order }, agrupar),
@@ -455,11 +470,7 @@ const ReportesController = {
         pagination: construirPaginacion({ page, limit, totalRecords }),
       });
     } catch (error) {
-      console.error('[ReportesController.getClienteItem] Error:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'No se pudo generar el reporte de items por cliente.',
-      });
+      return responderError(res, error, 'getClienteItem', 'No se pudo generar el reporte de items por cliente.');
     }
   },
 
@@ -515,8 +526,7 @@ const ReportesController = {
 
       return res.status(200).json({ success: true, id_ejecutivo: ejecutivoId, data });
     } catch (error) {
-      console.error('[ReportesController.getMisMetricas] Error:', error.message);
-      return res.status(500).json({ success: false, message: 'No se pudieron obtener las metricas.' });
+      return responderError(res, error, 'getMisMetricas', 'No se pudieron obtener las metricas.');
     }
   },
 };

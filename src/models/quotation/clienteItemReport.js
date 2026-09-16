@@ -41,7 +41,8 @@
 
 'use strict';
 
-const { pool } = require('../../config/db');
+// Toda consulta de reporte lleva tope de tiempo: ver src/utils/topeConsultas.js.
+const { consultarReporte } = require('../../utils/topeConsultas');
 
 // Columnas por las que se puede ordenar. Whitelist estricta: el valor entra
 // concatenado en el ORDER BY (no se puede parametrizar), asi que cualquier
@@ -128,6 +129,11 @@ const CODIGO_NORM_SQL = `UPPER(REGEXP_REPLACE(${CODIGO_SQL}, '[^a-zA-Z0-9]', '')
 // espacios repetidos y sin distinguir mayusculas.
 const DESC_NORM_SQL = "UPPER(TRIM(REGEXP_REPLACE(d.descripcion_item, '[[:space:]]+', ' ')))";
 
+// La clave de agrupacion completa, escrita UNA vez: la usan find() (a traves
+// de LINEAS_SQL) y count(). Si divergieran, el total de la paginacion dejaria
+// de coincidir con las filas (ver RCI-16b en reporteClienteItem.test.js).
+const CLAVE_SQL = `COALESCE(NULLIF(${CODIGO_NORM_SQL}, ''), CONCAT('SINCOD::', ${DESC_NORM_SQL}))`;
+
 // ---------------------------------------------------------------------------
 // _where — construye el WHERE parametrizado.
 // ---------------------------------------------------------------------------
@@ -197,7 +203,7 @@ const LINEAS_SQL = (clause) => `
     ${CODIGO_SQL}    AS codigo,
     -- La clave usa la version NORMALIZADA; la columna codigo conserva el
     -- original para mostrarlo tal como se escribe.
-    COALESCE(NULLIF(${CODIGO_NORM_SQL}, ''), CONCAT('SINCOD::', ${DESC_NORM_SQL})) AS clave,
+    ${CLAVE_SQL} AS clave,
     d.descripcion_item,
     d.unidad,
     d.cantidad,
@@ -313,28 +319,46 @@ async function find(filtros = {}, paginacion = {}, orden = {}, modo = 'detalle')
     LIMIT ${limit} OFFSET ${offset}
   `;
 
-  const [rows] = await pool.execute(sql, params);
+  const [rows] = await consultarReporte(sql, params);
   return rows;
 }
 
 // ---------------------------------------------------------------------------
 // count — cuantas filas agrupadas hay en total (para la paginacion).
-// Se cuenta sobre la MISMA agrupacion, envuelta en una subconsulta: un
-// COUNT(*) plano contaria lineas de detalle, no filas del reporte.
+//
+// Cuenta las combinaciones DISTINTAS de la misma clave que agrupa find(), sin
+// armar los grupos: no calcula sumas, marcas ni descripciones que el conteo no
+// usa. Antes envolvia la agrupacion completa en una subconsulta. Con 340.000
+// lineas este camino es entre 27 y 47% mas rapido y da el mismo numero,
+// verificado caso por caso en la ronda de estres del 2026-09-15.
+//
+// Por que alcanza con los ids: los nombres y el NIT que find() tambien pone en
+// su GROUP BY dependen del id (hay una sola fila de usuarios o de clientes por
+// id), asi que no agregan combinaciones. Y aunque COUNT(DISTINCT a, b) descarta
+// las filas con algun NULL, ninguna de estas columnas puede serlo: los ids y la
+// unidad son NOT NULL, y la clave cae a la descripcion (NOT NULL) si no hay
+// codigo.
 // ---------------------------------------------------------------------------
+const CLAVES_DISTINTAS = {
+  detalle: `c.id_ejecutivo, c.id_cliente, ${CLAVE_SQL}, d.unidad`,
+  item:    `${CLAVE_SQL}, d.unidad`,
+};
+
 async function count(filtros = {}, modo = 'detalle') {
   const m = MODOS.includes(modo) ? modo : 'detalle';
   const { clause, params } = _where(filtros);
 
   const sql = `
-    SELECT COUNT(*) AS total FROM (
-      SELECT 1
-        FROM (${LINEAS_SQL(clause)}) AS l
-       GROUP BY ${GROUP_BY[m]}
-    ) AS agrupado
+    SELECT COUNT(DISTINCT ${CLAVES_DISTINTAS[m]}) AS total
+      FROM cotizacion_detalles d
+      INNER JOIN cotizaciones c  ON c.id  = d.id_cotizacion
+      INNER JOIN clientes      cl ON cl.id = c.id_cliente
+      INNER JOIN usuarios      u  ON u.id  = c.id_ejecutivo
+      LEFT  JOIN productos     p  ON p.id  = d.id_producto
+      ${clause}
   `;
 
-  const [rows] = await pool.execute(sql, params);
+  const [rows] = await consultarReporte(sql, params);
   return rows[0].total;
 }
 
@@ -376,13 +400,38 @@ async function ejecutivos(filtros = {}, alcanceForzado = false) {
   const filtrosEfectivos = alcanceForzado ? filtros : resto;
   const { clause, params } = _where(filtrosEfectivos);
 
+  // POR QUE NO REUSA LINEAS_SQL
+  // Antes esta lista salia de la misma subconsulta que el reporte: TODAS las
+  // lineas de detalle, con la normalizacion del codigo por expresion regular
+  // aplicada a cada una, para quedarse al final con treinta nombres. Con
+  // 340.000 lineas eran ~6 segundos y una conexion del pool por cada carga.
+  //
+  // La pregunta real es «¿este ejecutivo tiene al menos UNA linea que cumpla
+  // los filtros?», y eso es un EXISTS: se detiene en la primera que encuentra
+  // y no calcula ninguna clave. Los filtros son los mismos (_where) y miran
+  // las mismas tablas (c, cl, d, p), asi que la lista no cambia.
+  //
+  // NO_SEMIJOIN es necesario: sin la pista, MySQL convierte el EXISTS en una
+  // union con eliminacion de duplicados que igual recorre las 340.000 lineas
+  // (medido: 3,7 s). Con la pista evalua usuario por usuario y corta en la
+  // primera coincidencia.
+  const condiciones = clause ? clause.replace(/^WHERE /, 'AND ') : '';
   const sql = `
-    SELECT DISTINCT l.id_ejecutivo AS id, l.ejecutivo_nombre AS nombre
-      FROM (${LINEAS_SQL(clause)}) AS l
-     ORDER BY l.ejecutivo_nombre ASC
+    SELECT u.id AS id, u.nombre_completo AS nombre
+      FROM usuarios u
+     WHERE EXISTS (
+       SELECT /*+ NO_SEMIJOIN() */ 1
+         FROM cotizaciones c
+         INNER JOIN clientes            cl ON cl.id = c.id_cliente
+         INNER JOIN cotizacion_detalles d  ON d.id_cotizacion = c.id
+         LEFT  JOIN productos           p  ON p.id = d.id_producto
+        WHERE c.id_ejecutivo = u.id
+          ${condiciones}
+     )
+     ORDER BY u.nombre_completo ASC
   `;
 
-  const [rows] = await pool.execute(sql, params);
+  const [rows] = await consultarReporte(sql, params);
   return rows;
 }
 

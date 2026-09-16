@@ -382,6 +382,20 @@ describe('RCI — orden y paginacion', () => {
     expect(typeof res.body.pagination.totalRecords).toBe('number');
     expect(res.body.pagination.totalPages).toBeGreaterThanOrEqual(1);
   });
+
+  // count() ya no envuelve la agrupacion de find(): desde la ronda de estres
+  // del 2026-09-15 cuenta las combinaciones DISTINTAS de la misma clave, que es
+  // mas rapido. Son dos consultas de forma distinta, y si divergieran la
+  // paginacion mostraria un total que no coincide con las filas. Con todo en
+  // una sola pagina, tienen que dar el mismo numero.
+  test.each(['detalle', 'item'])('RCI-16b: el total coincide con las filas cuando entran en una pagina (%s)', async (agrupar) => {
+    const res = await pedirComoJefe(`agrupar=${agrupar}&id_cliente=${idClienteA}&limit=200`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    expect(res.body.data.length).toBeLessThan(200);
+    expect(res.body.pagination.totalRecords).toBe(res.body.data.length);
+  });
 });
 
 // =============================================================================

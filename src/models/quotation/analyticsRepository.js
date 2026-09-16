@@ -7,7 +7,8 @@
 
 'use strict';
 
-const { pool } = require('../../config/db');
+// Toda consulta de reporte lleva tope de tiempo: ver src/utils/topeConsultas.js.
+const { consultarReporte } = require('../../utils/topeConsultas');
 // Que cuenta como venta: una sola definicion para todo el sistema.
 const { ESTADOS_VENTA, ESTADOS_DECIDIDOS, literalesDe } = require('./constants');
 
@@ -18,7 +19,7 @@ const { ESTADOS_VENTA, ESTADOS_DECIDIDOS, literalesDe } = require('./constants')
 // Independent of `estado` (the approval workflow).
 // ---------------------------------------------------------------------------
 async function _getSeguimientoVentaResumen(ejecPlain, scopedParams) {
-  const [rows] = await pool.execute(`
+  const [rows] = await consultarReporte(`
       SELECT
         SUM(CASE WHEN estado_venta = 'Interesado'        THEN 1 ELSE 0 END) AS interesado,
         SUM(CASE WHEN estado_venta = 'En negociacion'     THEN 1 ELSE 0 END) AS en_negociacion,
@@ -75,7 +76,7 @@ async function getProgreso(fechaDesde, fechaHasta, ejecutivoId = null) {
   const scopedParams = [...rangeParams, ...ejecParam];
 
   // Volume within the selected range
-  const [volumenRows] = await pool.execute(`
+  const [volumenRows] = await consultarReporte(`
       SELECT
         SUM(CASE WHEN moneda = 'USD' THEN monto_total ELSE 0 END) AS total_mes_usd,
         SUM(CASE WHEN moneda = 'BOB' THEN monto_total ELSE 0 END) AS total_mes_bob,
@@ -87,7 +88,7 @@ async function getProgreso(fechaDesde, fechaHasta, ejecutivoId = null) {
 
   // Conversion ratio within the selected range.
   // Counts both 'Confirmada' (current) and legacy 'Aceptada' rows.
-  const [conversionRows] = await pool.execute(`
+  const [conversionRows] = await consultarReporte(`
       SELECT
         SUM(CASE WHEN estado IN (${literalesDe(ESTADOS_VENTA)}) THEN 1 ELSE 0 END) AS total_aceptadas,
         SUM(CASE WHEN estado = 'Rechazada' THEN 1 ELSE 0 END) AS total_rechazadas
@@ -107,7 +108,7 @@ async function getProgreso(fechaDesde, fechaHasta, ejecutivoId = null) {
   // CUALQUIER estado — Archivada, Rechazada, lo que fuera — y el volumen por
   // ejecutivo no coincidia con lo que ese mismo ejecutivo aparecia vendiendo en
   // el leaderboard o en top_clientes.
-  const [porEjecutivoRows] = await pool.execute(`
+  const [porEjecutivoRows] = await consultarReporte(`
       SELECT
         u.nombre_completo                                              AS ejecutivo,
         COUNT(*)                                                       AS total,
@@ -213,7 +214,7 @@ async function getAdvancedReports(ejecutivoId = null, fechaDesde = null, fechaHa
         GROUP BY c.id_cliente, cl.razon_social, cl.nit
         ORDER BY total_usd DESC
         LIMIT ${TOPE_CLIENTES}`;
-  const [topClientesRows] = await pool.execute(topClientesSql, tc.params);
+  const [topClientesRows] = await consultarReporte(topClientesSql, tc.params);
 
   // ── Executive Leaderboard ───────────────────────────────────────────────
   // Aggregates over the range: total created, total approved by Jefe, revenue.
@@ -241,7 +242,7 @@ async function getAdvancedReports(ejecutivoId = null, fechaDesde = null, fechaHa
         ${lbWhere}
         GROUP BY c.id_ejecutivo, u.nombre_completo
         ORDER BY total_usd DESC`;
-  const [leaderboardRows] = await pool.execute(leaderboardSql, lb.params);
+  const [leaderboardRows] = await consultarReporte(leaderboardSql, lb.params);
 
   // Post-process leaderboard: compute approval rate safely (avoid / 0)
   const leaderboard = leaderboardRows.map((row) => {
@@ -290,7 +291,7 @@ async function getAdvancedReports(ejecutivoId = null, fechaDesde = null, fechaHa
           WHERE cl.activo = 1
           GROUP BY oc.id, origen
           ORDER BY total_clientes DESC`;
-    const [origenRows] = await pool.execute(origenSql, origenParams);
+    const [origenRows] = await consultarReporte(origenSql, origenParams);
     clientesPorOrigen = origenRows.map((r) => ({
       origen:         r.origen,
       total_clientes: parseInt(r.total_clientes || 0, 10),

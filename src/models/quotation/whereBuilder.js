@@ -101,4 +101,15 @@ function buildWhereClause(filters = {}) {
   };
 }
 
-module.exports = { buildWhereClause };
+// ---------------------------------------------------------------------------
+// necesitaClientes — ¿algún filtro mira columnas de `clientes` (alias cl)?
+//
+// Vive al lado de buildWhereClause porque es la misma lista: si se agrega un
+// filtro sobre cl.*, hay que agregarlo acá también. Lo usa countAll para no
+// unir tablas que no cambian el resultado (ver readRepository.js).
+// ---------------------------------------------------------------------------
+function necesitaClientes(filters = {}) {
+  return ['q', 'razon_social', 'nit'].some((k) => filters[k] && String(filters[k]).trim());
+}
+
+module.exports = { buildWhereClause, necesitaClientes };
