@@ -47,6 +47,8 @@ const CUERPO_PT = 6.5;   // tamaño del texto de las cláusulas
 // hoja en vez de amontonarlas arriba y dejar media página en blanco.
 const AIRE      = CUERPO_PT * 1.55;
 
+// La fecha de la banda, en día/mes/año y en hora de Bolivia. Un valor vacío o
+// inválido se imprime como raya: la hoja se dibuja igual, sin un «Invalid Date».
 const fecha = (v) => {
   if (!v) return '—';
   const d = new Date(v);
@@ -179,7 +181,9 @@ function drawTerminosPage(doc, quotation) {
 
 const GEOMETRIA = Object.freeze({
   BANDA_H, COLUMNAS, CANAL, SANGRIA, CUERPO_PT, AIRE,
+  // Ancho de una columna: el ancho útil menos los canales que la separan.
   anchoColumna: (ancho) => (ancho - (COLUMNAS - 1) * CANAL) / COLUMNAS,
+  // Lo mismo, pero descontando la sangría: es el ancho real del texto.
   anchoTexto:   (ancho) => (ancho - (COLUMNAS - 1) * CANAL) / COLUMNAS - SANGRIA,
 });
 

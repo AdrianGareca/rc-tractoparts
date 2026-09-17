@@ -15,6 +15,7 @@
 // ---------------------------------------------------------------------------
 const PRIMARY_ENTIDAD = 'Empresa unipersonal de Ronald Roca Cartagena';
 
+// Devuelve la razón social vigente de la entidad emisora (ver arriba).
 function normalizeEntidad(raw) {
   const value = (raw && String(raw).trim()) || PRIMARY_ENTIDAD;
   return value === 'RC Tractoparts' ? PRIMARY_ENTIDAD : value;

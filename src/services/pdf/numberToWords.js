@@ -27,6 +27,9 @@ const _HUNS = [
   'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS',
 ];
 
+// Escribe en letras un número menor a 1000, con los casos propios del castellano:
+// CIEN a secas cuando es exacto, CIENTO cuando le sigue algo, y la Y solo entre
+// la decena y la unidad (CUARENTA Y DOS, pero VEINTE, y DIECISÉIS de una pieza).
 function _lt1000(n) {
   if (n === 0) return '';
   if (n === 100) return 'CIEN';
@@ -46,6 +49,8 @@ function _lt1000(n) {
   return s;
 }
 
+// Extiende _lt1000 hasta 999.999 agregando el grupo de los miles: MIL a secas
+// cuando es uno solo (MIL DOSCIENTOS, no UN MIL DOSCIENTOS).
 function _buildWords(n) {
   if (n >= 1000) {
     const t = Math.floor(n / 1000);
@@ -73,6 +78,9 @@ function _integerToWords(n) {
   return head + (resto > 0 ? ' ' + _integerToWords(resto) : '');
 }
 
+// El importe en letras que va en el renglón SON de la proforma: la parte entera
+// escrita en palabras y los centavos como fracción («… CON 45/100»). Un valor
+// nulo o no numérico devuelve CERO CON 00/100 en lugar de romper el PDF.
 function numberToWordsES(amount) {
   if (amount == null || isNaN(parseFloat(amount))) return 'CERO CON 00/100';
   // Se redondea con la MISMA funcion que usa la caja del TOTAL antes de partir

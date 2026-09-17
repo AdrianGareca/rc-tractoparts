@@ -358,6 +358,9 @@ function datosDeLaLicitacion(doc, y, lic) {
   const pieUtil     = PH - MARGIN - 24;
   const topePagina  = MARGIN + 6;
 
+  // Dibuja el recuadro de la sección entre dos alturas de UNA página. Cuando la
+  // sección cruza de hoja se lo llama una vez por página, con el borde de arriba
+  // y el de abajo que le corresponden a cada una.
   const marco = (top, bottom) =>
     doc.roundedRect(MARGIN, top, CW, bottom - top, 3)
       .lineWidth(0.6).strokeColor(C.BORDER).stroke();
@@ -380,6 +383,13 @@ function datosDeLaLicitacion(doc, y, lic) {
   return y;
 }
 
+// ---------------------------------------------------------------------------
+// renderExpediente — dibuja el expediente completo de una licitación, en el
+// orden en que se lee: cabecera membretada, datos de la licitación, resumen
+// económico, cotizaciones vinculadas, gastos, documentos adjuntos y el pie en
+// todas las páginas. Cada sección recibe la `y` donde arranca y devuelve la `y`
+// donde terminó, así que agregar o mover una no obliga a recalcular alturas.
+// ---------------------------------------------------------------------------
 function renderExpediente(doc, lic) {
   const moneda = lic.moneda || 'BOB';
 

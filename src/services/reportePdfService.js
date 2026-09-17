@@ -235,7 +235,20 @@ function _calcTableRowHeight(doc, row, columns) {
   return maxH;
 }
 
+// ---------------------------------------------------------------------------
+// simpleTable — la tabla de todas las secciones del reporte.
+//
+// Cada columna se declara con { key, label, width, align }, y opcionalmente con
+// `render(fila)` para calcular el texto (un porcentaje, un monto con su símbolo)
+// y `color(fila)` para pintarlo según el dato. Sin `render` se imprime
+// fila[key], o una raya si viene vacío.
+//
+// Se encarga sola del alto de cada fila, del sombreado alterno y del salto de
+// página, repitiendo el encabezado arriba de cada hoja nueva. Devuelve la `y`
+// donde terminó.
+// ---------------------------------------------------------------------------
 function simpleTable(doc, { columns, rows, y, emptyLabel }) {
+  // Dibuja la banda marina con los rótulos y devuelve la `y` de la primera fila.
   const drawHeaderRow = (yy) => {
     doc.rect(MARGIN, yy, CW, TABLE_ROW_MIN_H).fill(C.NAVY);
     let x = MARGIN;
@@ -281,6 +294,8 @@ function simpleTable(doc, { columns, rows, y, emptyLabel }) {
   return cy + 12;
 }
 
+// statBox — una de las cajas de cifra grande de la fila de indicadores: rótulo
+// arriba, número abajo, en la posición y el ancho que le indica el llamador.
 function statBox(doc, x, y, w, label, value, color) {
   // Misma logica que sectionTitle: la proforma usa cajas BLANCAS con borde fino
   // y un filete naranja bajo el rotulo, no rectangulos redondeados con relleno
@@ -523,6 +538,11 @@ function _drawPorMesTable(doc, m, y) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// drawMisMetricas — el bloque «Mi Rendimiento» del reporte individual: las
+// cajas de indicadores y las seis tablas que lo componen, en el mismo orden que
+// la pantalla del ejecutivo. Cada sección recibe y devuelve la `y`.
+// ---------------------------------------------------------------------------
 function drawMisMetricas(doc, m, leaderboard, y) {
   // Sin datos no se dibuja una grilla de guiones: se dice que no hay nada.
   if (!m) {
@@ -543,20 +563,6 @@ function drawMisMetricas(doc, m, leaderboard, y) {
   return y;
 }
 
-// ---------------------------------------------------------------------------
-// generateReportePdf — returns a Promise<Buffer>.
-//
-// @param {Object} data
-//   mode            {'company'|'individual'}
-//   periodo         {string} human-readable period label
-//   rol             {string} caller's role
-//   nombreUsuario   {string} caller's display name
-//   progreso        {Object|null} getProgreso() result — company mode only
-//   topClientes     {Array}
-//   leaderboard     {Array}
-//   metricas        {Object|null} misMetricas.obtener() — individual mode only
-//   clientesPorOrigen {Array} — company mode only
-// ---------------------------------------------------------------------------
 // ── Secciones del reporte ────────────────────────────────────────────────────
 // Mismo patrón que ya usaban las siete de drawMisMetricas (_drawStatBoxes,
 // _drawPorEstadoTable, _drawComparacionPeriodo…): reciben el doc y la `y` donde
@@ -646,6 +652,23 @@ function _pieEnTodasLasPaginas(doc, footerSubtitle) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// generateReportePdf — arma el reporte entero y devuelve una Promise<Buffer>:
+// el PDF se construye en memoria y quien llama decide si lo manda al navegador
+// o lo guarda. Hay dos modos: 'company' (resumen general, rendimiento por
+// ejecutivo, clientes por origen) e 'individual' (el bloque Mi Rendimiento).
+//
+// @param {Object} data
+//   mode            {'company'|'individual'}
+//   periodo         {string} el período, ya escrito para mostrar
+//   rol             {string} el rol de quien pidió el reporte
+//   nombreUsuario   {string} su nombre
+//   progreso        {Object|null} resultado de getProgreso — sólo modo empresa
+//   topClientes     {Array}
+//   leaderboard     {Array}
+//   metricas        {Object|null} misMetricas.obtener — sólo modo individual
+//   clientesPorOrigen {Array} — sólo modo empresa
+// ---------------------------------------------------------------------------
 async function generateReportePdf(data) {
   const {
     mode, periodo, rol, nombreUsuario,

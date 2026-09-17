@@ -68,6 +68,7 @@ escribe SQL.
 | [controladores.md](controladores.md) | `src/controllers/` | ¿Qué pasa en cada operación: crear, aprobar, reportar? |
 | [modelos.md](modelos.md) | `src/models/` | ¿Qué consultas se hacen a la base y dónde? |
 | [utilidades.md](utilidades.md) | `src/utils/` | ¿Qué herramientas compartidas hay y por qué existen? |
+| [servicios-pdf.md](servicios-pdf.md) | `src/services/` | ¿Cómo se dibujan la proforma, el expediente de licitación y el reporte? |
 | [tiempo-real.md](tiempo-real.md) | `src/realtime/` | ¿Cómo funciona el aviso de cotización en redacción? |
 
 ---

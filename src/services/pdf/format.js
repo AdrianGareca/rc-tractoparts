@@ -176,6 +176,7 @@ const UNSUPPORTED_GLYPHS = {
   '₹': 'INR',   // ₹
 };
 
+// Reemplaza los símbolos que la fuente no tiene por su código ISO (ver arriba).
 function sanitizeUnsupportedGlyphs(value) {
   if (value == null) return value;
   return String(value).replace(/[₩₹]/g, (ch) => UNSUPPORTED_GLYPHS[ch]);
