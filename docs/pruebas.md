@@ -1,6 +1,6 @@
 # Las pruebas: qué protege cada una
 
-**2755 pruebas en 153 suites** (al 16 de septiembre de 2026). Este documento no las lista: explica los **tipos**
+**2761 pruebas en 154 suites** (al 18 de septiembre de 2026). Este documento no las lista: explica los **tipos**
 que hay, porque este proyecto usa dos que no son habituales y que confunden si
 uno se los cruza sin contexto.
 
@@ -10,6 +10,13 @@ npm run test:unit         # sólo unitarias
 npm run test:integration  # sólo integración (levanta la base de pruebas)
 npm run db:init:test      # reconstruye la base de pruebas
 ```
+
+**También corren solas en GitHub**, en cada push a `main` y en cada PR contra
+`main` (`.github/workflows/pruebas.yml`): Linux, Node 20 y MySQL 8.0, las mismas
+versiones del servidor. Si algo falla, GitHub manda un correo y el reporte
+explica en castellano qué hacer. Mientras esa corrida esté en rojo, **el cambio
+no se despliega**. `tests/unit/flujoDePruebas.test.js` exige que las versiones
+del flujo sigan siendo las de `Dockerfile` y `docker-compose.yml`.
 
 ---
 

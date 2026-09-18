@@ -358,6 +358,20 @@ otra función (`onSuccess: () => this.refresh()` y parecidas) se explican una ve
 en la función que las recibe, y no en cada una de las decenas de lugares donde
 se escriben.
 
+### Las pruebas corren solas (18 de septiembre)
+
+Hasta acá, las pruebas solo corrían si alguien escribía `npm test` en su
+computadora: un cambio que rompía algo podía llegar a `main` y de ahí al
+servidor sin que nada lo frenara. Desde el 18, `.github/workflows/pruebas.yml`
+las corre en GitHub en cada push, con un MySQL de verdad levantado al lado y
+con las mismas versiones que el servidor (Node 20, MySQL 8.0 y su método de
+autenticación). Si algo falla, llega un correo.
+
+Antes de subirlo se reprodujo localmente lo que iba a ver GitHub: una copia
+limpia del repositorio, sin `.env`, en hora UTC y con Node 20. Pasó entera.
+También se revisó lo único que Windows no puede reproducir: que ningún archivo
+ni ninguna tabla se nombre con otras mayúsculas, porque Linux las distingue.
+
 ---
 
 ## 8. Cómo creció la red de pruebas
@@ -372,6 +386,7 @@ se escriben.
 | 11 sep | ~2667 | Marcas desde Excel |
 | 15 sep | 2750 | Prueba de rendimiento: tope de reportes, cola paginada, pantallas de consumo y de la cola |
 | 16 sep | 2755 | Guardia de la documentación del código: archivos, enlaces y funciones citadas |
+| 18 sep | 2761 | Las pruebas corren solas en GitHub en cada push, con las versiones del servidor |
 
 El proyecto usa dos tipos de prueba poco habituales, explicados en
 [pruebas.md](pruebas.md): los **trinquetes** (números que sólo pueden bajar) y
@@ -421,9 +436,6 @@ el filtro de «hoy» y el aviso de seguimientos).
 
 ## 11. Lo que sigue abierto
 
-- **No hay integración continua que corra las pruebas** en cada push. Sólo
-  existe la revisión semanal de dependencias. El obstáculo real es levantar
-  MySQL dentro del flujo de GitHub, no escribir el archivo.
 - **El chequeo de salud es superficial**: `/health` responde aunque la base
   esté caída.
 - **El encabezado de la entidad emisora del PDF** avanza con saltos fijos. Hoy

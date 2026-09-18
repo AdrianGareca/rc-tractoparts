@@ -1,0 +1,159 @@
+# =============================================================================
+# .github/workflows/pruebas.yml
+# Corre TODAS las pruebas en cada push a main y en cada PR contra main.
+#
+# POR QUÉ EXISTE
+# Las 2.755 pruebas sólo corrían cuando alguien escribía `npm test` en su
+# computadora. Un cambio que rompía algo podía llegar a main —y de ahí al
+# servidor con el próximo `git pull`— sin que nada lo frenara. Acá corren solas,
+# y si algo falla GitHub manda un correo.
+#
+# LA PARTE DIFÍCIL: LA BASE DE DATOS
+# Las pruebas de integración hablan con un MySQL de verdad (crean cotizaciones,
+# prueban el correlativo con concurrencia real). GitHub levanta uno al lado de
+# las pruebas, en un contenedor que se descarta al terminar.
+#
+# IGUAL QUE PRODUCCIÓN, A PROPÓSITO
+# Mismas versiones que el servidor: Node 20 (Dockerfile) y MySQL 8.0
+# (docker-compose.yml), con el mismo método de autenticación. Una prueba que
+# pasa con otras versiones no dice nada sobre lo que corre en producción.
+# tests/unit/flujoDePruebas.test.js falla si alguna de las dos se separa.
+#
+# Y en Linux, como el servidor: Windows no distingue mayúsculas en nombres de
+# archivo ni de tabla, y Linux sí. Este es el primer lugar donde las pruebas
+# corren con esa regla.
+#
+# NADA DE ESTO ES SECRETO
+# La contraseña de MySQL de acá abajo es de un contenedor que vive unos minutos
+# y no es alcanzable desde afuera. La clave de sesión se genera al azar en cada
+# corrida. Ninguna de las dos tiene relación con las del servidor.
+# =============================================================================
+
+name: Pruebas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Para lanzarla a mano desde la pestaña Actions.
+  workflow_dispatch:
+
+# Dos pushes seguidos: la corrida del primero ya no importa, se cancela.
+concurrency:
+  group: pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+# Sólo lectura: esta tarea no escribe nada en el repositorio.
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    name: Suite completa
+    runs-on: ubuntu-latest
+    # En una computadora común la suite tarda unos minutos. Si se cuelga, que
+    # corte a la media hora en vez de consumir las seis horas que permite GitHub.
+    timeout-minutes: 30
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: raiz_ci
+        ports:
+          - 3306:3306
+        # No arrancar las pruebas hasta que MySQL acepte conexiones.
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -praiz_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_USER: root
+      DB_PASSWORD: raiz_ci
+      # DB_NAME no se usa en las pruebas, pero init.js exige que sea distinta de
+      # DB_NAME_TEST (es la protección contra borrar la base real).
+      DB_NAME: rc_tractoparts_ci
+      DB_NAME_TEST: rc_tractoparts_test
+      JWT_EXPIRES_IN: 8h
+      BCRYPT_ROUNDS: 12
+      MAX_LOGIN_ATTEMPTS: 3
+      LOCK_DURATION_MINUTES: 15
+      UPLOAD_DIR: uploads/cotizaciones
+      MAX_PDF_SIZE_MB: 10
+      CORS_ORIGIN: http://localhost:3000
+
+    steps:
+      - name: Traer el código
+        uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci --no-audit --no-fund
+
+      # El servidor arranca MySQL con mysql_native_password (docker-compose.yml).
+      # El contenedor de servicio no acepta argumentos de arranque, así que se
+      # cambia el usuario después: el mismo método de autenticación que en
+      # producción.
+      - name: Autenticación de MySQL igual que en el servidor
+        run: >-
+          docker exec ${{ job.services.mysql.id }}
+          mysql -uroot -praiz_ci -e
+          "ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY 'raiz_ci'; FLUSH PRIVILEGES;"
+
+      - name: Clave de sesión de un solo uso
+        run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Revisar el estilo del código
+        run: npm run lint
+
+      # `npm test` corre primero `pretest`, que crea la base de prueba desde
+      # sql/init.sql: la misma que se usa para instalar un servidor nuevo.
+      - name: Correr las pruebas
+        run: npm test
+
+      # Sólo si algo falló. Una explicación en castellano en la pantalla del
+      # reporte, para que quien abra el correo sepa por dónde empezar.
+      - name: Explicar qué hacer
+        if: failure()
+        run: |
+          {
+            echo "## Algo falló"
+            echo ""
+            echo "El último cambio que llegó a main rompió al menos una prueba,"
+            echo "o no pasó la revisión de estilo."
+            echo ""
+            echo "### Qué hacer"
+            echo ""
+            echo "1. Abrí el paso que quedó en rojo y buscá la primera línea que"
+            echo "   dice **FAIL**: es el archivo de prueba que falló, y debajo"
+            echo "   está el motivo."
+            echo "2. **No despliegues** este cambio al servidor hasta arreglarlo."
+            echo "3. En tu máquina, reproducilo con:"
+            echo ""
+            echo '   ```bash'
+            echo '   npm test'
+            echo '   ```'
+            echo ""
+            echo "> Si en tu máquina pasa y acá no, lo más probable es una"
+            echo "> diferencia de mayúsculas: Linux distingue \`Archivo.js\` de"
+            echo "> \`archivo.js\`, y Windows no."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dejar constancia de que pasó
+        if: success()
+        run: |
+          {
+            echo "## Todas las pruebas pasaron"
+            echo ""
+            echo "El cambio se puede desplegar."
+          } >> "$GITHUB_STEP_SUMMARY"
