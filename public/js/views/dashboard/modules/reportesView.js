@@ -837,6 +837,8 @@ const COLOR_SEGUIMIENTO = [
   ['sin_seguimiento',  'Sin seguimiento',  '--clr-gray'],
 ];
 
+// Dibuja los gráficos de reportes (la aguja de tasa de éxito y el anillo del
+// seguimiento comercial) y anima las cifras. Si falla, los datos se ven igual.
 function montarGraficosReportes(dataEl, progresoRes) {
   try {
     const datos = progresoRes?.data ?? {};

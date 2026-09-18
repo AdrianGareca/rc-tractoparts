@@ -177,6 +177,8 @@ const marcaDe = (item) => {
   return (v === '' || v === undefined || v === null) ? null : v;
 };
 
+// Busca otra fila con el mismo código Y la misma marca conocida. Si la hay,
+// devuelve cuál es y la cantidad sumada; si no, o si falta la marca, null.
 export function findDuplicateRow(items, currentIdx, rawCodigo) {
   const normalised = String(rawCodigo ?? '').trim().toUpperCase();
   if (!normalised) return null;              // en blanco — nada que fusionar

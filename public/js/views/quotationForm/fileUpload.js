@@ -47,6 +47,8 @@ export function wireFileUpload({ container, onFile } = {}) {
   const excelFileName = container.querySelector('#excel-file-name');
   if (!excelZone || !excelInput) return;
 
+  // Valida el archivo elegido o soltado; si es un Excel válido lo acepta y
+  // muestra su nombre.
   const onExcelFile = (file) => {
     const result = validateExcelFile(file);
     if (!result.ok) {

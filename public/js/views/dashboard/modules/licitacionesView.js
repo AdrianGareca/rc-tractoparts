@@ -68,6 +68,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
       <div id="lic-results">${tableSkeleton({ columnas: 8, etiqueta: 'Cargando licitaciones' })}</div>
     </div>`;
 
+  // Atajo: busca un elemento dentro de este panel.
   const $ = (sel) => panel.querySelector(sel);
 
   // El ciclo cargando/vacio/error/paginar es identico en los cuatro paneles
@@ -82,6 +83,7 @@ export async function mountLicitacionesTab(panel, opts = {}) {
     onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },
   });
 
+  // Pide la página actual de licitaciones con los filtros y la dibuja.
   async function load() {
     seccion.loading();
 

@@ -50,6 +50,10 @@ Al costado de ese camino hay piezas que usan varias capas:
   redactando la próxima cotización».
 - `src/services/` — la generación de los PDF.
 
+Y del otro lado, antes de todo esto, está el **navegador**: el código de
+`public/js/` que dibuja las pantallas y arma cada petición. Tiene sus propios
+documentos, en la segunda tabla de abajo.
+
 **La regla que mantiene esto ordenado:** cada capa conoce a la de abajo y nunca
 a la de arriba. Un modelo no sabe qué es una respuesta HTTP; un controlador no
 escribe SQL.
@@ -70,6 +74,16 @@ escribe SQL.
 | [utilidades.md](utilidades.md) | `src/utils/` | ¿Qué herramientas compartidas hay y por qué existen? |
 | [servicios-pdf.md](servicios-pdf.md) | `src/services/` | ¿Cómo se dibujan la proforma, el expediente de licitación y el reporte? |
 | [tiempo-real.md](tiempo-real.md) | `src/realtime/` | ¿Cómo funciona el aviso de cotización en redacción? |
+
+**En el navegador** (lo que dibuja las pantallas):
+
+| Documento | Carpeta | Responde a |
+|---|---|---|
+| [pantallas.md](pantallas.md) | `public/js/views/` | ¿Qué pantallas hay, cómo se organiza el código del navegador y qué patrón usa cada parte? |
+| [tablero.md](tablero.md) | `public/js/views/dashboard/` | ¿Qué ve cada rol en el tablero y dónde vive cada pestaña? |
+| [formulario-cotizacion.md](formulario-cotizacion.md) | `public/js/views/quotationForm/` | ¿Cómo funciona el formulario: pegar desde Excel, autoguardado, fusión de ítems? |
+| [navegador-servicios.md](navegador-servicios.md) | `public/js/services/` | ¿Cómo habla el navegador con el servidor y dónde se guarda la sesión? |
+| [navegador-compartidos.md](navegador-compartidos.md) | `public/js/shared/` | ¿Qué herramientas comparten las pantallas y por qué hay copias de reglas del servidor? |
 
 ---
 
@@ -94,6 +108,6 @@ escribe SQL.
 - Una función nueva lleva su comentario arriba desde el primer día.
 - Si cambia lo que hace una carpeta, se actualiza su documento en el mismo
   cambio.
-- `tests/unit/documentacion.test.js` verifica que los archivos que citan estos
-  documentos existan: un documento que manda a un archivo borrado falla la
-  suite.
+- `tests/unit/documentacion.test.js` verifica que los archivos, los enlaces y
+  las funciones que citan estos documentos existan: un documento que manda a
+  algo que se borró o se renombró falla la suite.

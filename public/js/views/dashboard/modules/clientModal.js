@@ -49,6 +49,7 @@ export function openClienteModal({ mode, client, onSaved, mountTarget }) {
 
   (mountTarget || document.body).appendChild(overlay);
 
+  // Cierra la ventana quitándola de la página.
   const close = () => overlay.remove();
 
   overlay.querySelector('#subm-close')?.addEventListener('click', close);

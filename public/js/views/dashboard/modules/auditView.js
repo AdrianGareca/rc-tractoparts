@@ -92,15 +92,19 @@ const ENTIDAD_LABELS = {
   marcas:       'Marcas',
 };
 
+// El nombre legible y el color de una acción de la bitácora. Una acción que
+// no está en la lista se muestra con su código y en gris.
 function accionMeta(codigo) {
   return ACCION_META[codigo] || { label: codigo, badge: 'badge-borrador' };
 }
 
+// La insignia de una acción de la bitácora.
 function accionBadgeHtml(codigo) {
   const meta = accionMeta(codigo);
   return `<span class="badge ${meta.badge}">${escHtml(meta.label)}</span>`;
 }
 
+// La insignia de éxito o fallo de un registro.
 function resultadoBadgeHtml(resultado) {
   const cls = resultado === 'fallo' ? 'badge-resultado-fallo' : 'badge-resultado-exito';
   const label = resultado === 'fallo' ? '✗ Fallo' : '✓ Éxito';
@@ -167,10 +171,13 @@ const VALUE_LABELS = {
 
 const BYTE_KEYS = new Set(['size_bytes', 'pdf_size', 'excel_size']);
 
+// Convierte un nombre de campo en título: «monto_total» → «Monto Total».
 function humanizeKey(key) {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+// Traduce un valor del detalle de la bitácora a algo legible: sí/no, nombres de
+// rol, etiquetas conocidas, fechas, tamaños de archivo y listas de campos.
 function formatDetalleValue(key, value) {
   if (value === null || value === undefined || value === '') return '—';
   if (typeof value === 'boolean') return value ? 'Sí' : 'No';
@@ -308,6 +315,7 @@ export async function mountAuditLogTab(panel) {
   // ── 1. Paint the static shell (filter bar + results container) ONCE ─────────
   panel.innerHTML = buildShellHtml();
 
+  // Atajo: busca un elemento dentro de este panel.
   const $ = (sel) => panel.querySelector(sel);
 
   // El ciclo cargando/vacio/error/paginar es identico en los cuatro paneles

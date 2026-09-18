@@ -53,8 +53,10 @@ class Handler {
 /** Handler 1 — Both fields must be non-empty */
 class PresenceHandler extends Handler {
   #view;
+  // Guarda la vista para poder marcar el campo con error.
   constructor(view) { super(); this.#view = view; }
 
+  // Corta si falta el usuario o la contraseña; si no, pasa al siguiente control.
   async handle(ctx) {
     if (!ctx.username.trim()) {
       this.#view.setFieldError('username', 'El nombre de usuario es requerido.');
@@ -71,8 +73,10 @@ class PresenceHandler extends Handler {
 /** Handler 2 — Username must match the safe identifier pattern */
 class UsernameFormatHandler extends Handler {
   #view;
+  // Guarda la vista para poder marcar el campo con error.
   constructor(view) { super(); this.#view = view; }
 
+  // Corta si el usuario tiene caracteres no permitidos o un largo fuera de 3–50.
   async handle(ctx) {
     const SAFE = /^[\w\-]{3,50}$/;
     if (!SAFE.test(ctx.username.trim())) {
@@ -89,8 +93,10 @@ class UsernameFormatHandler extends Handler {
 /** Handler 3 — Password must not be trivially short */
 class PasswordLengthHandler extends Handler {
   #view;
+  // Guarda la vista para poder marcar el campo con error.
   constructor(view) { super(); this.#view = view; }
 
+  // Corta si la contraseña está vacía.
   async handle(ctx) {
     if (ctx.password.length < 1) {
       this.#view.setFieldError('password', 'La contraseña no puede estar vacía.');
@@ -106,8 +112,12 @@ class PasswordLengthHandler extends Handler {
  */
 class ApiSubmitHandler extends Handler {
   #view;
+  // Guarda la vista para mostrar la carga y los errores.
   constructor(view) { super(); this.#view = view; }
 
+  // Manda el inicio de sesión. Si sale bien, guarda la sesión y entra al tablero;
+  // si no, explica por qué: credenciales inválidas (sin decir si el usuario
+  // existe), datos mal formados, demasiados intentos, o error del servidor.
   async handle(ctx) {
     this.#view.setLoading(true);
 
@@ -172,6 +182,7 @@ class AuthViewController {
   #toggleBtn;  // Password visibility toggle
   #chain; // Head of the validation chain
 
+  // Busca y guarda los elementos de la pantalla de inicio de sesión.
   constructor() {
     this.#form         = document.getElementById('login-form');
     this.#usernameInput= document.getElementById('username');
@@ -247,11 +258,13 @@ class AuthViewController {
     }
   }
 
+  // Muestra el aviso general de arriba del formulario.
   setAlert(message, type = 'error') {
     this.#formAlert.textContent = message;
     this.#formAlert.className   = `form-alert show alert-${type}`;
   }
 
+  // Pone el botón en «Verificando…» y lo desactiva mientras espera la respuesta.
   setLoading(isLoading) {
     this.#btnLogin.disabled = isLoading;
     if (isLoading) {
@@ -263,6 +276,7 @@ class AuthViewController {
     }
   }
 
+  // Quita la marca de error de un campo.
   _clearFieldError(field) {
     if (field === 'username') {
       this.#usernameInput.classList.remove('is-invalid');
@@ -273,6 +287,7 @@ class AuthViewController {
     }
   }
 
+  // Limpia todos los errores y el aviso antes de un intento nuevo.
   _clearAll() {
     this._clearFieldError('username');
     this._clearFieldError('password');

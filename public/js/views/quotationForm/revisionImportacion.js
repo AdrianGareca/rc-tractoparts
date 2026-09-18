@@ -32,6 +32,7 @@ import { crearSubModal } from '../../shared/subModal.js';
 import { escText } from './helpers.js';
 import { aplicarMarcaAFilas } from './brandModal.js';
 
+// «1 fila» o «N filas».
 const filasTexto = (n) => `${n} fila${n === 1 ? '' : 's'}`;
 
 /** ¿Hay algo que mostrar? Si no, la ventana no se abre. */
@@ -115,6 +116,7 @@ async function crearOAdoptar(nombre) {
 function cablearMarca(li, desconocida, deps) {
   const resultado = li.querySelector('[data-resultado]');
   const filas     = filasTexto(desconocida.filas.length);
+  // Aplica una marca a todas las filas que traían esa marca desconocida.
   const aplicar   = (marca) => aplicarMarcaAFilas({ ...deps, brand: marca, filas: desconocida.filas });
 
   // Resuelta: se van los botones y queda escrito qué se hizo.

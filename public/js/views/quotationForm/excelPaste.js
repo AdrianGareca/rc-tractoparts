@@ -142,6 +142,9 @@ function esAgrupadorDeMiles(partes) {
 // vez que la coma decimal, si la hay, se pasa a punto.
 const NOTACION_CIENTIFICA = /^-?\d+([.,]\d+)?[eE][+-]?\d+$/;
 
+// Convierte el texto de una celda en número, entendiendo los formatos que
+// llegan de Excel: 6.800,00 o 6,800.00, separadores de miles, notación
+// científica y signo. Lo ambiguo devuelve NaN, para avisar en vez de adivinar.
 export function parseNumero(valorCrudo) {
   if (valorCrudo == null) return NaN;
   const crudo = String(valorCrudo).trim();
@@ -210,6 +213,7 @@ export function parseNumero(valorCrudo) {
 // ---------------------------------------------------------------------------
 const SEPARADOR = /[\t\r\n]/g;
 
+// La posición del próximo tab o salto de línea desde `desde`, o el final.
 function buscarSeparador(s, desde) {
   SEPARADOR.lastIndex = desde;
   const m = SEPARADOR.exec(s);
@@ -345,6 +349,7 @@ function esFilaDeTotal(celdas, posiciones) {
 
 /** Una fila de datos -> un ítem, anotando en `advertencias` lo que no se entendió. */
 function armarItem(celdas, posiciones, advertencias) {
+  // El texto de la columna que corresponde a un campo, en una sola línea.
   const leer = (campo) => unaLinea(posiciones[campo] != null ? celdas[posiciones[campo]] : '');
 
   const descripcion = leer('descripcion_item');

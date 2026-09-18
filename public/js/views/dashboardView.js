@@ -144,6 +144,9 @@ export function enlacesDeBarraLateral(role) {
 class DashboardController {
   #strategy = null;
 
+  // Arranca el tablero: si no hay sesión vuelve al inicio; si la hay, relee la
+  // persona desde la base, arma la barra lateral y la superior, y dibuja la
+  // estrategia de su rol.
   async init() {
     // Guard — redirect to login if session is absent or expired
     if (!AuthSession.isAuthenticated()) {
@@ -218,6 +221,8 @@ class DashboardController {
     await this.#strategy.render(container);
   }
 
+  // Escribe el nombre, las iniciales y el rol de la persona en la barra superior
+  // y en el pie de la barra lateral.
   _populateIdentity(user, role) {
     const displayName = user?.nombre_completo ?? user?.nombre_usuario ?? '—';
     const initials    = displayName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
@@ -237,6 +242,9 @@ class DashboardController {
     if (sbRole)     sbRole.textContent     = role ?? '—';
   }
 
+  // Dibuja los enlaces de la barra lateral según el rol y los cablea: cerrar
+  // sesión, abrir la documentación de la API, crear una cotización, o cambiar de
+  // sección dentro del tablero.
   _renderSidebar(role) {
     const nav = document.getElementById('sidebar-nav');
     if (!nav) return;
@@ -276,6 +284,7 @@ class DashboardController {
         if (btn.dataset.section === 'new') {
           UI.openModal('Nueva cotización', (body) => {
             const destroy = mountQuotationForm(body, {
+              // Cotización creada: se cierra el formulario, se avisa el número y se recarga.
               onSuccess: (q) => {
                 UI.closeModal();
                 showToast(`Cotización ${q?.numero_correlativo ?? ''} creada.`, 'success');
@@ -313,6 +322,7 @@ class DashboardController {
     const btn = document.getElementById('btn-theme');
     if (!btn) return;
 
+    // Pone en el botón el icono y el texto del tema elegido.
     const sync = (mode) => {
       const { icon, label } = themeButtonLabel(mode);
       btn.textContent = icon;
@@ -324,6 +334,8 @@ class DashboardController {
     btn.addEventListener('click', () => sync(cycleTheme()));
   }
 
+  // Cierra la sesión en el servidor y en el navegador. Si el servidor no
+  // responde, igual se borra la sesión local y se vuelve al inicio.
   _wireLogout() {
     document.getElementById('btn-logout')?.addEventListener('click', async () => {
       try {

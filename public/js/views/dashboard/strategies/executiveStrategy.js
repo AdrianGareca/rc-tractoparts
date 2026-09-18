@@ -56,8 +56,12 @@ export class ExecutiveStrategy extends DashboardStrategy {
   // stat/proformas widgets lacked the AbortController guard _loadQuotations has).
   #refreshGen     = 0;
 
+  // Guarda la persona conectada; el tablero se dibuja recién en render().
   constructor(user) { super(); this.#user = user; }
 
+  // Dibuja el tablero del Ejecutivo: indicadores, proformas del día, métricas
+  // personales, el listado con sus solapas «Mías» y «Equipo», y el botón de
+  // Nueva cotización. Al final carga todo y, si tiene delegación, las licitaciones.
   async render(container) {
     this.#container = container;
 
@@ -127,6 +131,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
       columnas:     7,   // default de "mias" — _loadQuotations() pasa 8 en "equipo"
       etiqueta:     'Cargando cotizaciones',
       etiquetas:    ETIQUETAS_FECHA,
+      // Al cambiar de página se guarda la posición de ESTA solapa y se recarga.
       onPageChange: ({ page, limit }) => {
         this.#pagPorScope[this.#scope] = { page, limit };
         this._loadQuotations();
@@ -136,6 +141,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     document.getElementById('btn-new-quotation')?.addEventListener('click', () => {
       UI.openModal('Nueva cotización', (body) => {
         const destroy = mountQuotationForm(body, {
+          // Cotización creada: se cierra el formulario, se avisa el número y se recarga.
           onSuccess: (q) => {
             UI.closeModal();
             showToast(`Cotización ${q?.numero_correlativo ?? ''} creada.`, 'success');
@@ -202,6 +208,8 @@ export class ExecutiveStrategy extends DashboardStrategy {
     this._mountLicitacionesSection();
   }
 
+  // El panel de licitaciones, solo para ejecutivos con delegación: ven lo que
+  // Proyectos les pasó a «Cotizando» y pueden cotizar desde ahí.
   async _mountLicitacionesSection() {
     const section = document.getElementById('exec-licitaciones-section');
     if (!section) return;
@@ -225,6 +233,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
           id_licitacion:   lic.id,
           licitacion_label: `${lic.codigo} — ${lic.nombre}`,
         },
+        // Cotización vinculada creada: se cierra, se avisa y se recarga el tablero.
         onSuccess: (q) => {
           UI.closeModal();
           showToast(`Cotización ${q?.numero_correlativo ?? ''} creada y vinculada a ${lic.codigo}.`, 'success');
@@ -237,6 +246,9 @@ export class ExecutiveStrategy extends DashboardStrategy {
     }, { wide: true, dismissOnBackdrop: false });
   }
 
+  // Recarga todo el tablero en paralelo. Cada recarga lleva un número: si llega
+  // tarde la respuesta de una recarga anterior, se descarta en vez de pisar datos
+  // más nuevos.
   async refresh() {
     if (!this.#container) return;
     const gen = ++this.#refreshGen;
@@ -248,6 +260,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     ]);
   }
 
+  // Las métricas personales (el mismo bloque que la pantalla de reportes).
   async _loadMetrics(gen) {
     const section = document.getElementById('metrics-section');
     if (!section) return;
@@ -255,6 +268,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     await renderExecutiveMetrics(section);
   }
 
+  // El recuadro «Proformas del día»: lo emitido hoy. Si falla, no rompe el tablero.
   async _loadProformasHoy(gen) {
     const section = document.getElementById('proformas-hoy-section');
     if (!section) return;
@@ -302,6 +316,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     } catch (_) { /* non-fatal — widget failure must not break main view */ }
   }
 
+  // Las tarjetas de arriba: el total y los cuatro estados que más se miran.
   async _loadSummary(gen) {
     try {
       const data = await api.get('/api/cotizaciones/resumen');
@@ -407,6 +422,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     const rows   = this.#allRows;
 
     const totalActiva = this.#pagInfo?.totalRecords ?? rows.length;
+    // Escribe el número de la insignia de una solapa.
     const setCount = (scope, n) => {
       const el = this.#container.querySelector(`[data-scope-count="${scope}"]`);
       if (el) el.textContent = n;
@@ -487,6 +503,10 @@ export class ExecutiveStrategy extends DashboardStrategy {
     });
   }
 
+  // Abre una cotización con su proforma y su historial. Según quién mira,
+  // agrega los botones que corresponden: editar si es su borrador pendiente, y
+  // todas las acciones de estado si tiene delegación. PDF, Excel y seguimiento
+  // están siempre.
   async _viewQuotation(id) {
     try {
       const [quotData, histData] = await Promise.allSettled([
@@ -647,6 +667,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     UI.openModal(`Editar cotización ${q.numero_correlativo}`, (body) => {
       const destroy = mountQuotationForm(body, {
         quotation: q,
+        // Edición guardada: se cierra el formulario, se avisa y se recarga.
         onSuccess: (updated) => {
           UI.closeModal();
           showToast(`Cotización ${updated?.numero_correlativo ?? q.numero_correlativo} actualizada.`, 'success');
@@ -659,6 +680,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
     }, { wide: true, dismissOnBackdrop: false });
   }
 
+  // El cambio de estado rápido desde la fila del listado.
   _changeStatus(id, currentStatus, triggerBtn) {
     // El selector ofrecía los 8 estados sin filtrar. Elegir uno que el rol no
     // podía hacer devolvía un 403 del servidor con un mensaje técnico: el

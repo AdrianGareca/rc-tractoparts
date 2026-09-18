@@ -52,6 +52,7 @@ export class DraftLockController {
   #hasLock   = false;  // true once THIS socket owns the global next-number reservation
   #destroyed = false;  // true once the form was torn down — guards the async connect
 
+  // Guarda el formulario al que pertenece; la conexión se abre después.
   constructor(container) {
     this.#container = container;
   }

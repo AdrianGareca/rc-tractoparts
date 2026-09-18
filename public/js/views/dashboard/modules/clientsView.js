@@ -153,12 +153,15 @@ function buildRowHtml(c) {
                 </tr>`;
 }
 
+// La pestaña de gestión de clientes: búsqueda, listado paginado y las acciones
+// de crear, editar, desactivar y reactivar. Devuelve la limpieza del panel.
 export async function mountClientsTab(panel) {
   const state = { page: 1, limit: 20, q: '' };
 
   // ── 1. Paint the static shell ONCE ───────────────────────────────────────
   panel.innerHTML = buildShellHtml();
 
+  // Atajo: busca un elemento dentro de este panel.
   const $ = (sel) => panel.querySelector(sel);
 
   // El ciclo cargando/vacio/error/paginar es identico en los cuatro paneles
@@ -286,6 +289,7 @@ function confirmDialog({ title, message, confirmLabel, confirmClass = 'btn-dange
       </div>`;
     document.body.appendChild(overlay);
 
+    // Cierra la confirmación y responde si la persona aceptó o no.
     const close = (result) => { overlay.remove(); resolve(result); };
     overlay.querySelector('#cd-close')?.addEventListener('click', () => close(false));
     overlay.querySelector('#cd-cancel')?.addEventListener('click', () => close(false));

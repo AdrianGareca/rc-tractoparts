@@ -54,10 +54,12 @@ function fmtCantidad(v) {
   return n.toFixed(4).replace(/\.?0+$/, '');
 }
 
+// La celda del código; una línea cargada sin código lo dice en vez de quedar vacía.
 const celdaCodigo = (f) => f.sin_codigo
   ? '<span class="text-muted" title="La línea se cargó sin código; se agrupa por descripción.">— sin código —</span>'
   : `<span class="fw-600">${escHtml(f.codigo)}</span>`;
 
+// La celda de la marca, o una raya si la línea no tiene.
 const celdaMarca = (f) => f.marca_nombre
   ? escHtml(f.marca_nombre)
   : '<span class="text-muted">—</span>';
@@ -78,6 +80,7 @@ const VISTAS = {
       { clave: 'items',    texto: 'Cotizaciones', derecha: true },
       { clave: 'fecha', texto: 'Último pedido' },
     ],
+    // Una fila de la vista por ítem, en la pantalla.
     fila: (f) => `
       <td>${celdaCodigo(f)}</td>
       <td class="text-sm">${celdaMarca(f)}</td>
@@ -88,6 +91,7 @@ const VISTAS = {
       <td class="text-sm">${fmtDate(f.ultima_vez)}</td>`,
     csv: {
       cabecera: ['Codigo', 'Marca', 'Descripcion', 'Cantidad', 'Unidad', 'Clientes', 'Cotizaciones', 'Primer pedido', 'Ultimo pedido'],
+      // La misma fila, como valores para el CSV.
       fila: (f) => [
         f.sin_codigo ? '' : f.codigo, f.marca_nombre ?? '', f.descripcion ?? '',
         fmtCantidad(f.cantidad_total), f.unidad ?? '', f.clientes, f.cotizaciones,
@@ -109,6 +113,7 @@ const VISTAS = {
       { clave: 'items',     texto: 'Cotiz.', derecha: true },
       { clave: 'fecha', texto: 'Último pedido' },
     ],
+    // Una fila de la vista por ejecutivo, en la pantalla.
     fila: (f) => `
       <td class="text-sm">${escHtml(f.ejecutivo_nombre ?? '—')}</td>
       <td class="fw-600">${escHtml(f.cliente_nombre)}</td>
@@ -120,6 +125,7 @@ const VISTAS = {
       <td class="text-sm">${fmtDate(f.ultima_vez)}</td>`,
     csv: {
       cabecera: ['Ejecutivo', 'Cliente', 'NIT', 'Codigo', 'Marca', 'Descripcion', 'Cantidad', 'Unidad', 'Cotizaciones', 'Primer pedido', 'Ultimo pedido'],
+      // La misma fila, como valores para el CSV.
       fila: (f) => [
         f.ejecutivo_nombre ?? '', f.cliente_nombre, f.cliente_nit ?? '',
         f.sin_codigo ? '' : f.codigo, f.marca_nombre ?? '', f.descripcion ?? '',
@@ -244,6 +250,7 @@ export async function mountClienteItemReport(panel, opts = {}) {
 
   panel.innerHTML = buildShellHtml(opts);
 
+  // Atajo: busca un elemento dentro de este panel.
   const $ = (sel) => panel.querySelector(sel);
   $('#ci-desde').value = state.desde;
   $('#ci-hasta').value = state.hasta;
@@ -283,6 +290,7 @@ export async function mountClienteItemReport(panel, opts = {}) {
     if (elegido && sel.querySelector(`option[value="${elegido}"]`)) sel.value = elegido;
   }
 
+  // Pide el reporte con la vista, los filtros y el orden actuales, y lo dibuja.
   async function load() {
     const vista   = VISTAS[state.vista];
     seccion.loading(vista.columnas.length);
@@ -378,8 +386,10 @@ export async function mountClienteItemReport(panel, opts = {}) {
  * tests/unit/pantallaConsumo.test.js sobre un DOM real.
  */
 function cablearControles({ panel, state, load, exportarCsv }) {
+  // Atajo: busca un elemento dentro de este panel.
   const $ = (sel) => panel.querySelector(sel);
 
+  // Lee todos los filtros del formulario, vuelve a la página 1 y recarga.
   const aplicar = () => {
     state.desde     = $('#ci-desde').value;
     state.hasta     = $('#ci-hasta').value;

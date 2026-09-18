@@ -55,6 +55,7 @@ function colorConversion(pct) {
   return 'var(--clr-red)';
 }
 
+// La tabla «en qué anda cada cotización»: cantidad y montos por estado.
 function tablaPorEstado(filas) {
   if (filas.length === 0) {
     return '<div class="empty-state"><p>Sin cotizaciones en el período elegido.</p></div>';
@@ -245,6 +246,8 @@ const COLOR_ESTADO = {
   'Archivada':         '--clr-gray',
 };
 
+// Dibuja los gráficos de las métricas (evolución por mes y anillo por estado)
+// y anima las cifras. Si un gráfico falla, las métricas se ven igual.
 function montarGraficos(el, m) {
   try {
     const lienzoMes = el.querySelector('[data-grafico="mes"]');

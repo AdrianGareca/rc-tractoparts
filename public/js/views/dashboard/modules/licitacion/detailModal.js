@@ -25,6 +25,7 @@ import {
   canManageGastos,
 } from './permissions.js';
 
+// Un monto con separadores bolivianos y su símbolo: «$ 1.234,50» o «Bs. 1.234,50».
 function fmtMoney(n, moneda = 'BOB') {
   if (n == null) return '—';
   const s = Number(n).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -234,6 +235,7 @@ export async function openLicitacionDetail(id, { onChanged, onCreateCotizacion =
   overlay.innerHTML = renderDetailHtml(lic, history, documentos, { onCreateCotizacion });
   document.body.appendChild(overlay);
 
+  // Cierra el detalle quitándolo de la página.
   const close = () => overlay.remove();
   overlay.querySelector('#licd-close')?.addEventListener('click', close);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });

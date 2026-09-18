@@ -76,6 +76,7 @@ export function wireClientSearch({ container, onDirty } = {}) {
 
   let debounceTimer = null;
 
+  // Vacía y esconde la lista de clientes encontrados.
   const closeDropdown = () => {
     dropdown.innerHTML = '';
     dropdown.classList.remove('open');

@@ -30,10 +30,12 @@ export class LineItemsSubject {
   #items     = [];   // Array<{ descripcion_item, cantidad, precio_unitario }>
   #observers = [];
 
+  // Anota a quien quiere enterarse de cada cambio en los ítems.
   subscribe(observer) {
     this.#observers.push(observer);
   }
 
+  // Deja de avisarle a ese observador.
   unsubscribe(observer) {
     this.#observers = this.#observers.filter(o => o !== observer);
   }
@@ -46,6 +48,7 @@ export class LineItemsSubject {
    */
   getItems() { return this.#items.map(i => ({ ...i })); }
 
+  // Agrega una fila vacía con los valores por defecto y devuelve su posición.
   addItem() {
     this.#items.push({
       descripcion_item:   '',
@@ -81,17 +84,20 @@ export class LineItemsSubject {
     return this.#items.length - 1;
   }
 
+  // Quita una fila y avisa.
   removeItem(index) {
     this.#items.splice(index, 1);
     this._notify();
   }
 
+  // Cambia un campo de una fila y avisa.
   updateItem(index, field, value) {
     if (!this.#items[index]) return;
     this.#items[index][field] = value;
     this._notify();
   }
 
+  // Avisa a todos los observadores con una copia de los ítems.
   _notify() {
     // Provide a shallow copy so observers can't mutate the internal array
     const snapshot = this.#items.map(i => ({ ...i }));
@@ -117,8 +123,10 @@ export class Observer {
  */
 export class RowSubtotalObserver extends Observer {
   #container;
+  // Guarda el formulario donde están las celdas de subtotal.
   constructor(container) { super(); this.#container = container; }
 
+  // Escribe cantidad × precio en la celda de subtotal de cada fila.
   update(items) {
     items.forEach((item, idx) => {
       const cell = this.#container.querySelector(`[data-item-subtotal="${idx}"]`);
@@ -139,6 +147,7 @@ export class TotalsObserver extends Observer {
   #totalEl;
   #discountEl;   // <input> for the manual cash discount (may be null during init)
 
+  // Guarda dónde se muestran el subtotal y el total, y el campo del descuento.
   constructor(subtotalEl, totalEl, discountEl) {
     super();
     this.#subtotalEl = subtotalEl;
@@ -149,6 +158,8 @@ export class TotalsObserver extends Observer {
   /** Update the discount element reference (wired after render) */
   setDiscountEl(el) { this.#discountEl = el; }
 
+  // Recalcula el subtotal y el total con el descuento (la cuenta vive en
+  // shared/quotationTotals.js).
   update(items) {
     const subtotal = sumSubtotals(items);
     // computeTotal clamps the discount to >= 0, so a negative entry can never

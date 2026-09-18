@@ -30,6 +30,7 @@ const ESPERA_TECLEO_MS = 250;
  * @returns {{ elegir: (id: number, nombre: string) => void }}
  */
 export function montarBuscadorDeConvocante({ overlay }) {
+  // Atajo: busca un elemento dentro de esta ventana.
   const $ = (sel) => overlay.querySelector(sel);
 
   const campoBusqueda = $('#lic-cliente-search');
@@ -43,6 +44,7 @@ export function montarBuscadorDeConvocante({ overlay }) {
 
   let temporizador;
 
+  // Vacía y esconde la lista de resultados de la búsqueda.
   const cerrarPanel = () => {
     panel.innerHTML = '';
     panel.classList.remove('open');

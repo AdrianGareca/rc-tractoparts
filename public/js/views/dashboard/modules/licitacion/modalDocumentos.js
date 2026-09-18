@@ -29,6 +29,7 @@ const CAMPO_MULTIPART = 'documentos';
  * @returns {{ hayArchivos: () => boolean, cantidad: () => number, aFormData: () => FormData }}
  */
 export function montarSelectorDeDocumentos({ overlay }) {
+  // Atajo: busca un elemento dentro de esta ventana.
   const $ = (sel) => overlay.querySelector(sel);
 
   const boton  = $('#lic-doc-pick');
@@ -105,6 +106,7 @@ export function montarSelectorDeDocumentos({ overlay }) {
   return {
     hayArchivos: () => elegidos.length > 0,
     cantidad:    () => elegidos.length,
+    // Empaqueta los archivos elegidos en el formato que espera la subida.
     aFormData:   () => {
       const fd = new FormData();
       elegidos.forEach((f) => fd.append(CAMPO_MULTIPART, f));

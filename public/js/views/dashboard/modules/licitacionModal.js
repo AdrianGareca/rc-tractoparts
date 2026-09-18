@@ -63,7 +63,9 @@ export function openLicitacionModal({ mode = 'create', licitacion = null, onSave
 
   mountTarget.appendChild(overlay);
 
+  // Atajo: busca un elemento dentro de esta ventana.
   const $ = (sel) => overlay.querySelector(sel);
+  // Cierra la ventana quitándola de la página.
   const close = () => overlay.remove();
 
   $('#lic-close').addEventListener('click', close);
@@ -90,6 +92,7 @@ export function openLicitacionModal({ mode = 'create', licitacion = null, onSave
       documentos,
       boton: $('#lic-submit'),
       mostrarError: (mensaje) => { errEl.textContent = mensaje; },
+      // Guardado: se cierra la ventana y se avisa a quien la abrió, para que recargue.
       alTerminar: (resultado) => {
         close();
         if (typeof onSaved === 'function') onSaved(resultado);

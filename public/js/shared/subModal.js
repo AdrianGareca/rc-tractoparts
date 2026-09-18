@@ -62,6 +62,7 @@ export function crearSubModal({ titulo, cuerpo, ancho = false, donde = document.
 
   donde.appendChild(overlay);
 
+  // Cierra la ventana quitándola de la página.
   const cerrar = () => overlay.remove();
 
   // El botón de la cruz y el clic fuera, enganchados acá: los cinco módulos

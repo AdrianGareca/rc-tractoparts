@@ -292,13 +292,17 @@ describe('docs/codigo describe código que existe', () => {
     .filter((f) => f.endsWith('.md'))
     .map((f) => ({ nombre: f, texto: fs.readFileSync(path.join(DIR_CODIGO, f), 'utf8') }));
 
-  /** Todo el JavaScript de src/, para buscar los nombres de funciones. */
+  /** Todo el JavaScript de una carpeta, para buscar los nombres de funciones. */
   const leerJs = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const ruta = path.join(dir, e.name);
     if (e.isDirectory()) return leerJs(ruta);
     return e.name.endsWith('.js') ? [fs.readFileSync(ruta, 'utf8')] : [];
   });
-  const FUENTE = leerJs(path.join(RAIZ, 'src')).join('\n');
+  // El servidor y el navegador: los documentos describen los dos.
+  const FUENTE = [
+    ...leerJs(path.join(RAIZ, 'src')),
+    ...leerJs(path.join(RAIZ, 'public', 'js')),
+  ].join('\n');
 
   test('docs/README.md enlaza el índice de docs/codigo', () => {
     const indiceGeneral = documentos.find((d) => d.nombre === 'README.md');
@@ -333,7 +337,7 @@ describe('docs/codigo describe código que existe', () => {
     expect([...faltan]).toEqual([]);
   });
 
-  test('las funciones citadas existen en src/', () => {
+  test('las funciones citadas existen en src/ o public/js/', () => {
     // `nombreDeFuncion(...)` — lo que se escribe con paréntesis es una función.
     const faltan = new Set(deCodigo.flatMap((d) =>
       [...d.texto.matchAll(/`([A-Za-z_$][A-Za-z0-9_$]*)\(/g)]
@@ -343,7 +347,7 @@ describe('docs/codigo describe código que existe', () => {
 
     if (faltan.size > 0) {
       throw new Error(
-        `docs/codigo nombra funciones que no aparecen en src/:\n  ${[...faltan].join('\n  ')}\n\n` +
+        `docs/codigo nombra funciones que no aparecen en src/ ni en public/js/:\n  ${[...faltan].join('\n  ')}\n\n` +
         'Si se renombró la función, actualizá el documento en el mismo cambio.'
       );
     }

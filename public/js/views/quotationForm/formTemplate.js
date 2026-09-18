@@ -301,6 +301,8 @@ function seccionEncabezado() {
 `;
 }
 
+// Arma el HTML completo del formulario: cabecera, cliente, solicitante, equipo,
+// la grilla de ítems y los totales. `isEdit` cambia los textos para editar.
 export function buildFormHTML({ nextCorrelativo = '', isEdit = false } = {}) {
   // Shared "(Opcional)" label marker — appended to every non-mandatory field
   // so users know at a glance which inputs can be left blank.

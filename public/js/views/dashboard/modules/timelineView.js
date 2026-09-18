@@ -39,6 +39,7 @@ import { openCalendarPicker } from '../../../shared/calendarPicker.js';
 // @returns {string}
 // ---------------------------------------------------------------------------
 function buildDownloadBaseName(correlativo, clienteNombre, id) {
+  // Deja un texto apto para nombre de archivo: sin tildes ni caracteres raros.
   const sanitize = (s) => String(s)
     .normalize('NFD').replace(/[̀-ͯ]/g, '')  // strip accents, keep letters
     .replace(/[^\w\-]/g, '_')                          // block path/injection chars
@@ -174,10 +175,12 @@ export function wireSeguimientoVenta(body, id, idEjecutivo, onSaved) {
       titulo:        'Fecha de próximo seguimiento',
       valorActual:   fechaInput?.value || null,
       fechasOcupadas: ocupadas,
+      // Fecha elegida en el calendario: se guarda y se muestra en el botón.
       onSelect: (fechaStr) => {
         if (fechaInput) fechaInput.value = fechaStr;
         if (fechaBtn)   fechaBtn.textContent = fmtDate(fechaStr);
       },
+      // Fecha borrada: el seguimiento queda sin próximo contacto.
       onClear: () => {
         if (fechaInput) fechaInput.value = '';
         if (fechaBtn)   fechaBtn.textContent = 'Sin fecha — elegir';

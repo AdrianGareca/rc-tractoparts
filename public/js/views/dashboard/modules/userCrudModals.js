@@ -91,6 +91,7 @@ export function showCreateUserModal(onDone) {
           btn,
           successMsg: `Usuario "${usuario}" creado.`,
           onSuccess:  () => { UI.closeModal(); onDone(); },
+          // El error del servidor se muestra dentro del formulario, no solo en el aviso.
           onError:    (err) => {
             alertEl.textContent = err.data?.message || err.message;
             alertEl.className   = 'form-alert show alert-error';

@@ -32,12 +32,14 @@ export class Command {
 /** POST /api/cotizaciones/:id/aprobar  — Approve or reject a quotation */
 export class ApproveQuotationCommand extends Command {
   #id; #aprobado; #obs;
+  // Guarda qué cotización, si se aprueba o se rechaza, y la observación.
   constructor(id, aprobado, obs = '') {
     super();
     this.#id      = id;
     this.#aprobado= aprobado;
     this.#obs     = obs;
   }
+  // Manda la decisión al endpoint exclusivo de aprobación del Jefe.
   async execute() {
     return api.post(`/api/cotizaciones/${this.#id}/aprobar`, {
       aprobado:      this.#aprobado,
@@ -49,12 +51,14 @@ export class ApproveQuotationCommand extends Command {
 /** PUT /api/cotizaciones/:id/estado — Change quotation status */
 export class ChangeStatusCommand extends Command {
   #id; #newStatus; #obs;
+  // Guarda la cotización, el estado al que se la lleva y la observación.
   constructor(id, newStatus, obs = '') {
     super();
     this.#id        = id;
     this.#newStatus = newStatus;
     this.#obs       = obs;
   }
+  // Pide el cambio de estado; el servidor revalida si el rol puede hacerlo.
   async execute() {
     return api.put(`/api/cotizaciones/${this.#id}/estado`, {
       nuevo_estado: this.#newStatus,
@@ -66,28 +70,36 @@ export class ChangeStatusCommand extends Command {
 /** DELETE /api/usuarios/:id — Soft-deactivate a user */
 export class DeactivateUserCommand extends Command {
   #id;
+  // Guarda qué cuenta se desactiva.
   constructor(id) { super(); this.#id = id; }
+  // Desactiva la cuenta (no se borra: sus cotizaciones la siguen nombrando).
   async execute() { return api.delete(`/api/usuarios/${this.#id}`); }
 }
 
 /** POST /api/usuarios — Create a new user */
 export class CreateUserCommand extends Command {
   #data;
+  // Guarda los datos del formulario de alta.
   constructor(data) { super(); this.#data = data; }
+  // Crea la cuenta.
   async execute() { return api.post('/api/usuarios', this.#data); }
 }
 
 /** PUT /api/usuarios/:id — Update a user record */
 export class UpdateUserCommand extends Command {
   #id; #data;
+  // Guarda la cuenta y los campos que cambian.
   constructor(id, data) { super(); this.#id = id; this.#data = data; }
+  // Guarda la edición de la cuenta.
   async execute() { return api.put(`/api/usuarios/${this.#id}`, this.#data); }
 }
 
 /** PATCH /api/cotizaciones/:id/comentario-admin — Save admin supervision comment */
 export class SetComentarioAdminCommand extends Command {
   #id; #comment;
+  // Guarda la cotización y el comentario del Administrador.
   constructor(id, comment) { super(); this.#id = id; this.#comment = comment; }
+  // Guarda solo el comentario, sin cambiar el estado.
   async execute() {
     return api.patch(`/api/cotizaciones/${this.#id}/comentario-admin`, {
       comentario_admin: this.#comment,
@@ -98,7 +110,10 @@ export class SetComentarioAdminCommand extends Command {
 /** PUT /api/cotizaciones/:id/estado — Change quotation status with optional admin comment */
 export class HoldWithCommentCommand extends Command {
   #id; #comment;
+  // Guarda la cotización y el comentario, que acá es obligatorio.
   constructor(id, comment) { super(); this.#id = id; this.#comment = comment; }
+  // Pone la cotización «En espera» y deja el comentario en su columna propia,
+  // para que el Jefe lo lea al abrirla.
   async execute() {
     return api.put(`/api/cotizaciones/${this.#id}/estado`, {
       nuevo_estado:    'En espera',
@@ -111,7 +126,9 @@ export class HoldWithCommentCommand extends Command {
 /** PATCH /api/cotizaciones/:id/seguimiento — Save commercial follow-up (Jefe/Administracion) */
 export class SetSeguimientoVentaCommand extends Command {
   #id; #datos;
+  // Guarda la cotización y los campos del seguimiento comercial.
   constructor(id, datos) { super(); this.#id = id; this.#datos = datos; }
+  // Guarda el seguimiento comercial (estado de venta y próximo contacto).
   async execute() {
     return api.patch(`/api/cotizaciones/${this.#id}/seguimiento`, this.#datos);
   }
@@ -126,6 +143,11 @@ export class SetSeguimientoVentaCommand extends Command {
  *   • Automatic toast feedback on success/failure
  */
 export const CommandInvoker = {
+  // Ejecuta un comando: desactiva el botón mientras trabaja, muestra el aviso de
+  // éxito o de error, y después llama a onSuccess(resultado) o onError(error).
+  // Esas dos respuestas son las funciones de una línea que se ven en cada
+  // llamado (cerrar el modal, refrescar, mostrar el error junto al campo): se
+  // explican acá una vez y no en cada lugar donde se escriben.
   async run(command, { btn, successMsg, onSuccess, onError } = {}) {
     const originalText = btn?.textContent;
     if (btn) { btn.disabled = true; btn.textContent = '…'; }

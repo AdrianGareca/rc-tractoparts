@@ -38,8 +38,11 @@ export async function connectSocket() {
     // connection is safer than presenting state that has quietly gone stale.
     const socket = io({ auth: { token }, reconnection: false });
 
+    // Conectado: se sueltan las escuchas y se entrega el socket.
     const onConnect = () => { cleanup(); resolve(socket); };
+    // No se pudo conectar (sesión inválida, servidor caído): se cierra y se avisa.
     const onError   = (err) => { cleanup(); socket.disconnect(); reject(err); };
+    // Quita las dos escuchas de arriba: sirven solo para el primer intento.
     const cleanup   = () => {
       socket.off('connect', onConnect);
       socket.off('connect_error', onError);

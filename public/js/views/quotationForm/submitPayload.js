@@ -105,6 +105,7 @@ export function collectFormaPago(container) {
 
 /** Lee la cabecera del DOM y arma el body completo del request. */
 export function buildRequestBody(container, { id_cliente, descripcion, fecha_emision, fecha_validez, subtotal, descuento_manual, detalles }) {
+  // El valor de un campo sin espacios de sobra, o null si está vacío.
   const val = (sel) => container.querySelector(sel)?.value.trim() || null;
 
   return {

@@ -96,6 +96,9 @@ function buildRowHtml(r, detailAttr) {
                 </tr>`;
 }
 
+// La pestaña «Todas las cotizaciones»: filtros, listado paginado y el botón de
+// detalle. `onViewDetail(id, correlativo)` decide qué ventana abre cada rol.
+// Devuelve la limpieza del panel.
 export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail }) {
   // Closure state — persists while this tab stays mounted.
   const state = { page: 1, limit: 50 };
@@ -103,6 +106,7 @@ export async function mountAllQuotationsTab(panel, { detailAttr, onViewDetail })
   // ── 1. Paint the static shell (filter bar + results container) ONCE ─────────
   panel.innerHTML = buildShellHtml();
 
+  // Atajo: busca un elemento dentro de este panel.
   const $ = (sel) => panel.querySelector(sel);
 
   // El ciclo cargando/vacio/error/paginar es identico en los cuatro paneles

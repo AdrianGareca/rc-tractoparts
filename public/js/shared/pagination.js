@@ -111,10 +111,12 @@ export function mountPagination(contenedor, paginacion, opciones = {}) {
       </div>
     </div>`;
 
+  // Atajo: busca un control de la paginación por su nombre.
   const $ = (nombre) => contenedor.querySelector(`[data-pag="${nombre}"]`);
   const botonMenu = $('menu');
   const panelMenu = $('menu-panel');
 
+  // Cierra el menú de «filas por página», si está abierto.
   const cerrarMenu = () => {
     if (!panelMenu || panelMenu.hidden) return;
     panelMenu.hidden = true;
@@ -132,12 +134,14 @@ export function mountPagination(contenedor, paginacion, opciones = {}) {
   // y se quitan en destroy(): si quedaran vivos, cada recarga de la tabla
   // apilaría un par más sobre un menú que ya no existe.
   const alClicFuera = () => cerrarMenu();
+  // Escape cierra el menú y devuelve el foco a su botón.
   const alTeclear = (e) => {
     if (e.key === 'Escape') { cerrarMenu(); botonMenu?.focus(); }
   };
   document.addEventListener('click', alClicFuera);
   document.addEventListener('keydown', alTeclear);
 
+  // Va a una página (sin salirse del rango) y avisa a quien pagina.
   const ir = (nuevaPagina, nuevoLimite = limit) => {
     cerrarMenu();
     onChange({ page: Math.min(Math.max(1, nuevaPagina), paginas), limit: nuevoLimite });

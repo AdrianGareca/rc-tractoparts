@@ -350,8 +350,13 @@ Como un documento que describe funciones envejece en cuanto alguien renombra
 una, `tests/unit/documentacion.test.js` ahora verifica que cada archivo,
 enlace y función que nombran esos documentos siga existiendo.
 
-Se hace por etapas: primero el núcleo del backend; después la generación de PDF
-(`src/services/`) y por último el frontend (`public/js/`).
+Se hizo por etapas: el núcleo del backend el 16, la generación de PDF
+(`src/services/`) el 17 y el navegador (`public/js/`) el 18. Quedaron 15
+documentos más el índice. Todas las funciones con nombre llevan su comentario,
+salvo una excepción deliberada: las respuestas de una sola línea que se pasan a
+otra función (`onSuccess: () => this.refresh()` y parecidas) se explican una vez,
+en la función que las recibe, y no en cada una de las decenas de lugares donde
+se escriben.
 
 ---
 

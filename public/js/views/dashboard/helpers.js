@@ -39,6 +39,7 @@ export const LICITACION_STATE_BADGE = {
   'Archivada':      'badge-lic-archivada',
 };
 
+// La insignia de color del estado de una licitación.
 export function licitacionBadgeHtml(estado) {
   const cls = LICITACION_STATE_BADGE[estado] ?? 'badge-lic-preparacion';
   return `<span class="badge ${cls}">${escHtml(estado)}</span>`;
@@ -55,6 +56,7 @@ export const STAT_COLOR = {
   'Rechazada':             'var(--clr-red)',
 };
 
+// La insignia de color del estado de aprobación de una cotización.
 export function badgeHtml(estado) {
   const cls = STATE_BADGE[estado] ?? 'badge-borrador';
   return `<span class="badge ${cls}">${escHtml(estado)}</span>`;
@@ -99,11 +101,13 @@ export function seguimientoVentaBadgeHtml(q) {
   return `<span class="badge ${cls} badge-truncado" title="${escHtml(etiqueta)}">${escHtml(etiqueta)}</span>`;
 }
 
+// La insignia de color del rol de una persona.
 export function roleBadgeHtml(rol) {
   const cls = ROLE_BADGE[rol] ?? '';
   return `<span class="badge ${cls}">${escHtml(rol)}</span>`;
 }
 
+// La fecha como AAAA-MM-DD, tomada tal cual del texto que manda la API.
 export function fmtDate(iso) {
   if (!iso) return '—';
   return iso.slice(0, 10);
@@ -142,6 +146,7 @@ export function fmtDateTime(iso) {
 import { escapeHtml as escHtml } from '../../shared/escapeHtml.js';
 export { escHtml };
 
+// Un monto con su moneda delante y dos decimales, o una raya si no hay.
 export function fmtAmount(n, currency = 'USD') {
   if (n == null) return '—';
   return `${currency} ${Number(n).toFixed(2)}`;
@@ -153,6 +158,7 @@ export function fmtAmount(n, currency = 'USD') {
 // subida) y detailModal.js (lista de adjuntos), para no tocar sus importaciones.
 export { fileIcon as docIcon } from '../../shared/icons.js';
 
+// El tamaño de un archivo en B, KB o MB.
 export function fmtFileSize(bytes) {
   if (bytes == null) return '—';
   if (bytes < 1024) return `${bytes} B`;

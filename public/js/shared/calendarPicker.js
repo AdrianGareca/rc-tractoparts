@@ -89,6 +89,8 @@ export function openCalendarPicker({ titulo = 'Elegir fecha', valorActual = null
 
   const { $, cerrar } = crearSubModal({ titulo: escapeHtml(titulo), cuerpo });
 
+  // Dibuja el mes que se está mirando y hace que cada día elegible, al tocarlo,
+  // devuelva su fecha y cierre el calendario.
   function pintar() {
     $('#cal-titulo-mes').textContent = `${MESES[mesRef.getMonth()]} ${mesRef.getFullYear()}`;
     $('#cal-grid').innerHTML = _gridHtml(mesRef, valorActual, ocupadas, hoyStr);

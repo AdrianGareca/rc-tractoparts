@@ -10,6 +10,9 @@ export const UI = {
   _activeCleanup: null, // teardown fn for whatever is currently mounted in the modal (if any)
   _closeGuard: null,    // optional fn: return false to block an accidental close (unsaved changes)
 
+  // Abre la ventana modal con un título y deja que renderFn dibuje su contenido.
+  // Antes ejecuta la limpieza de lo que hubiera abierto. `wide` la hace ancha
+  // (proformas, formulario) y `dismissOnBackdrop` decide si un clic afuera la cierra.
   openModal(title, renderFn, { wide = false, dismissOnBackdrop = true } = {}) {
     const overlay  = document.getElementById('modal-overlay');
     const dialog   = document.getElementById('modal-dialog');
@@ -72,6 +75,8 @@ export const UI = {
     UI._closeGuard = fn;
   },
 
+  // Cierre «accidental» (X, Escape, clic afuera): consulta antes al guardián, que
+  // puede impedirlo si hay cambios sin guardar.
   requestClose() {
     if (typeof UI._closeGuard === 'function') {
       let proceed = true;
@@ -83,6 +88,8 @@ export const UI = {
     UI.closeModal();
   },
 
+  // Cierra la ventana sin preguntar: ejecuta la limpieza registrada (por ejemplo,
+  // liberar la reserva del número) y deja la página como estaba.
   closeModal() {
     if (typeof UI._activeCleanup === 'function') {
       try { UI._activeCleanup(); } catch (err) {

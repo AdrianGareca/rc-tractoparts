@@ -60,6 +60,7 @@ function animar(ms, paso) {
   if (SIN_MOVIMIENTO) { paso(1); return () => {}; }
   let id = 0;
   const inicio = performance.now();
+  // Un cuadro de la animación: avanza según el tiempo pasado y pide el siguiente.
   const cuadro = (ahora) => {
     const t = Math.min(1, (ahora - inicio) / ms);
     paso(suavizar(t));
@@ -107,7 +108,9 @@ function pintarSerie(canvas, valores, etiquetas, avance) {
   const ah = h - arr - abj;
   const max = Math.max.apply(null, valores) * 1.12 || 1;
 
+  // La posición horizontal del punto número i.
   const x = (i) => izq + (aw * i) / (valores.length - 1);
+  // La altura de un valor: cuanto más grande, más arriba.
   const y = (v) => arr + ah - (ah * v) / max;
 
   ctx.strokeStyle = token('--border', 'gray');
@@ -265,6 +268,7 @@ function pintarAguja(canvas, pct, avance) {
   ctx.fillText((pct * avance).toFixed(1) + '%', cx, cy + 2);
 }
 
+// El medidor de aguja (de 0 a 100 %), animado al aparecer.
 export function aguja(canvas, porcentaje) {
   const pct = Number(porcentaje) || 0;
   return montar(canvas, (avance) => pintarAguja(canvas, pct, avance), 1100);
@@ -274,8 +278,10 @@ export function aguja(canvas, porcentaje) {
 // Montaje común: anima al aparecer, redibuja al cambiar de ancho o de tema.
 // ---------------------------------------------------------------------------
 function montar(canvas, pintar, ms) {
+  // Cancela la animación en curso; al principio no hay ninguna.
   let cancelar = () => {};
 
+  // Vuelve a pintar el gráfico, con animación o de golpe.
   const redibujar = (animando) => {
     cancelar();
     if (animando) cancelar = animar(ms, pintar);
@@ -283,6 +289,7 @@ function montar(canvas, pintar, ms) {
   };
 
   let esperando;
+  // Al cambiar el ancho de la ventana, redibuja una sola vez cuando se detiene.
   const alRedimensionar = () => {
     clearTimeout(esperando);
     // Sin animación: arrastrar el borde de la ventana no tiene que disparar

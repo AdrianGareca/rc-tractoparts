@@ -70,6 +70,7 @@ export async function mountColaAprobacion(panel, { titulo, ayuda, conEstado, tex
       <div id="cola-resultados">${tableSkeleton({ columnas: anchoTabla, etiqueta: 'Cargando la cola' })}</div>
     </div>`;
 
+  // Atajo: busca un elemento dentro de este panel.
   const $ = (sel) => panel.querySelector(sel);
 
   const seccion = createListSection({
@@ -81,6 +82,8 @@ export async function mountColaAprobacion(panel, { titulo, ayuda, conEstado, tex
     onPageChange: ({ page, limit }) => { state.page = page; state.limit = limit; load(); },
   });
 
+  // Pide la página actual de la cola y la dibuja. Si la página quedó vacía porque
+  // se decidió la última cotización de ella, retrocede una.
   async function load() {
     seccion.loading();
     const params = new URLSearchParams({ page: String(state.page), limit: String(state.limit) });

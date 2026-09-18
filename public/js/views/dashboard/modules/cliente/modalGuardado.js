@@ -68,6 +68,7 @@ export function leerFormulario($) {
  * @param {Function} ctx.close
  */
 export async function guardarCliente({ overlay, client, isEdit, onSaved, close }) {
+  // Atajo: busca un elemento dentro de esta ventana.
   const $ = (sel) => overlay.querySelector(sel);
 
   const alerta   = $('#nc-alert');

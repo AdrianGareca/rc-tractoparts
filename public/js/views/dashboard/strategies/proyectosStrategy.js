@@ -25,8 +25,10 @@ export class ProyectosStrategy extends DashboardStrategy {
   // reteniendo por closure una tabla que ya no esta en el DOM.
   #limpiarPanel = null;
 
+  // Guarda la persona conectada; el tablero se dibuja recién en render().
   constructor(user) { super(); this.#user = user; }
 
+  // Dibuja las dos pestañas de Proyectos y abre Licitaciones.
   async render(container) {
     this.#container = container;
 
@@ -49,10 +51,12 @@ export class ProyectosStrategy extends DashboardStrategy {
     await this._renderPanel(this.#activeTab);
   }
 
+  // Vuelve a cargar la pestaña que está abierta.
   async refresh() {
     if (this.#container) await this._renderPanel(this.#activeTab);
   }
 
+  // Monta el contenido de una pestaña, desmontando antes el de la anterior.
   async _renderPanel(tab) {
     // Se desmonta lo anterior antes de pisar el innerHTML: los montadores
     // devuelven su limpieza justamente para esto.

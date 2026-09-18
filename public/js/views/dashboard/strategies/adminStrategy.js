@@ -47,8 +47,10 @@ export class AdminStrategy extends DashboardStrategy {
   // reteniendo por closure una tabla que ya no esta en el DOM.
   #limpiarPanel = null;
 
+  // Guarda la persona conectada; el tablero se dibuja recién en render().
   constructor(user) { super(); this.#user = user; }
 
+  // Dibuja la barra de pestañas del Administrador y abre la cola de revisión.
   async render(container) {
     this.#container = container;
 
@@ -77,10 +79,12 @@ export class AdminStrategy extends DashboardStrategy {
     await this._renderPanel(this.#activeTab);
   }
 
+  // Vuelve a cargar la pestaña que está abierta (tras aprobar, editar, etc.).
   async refresh() {
     if (this.#container) await this._renderPanel(this.#activeTab);
   }
 
+  // Monta el contenido de una pestaña, desmontando antes el de la anterior.
   async _renderPanel(tab) {
     // Se desmonta lo anterior antes de pisar el innerHTML: los montadores
     // devuelven su limpieza justamente para esto.
@@ -101,6 +105,7 @@ export class AdminStrategy extends DashboardStrategy {
     }
   }
 
+  // La pestaña de reportes: la misma vista completa que ve el Jefe.
   async _renderReportes(panel) {
     // Administracion now sees the SAME full analytics dashboard as the Jefe
     // (stats grid + per-executive breakdown + BI tables), with date-range
@@ -224,16 +229,19 @@ export class AdminStrategy extends DashboardStrategy {
     showCreateUserModal(() => this._renderUsers(document.getElementById('admin-panel')));
   }
 
+  // Abre la edición de una cuenta y, al guardar, recarga la tabla de usuarios.
   _showEditUserModal(id, nombre, idRol, canApprove) {
     showEditUserModal(id, nombre, idRol, canApprove,
       () => this._renderUsers(document.getElementById('admin-panel')));
   }
 
+  // Pide confirmación para desactivar una cuenta y recarga la tabla.
   _confirmDeactivateUser(id, username) {
     confirmDeactivateUser(id, username,
       () => this._renderUsers(document.getElementById('admin-panel')));
   }
 
+  // Pide confirmación para reactivar una cuenta y recarga la tabla.
   _confirmActivateUser(id, username) {
     confirmActivateUser(id, username,
       () => this._renderUsers(document.getElementById('admin-panel')));

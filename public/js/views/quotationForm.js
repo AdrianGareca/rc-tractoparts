@@ -81,6 +81,8 @@ class FormMediator {
   #userId          = null; // Dueño del borrador local — nunca se cruza entre usuarios de la misma compu
   #autosaveTimer   = null; // setInterval del autoguardado — solo corre en modo creación
 
+  // Prepara el formulario: con `quotation` es una edición; con `prefill`, una
+  // cotización nueva ya vinculada a un cliente o a una licitación.
   constructor(container, quotation = null, prefill = null) {
     this.#container = container;
     this.#subject   = new LineItemsSubject();
@@ -328,6 +330,9 @@ class FormMediator {
    */
   _openExcelPasteModal(itemsBody) {
     openExcelPasteModal({
+      // Filas pegadas desde Excel: reemplazan la fila vacía inicial, se agregan a la
+      // grilla, y lo que no se reconoció (marcas, columnas, valores) se muestra para
+      // revisar.
       onImport: (pegados, advertencias, columnasIgnoradas = []) => {
         const actuales = this.#subject.getItems();
         const soloFilaVacia = actuales.length === 1 && !actuales[0].descripcion_item;
@@ -393,6 +398,7 @@ class FormMediator {
     populateHeaderForEdit(this.#container, this.#editData);
   }
 
+  // Llena el selector de licitaciones a las que se puede vincular la cotización.
   _populateLicitaciones() {
     return populateLicitaciones(this.#container, {
       editData: this.#editData,
@@ -423,6 +429,7 @@ class FormMediator {
       onFieldChange: (idx, field, value) => this._onItemFieldChange(idx, field, value),
       onRemove:      (idx) => this._onRemoveItem(idx),
       onAddBrand:    (idx) => this._openNuevaMarcaModal(idx),
+      // El código y la marca ya estaban en otra fila: se suman las cantidades.
       onMerge:       ({ dupeIdx, merged, currentIdx, rawCodigo }) => {
         // Fusion: la cantidad de esta fila se suma a la fila ya existente.
         this.#subject.updateItem(dupeIdx, 'cantidad', merged);
@@ -500,6 +507,7 @@ class FormMediator {
   _wireFileUpload() {
     wireFileUpload({
       container: this.#container,
+      // Excel elegido: se guarda para subirlo junto con la cotización.
       onFile:    (file) => {
         this.#dirty = true;
         this.#uploadedExcel = file;
@@ -519,6 +527,8 @@ class FormMediator {
       items:         this.#subject.getItems(),
       uploadedExcel: this.#uploadedExcel,
       onSuccess,
+      // Guardado en el servidor: se libera la reserva del número y se borra el
+      // borrador local.
       onSaved: () => {
         this._releaseDraftLock();
         // La cotización ya quedó guardada en el servidor — el borrador local

@@ -45,8 +45,10 @@ export class ManagerStrategy extends DashboardStrategy {
   // reteniendo por closure una tabla que ya no esta en el DOM.
   #limpiarPanel = null;
 
+  // Guarda la persona conectada; el tablero se dibuja recién en render().
   constructor(user) { super(); this.#user = user; }
 
+  // Dibuja la barra de pestañas del Jefe y abre la cola de aprobación.
   async render(container) {
     this.#container = container;
 
@@ -75,10 +77,12 @@ export class ManagerStrategy extends DashboardStrategy {
     await this._renderPanel(this.#activeTab);
   }
 
+  // Vuelve a cargar la pestaña que está abierta (tras aprobar, editar, etc.).
   async refresh() {
     if (this.#container) await this._renderPanel(this.#activeTab);
   }
 
+  // Monta el contenido de una pestaña, desmontando antes el de la anterior.
   async _renderPanel(tab) {
     // Se desmonta lo anterior antes de pisar el innerHTML: los montadores
     // devuelven su limpieza justamente para esto.
@@ -225,6 +229,8 @@ export class ManagerStrategy extends DashboardStrategy {
     );
   }
 
+  // El diálogo de aprobar o rechazar. Rechazar exige una justificación; aprobar
+  // genera el correlativo oficial y bloquea la edición.
   _showApproveDialog(id, aprobado, _triggerBtn) {
     const title  = aprobado ? 'Aprobar cotización' : 'Rechazar Cotización';
     const label  = aprobado ? 'Observaciones (opcional)' : 'Justificación del rechazo *';
@@ -501,16 +507,19 @@ export class ManagerStrategy extends DashboardStrategy {
     showCreateUserModal(() => this._renderUsers(document.getElementById('manager-panel')));
   }
 
+  // Abre la edición de una cuenta y, al guardar, recarga la tabla de usuarios.
   _showEditUserModal(id, nombre, idRol, canApprove) {
     showEditUserModal(id, nombre, idRol, canApprove,
       () => this._renderUsers(document.getElementById('manager-panel')));
   }
 
+  // Pide confirmación para desactivar una cuenta y recarga la tabla.
   _confirmDeactivateUser(id, username) {
     confirmDeactivateUser(id, username,
       () => this._renderUsers(document.getElementById('manager-panel')));
   }
 
+  // Pide confirmación para reactivar una cuenta y recarga la tabla.
   _confirmActivateUser(id, username) {
     confirmActivateUser(id, username,
       () => this._renderUsers(document.getElementById('manager-panel')));

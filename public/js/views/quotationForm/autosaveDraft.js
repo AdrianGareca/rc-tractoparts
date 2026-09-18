@@ -28,10 +28,13 @@ const HEADER_FIELD_IDS = [
   'tiempo_entrega', 'totals-discount', 'forma_pago', 'forma_pago_custom',
 ];
 
+// La llave del borrador en el navegador, una por persona: dos usuarios de la
+// misma computadora nunca ven el borrador del otro.
 function draftKey(userId) {
   return `rc_draft_cotizacion_${userId}`;
 }
 
+// Lee los campos de cabecera del formulario para guardarlos en el borrador.
 function readHeaderFields(container) {
   const values = {};
   for (const id of HEADER_FIELD_IDS) {
@@ -89,6 +92,7 @@ export function loadDraft(userId) {
   }
 }
 
+// Borra el borrador de esta persona (se llama al guardar la cotización).
 export function clearDraft(userId) {
   try { localStorage.removeItem(draftKey(userId)); } catch { /* no fatal */ }
 }

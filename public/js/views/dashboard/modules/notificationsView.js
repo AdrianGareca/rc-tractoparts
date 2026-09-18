@@ -159,6 +159,7 @@ export async function refreshNotifBadge(UI) {
           const marcables = aprobaciones.length + licitaciones.length;
 
           UI.openModal('Notificaciones', (body) => {
+            // Un bloque de avisos con su título; si no hay avisos de ese tipo, no se dibuja.
             const sectionHtml = (titleColor, title, items) => items.length > 0 ? `
               <p class="text-sm fw-600" style="color:${titleColor};margin:.75rem 0 .35rem;">${title}</p>
               <ul class="lista-limpia mb-1">

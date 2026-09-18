@@ -247,7 +247,9 @@ export function openBrandModal(rowIndex, { container, brands, onFieldChange } = 
   container.closest('.modal-body, [id="modal-body"]')?.appendChild(overlay)
     ?? document.body.appendChild(overlay);
 
+  // Atajo: busca un elemento dentro de esta ventana.
   const $ = (sel) => overlay.querySelector(sel);
+  // Cierra la ventana quitándola de la página.
   const close = () => overlay.remove();
 
   $('#bm-close')?.addEventListener('click', close);
@@ -281,6 +283,7 @@ export function openBrandModal(rowIndex, { container, brands, onFieldChange } = 
     if (!nombre) { $('#bm-err').textContent = 'El nombre es requerido.'; return; }
     $('#bm-err').textContent = '';
 
+    // Crea la marca nueva; solo se llama si no se parece a una que ya existe.
     const crear = () => crearMarca({ nombre, $, ctx, close });
     if (!revisarAntesDeCrear({ nombre, $, brands, elegir, crear })) crear();
   });

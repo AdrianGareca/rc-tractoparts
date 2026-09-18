@@ -37,6 +37,7 @@ export function tableSkeleton({ filas = 6, columnas = 6, etiqueta = 'Cargando da
   // carga; con anchos desparejos se lee como texto y engaña mejor al ojo.
   const ANCHOS = ['85%', '60%', '72%', '45%', '90%', '55%', '68%', '78%'];
 
+  // Las celdas de una fila de carga, cada una con una barra de ancho distinto.
   const celdas = (fila) => Array.from({ length: columnas }, (_, c) =>
     `<div class="skeleton-cell"><span class="skeleton-bar" style="width:${ANCHOS[(fila * columnas + c) % ANCHOS.length]};"></span></div>`
   ).join('');

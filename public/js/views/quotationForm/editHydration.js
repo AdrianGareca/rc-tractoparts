@@ -18,6 +18,7 @@ import { escText } from './helpers.js';
 
 export function populateHeaderForEdit(container, editData) {
   const q   = editData;
+  // Escribe un valor en un campo, si el campo existe y el valor no es nulo.
   const set = (sel, val) => {
     const el = container.querySelector(sel);
     if (el != null && val != null) el.value = val;
