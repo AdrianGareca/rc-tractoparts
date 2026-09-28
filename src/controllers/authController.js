@@ -16,14 +16,35 @@ const UserModel = require('../models/UserModel');
 const { revokeToken }             = require('../middlewares/authMiddleware');
 const { logEvent, AuditActions }  = require('../utils/auditLog');
 
-// A static, valid-format bcrypt hash (cost 12, matching the default
-// BCRYPT_ROUNDS) with no corresponding real password. Used to burn an
-// equivalent amount of CPU time on a bcrypt.compare() call when the username
-// lookup misses, so a nonexistent-username response takes roughly as long as
-// a wrong-password response. Without this, an attacker can enumerate valid
-// usernames purely from response-time (unknown user = instant 401, no
-// bcrypt call; known user with wrong password = ~80-150ms bcrypt.compare).
-const DUMMY_BCRYPT_HASH = '$2a$12$CwTycUXWue0Thq9StjUM0uJ8mEywNw12KVUwEVQjLzQKtUyq93U9m';
+// Rondas de bcrypt configuradas para este entorno. Mismo valor que usa
+// userController al crear o cambiar contrasenas. Aca hace falta para dos cosas:
+// fabricar el hash senuelo con el MISMO costo que los hashes reales, y decidir
+// si una contrasena que acaba de validar quedo guardada con un costo viejo.
+const ROUNDS = parseInt(process.env.BCRYPT_ROUNDS, 10) || 12;
+
+// Hash senuelo: formato valido de bcrypt, sin ninguna contrasena real detras. Se
+// compara contra el cuando el nombre de usuario no existe, para quemar el mismo
+// CPU que una comparacion de verdad y que el tiempo de respuesta no delate que
+// usuarios existen (sin esto: usuario desconocido = 401 instantaneo sin bcrypt;
+// usuario conocido con clave mala = el costo completo de bcrypt.compare).
+//
+// POR QUE SE CALCULA Y NO ES UNA CONSTANTE ESCRITA A MANO
+// El costo va grabado DENTRO del hash. Mientras fue un literal de costo 12, bajar
+// BCRYPT_ROUNDS a 10 dejaba a los usuarios reales en ~150 ms y al senuelo en
+// ~990 ms: ese hueco de 6x reabria exactamente el canal de tiempos que este hash
+// existe para cerrar (medido en el estres local del 2026-09-23). Calculandolo a
+// partir de ROUNDS, el senuelo cuesta siempre lo mismo que un hash real.
+//
+// Se calcula la primera vez que hace falta y no al cargar el modulo: bcryptjs es
+// JavaScript puro y hashear a 12 rondas bloquea ~700 ms, que se pagarian en el
+// arranque del servidor y en cada archivo de pruebas que requiera este modulo.
+let _dummyHash = null;
+function dummyBcryptHash() {
+  if (_dummyHash === null) {
+    _dummyHash = bcrypt.hashSync('ninguna-cuenta-tiene-esta-contrasena', ROUNDS);
+  }
+  return _dummyHash;
+}
 
 // ---------------------------------------------------------------------------
 // _rechazarLogin — auditar el intento fallido y responder 401.
@@ -35,7 +56,7 @@ const DUMMY_BCRYPT_HASH = '$2a$12$CwTycUXWue0Thq9StjUM0uJ8mEywNw12KVUwEVQjLzQKtU
 // detalle, y —en el caso del bloqueo— el mensaje.
 //
 // QUÉ NO ENTRA ACÁ, Y ES A PROPÓSITO
-// El `bcrypt.compare(password, DUMMY_BCRYPT_HASH)` que iguala los tiempos NO
+// El `bcrypt.compare(password, dummyBcryptHash())` que iguala los tiempos NO
 // se movió adentro. Cada camino lo necesita distinto: el de usuario
 // inexistente y el de cuenta inactiva lo queman a propósito, el de contraseña
 // incorrecta ya gastó ese tiempo comparando de verdad, y el de cuenta
@@ -168,13 +189,13 @@ const AuthController = {
       // path takes roughly as long as the wrong-password path below — otherwise
       // the response-time gap itself reveals whether the username is valid.
       if (!user) {
-        await bcrypt.compare(password, DUMMY_BCRYPT_HASH);
+        await bcrypt.compare(password, dummyBcryptHash());
         return res.status(401).json({ success: false, message: 'Invalid credentials.' });
       }
 
       // ── 3. Active account check ───────────────────────────────────────────────
       if (!user.activo) {
-        await bcrypt.compare(password, DUMMY_BCRYPT_HASH); // keep timing uniform
+        await bcrypt.compare(password, dummyBcryptHash()); // keep timing uniform
         return _rechazarLogin(res, { user, clientIp, motivo: 'account_inactive' });
       }
 
@@ -220,7 +241,30 @@ const AuthController = {
         });
       }
 
-      // ── 6. Authentication successful ──────────────────────────────────────────
+      // ── 6. La contrasena es correcta: migrar el hash si quedo con otro costo ──
+      // El costo de bcrypt va grabado dentro del hash, asi que cambiar
+      // BCRYPT_ROUNDS no toca las contrasenas YA guardadas. Sin esto, una cuenta
+      // creada con 12 rondas sigue costando 12 para siempre y bajar el valor no
+      // mejora nada: medido en el estres del 2026-09-23, diez personas entrando
+      // a la vez seguian tardando 5,6 s con el servidor puesto en 10 rondas.
+      //
+      // Este es el UNICO momento en que el sistema conoce la contrasena en claro,
+      // asi que es el unico momento en que puede volver a hashearla. Cada persona
+      // se migra sola la primera vez que entra, sin cambiar su contrasena.
+      //
+      // No es fatal a proposito: si la escritura falla, la sesion se abre igual y
+      // se reintenta en el proximo ingreso. Una mejora de rendimiento no puede
+      // dejar a nadie afuera del sistema.
+      try {
+        if (bcrypt.getRounds(storedHash) !== ROUNDS) {
+          const hashMigrado = await bcrypt.hash(password, ROUNDS);
+          await UserModel.update(user.id, { password_hash: hashMigrado });
+        }
+      } catch (rehashErr) {
+        console.warn('[AuthController.login] Rehash no aplicado (no fatal):', rehashErr.message);
+      }
+
+      // ── 7. Authentication successful ──────────────────────────────────────────
       return _emitirSesion(res, { user, clientIp });
     } catch (error) {
       console.error('[AuthController.login] Unexpected error:', error.message);
