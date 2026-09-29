@@ -21,8 +21,70 @@
 // =============================================================================
 
 import { escHtml, fmtDate } from '../helpers.js';
-import { REOPEN_SOURCE_STATES } from '../../../shared/quotationTransitions.js';
+import { REOPEN_SOURCE_STATES, allowedTransitions } from '../../../shared/quotationTransitions.js';
 import AuthSession from '../../../services/authSession.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LOS TRES BOTONES DEL EJECUTIVO SIN DELEGACIÓN
+//
+// Decidido por Adrian el 2026-09-28: el ejecutivo dueño de la cotización puede
+// ENVIARLA al cliente (una vez que el Jefe la aprobó), marcar que el cliente la
+// RECHAZÓ, y ARCHIVARLA. Nada más: confirmar la venta y todo lo demás lo hace
+// el Jefe.
+//
+// Hasta ese día el ejecutivo no tenía NINGÚN botón de estado. El aviso de
+// aprobación le decía «Ya puedes enviarla» y no había con qué.
+//
+// Para cambiar qué puede hacer, se toca esta lista Y la fila `Ejecutivo` de la
+// matriz (src/models/quotation/constants.js, con su espejo en
+// shared/quotationTransitions.js). Un botón sólo aparece si está en los dos
+// lados: así esta lista nunca ofrece algo que el servidor va a rechazar.
+// ─────────────────────────────────────────────────────────────────────────────
+export const BOTONES_DEL_EJECUTIVO = [
+  { destino: 'Enviada al cliente', id: 'btn-ejec-enviar',    clase: 'btn-success',        texto: 'Marcar como enviada al cliente' },
+  { destino: 'Rechazada',          id: 'btn-ejec-rechazada', clase: 'btn-danger btn-sm',  texto: 'El cliente la rechazó' },
+  { destino: 'Archivada',          id: 'btn-ejec-archivar',  clase: 'btn-ghost btn-sm',   texto: 'Archivar' },
+];
+
+/**
+ * Qué botones de estado ve un ejecutivo SIN delegación sobre esta cotización.
+ *
+ * Tres condiciones, las tres necesarias:
+ *   1. es Ejecutivo y NO tiene delegación (el delegado usa la grilla del Jefe);
+ *   2. la cotización es SUYA (el servidor lo exige: Guards.verificarDueno);
+ *   3. la matriz permite ese paso desde el estado actual.
+ *
+ * Función pura salvo por la sesión, que se puede pasar para probarla.
+ *
+ * @param {Object} q — la cotización (estado, id_ejecutivo)
+ * @param {Object} [sesion] — { rol, userId, delegado }; por defecto, la sesión actual
+ * @returns {Array<{destino, id, clase, texto}>} — posiblemente vacía
+ */
+export function botonesDelEjecutivo(q, sesion = {
+  rol:      AuthSession.getRole(),
+  userId:   AuthSession.getUserId(),
+  delegado: AuthSession.canApproveQuotations(),
+}) {
+  if (sesion.rol !== 'Ejecutivo' || sesion.delegado) return [];
+  if (Number(q.id_ejecutivo) !== Number(sesion.userId)) return [];
+
+  const permitidos = allowedTransitions('Ejecutivo', q.estado, false);
+  return BOTONES_DEL_EJECUTIVO.filter((b) => permitidos.includes(b.destino));
+}
+
+/** El bloque de botones del ejecutivo dueño, o '' si no le toca ninguno. */
+function ejecutivoButtonsHtml(q) {
+  const botones = botonesDelEjecutivo(q);
+  if (botones.length === 0) return '';
+
+  return `
+    <div class="approval-actions">
+      <h4 class="approval-actions-title">Acciones</h4>
+      <div class="approval-actions-grid">
+        ${botones.map((b) => `<button class="btn ${b.clase}" id="${b.id}">${escHtml(b.texto)}</button>`).join('')}
+      </div>
+    </div>`;
+}
 
 // Debe reflejar EXACTAMENTE src/validators/quotationValidator.js
 // SALES_FOLLOWUP_STATES — un desvío hace que el backend rechace con 422 (el
@@ -277,7 +339,7 @@ function seguimientoVentaBlockHtml(q, { canEdit }) {
  *
  * @param {Object}  q     — la cotización completa
  * @param {Object}  modo  — { jefeMode, adminMode, delegateMode }
- * @returns {{ jefeButtons, adminButtons, delegateButtons, adminCommentBlock, seguimientoVentaBlock }}
+ * @returns {{ jefeButtons, adminButtons, delegateButtons, ejecutivoButtons, adminCommentBlock, seguimientoVentaBlock }}
  */
 export function buildProformaActions(q, { jefeMode, adminMode, delegateMode }) {
   const permisos = calcularPermisos(q, { jefeMode, delegateMode });
@@ -289,6 +351,9 @@ export function buildProformaActions(q, { jefeMode, adminMode, delegateMode }) {
     // Jefe (jefeButtons ya contempla delegateMode). La clave se mantiene
     // porque la plantilla la interpola, y sacarla obligaría a tocarla.
     delegateButtons:   '',
+    // Sólo en la vista del ejecutivo (sin modo jefe, admin ni delegado): en las
+    // otras, quien mira ya tiene su propia grilla.
+    ejecutivoButtons:  (jefeMode || adminMode || delegateMode) ? '' : ejecutivoButtonsHtml(q),
     adminCommentBlock: adminCommentBlockHtml(q, { adminMode, jefeMode }),
     seguimientoVentaBlock: seguimientoVentaBlockHtml(q, {
       canEdit: jefeMode || adminMode ||

@@ -23,7 +23,9 @@ const { getAllowedTransitions } = require('../../src/models/quotation/stateMachi
 
 describe('getAllowedTransitions — pasa la matriz tal cual en el caso normal', () => {
   test('Ejecutivo desde Pendiente', () => {
-    expect(getAllowedTransitions('Pendiente', 'Ejecutivo')).toEqual(['En revision', 'Archivada']);
+    // Desde el 2026-09-28 el ejecutivo sin delegacion no manda a revision: lo
+    // que queda en Pendiente lo ve el Jefe en su cola igual.
+    expect(getAllowedTransitions('Pendiente', 'Ejecutivo')).toEqual(['Archivada']);
   });
 
   test('un estado sin entrada en la matriz del rol da lista vacía (terminal)', () => {

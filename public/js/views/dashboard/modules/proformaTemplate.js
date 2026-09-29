@@ -172,7 +172,8 @@ function buildPdfBarHtml(q) {
 //   @param {Object}  q         — full quotation data (from findById, includes detalles[])
 //   @param {number}  id        — quotation ID (for PDF link)
 //   @param {boolean|string} viewMode
-//     false | 'executive' — Executive read-only view (no action buttons)
+//     false | 'executive' — Executive view: sólo los tres botones del dueño sin
+//                           delegación (ver botonesDelEjecutivo en proformaActions.js)
 //     true  | 'jefe'      — Jefe full action grid + read-only admin comments
 //     'admin'             — Administrador view: comment textarea + "En Espera" button
 export function buildProformaHTML(q, id, viewMode) {
@@ -219,7 +220,7 @@ export function buildProformaHTML(q, id, viewMode) {
   // ./proformaActions.js. Son DECISIÓN (quién puede qué) y no presentación:
   // mezclados acá adentro, cambiar un permiso obligaba a leer trescientas
   // líneas de HTML para encontrar el if.
-  const { jefeButtons, adminButtons, delegateButtons, adminCommentBlock, seguimientoVentaBlock } =
+  const { jefeButtons, adminButtons, delegateButtons, ejecutivoButtons, adminCommentBlock, seguimientoVentaBlock } =
     buildProformaActions(q, { jefeMode, adminMode, delegateMode });
 
   return /* html */ `
@@ -261,6 +262,7 @@ export function buildProformaHTML(q, id, viewMode) {
       ${jefeButtons}
       ${adminButtons}
       ${delegateButtons}
+      ${ejecutivoButtons}
     </div>
   `;
 }

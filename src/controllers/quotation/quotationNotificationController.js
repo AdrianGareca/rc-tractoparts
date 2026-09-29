@@ -51,6 +51,8 @@ const QuotationNotificationController = {
   //   tipo = 'correccion'    — from stream 1 (correction needed)
   //   tipo = 'aprobacion'    — Jefe approved to 'Aprobada internamente'
   //   tipo = 'envio_cliente' — Jefe sent to 'Enviada al cliente'
+  //   tipo = 'rechazo'       — otra persona la pasó a 'Rechazada' (desde 2026-09-28)
+  //   tipo = 'en_espera'     — otra persona la pasó a 'En espera' (desde 2026-09-28)
   //   tipo = 'seguimiento'   — a scheduled client follow-up is due today
   //
   // Opening the modal triggers markNotificacionesLeidas so the badge resets

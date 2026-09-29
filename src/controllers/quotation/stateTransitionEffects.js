@@ -109,12 +109,55 @@ async function registrarHuella({
 // 2. El aviso al ejecutivo dueño de la cotización
 // ---------------------------------------------------------------------------
 
-/** Estado destino → tipo de notificación. 'Aceptada' es alias histórico. */
+/**
+ * Estado destino → tipo de notificación. 'Aceptada' es alias histórico.
+ *
+ * 'Rechazada' y 'En espera' se agregaron el 2026-09-28: antes el ejecutivo no se
+ * enteraba de ninguno de los dos salvo que buscara la cotización en el listado.
+ * Necesitan sql/upgrade_2026_avisos_rechazo_espera.sql (amplía el ENUM).
+ */
 const TIPO_POR_ESTADO = {
   'Enviada al cliente': 'envio_cliente',
   'Confirmada':         'aprobacion',
   'Aceptada':           'aprobacion',
+  'Rechazada':          'rechazo',
+  'En espera':          'en_espera',
 };
+
+/**
+ * El texto del aviso para cada hito. Compartido con la aprobación formal
+ * (POST /:id/aprobar), que también puede rechazar.
+ *
+ * En el rechazo y la espera el motivo viaja DENTRO del mensaje: es lo único que
+ * el ejecutivo necesita saber para decidir qué hacer, y sin él el aviso lo
+ * obliga a abrir la cotización para enterarse.
+ *
+ * @param {object} quotation   — trae numero_correlativo, cliente_nombre, id_cliente
+ * @param {string} nuevoEstado
+ * @param {string} autor       — nombre de usuario de quien hizo el cambio
+ * @param {string|null} observacion
+ * @returns {string}
+ */
+function mensajeDeHito(quotation, nuevoEstado, autor, observacion) {
+  // El nombre del cliente cae al id si no vino en la consulta: es preferible
+  // un mensaje con un número a un mensaje que diga «undefined».
+  const cliente = quotation.cliente_nombre ?? String(quotation.id_cliente);
+  const base    = `La cotización #${quotation.numero_correlativo} para ${cliente}`;
+  const motivo  = observacion && String(observacion).trim()
+    ? ` Motivo: ${String(observacion).trim()}`
+    : '';
+
+  switch (nuevoEstado) {
+    case 'Enviada al cliente':
+      return `${base} ha sido enviada al cliente. Ya puedes darle seguimiento.`;
+    case 'Rechazada':
+      return `${base} fue RECHAZADA por ${autor}.${motivo}`;
+    case 'En espera':
+      return `${base} fue puesta EN ESPERA por ${autor}.${motivo}`;
+    default:
+      return `${base} ha sido confirmada. Cierre de venta registrado.`;
+  }
+}
 
 /**
  * Avisa al ejecutivo dueño cuando su cotización llega a un hito, y también
@@ -127,7 +170,7 @@ const TIPO_POR_ESTADO = {
  * @returns {Promise<void>} — nunca rechaza
  */
 async function notificarAlEjecutivo({
-  id, quotation, nuevoEstado, usuario, esReapertura, motivo,
+  id, quotation, nuevoEstado, usuario, esReapertura, motivo, observacion = null,
 }) {
   // El dueño es quien recibe; si es el mismo que actuó, no hay nada que avisar.
   const esOtro = quotation.id_ejecutivo !== usuario.id;
@@ -138,21 +181,11 @@ async function notificarAlEjecutivo({
   // darle seguimiento, y no tiene por qué estar mirando la pantalla.
   if (esOtro && TIPO_POR_ESTADO[nuevoEstado]) {
     try {
-      // El nombre del cliente cae al id si no vino en la consulta: es preferible
-      // un mensaje con un número a un mensaje que diga «undefined».
-      const cliente = quotation.cliente_nombre ?? String(quotation.id_cliente);
-
-      const mensaje = nuevoEstado === 'Enviada al cliente'
-        ? `La cotización #${quotation.numero_correlativo} para ${cliente} ` +
-          `ha sido enviada al cliente. Ya puedes darle seguimiento.`
-        : `La cotización #${quotation.numero_correlativo} para ${cliente} ` +
-          `ha sido confirmada. Cierre de venta registrado.`;
-
       await QuotationModel.insertNotificacion({
         id_usuario:    quotation.id_ejecutivo,
         id_cotizacion: id,
         tipo:          TIPO_POR_ESTADO[nuevoEstado],
-        mensaje,
+        mensaje:       mensajeDeHito(quotation, nuevoEstado, usuario.nombre_usuario, observacion),
       });
     } catch (err) {
       console.warn(`${ETIQUETA} Notification insert failed (non-fatal):`, err.message);
@@ -218,4 +251,4 @@ async function notificarALicitacion({ quotation, nuevoEstado, usuario }) {
   }
 }
 
-module.exports = { registrarHuella, notificarAlEjecutivo, notificarALicitacion };
+module.exports = { registrarHuella, notificarAlEjecutivo, notificarALicitacion, mensajeDeHito };

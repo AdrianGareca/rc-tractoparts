@@ -78,22 +78,28 @@ function _validateApproveRequest(req) {
 
 // ---------------------------------------------------------------------------
 // _sendApprovalNotification — avisa al Ejecutivo dueño que su cotizacion fue
-// aprobada. Solo en aprobacion: el rechazo no genera notificacion, el
-// Ejecutivo se entera por el flujo de solicitud de correccion. No fatal: un
-// fallo acá no debe deshacer la aprobación ya confirmada.
+// aprobada o rechazada. No fatal: un fallo acá no debe deshacer la decisión ya
+// confirmada.
+//
+// Hasta el 2026-09-28 solo avisaba la aprobación, con el argumento de que «el
+// Ejecutivo se entera del rechazo por el flujo de solicitud de corrección». No
+// era cierto: ese flujo mira las cotizaciones que VOLVIERON a 'Pendiente', y una
+// rechazada queda en 'Rechazada'. El rechazo no le llegaba por ningún lado.
 // ---------------------------------------------------------------------------
-async function _sendApprovalNotification({ aprobado, postApprovalQuotation, id }) {
-  if (!(aprobado && postApprovalQuotation)) return;
+async function _sendApprovalNotification({ aprobado, postApprovalQuotation, id, autor, observaciones }) {
+  if (!postApprovalQuotation) return;
 
   try {
-    const mensaje = `La cotización #${postApprovalQuotation.numero_correlativo} ` +
-      `para ${postApprovalQuotation.cliente_nombre ?? String(postApprovalQuotation.id_cliente)} ` +
-      `ha sido aprobada por el Jefe. Ya puedes enviarla.`;
+    const mensaje = aprobado
+      ? `La cotización #${postApprovalQuotation.numero_correlativo} ` +
+        `para ${postApprovalQuotation.cliente_nombre ?? String(postApprovalQuotation.id_cliente)} ` +
+        `ha sido aprobada por el Jefe. Ya puedes enviarla.`
+      : Effects.mensajeDeHito(postApprovalQuotation, 'Rechazada', autor, observaciones);
 
     await QuotationModel.insertNotificacion({
       id_usuario:    postApprovalQuotation.id_ejecutivo,
       id_cotizacion: id,
-      tipo:          'aprobacion',
+      tipo:          aprobado ? 'aprobacion' : 'rechazo',
       mensaje,
     });
   } catch (notifErr) {
@@ -150,6 +156,12 @@ const QuotationStateController = {
       const canApproveDelegated = await Guards.resolverDelegacion(
         userRol, nuevo_estado, req.user.id
       );
+
+      // 3b. Un ejecutivo sin delegación sólo mueve sus propias cotizaciones.
+      //     Va antes del permiso de rol: a quien mira una cotización ajena se le
+      //     dice eso, no qué transiciones tendría si fuera suya.
+      const errDueno = Guards.verificarDueno(quotation, userRol, req.user.id, canApproveDelegated);
+      if (errDueno) return res.status(errDueno.status).json(errDueno.body);
 
       // 4. El permiso de rol contra la matriz de transiciones. La lista de
       //    destinos válidos que trae para el 403 describe el estado VIEJO —
@@ -226,7 +238,7 @@ const QuotationStateController = {
       // 3. El aviso al ejecutivo dueño: por el hito comercial, y por la
       //    reapertura si la hubo. Omite la autonotificacion.
       await Effects.notificarAlEjecutivo({
-        id, quotation, nuevoEstado: nuevo_estado, usuario, esReapertura, motivo,
+        id, quotation, nuevoEstado: nuevo_estado, usuario, esReapertura, motivo, observacion,
       });
 
       // 4. El aviso al responsable de la licitacion, si esta cotizacion
@@ -399,9 +411,14 @@ const QuotationStateController = {
         label: `QuotationStateController.approveQuotation (${aprobado ? 'approval' : 'rejection'})`,
       });
 
-      // Fires only on approval (aprobado === true). Rejection does not generate
-      // a notification row; the Ejecutivo learns via the correction-request flow.
-      await _sendApprovalNotification({ aprobado, postApprovalQuotation, id });
+      // Avisa al dueño en los dos casos: aprobación y rechazo. Se omite si el
+      // dueño es quien decidió (un Jefe que cotiza no necesita avisarse a sí mismo).
+      if (postApprovalQuotation?.id_ejecutivo !== req.user.id) {
+        await _sendApprovalNotification({
+          aprobado, postApprovalQuotation, id,
+          autor: req.user.nombre_usuario, observaciones: obsText,
+        });
+      }
 
       return res.status(200).json({
         success: true,

@@ -597,6 +597,8 @@ export class ExecutiveStrategy extends DashboardStrategy {
               'Nota para el historial (opcional)',
               false,
               'Cotización archivada.'));
+        } else {
+          this._wireBotonesDelEjecutivo(body, id);
         }
 
         wirePdfButton(body, id, q.numero_correlativo, q.cliente_nombre);
@@ -606,6 +608,34 @@ export class ExecutiveStrategy extends DashboardStrategy {
       });
     } catch (err) {
       showToast(`No se pudo cargar la cotización: ${err.message}`, 'error');
+    }
+  }
+
+  // Los tres botones del ejecutivo dueño sin delegación. Cuáles aparecen lo
+  // decide botonesDelEjecutivo (proformaActions.js); acá sólo se les da su
+  // diálogo. Un botón que no se dibujó no se encuentra y no pasa nada.
+  _wireBotonesDelEjecutivo(body, id) {
+    const dialogos = {
+      'btn-ejec-enviar': ['Enviada al cliente',
+        'Marcar como enviada al cliente',
+        'Confirma que ya le enviaste esta cotización al cliente. Desde ahí le das seguimiento; la venta la confirma el Jefe.',
+        'Nota para el historial (opcional)', false,
+        'Cotización marcada como enviada al cliente.'],
+      'btn-ejec-rechazada': ['Rechazada',
+        'El cliente rechazó la cotización',
+        'La cotización queda como Rechazada. Si hace falta volver a moverla, lo hace el Jefe.',
+        '¿Por qué la rechazó el cliente? *', true,
+        'Cotización marcada como rechazada por el cliente.'],
+      'btn-ejec-archivar': ['Archivada',
+        'Archivar Cotización',
+        'La cotización pasa a Archivada y sale de los listados activos. Es un estado final: no se puede volver atrás desde ahí.',
+        'Nota para el historial (opcional)', false,
+        'Cotización archivada.'],
+    };
+
+    for (const [botonId, args] of Object.entries(dialogos)) {
+      body.querySelector(`#${botonId}`)?.addEventListener('click', () =>
+        this._confirmDelegatedStateChange(id, ...args));
     }
   }
 

@@ -985,6 +985,7 @@ docker compose exec db mysqldump -u root -p rc_tractoparts > backup.sql   # resp
 | `upgrade_2026_estado_venta.sql` | `cotizaciones.estado_venta` / `estado_venta_detalle` / `fecha_proximo_seguimiento` — seguimiento comercial, independiente del flujo de aprobación `estado` (idempotente) |
 | `upgrade_2026_indices_bitacora.sql` | Dos índices en `bitacora_auditoria` — la pestaña de auditoría y la línea de tiempo de cada cotización/licitación escaneaban la tabla entera (idempotente) |
 | `upgrade_2026_unidades_medida.sql` | Cambia el `DEFAULT` de `unidad` de `'UND'` a `'UNI'` en `cotizacion_detalles` y `productos` (lista de unidades del 2026-09-01). **No urgente**: la app siempre manda la unidad, así que ese `DEFAULT` no se usa — se corre para que producción e `init.sql` no digan cosas distintas. **No reescribe filas históricas** a propósito: los `GGO`/`UND` ya guardados salieron en PDFs que el cliente tiene (idempotente) |
+| `upgrade_2026_avisos_rechazo_espera.sql` | Agrega `'rechazo'` y `'en_espera'` al ENUM de `notificaciones.tipo`, para avisarle al ejecutivo cuando le rechazan una cotización o la ponen en espera. Instantáneo (solo metadatos). Si el código nuevo corre antes, lo único que se pierde son esos avisos, nunca el cambio de estado (idempotente) |
 
 **Procedimiento** (el orden importa — migrar *antes* de reconstruir la app, para que el código nuevo nunca consulte columnas que aún no existen; ver el flujo en [§3.7](#37-flujo-de-release-y-migraciones-de-esquema)):
 

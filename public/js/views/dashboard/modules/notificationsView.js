@@ -6,6 +6,8 @@
 //   • tipo = 'correccion'    — quotation sent back to Pendiente (correction needed)
 //   • tipo = 'aprobacion'    — Jefe approved the quotation internally
 //   • tipo = 'envio_cliente' — Jefe sent the quotation to the client
+//   • tipo = 'rechazo'       — la rechazaron (Jefe o Administración)
+//   • tipo = 'en_espera'     — la pusieron en espera
 //
 // After the Ejecutivo opens the modal, POST /api/cotizaciones/notificaciones/leer
 // marks approval/envio notifications as read so the badge count resets.
@@ -71,6 +73,8 @@ function _tipoStyle(tipo) {
   if (tipo === 'envio_cliente') return { borderColor: 'var(--clr-blue)',   labelColor: 'var(--clr-blue-soft)' };
   if (tipo === 'licitacion')    return { borderColor: 'var(--clr-teal)',   labelColor: 'var(--clr-teal-soft)' };
   if (tipo === 'seguimiento')   return { borderColor: 'var(--clr-violet)', labelColor: 'var(--clr-violet-soft)' };
+  if (tipo === 'rechazo')       return { borderColor: 'var(--clr-red)',    labelColor: 'var(--clr-red-soft)' };
+  if (tipo === 'en_espera')     return { borderColor: 'var(--clr-amber)',  labelColor: 'var(--clr-amber-soft)' };
   return                               { borderColor: 'var(--clr-orange)', labelColor: 'var(--clr-orange-soft)' }; // correccion
 }
 
@@ -152,11 +156,18 @@ export async function refreshNotifBadge(UI) {
           //   • correcciones → derived from the state history; self-clear when the
           //     quote is re-submitted (NOT cleared by the button).
           const aprobaciones  = rows.filter(r => r.tipo === 'aprobacion' || r.tipo === 'envio_cliente');
+          const rechazos      = rows.filter(r => r.tipo === 'rechazo' || r.tipo === 'en_espera');
           const licitaciones  = rows.filter(r => r.tipo === 'licitacion');
           const correcciones  = rows.filter(r => r.tipo === 'correccion');
           const seguimientos  = rows.filter(r => r.tipo === 'seguimiento');
-          // All table-backed notifications the "marcar leídas" button clears.
-          const marcables = aprobaciones.length + licitaciones.length;
+          // Lo que el botón «Marcar como leídas» puede limpiar: TODO lo que viene
+          // de la tabla `notificaciones`, que son las filas con notificacion_id.
+          //
+          // Antes se contaban solo aprobaciones + licitaciones. Pero el aviso de
+          // venta REABIERTA también vive en la tabla (con tipo 'correccion'), y
+          // cuando era el único pendiente el botón no aparecía: la campana se
+          // quedaba encendida para siempre sin forma de apagarla.
+          const marcables = rows.filter(r => r.notificacion_id != null).length;
 
           UI.openModal('Notificaciones', (body) => {
             // Un bloque de avisos con su título; si no hay avisos de ese tipo, no se dibuja.
@@ -167,6 +178,7 @@ export async function refreshNotifBadge(UI) {
               </ul>` : '';
 
             const segSection   = sectionHtml('var(--clr-violet-soft)', 'Seguimientos programados para hoy', seguimientos);
+            const rechSection  = sectionHtml('var(--clr-red-soft)', 'Rechazadas o en espera', rechazos);
             const aprobSection = sectionHtml('var(--clr-green-soft)', 'Aprobaciones y envíos recientes', aprobaciones);
             const licSection   = sectionHtml('var(--clr-teal-soft)', 'Licitaciones', licitaciones);
             const corrSection  = sectionHtml('var(--clr-orange-soft)', 'Proformas que requieren correcciones', correcciones);
@@ -184,6 +196,7 @@ export async function refreshNotifBadge(UI) {
                 Tienes <strong>${rows.length}</strong> notificación${rows.length > 1 ? 'es' : ''} pendiente${rows.length > 1 ? 's' : ''}.
               </p>
               ${segSection}
+              ${rechSection}
               ${aprobSection}
               ${licSection}
               ${corrSection}

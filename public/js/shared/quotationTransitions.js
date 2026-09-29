@@ -29,12 +29,12 @@
 export const ROLE_TRANSITIONS = {
 
   Ejecutivo: {
-    Pendiente:               ['En revision', 'Archivada'],
+    Pendiente:               ['Archivada'],
     'En revision':           [],
     'En espera':             [],
     'Aprobada internamente': ['Enviada al cliente'],
-    'Enviada al cliente':    ['Confirmada', 'Rechazada', 'Archivada'],
-    Rechazada:               ['Pendiente', 'Archivada'],
+    'Enviada al cliente':    ['Rechazada', 'Archivada'],
+    Rechazada:               ['Archivada'],
     Confirmada:              ['Archivada'],
     Aceptada:                ['Archivada'],
     Archivada:               [],

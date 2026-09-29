@@ -152,6 +152,43 @@ function verificarExistenciaYEstado(quotation, id, nuevoEstado) {
 }
 
 // ---------------------------------------------------------------------------
+// 3b. Que el ejecutivo sin delegación toque sólo lo suyo
+// ---------------------------------------------------------------------------
+/**
+ * Un Ejecutivo sin delegación sólo puede mover SUS cotizaciones.
+ *
+ * Hasta el 2026-09-28 no hacía falta en la práctica, porque la pantalla no le
+ * daba ningún botón de estado. Pero el servidor tampoco lo revisaba: con la API
+ * a mano, un ejecutivo podía mandar al cliente o archivar la cotización de un
+ * compañero. Ahora que tiene botones («Enviar al cliente», «Rechazada por el
+ * cliente», «Archivar»), la regla tiene que estar acá y no sólo en la pantalla.
+ *
+ * El ejecutivo CON delegación queda afuera a propósito: opera con la matriz del
+ * Jefe sobre las cotizaciones de todo el equipo, que es para lo que se le dio.
+ *
+ * @param   {object}  quotation
+ * @param   {string}  userRol
+ * @param   {number}  userId
+ * @param   {boolean} canApproveDelegated
+ * @returns {{status:number, body:object}|null}
+ */
+function verificarDueno(quotation, userRol, userId, canApproveDelegated) {
+  if (userRol !== 'Ejecutivo' || canApproveDelegated) return null;
+
+  // Number() en los dos lados: el id del token puede llegar como cadena y el de
+  // la base como número, y un !== entre '7' y 7 le negaría la cotización a su dueño.
+  if (Number(quotation.id_ejecutivo) === Number(userId)) return null;
+
+  return {
+    status: 403,
+    body: {
+      success: false,
+      message: 'Solo el ejecutivo dueño de la cotización puede cambiar su estado.',
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // 4. El permiso de rol
 // ---------------------------------------------------------------------------
 /**
@@ -286,6 +323,7 @@ module.exports = {
   verificarEntrada,
   resolverDelegacion,
   verificarExistenciaYEstado,
+  verificarDueno,
   verificarPermisoDeRol,
   verificarMotivoDeReapertura,
   verificarListaPrevia,

@@ -684,7 +684,7 @@ CREATE TABLE notificaciones (
     COMMENT 'Cotización asociada. NULL cuando la notificación es de una licitación (id_licitacion).',
   id_licitacion   INT UNSIGNED DEFAULT NULL
     COMMENT 'Licitación asociada. NULL cuando la notificación es de una cotización (id_cotizacion). Exactamente una de las dos suele estar poblada.',
-  tipo            ENUM('correccion','aprobacion','envio_cliente','licitacion') NOT NULL DEFAULT 'aprobacion',
+  tipo            ENUM('correccion','aprobacion','envio_cliente','licitacion','rechazo','en_espera') NOT NULL DEFAULT 'aprobacion',
   mensaje         TEXT         NOT NULL,
   leida           TINYINT(1)   NOT NULL DEFAULT 0,
   creado_en       DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,

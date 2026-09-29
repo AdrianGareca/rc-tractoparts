@@ -42,13 +42,25 @@ const VALID_STATES = [
 // ---------------------------------------------------------------------------
 const ROLE_TRANSITIONS = {
 
+  // EL EJECUTIVO SIN DELEGACION HACE TRES COSAS, Y NADA MAS (decidido por
+  // Adrian el 2026-09-28): enviar al cliente lo que el Jefe ya aprobo, marcar
+  // que el cliente lo rechazo, y archivar. Todo lo demas —confirmar la venta,
+  // mandar a revision, reabrir un rechazo— lo hace el Jefe.
+  //
+  // Antes esta fila tambien tenia 'En revision', 'Confirmada' y el
+  // Rechazada→Pendiente, pero la pantalla nunca le mostro un boton para ninguna
+  // de las tres: eran permisos que solo se podian usar a mano contra la API.
+  // Ademas, ninguna revisaba que la cotizacion fuera SUYA (eso lo agrega ahora
+  // Guards.verificarDueno).
+  //
+  // El ejecutivo CON delegacion no usa esta fila: opera con la del Jefe.
   Ejecutivo: {
-    Pendiente:               ['En revision', 'Archivada'],
+    Pendiente:               ['Archivada'],
     'En revision':           [],                                    // Read-only: wait for Jefe
     'En espera':             [],                                    // Read-only: Jefe suspended decision
     'Aprobada internamente': ['Enviada al cliente'],
-    'Enviada al cliente':    ['Confirmada', 'Rechazada', 'Archivada'],
-    Rechazada:               ['Pendiente', 'Archivada'],            // Reset to initial state for rework
+    'Enviada al cliente':    ['Rechazada', 'Archivada'],            // Rechazada = el cliente dijo que no
+    Rechazada:               ['Archivada'],
     Confirmada:              ['Archivada'],
     Aceptada:                ['Archivada'],                         // LEGACY alias of 'Confirmada'
     Archivada:               [],
