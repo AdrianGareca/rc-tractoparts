@@ -28,6 +28,7 @@ const { CLAUSULAS, TITULO_TERMINOS, textoClausula } = require('../terminos');
 const { normalizeEntidad } = require('../bankData');
 const { drawLogoWatermark } = require('./watermark');
 const { drawFooter } = require('./footer');
+const { formatDate } = require('../format');
 
 // Geometría de la hoja. Se exporta al final (GEOMETRIA) para que las pruebas
 // midan con LOS MISMOS números que se dibujan: una prueba que repita estas
@@ -47,14 +48,17 @@ const CUERPO_PT = 6.5;   // tamaño del texto de las cláusulas
 // hoja en vez de amontonarlas arriba y dejar media página en blanco.
 const AIRE      = CUERPO_PT * 1.55;
 
-// La fecha de la banda, en día/mes/año y en hora de Bolivia. Un valor vacío o
-// inválido se imprime como raya: la hoja se dibuja igual, sin un «Invalid Date».
+// La fecha de la banda, en día/mes/año. Un valor vacío o inválido se imprime
+// como raya: la hoja se dibuja igual, sin un «Invalid Date».
+//
+// Usa el mismo formatDate que la página 1, y no una conversión propia. Hasta el
+// 2026-09-29 esto pasaba la fecha a hora de Bolivia: pero emisión y validez son
+// DATE (un día, sin hora), la base las entrega como medianoche UTC, y
+// medianoche UTC en La Paz es las 20:00 del día ANTERIOR. La banda imprimía
+// cada fecha un día antes que la página 1 del mismo PDF.
 const fecha = (v) => {
-  if (!v) return '—';
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('es-BO', {
-    day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/La_Paz',
-  });
+  const texto = formatDate(v);
+  return /^\d{2}\/\d{2}\/\d{4}$/.test(texto) ? texto : '—';
 };
 
 // ---------------------------------------------------------------------------

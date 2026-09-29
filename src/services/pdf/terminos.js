@@ -31,11 +31,24 @@
 // empresa escrito a mano.
 const MARCADOR_EMISOR = '{EMISOR}';
 
+// Los días de vigencia de la oferta. Aparecen en DOS lugares del PDF —la
+// cláusula 1 de acá abajo y la «Validez de oferta» de la página 1 cuando la
+// cotización no trae fecha (drawers/totals.js)— y el formulario propone la
+// fecha de validez con este mismo número (quotationForm/validezPorDefecto.js,
+// que no puede importar este archivo y lleva su copia; la prueba
+// validezCincoDias.test.js vigila que las tres digan lo mismo).
+//
+// Eran 3 hasta el 2026-09-29. Ese día el Jefe ordenó 5: es lo que los de ventas
+// daban en la práctica (en producción, 5 era por lejos el plazo más usado; 3
+// sólo aparecía en 15 de 246 cotizaciones), y la hoja de términos decía otra
+// cosa que la página 1 del mismo PDF.
+const DIAS_VIGENCIA = 5;
+
 // Las 24 cláusulas, en el orden del documento original. Cada una es
 // [título, cuerpo]: el título se imprime en negrita seguido del cuerpo, igual
 // que en el papel que redactó la abogada.
 const CLAUSULAS = Object.freeze([
-  ['Vigencia de la Oferta', 'La presente oferta tendrá una vigencia de tres (3) días calendario desde su emisión. Vencido dicho plazo sin aceptación escrita, deberá solicitarse una nueva cotización.'],
+  ['Vigencia de la Oferta', 'La presente oferta tendrá una vigencia de cinco (5) días calendario desde su emisión. Vencido dicho plazo sin aceptación escrita, deberá solicitarse una nueva cotización.'],
   ['Aceptación de la Oferta', 'La emisión de una orden de compra, contrato, correo electrónico o cualquier aceptación escrita implicará la aceptación íntegra de la presente oferta y de estas Condiciones Generales.'],
   ['Alcance', 'La oferta comprende únicamente los bienes y/o servicios expresamente descritos en la proforma.'],
   ['Precios', 'Los precios cotizados podrán ser modificados antes de la aceptación de la oferta cuando existan variaciones extraordinarias en el tipo de cambio, costos de importación, transporte, tributos, aranceles o condiciones del mercado.'],
@@ -74,4 +87,4 @@ function textoClausula(cuerpo, emisor) {
   return String(cuerpo).split(MARCADOR_EMISOR).join(nombre);
 }
 
-module.exports = { CLAUSULAS, TITULO_TERMINOS, MARCADOR_EMISOR, textoClausula };
+module.exports = { CLAUSULAS, TITULO_TERMINOS, MARCADOR_EMISOR, DIAS_VIGENCIA, textoClausula };

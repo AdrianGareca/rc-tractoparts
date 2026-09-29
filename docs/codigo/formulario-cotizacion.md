@@ -55,6 +55,7 @@ mediador decide qué más actualizar.
 | `autosaveDraft.js` | El borrador en el navegador, uno por persona. | `saveDraft`, `loadDraft`, `clearDraft` |
 | `draftLock.js` | La reserva en tiempo real del próximo número. | `DraftLockController` |
 | `editHydration.js` | Al editar, vuelca la cotización guardada en los campos. | `populateHeaderForEdit`, `populateLicitaciones` |
+| `validezPorDefecto.js` | Propone la fecha de validez: emisión + 5 días (orden del Jefe, 2026-09-29). No pisa una fecha elegida a mano, y al editar no llena una validez que estaba vacía. | `wireValidezPorDefecto`, `sumarDias` |
 | `submitPayload.js` | Revisa los campos, arma el pedido y lo envía. | `submitQuotation`, `buildRequestBody`, `validateHeaderFields` |
 | `helpers.js` | Formato de números y el cálculo del próximo correlativo a mostrar. | `fmt`, `nextCorrelativoOf` |
 
@@ -100,5 +101,5 @@ Pruebas quotationFormTemplate, quotationFormObservers, quotationFormLineItems,
 fusionItemsMarca, quotationFormClientSearch, quotationFormBrandModal,
 marcasParecidas, excelPaste, quotationFormPegadoExcel,
 quotationFormFileUpload, quotationFormDraftLock, draftLockRelease,
-quotationFormEditHydration, quotationFormSubmit, quotationFormMountRace y
-quotationFormHelpers.
+quotationFormEditHydration, quotationFormSubmit, quotationFormMountRace,
+quotationFormHelpers y validezCincoDias.

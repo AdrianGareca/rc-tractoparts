@@ -14,6 +14,7 @@ const { numberToWordsES } = require('../numberToWords');
 // guardar los subtotales, y que el navegador para la vista previa en vivo.
 const { redondearCentavos } = require('../../../utils/quotationTotals');
 const { resolveBankData } = require('../bankData');
+const { DIAS_VIGENCIA } = require('../terminos');
 const { drawLogoWatermark } = require('./watermark');
 const { drawFooter } = require('./footer');
 
@@ -152,9 +153,13 @@ function dibujarCondicionesYBanco(doc, quotation, y, LEFT_W) {
     .stroke();
   ly += 18;
 
+  // Sin fecha se imprime el plazo de la cláusula 1 de los términos, para que
+  // la página 1 y la hoja de condiciones no digan cosas distintas. Hasta el
+  // 2026-09-29 este texto era un «15 DÍAS CALENDARIO» fijo, escrito antes de
+  // que existieran los términos y nunca actualizado.
   const validezStr = quotation.fecha_validez
     ? `HASTA EL ${formatDate(quotation.fecha_validez)}`
-    : '15 DÍAS CALENDARIO';
+    : `${DIAS_VIGENCIA} DÍAS CALENDARIO`;
   // Use per-quotation tiempo_entrega if provided, else fall back to default.
   // sanitizeUnsupportedGlyphs: campo libre editable por el usuario — ver el
   // comentario en pdf/format.js sobre ₩/₹ saliendo como © / ¹ sin aviso.

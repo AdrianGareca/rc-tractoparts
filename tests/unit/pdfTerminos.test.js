@@ -21,13 +21,16 @@ const {
   CLAUSULAS, TITULO_TERMINOS, MARCADOR_EMISOR, textoClausula,
 } = require('../../src/services/pdf/terminos');
 
-// Huella del texto aprobado el 2026-09-08, tal como lo entregó la abogada.
+// Huella del texto aprobado el 2026-09-08, tal como lo entregó la abogada, con
+// UN cambio: el 2026-09-29 la vigencia de la cláusula 1 pasó de «tres (3)» a
+// «cinco (5)» días calendario, por orden del Jefe (ver DIAS_VIGENCIA en
+// src/services/pdf/terminos.js).
 //
 // PARA ACTUALIZARLA: sólo después de que el cambio esté aprobado. Corré
 //   node -e "const{CLAUSULAS}=require('./src/services/pdf/terminos');console.log(require('crypto').createHash('sha256').update(CLAUSULAS.map(c=>c.join('|')).join('\n')).digest('hex'))"
 // y pegá el resultado acá.
 const HUELLA_APROBADA =
-  '9ba75d08bbbc5cfc21f1d5a0d75ea536307c392fd752692088cbdf7ef84b9f68';
+  '66c4a647f7e9de89a6abce28858e3ad9efd7464d6c60a8084d6f1a6898cef187';
 
 const huellaActual = () => crypto
   .createHash('sha256')

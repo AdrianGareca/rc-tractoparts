@@ -48,6 +48,7 @@ import { saveDraft, loadDraft, clearDraft, restoreHeaderFields } from './quotati
 import { openExcelPasteModal } from './quotationForm/excelPaste.js';
 import { resolverMarcas } from './quotationForm/marcasParecidas.js';
 import { abrirRevisionImportacion } from './quotationForm/revisionImportacion.js';
+import { wireValidezPorDefecto } from './quotationForm/validezPorDefecto.js';
 
 // NOTE: sumSubtotals / clampDiscount / computeTotal / validateDetalle viven en
 // public/js/shared/quotationTotals.js — la ÚNICA fuente de verdad, compartida
@@ -184,6 +185,10 @@ class FormMediator {
       if (this.#prefill.id_cliente && hid)   hid.value = String(this.#prefill.id_cliente);
       if (this.#prefill.cliente_nombre && search) search.value = this.#prefill.cliente_nombre;
     }
+
+    // Validez = emisión + 5 días, propuesta sola. Va después de la edición y
+    // del prefill para partir de la emisión que ya estaba cargada.
+    wireValidezPorDefecto(this.#container, { esEdicion: Boolean(this.#editId) });
 
     // Wire discount input — updates totals in real-time without touching items
     elDiscount?.addEventListener('input', () => {

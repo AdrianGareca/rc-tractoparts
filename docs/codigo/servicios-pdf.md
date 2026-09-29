@@ -56,7 +56,7 @@ Las piezas viven en `src/services/pdf/`:
 | `src/services/pdf/format.js` | `fmtNum`, `fmtPrice`, `formatDate`, `formatDateTime`, `formatMes`, `hLine`, `sanitizeUnsupportedGlyphs` | Números con separador de miles, precios con dos decimales, fechas en formato boliviano, líneas horizontales, y el reemplazo de los símbolos que la fuente no sabe dibujar. |
 | `src/services/pdf/numberToWords.js` | `numberToWordsES`, `_integerToWords`, `_buildWords`, `_lt1000` | El importe en letras del renglón **SON**. Redondea con la misma función que la caja del total, para que las letras digan exactamente el número impreso. |
 | `src/services/pdf/bankData.js` | `resolveBankData`, `normalizeEntidad` | La cuenta bancaria que corresponde a la entidad emisora de esa cotización. |
-| `src/services/pdf/terminos.js` | `textoClausula` | El texto legal de las 24 condiciones generales, con el marcador `{EMISOR}` que se reemplaza por la razón social que emite. |
+| `src/services/pdf/terminos.js` | `textoClausula`, `DIAS_VIGENCIA` | El texto legal de las 24 condiciones generales, con el marcador `{EMISOR}` que se reemplaza por la razón social que emite. `DIAS_VIGENCIA` (5 desde el 2026-09-29) es el plazo de la cláusula 1, y también lo que imprime la página 1 cuando la cotización no trae fecha de validez. |
 
 **Las piezas que dibujan** (`src/services/pdf/drawers/`)
 

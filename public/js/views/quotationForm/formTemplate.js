@@ -290,6 +290,7 @@ function seccionEncabezado() {
               data-tooltip="En Bolivia, los precios de repuestos pesados fluctuan con el tipo de cambio y disponibilidad de importación. Esta fecha garantiza al cliente los precios y el stock cotizados. Pasada esta fecha, los valores pueden variar."
             >ⓘ</span>
           </label>
+          <!-- Se llena sola con emisión + 5 días (validezPorDefecto.js); se puede cambiar. -->
           <input class="form-control" type="date" id="fecha_validez" />
           <span class="field-error" id="err-validez"></span>
         </div>
