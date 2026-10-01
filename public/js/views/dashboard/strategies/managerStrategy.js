@@ -159,7 +159,7 @@ export class ManagerStrategy extends DashboardStrategy {
         });
 
         body.querySelector('#btn-aprobar')?.addEventListener('click', () => {
-          this._showApproveDialog(id, true);
+          this._showApproveDialog(id, true, q);
         });
 
         body.querySelector('#btn-enviar-cliente')?.addEventListener('click', () => {
@@ -167,7 +167,7 @@ export class ManagerStrategy extends DashboardStrategy {
         });
 
         body.querySelector('#btn-rechazar')?.addEventListener('click', () => {
-          this._showApproveDialog(id, false);
+          this._showApproveDialog(id, false, q);
         });
 
         body.querySelector('#btn-aceptar')?.addEventListener('click', () => {
@@ -230,8 +230,15 @@ export class ManagerStrategy extends DashboardStrategy {
   }
 
   // El diálogo de aprobar o rechazar. Rechazar exige una justificación; aprobar
-  // genera el correlativo oficial y bloquea la edición.
-  _showApproveDialog(id, aprobado, _triggerBtn) {
+  // bloquea la edición.
+  //
+  // Hasta el 2026-10-01 mostraba «#<id>» —el número interno de la base, que
+  // nadie en la empresa conoce— y avisaba que «se generará el número oficial de
+  // correlativo». Era falso: el correlativo se asigna al CREAR la cotización
+  // (quotationController.create), no al aprobarla. Ahora muestra el correlativo
+  // que ya tiene, el mismo que ve el cliente en el PDF.
+  _showApproveDialog(id, aprobado, q) {
+    const referencia = q?.numero_correlativo ?? `#${id}`;
     const title  = aprobado ? 'Aprobar cotización' : 'Rechazar Cotización';
     const label  = aprobado ? 'Observaciones (opcional)' : 'Justificación del rechazo *';
 
@@ -239,8 +246,8 @@ export class ManagerStrategy extends DashboardStrategy {
       body.innerHTML = `
         <div class="confirm-dialog">
           <h4>${aprobado ? '¿Confirmar aprobación?' : '¿Confirmar rechazo?'}</h4>
-          <p>Cotización: <strong>#${id}</strong></p>
-          ${aprobado ? `<p class="text-sm text-secondary">Se generará el número oficial de correlativo y se bloqueará la edición.</p>` : ''}
+          <p>Cotización: <strong>${escHtml(referencia)}</strong>${q?.cliente_nombre ? ` — ${escHtml(q.cliente_nombre)}` : ''}</p>
+          ${aprobado ? `<p class="text-sm text-secondary">Una vez aprobada, el ejecutivo ya no podrá editarla.</p>` : ''}
         </div>
         <div class="form-group">
           <label class="form-label" for="obs-approval">${label}</label>
@@ -265,7 +272,7 @@ export class ManagerStrategy extends DashboardStrategy {
         const confirmBtn = body.querySelector('#confirm-approve');
         CommandInvoker.run(new ApproveQuotationCommand(id, aprobado, obs), {
           btn:        confirmBtn,
-          successMsg: aprobado ? 'Cotización aprobada. El correlativo oficial ha sido generado.' : 'Cotización rechazada.',
+          successMsg: aprobado ? 'Cotización aprobada.' : 'Cotización rechazada.',
           onSuccess:  () => { UI.closeModal(); this.refresh(); },
         });
       });
@@ -308,11 +315,11 @@ export class ManagerStrategy extends DashboardStrategy {
             'Cotización puesta en espera.');
         });
         body.querySelector('#btn-aprobar')?.addEventListener('click', () =>
-          this._showApproveDialog(id, true));
+          this._showApproveDialog(id, true, q));
         body.querySelector('#btn-enviar-cliente')?.addEventListener('click', () =>
           this._confirmEnviarCliente(id));
         body.querySelector('#btn-rechazar')?.addEventListener('click', () =>
-          this._showApproveDialog(id, false));
+          this._showApproveDialog(id, false, q));
 
         // FIX: #btn-aceptar was missing from _viewFullDetail — wired here so
         // quotations in 'Aprobada internamente' / 'Enviada al cliente' reached

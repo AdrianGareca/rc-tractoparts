@@ -30,6 +30,42 @@ import { ETIQUETAS_FECHA } from '../../../shared/pagination.js';
 import { mountClienteItemReport } from '../modules/clienteItemReport.js';
 import { createListSection } from '../../../shared/listSection.js';
 
+// La barra de filtros del listado: estado, rango de fechas de emisión y texto.
+// Vive fuera de render() para que render() siga entrando en una pantalla.
+function barraDeFiltrosHtml() {
+  return `
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <div class="form-group">
+        <label class="form-label">Estado</label>
+        <select class="form-control fc-narrow" id="filter-estado">
+          <option value="">Todos</option>
+          <option>Pendiente</option>
+          <option>En revision</option><option>En espera</option>
+          <option>Aprobada internamente</option>
+          <option>Enviada al cliente</option><option>Confirmada</option>
+          <option>Rechazada</option><option>Archivada</option>
+        </select>
+      </div>
+      <!-- Desde/Hasta filtran por fecha de emision (agregado 2026-10-01:
+           antes el ejecutivo no tenia forma de pedir «solo las de este
+           mes»). Es el mismo filtro que ya usa «Todas las cotizaciones». -->
+      <div class="form-group">
+        <label class="form-label" for="filter-desde">Desde</label>
+        <input class="form-control" type="date" id="filter-desde" />
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="filter-hasta">Hasta</label>
+        <input class="form-control" type="date" id="filter-hasta" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Buscar</label>
+        <input class="form-control fc-wide" type="search" id="filter-q" placeholder="Correlativo, cliente…" />
+      </div>
+      <button class="btn btn-ghost btn-sm filter-action" id="btn-filter-apply">Filtrar</button>
+    </div>`;
+}
+
 export class ExecutiveStrategy extends DashboardStrategy {
   #container;
   #user;
@@ -96,25 +132,7 @@ export class ExecutiveStrategy extends DashboardStrategy {
           </button>
         </div>
 
-        <!-- Filter bar -->
-        <div class="filter-bar">
-          <div class="form-group">
-            <label class="form-label">Estado</label>
-            <select class="form-control fc-narrow" id="filter-estado">
-              <option value="">Todos</option>
-              <option>Pendiente</option>
-              <option>En revision</option><option>En espera</option>
-              <option>Aprobada internamente</option>
-              <option>Enviada al cliente</option><option>Confirmada</option>
-              <option>Rechazada</option><option>Archivada</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Buscar</label>
-            <input class="form-control fc-wide" type="search" id="filter-q" placeholder="Correlativo, cliente…" />
-          </div>
-          <button class="btn btn-ghost btn-sm filter-action" id="btn-filter-apply">Filtrar</button>
-        </div>
+        ${barraDeFiltrosHtml()}
 
         <div class="card-toolbar" id="pagination-footer"></div>
 
@@ -178,6 +196,8 @@ export class ExecutiveStrategy extends DashboardStrategy {
 
     document.getElementById('btn-filter-apply')?.addEventListener('click', filtrar);
     document.getElementById('filter-estado')?.addEventListener('change', filtrar);
+    document.getElementById('filter-desde')?.addEventListener('change', filtrar);
+    document.getElementById('filter-hasta')?.addEventListener('change', filtrar);
     document.getElementById('filter-q')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') filtrar();
     });
@@ -353,6 +373,17 @@ export class ExecutiveStrategy extends DashboardStrategy {
     this.#loadAbortCtrl = new AbortController();
     const { signal } = this.#loadAbortCtrl;
 
+    const desde = document.getElementById('filter-desde')?.value ?? '';
+    const hasta = document.getElementById('filter-hasta')?.value ?? '';
+
+    // El servidor rechaza un rango al reves con un 422, y la lista mostraria un
+    // error generico. Mejor decirlo aca y no pedir nada: mientras la persona
+    // corrige la segunda fecha, la tabla se queda como estaba.
+    if (desde && hasta && desde > hasta) {
+      showToast('La fecha «Desde» no puede ser posterior a «Hasta».', 'warning');
+      return;
+    }
+
     // 7 columnas en "mias" (N°/Cliente/Fecha/Monto/Estado/Acciones/Seguimiento),
     // 8 en "equipo" (suma Ejecutivo) — mismo motivo que documenta
     // listSection.js: sin el override, el esqueleto de la solapa que falta
@@ -376,6 +407,8 @@ export class ExecutiveStrategy extends DashboardStrategy {
       sort_by: this.#sortBy, sort_order: this.#sortOrd,
       ...(estado && { estado }),
       ...(q && { q }),
+      ...(desde && { fecha_desde: desde }),
+      ...(hasta && { fecha_hasta: hasta }),
     };
 
     const activa = new URLSearchParams({
