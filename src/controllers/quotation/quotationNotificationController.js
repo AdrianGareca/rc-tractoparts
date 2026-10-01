@@ -18,6 +18,11 @@ const QuotationModel = require('../../models/QuotationModel');
  *  los cambios de estado por la bitácora de auditoría, no por este feed. */
 const NOTIFIED_ROLES = ['Ejecutivo', 'Proyectos'];
 
+/** El Jefe tiene una campana propia, con UN solo tipo de aviso: las ventas que
+ *  un ejecutivo dio por cerradas en el seguimiento y que todavía nadie confirmó
+ *  (2026-10-01). Ver findVentasPorConfirmar. */
+const ROL_VENTAS_POR_CONFIRMAR = 'Jefe';
+
 /**
  * Fusiona los tres streams en una sola lista ordenada por fecha descendente.
  * Función pura.
@@ -54,6 +59,8 @@ const QuotationNotificationController = {
   //   tipo = 'rechazo'       — otra persona la pasó a 'Rechazada' (desde 2026-09-28)
   //   tipo = 'en_espera'     — otra persona la pasó a 'En espera' (desde 2026-09-28)
   //   tipo = 'seguimiento'   — a scheduled client follow-up is due today
+  //   tipo = 'venta_por_confirmar' — SOLO para el Jefe: el ejecutivo anotó que
+  //                    vendió y la cotización sigue en 'Enviada al cliente'
   //
   // Opening the modal triggers markNotificacionesLeidas so the badge resets
   // for approval notifications (correction and seguimiento notifications clear
@@ -62,6 +69,12 @@ const QuotationNotificationController = {
   // ---------------------------------------------------------------------------
   async getNotificaciones(req, res) {
     try {
+      if (req.user.rol === ROL_VENTAS_POR_CONFIRMAR) {
+        const ventas = (await QuotationModel.findVentasPorConfirmar())
+          .map(r => ({ ...r, tipo: 'venta_por_confirmar' }));
+        return res.status(200).json({ success: true, total: ventas.length, data: ventas });
+      }
+
       if (!NOTIFIED_ROLES.includes(req.user.rol)) {
         return res.status(200).json({ success: true, total: 0, data: [] });
       }
@@ -106,4 +119,5 @@ const QuotationNotificationController = {
 module.exports = Object.assign(QuotationNotificationController, {
   mergeNotificaciones,
   NOTIFIED_ROLES,
+  ROL_VENTAS_POR_CONFIRMAR,
 });

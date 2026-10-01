@@ -8,6 +8,8 @@
 //   • tipo = 'envio_cliente' — Jefe sent the quotation to the client
 //   • tipo = 'rechazo'       — la rechazaron (Jefe o Administración)
 //   • tipo = 'en_espera'     — la pusieron en espera
+//   • tipo = 'venta_por_confirmar' — SOLO el Jefe: un ejecutivo anotó en el
+//                              seguimiento que vendió y falta confirmar la venta
 //
 // After the Ejecutivo opens the modal, POST /api/cotizaciones/notificaciones/leer
 // marks approval/envio notifications as read so the badge count resets.
@@ -75,6 +77,7 @@ function _tipoStyle(tipo) {
   if (tipo === 'seguimiento')   return { borderColor: 'var(--clr-violet)', labelColor: 'var(--clr-violet-soft)' };
   if (tipo === 'rechazo')       return { borderColor: 'var(--clr-red)',    labelColor: 'var(--clr-red-soft)' };
   if (tipo === 'en_espera')     return { borderColor: 'var(--clr-amber)',  labelColor: 'var(--clr-amber-soft)' };
+  if (tipo === 'venta_por_confirmar') return { borderColor: 'var(--clr-green)', labelColor: 'var(--clr-green-soft)' };
   return                               { borderColor: 'var(--clr-orange)', labelColor: 'var(--clr-orange-soft)' }; // correccion
 }
 
@@ -160,6 +163,7 @@ export async function refreshNotifBadge(UI) {
           const licitaciones  = rows.filter(r => r.tipo === 'licitacion');
           const correcciones  = rows.filter(r => r.tipo === 'correccion');
           const seguimientos  = rows.filter(r => r.tipo === 'seguimiento');
+          const ventasPorConf = rows.filter(r => r.tipo === 'venta_por_confirmar');
           // Lo que el botón «Marcar como leídas» puede limpiar: TODO lo que viene
           // de la tabla `notificaciones`, que son las filas con notificacion_id.
           //
@@ -177,6 +181,9 @@ export async function refreshNotifBadge(UI) {
                 ${items.map(_buildNotifItem).join('')}
               </ul>` : '';
 
+            // Solo le llega al Jefe. Se borra sola cuando confirma la venta (o la
+            // saca de 'Enviada al cliente'): no hay nada que marcar como leído.
+            const ventaSection = sectionHtml('var(--clr-green-soft)', 'Ventas por confirmar — búscalas en «Todas las cotizaciones» y confírmalas', ventasPorConf);
             const segSection   = sectionHtml('var(--clr-violet-soft)', 'Seguimientos programados para hoy', seguimientos);
             const rechSection  = sectionHtml('var(--clr-red-soft)', 'Rechazadas o en espera', rechazos);
             const aprobSection = sectionHtml('var(--clr-green-soft)', 'Aprobaciones y envíos recientes', aprobaciones);
@@ -195,6 +202,7 @@ export async function refreshNotifBadge(UI) {
               <p class="text-sm text-secondary mb-1">
                 Tienes <strong>${rows.length}</strong> notificación${rows.length > 1 ? 'es' : ''} pendiente${rows.length > 1 ? 's' : ''}.
               </p>
+              ${ventaSection}
               ${segSection}
               ${rechSection}
               ${aprobSection}

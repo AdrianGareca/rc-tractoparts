@@ -206,7 +206,7 @@ class DashboardController {
       document.getElementById('sidebar')?.classList.toggle('sidebar-open');
     });
 
-    // ── Notification badge (Ejecutivo only) ───────────────────────────────
+    // ── Notification badge (Ejecutivo, Proyectos y Jefe) ──────────────────
     // Start periodic polling so the badge stays current across soft navigations.
     // startNotifPolling fetches immediately then re-polls every 90 s.
     if (role === 'Ejecutivo' || role === 'Proyectos') {
@@ -214,6 +214,13 @@ class DashboardController {
       startNotifPolling(UI);
       // Minipantalla de seguimientos de HOY — una vez por día, no en cada poll.
       checkSeguimientosDelDia(UI, user.id);
+    }
+    // El Jefe tiene campana desde el 2026-10-01, con un solo aviso: las ventas
+    // que un ejecutivo anotó como cerradas y que falta confirmar. Sin la
+    // minipantalla de seguimientos: el Jefe no agenda seguimientos propios.
+    if (role === 'Jefe') {
+      requestNotifPermission();
+      startNotifPolling(UI);
     }
 
     // Render the main content via the selected Strategy

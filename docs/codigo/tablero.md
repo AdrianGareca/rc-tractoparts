@@ -87,7 +87,7 @@ Hay **una sola** ventana modal en el tablero, que usan todos.
 | `proformaActions.js` | **Qué botones** ve cada rol sobre esa proforma. | `buildProformaActions` |
 | `stateChangeDialog.js` | El diálogo «confirmá este cambio de estado». | `confirmStateChange` |
 | `timelineView.js` | El historial, la descarga de PDF y Excel, y el seguimiento comercial. | `wirePdfButton`, `wireSeguimientoVenta` |
-| `notificationsView.js` | La campana de avisos, que se consulta cada cierto tiempo. | `refreshNotifBadge`, `startNotifPolling` |
+| `notificationsView.js` | La campana de avisos, que se consulta cada cierto tiempo. La tienen el Ejecutivo, Proyectos y, desde el 2026-10-01, el Jefe (solo con «Ventas por confirmar»). | `refreshNotifBadge`, `startNotifPolling` |
 
 Los paneles de listado **devuelven su propia limpieza** al montarse: la
 estrategia la llama antes de montar la pestaña siguiente.

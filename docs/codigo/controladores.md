@@ -149,7 +149,7 @@ cambio de estado, **en orden**:
 |---|---|
 | `quotationPdfController.js` → `downloadPdf`, `downloadExcel`, `uploadFiles` | Descargar la proforma (si falta en disco se regenera), descargar y subir el Excel. |
 | `quotationPdfController.js` → `buildPdfDownloadName`, `_rejectIfNotOwner`, `_unlinkOldFile` | El nombre del archivo descargado, el control de dueño y el borrado del archivo reemplazado. |
-| `quotationNotificationController.js` → `getNotificaciones`, `markNotificacionesLeidas`, `mergeNotificaciones` | Junta los tres tipos de aviso en una sola lista por fecha y los marca como leídos. |
+| `quotationNotificationController.js` → `getNotificaciones`, `markNotificacionesLeidas`, `mergeNotificaciones` | Junta los tres tipos de aviso en una sola lista por fecha y los marca como leídos. Al Jefe le da otra lista: las ventas por confirmar (2026-10-01). |
 | `quotationFilters.js` → `parseQuotationFilters`, `positiveInt`, `invalid` | Lee y valida los filtros del listado que llegan en la URL. |
 | `transactionHelpers.js` → `withDeadlockRetry` | Corre una transacción y la reintenta hasta 3 veces si MySQL detecta un bloqueo mutuo. Siempre devuelve la conexión. |
 | `pdfRegeneration.js` → `regenerateQuotationPdf` | Borra el PDF anterior, genera el nuevo y guarda su ruta. |

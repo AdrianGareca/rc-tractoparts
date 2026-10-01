@@ -185,6 +185,54 @@ async function findSeguimientosDelDia(id_ejecutivo) {
 }
 
 // ---------------------------------------------------------------------------
+// findVentasPorConfirmar — El aviso del Jefe (decidido por Adrian el 2026-10-01).
+//
+// El ejecutivo anota en el seguimiento que el cliente compró ('Confirmado' o
+// 'Venta concretada'), pero confirmar la venta es cosa del Jefe: el ejecutivo
+// no puede pasar la cotización a 'Confirmada' (ver ROLE_TRANSITIONS). Hasta
+// ahora las dos cosas vivían separadas y, si nadie movía el estado, la venta
+// quedaba en 'Enviada al cliente' para siempre y no contaba en los reportes.
+//
+// Computado en vivo, igual que findNotificacionesPendientes: no hay fila que
+// insertar ni que marcar como leída. El aviso desaparece solo cuando la
+// cotización deja 'Enviada al cliente' —el Jefe la confirmó, la rechazó o la
+// devolvió— o cuando el ejecutivo corrige el seguimiento. Por eso tampoco
+// necesitó tocar la base de datos.
+//
+// Es para TODOS los Jefes: no hay un Jefe "asignado" a cada cotización.
+// `actualizado_en` hace de fecha del aviso: es lo último que se tocó de la
+// cotización, y casi siempre es justamente el seguimiento.
+// ---------------------------------------------------------------------------
+const SEGUIMIENTOS_DE_VENTA_CERRADA = ['Confirmado', 'Venta concretada'];
+
+async function findVentasPorConfirmar() {
+  const sql = `
+      SELECT
+        c.id                 AS id_cotizacion,
+        c.numero_correlativo,
+        cl.razon_social      AS cliente_nombre,
+        u.nombre_completo    AS ejecutivo_nombre,
+        c.estado_venta,
+        c.actualizado_en     AS fecha_solicitud
+      FROM cotizaciones c
+      INNER JOIN clientes cl ON cl.id = c.id_cliente
+      INNER JOIN usuarios u  ON u.id  = c.id_ejecutivo
+      WHERE c.estado = 'Enviada al cliente'
+        AND c.estado_venta IN (?, ?)
+      ORDER BY c.actualizado_en DESC
+    `;
+
+  const [rows] = await pool.execute(sql, SEGUIMIENTOS_DE_VENTA_CERRADA);
+
+  // `observacion` es el campo que notificationsView.js ya sabe imprimir.
+  return rows.map((r) => ({
+    ...r,
+    observacion: `${r.ejecutivo_nombre} anotó «${r.estado_venta}» en el seguimiento. ` +
+                 'Falta confirmar la venta.',
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // findFechasSeguimientoOcupadas — Fechas (YYYY-MM-DD) que YA tienen un
 // seguimiento agendado para este ejecutivo. Alimenta el calendario del campo
 // "Fecha de próximo seguimiento": marca esos días, pero NO los bloquea —
@@ -212,5 +260,7 @@ module.exports = {
   findNotificacionesEjecutivo,
   markNotificacionesLeidas,
   findSeguimientosDelDia,
+  findVentasPorConfirmar,
+  SEGUIMIENTOS_DE_VENTA_CERRADA,
   findFechasSeguimientoOcupadas,
 };
